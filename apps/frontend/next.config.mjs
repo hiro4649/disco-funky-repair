@@ -1,6 +1,10 @@
 import createNextIntlPlugin from "next-intl/plugin";
 
+process.env.NEXT_PUBLIC_APP_URL ||= "http://localhost:3000";
+process.env.NEXT_PUBLIC_APP_NAME ||= "FUNKY";
+
 const withNextIntl = createNextIntlPlugin();
+const apiUrl = process.env.NEXT_PUBLIC_API_URL?.replace(/\/$/, "");
 
 /** @type {import("next").NextConfig} */
 const nextConfig = {
@@ -8,14 +12,18 @@ const nextConfig = {
     ignoreDuringBuilds: true,
   },
   async rewrites() {
+    if (!apiUrl) {
+      return [];
+    }
+
     return [
       {
         source: '/api/:path*',
-        destination: `${process.env.NEXT_PUBLIC_API_URL}/:path*`,
+        destination: `${apiUrl}/:path*`,
       },
       {
         source: '/socketconnect/:path*',
-        destination: `${process.env.NEXT_PUBLIC_API_URL}/:path*`,
+        destination: `${apiUrl}/:path*`,
       }
     ]
   },
