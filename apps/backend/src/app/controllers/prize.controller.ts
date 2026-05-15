@@ -5,8 +5,6 @@ import prizeSchema from '../validation/prizeValidate';
 import getTokenPrice from '../lib/getTokenPrice';
 import moment from 'moment';
 import { calculateTokenQuantity, fetchTokenBalance } from '../utils/tokenHeplers';
-import jwt, { JwtPayload } from 'jsonwebtoken';
-import { jwtDecode } from 'jwt-decode';
 import { randomUUID } from 'crypto';
 import { ethers } from 'ethers';
 import { getTransactionReceiptStatus, isPrizeTransferTokenAllowed, sendTokensToWallet } from '../utils/tokenHeplers';
@@ -362,9 +360,24 @@ const isPrizeTransactionExpired = (endTime?: Date | string | null): boolean => {
     return moment.utc().isAfter(moment.utc(endTime));
 };
 
-interface User extends JwtPayload {
-    address: string;
-}
+type AuthenticatedPrizeUser = {
+    user_id?: number;
+    address?: string;
+};
+
+const getAuthenticatedPrizeUserId = (req: Request): number | null => {
+    const userId = Number((req.user as AuthenticatedPrizeUser | undefined)?.user_id);
+    return Number.isInteger(userId) && userId > 0 ? userId : null;
+};
+
+const routeUserIdMatchesAuthenticatedUser = (
+    req: Request,
+    paramName: string,
+    authenticatedUserId: number
+): boolean => {
+    const routeUserId = Number(req.params[paramName]);
+    return Number.isInteger(routeUserId) && routeUserId === authenticatedUserId;
+};
 
 export class PrizeController {
     static async adminGetPrize(req: Request, res: Response) {
@@ -559,7 +572,15 @@ export class PrizeController {
     }
 
     static async drawPrize(req: Request, res: Response) {
-        const userId = Number(req.params.user_id);
+        const userId = getAuthenticatedPrizeUserId(req);
+        if (!userId) {
+            return res.status(401).json({ success: false, msg: 'Unauthenticated' });
+        }
+
+        if (!routeUserIdMatchesAuthenticatedUser(req, 'user_id', userId)) {
+            return res.status(403).json({ success: false, msg: 'Forbidden' });
+        }
+
         try {
             const drawResult = await prisma.$transaction(async (tx) => {
                 const user = await tx.user.findUnique({
@@ -681,26 +702,34 @@ export class PrizeController {
     }
 
     static async withDrawPrizeToken(req: Request, res: Response) {
-        const { userId, prizeId } = req.params;
+        const userId = getAuthenticatedPrizeUserId(req);
+        if (!userId) {
+            return res.status(401).json({ success: false, msg: 'Unauthenticated' });
+        }
+
+        if (!routeUserIdMatchesAuthenticatedUser(req, 'user_id', userId)) {
+            return res.status(403).json({ success: false, msg: 'Forbidden' });
+        }
+
+        const { prize_id: prizeId } = req.params;
 
         try {
             // Ensure userId and prizeId are valid numbers
-            const userIdNum = Number(userId);
             const prizeIdNum = Number(prizeId);
 
-            if (isNaN(userIdNum) || isNaN(prizeIdNum)) {
+            if (isNaN(prizeIdNum)) {
                 return res.status(400).json({ msg: 'Invalid userId or prizeId' });
             }
 
             // Find user by userId
             const user = await prisma.user.findUnique({
-                where: { id: userIdNum },
+                where: { id: userId },
             });
             if (!user) return res.status(404).json({ msg: 'User not found' });
 
             // Find prize transaction by prizeId
-            const prize = await prisma.prizeTransactions.findUnique({
-                where: { id: prizeIdNum },
+            const prize = await prisma.prizeTransactions.findFirst({
+                where: { id: prizeIdNum, userId },
             });
             if (!prize) return res.status(404).json({ msg: 'Prize transaction not found' });
 
@@ -790,7 +819,15 @@ export class PrizeController {
 
     static async getPrizeTransactions(req: Request, res: Response) {
         try {
-            const userId = Number(req.params.user_id);
+            const userId = getAuthenticatedPrizeUserId(req);
+            if (!userId) {
+                return res.status(401).json({ success: false, msg: 'Unauthenticated' });
+            }
+
+            if (!routeUserIdMatchesAuthenticatedUser(req, 'user_id', userId)) {
+                return res.status(403).json({ success: false, msg: 'Forbidden' });
+            }
+
             let prizeTransactions = await prisma.prizeTransactions.findMany({
                 where: {
                     userId
@@ -880,24 +917,20 @@ export class PrizeController {
     static async sendToWallet(req: Request, res: Response) {
         const correlationId = randomUUID();
         try {
-            const token = req.cookies.userAuth;
-            const prizeId = req.params.prize_id;
+            const userId = getAuthenticatedPrizeUserId(req);
+            const prizeId = Number(req.params.prize_id);
             const today = moment.utc().format("YYYY-MM-DD HH:mm");
 
-            // Validate user token
-            if (!token) {
-                return res.status(401).json({ msg: "Unauthorized: Missing token" });
+            if (!userId) {
+                return res.status(401).json({ success: false, msg: 'Unauthenticated' });
             }
 
-            // Decode the JWT token to extract user details
-            const decoded: any = jwtDecode(token);
-            if (!decoded?.address) {
-                return res.status(400).json({ msg: "Invalid token: Address not found" });
+            if (!Number.isInteger(prizeId)) {
+                return res.status(400).json({ success: false, msg: 'Invalid prize transaction id' });
             }
 
-            // Fetch the user by wallet address
             const user = await prisma.user.findUnique({
-                where: { wallet_address: decoded.address.toLowerCase() },
+                where: { id: userId },
             });
             if (!user) {
                 return res.status(403).json({ msg: "User not found" });
@@ -905,7 +938,7 @@ export class PrizeController {
 
             // Fetch the prize transaction details
             const prizeTransaction = await prisma.prizeTransactions.findFirst({
-                where: { id: Number(prizeId), userId: user.id },
+                where: { id: prizeId, userId: user.id },
                 include: {
                     prize: {
                         select: { quantity: true, ca: true, price: true, decimals: true },
@@ -934,14 +967,14 @@ export class PrizeController {
                                     );
                                 }
                                 await tx.prizeTransactions.update({
-                                    where: { id: Number(prizeId) },
+                                    where: { id: prizeId },
                                     data: { status: receiptStatus },
                                 });
                             });
                         } catch (releaseErr) {
                             if (releaseErr instanceof PrizeInventoryDepletionError) {
                                 await prisma.prizeTransactions.update({
-                                    where: { id: Number(prizeId) },
+                                    where: { id: prizeId },
                                     data: { status: Status.MANUAL_REVIEW },
                                 });
                                 return res.status(202).json({
@@ -956,7 +989,7 @@ export class PrizeController {
                     }
 
                     await prisma.prizeTransactions.update({
-                        where: { id: Number(prizeId) },
+                        where: { id: prizeId },
                         data: { status: receiptStatus },
                     });
 
@@ -974,7 +1007,7 @@ export class PrizeController {
                         prizeTransaction.tx_hash
                     );
                     await prisma.prizeTransactions.update({
-                        where: { id: Number(prizeId) },
+                        where: { id: prizeId },
                         data: { status: Status.MANUAL_REVIEW },
                     });
                     return res.status(202).json({
@@ -1000,7 +1033,7 @@ export class PrizeController {
             const referenceMoment = moment.utc(referenceTime, "YYYY-MM-DD HH:mm");
 
             if (todayMoment.isAfter(referenceMoment)) {
-                const expirationResult = await finalizeUnpaidPrizeReservation(Number(prizeId), Status.EXPIRED);
+                const expirationResult = await finalizeUnpaidPrizeReservation(prizeId, Status.EXPIRED);
 
                 if (expirationResult.status === 'MANUAL_REVIEW') {
                     return res.status(202).json({
@@ -1031,7 +1064,7 @@ export class PrizeController {
 
             if (!tokenAmountInSmallestUnit || !coinType || !ethers.isAddress(coinType)) {
                 await prisma.prizeTransactions.update({
-                    where: { id: Number(prizeId) },
+                    where: { id: prizeId },
                     data: { status: Status.MANUAL_REVIEW },
                 });
                 return res.status(202).json({
@@ -1048,7 +1081,7 @@ export class PrizeController {
 
             if (!isPrizeTransferTokenAllowed(coinType) || !prizeCatalogTokenAllowed) {
                 await prisma.prizeTransactions.update({
-                    where: { id: Number(prizeId) },
+                    where: { id: prizeId },
                     data: { status: Status.MANUAL_REVIEW },
                 });
                 return res.status(202).json({
@@ -1060,7 +1093,7 @@ export class PrizeController {
 
             const sendingUpdate = await prisma.prizeTransactions.updateMany({
                 where: {
-                    id: Number(prizeId),
+                    id: prizeId,
                     userId: user.id,
                     status: Status.READY,
                     tx_hash: null
@@ -1083,7 +1116,7 @@ export class PrizeController {
                 txHash = await sendTokensToWallet(user.wallet_address, tokenAmountInSmallestUnit, coinType);
                 if (!txHash || typeof txHash !== 'string') {
                     await prisma.prizeTransactions.update({
-                        where: { id: Number(prizeId) },
+                        where: { id: prizeId },
                         data: { status: Status.MANUAL_REVIEW },
                     });
                     return res.status(202).json({
@@ -1101,14 +1134,14 @@ export class PrizeController {
                             tokenAmountInSmallestUnit
                         );
                         await tx.prizeTransactions.update({
-                            where: { id: Number(prizeId) },
+                            where: { id: prizeId },
                             data: { status: Status.RECEIVED, tx_hash: txHash },
                         });
                     });
                 } catch (releaseErr) {
                     if (releaseErr instanceof PrizeInventoryDepletionError) {
                         await prisma.prizeTransactions.update({
-                            where: { id: Number(prizeId) },
+                            where: { id: prizeId },
                             data: {
                                 status: Status.MANUAL_REVIEW,
                                 tx_hash: txHash
@@ -1136,7 +1169,7 @@ export class PrizeController {
 
                 if (broadcastTxHash) {
                     await prisma.prizeTransactions.update({
-                        where: { id: Number(prizeId) },
+                        where: { id: prizeId },
                         data: {
                             status: Status.MANUAL_REVIEW,
                             tx_hash: broadcastTxHash
@@ -1151,7 +1184,7 @@ export class PrizeController {
 
                 await prisma.prizeTransactions.updateMany({
                     where: {
-                        id: Number(prizeId),
+                        id: prizeId,
                         userId: user.id,
                         status: Status.SENDING,
                         tx_hash: null
