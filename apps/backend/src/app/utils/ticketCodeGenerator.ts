@@ -1,13 +1,14 @@
+import { randomInt } from 'crypto';
+
 /**
- * Generates a random 10-character alphanumeric ticket code
- * Uses both uppercase and lowercase letters
+ * Generates a random alphanumeric ticket code with CSPRNG.
  */
-export const generateRandomCode = (length = 6): string => {
+export const generateRandomCode = (length = 10): string => {
     const characters = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
     let result = '';
 
     for (let i = 0; i < length; i++) {
-        result += characters.charAt(Math.floor(Math.random() * characters.length));
+        result += characters.charAt(randomInt(characters.length));
     }
 
     return result;
