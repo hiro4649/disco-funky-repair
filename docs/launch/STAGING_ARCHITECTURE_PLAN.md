@@ -40,6 +40,14 @@ Preferred separation:
 - Secrets should be injected by the process manager or platform, not committed into the repo.
 - Contract deployment should be executed from an approved staging deploy environment, not from a production signer.
 
+Sakura Cloud single-server staging variant:
+
+- For first staging, a single new Sakura Cloud server may run backend, frontend, PostgreSQL, nginx, PM2, logs, and staging runtime secret injection.
+- This is acceptable for staging because it uses BSC testnet contracts, staging-only wallets, staging-only DB, and non-production hostnames.
+- Follow `docs/launch/STAGING_SAKURA_SINGLE_SERVER_PLAN.md` for one-server risks, required mitigations, and future split triggers.
+- Production MVP may temporarily use a single-server layout only if backup, snapshot, monitoring, log rotation, secret separation, hot wallet minimization, and multisig/timelock governance requirements are satisfied.
+- Production must not continue as a single server when DB load, backup/restore risk, worker/cron load, monitoring requirements, traffic, or audit requirements exceed the documented thresholds.
+
 ## 3. Never Shared With Production
 
 Staging and production must not share:
