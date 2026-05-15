@@ -9,7 +9,6 @@ import passport from 'passport';
 import * as http from 'http';
 import { Server as SocketIOServer } from 'socket.io';
 import { configureSecurityMiddleware } from './middlewares/security';
-import { initCrashServer } from './controllers/crashGame.controller';
 import './services/trackingService';
 import './lib/validateEnvs';
 import { startTrialNFTSchedulers } from './lib/trialNftScheduler';
@@ -46,8 +45,9 @@ io.on('connection', (socket) => {
     });
 });
 
-// Initialize crash game server
-initCrashServer(io);
+io.of('/crashx').use((_socket, next) => {
+    next(new Error('FEATURE_DISABLED'));
+});
 
 // Cookie parser should come first to ensure cookies are parsed before any middleware uses them
 app.use(cookieParser());
