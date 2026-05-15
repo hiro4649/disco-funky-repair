@@ -1,7 +1,15 @@
 import { ethers } from 'ethers';
 import moment from 'moment';
 import prisma from '../db/prisma_client';
-import { QUICKNODE_HTTP_RPC_URL, ADMIN_PRIVATE_KEY } from '../config/env';
+import { QUICKNODE_HTTP_RPC_URL, ADMIN_PRIVATE_KEY, TIER_UPDATER_CONTRACT_ADDRESS } from '../config/env';
+import {
+  createTierBatchId,
+  isValidTier,
+  sendTierSyncTransaction,
+  TierReasonName,
+  TIER_UPDATER_ABI,
+  VALID_TIER_DAYS
+} from '../lib/tierSync';
 
 // Token Contract ABI for DEX and fee management - Updated for new contract
 const TOKEN_ABI = [
@@ -15,7 +23,6 @@ const TOKEN_ABI = [
   "function holdingDate(address) view returns (uint16)",
   "function feeRecipient() view returns (address)",
   "function update_fee_percentage(uint16 _holdingDate, uint16 _newFeePercent)",
-  "function update_holding_date(address user, uint16 _holdingDate)",
   "function update_fee_recipient(address newRecipient)",
   
   // Events
@@ -32,6 +39,7 @@ export class TokenManagementService {
   private static provider: ethers.JsonRpcProvider | null = null;
   private static signer: ethers.Wallet | null = null;
   private static contract: ethers.Contract | null = null;
+  private static tierUpdaterContract: ethers.Contract | null = null;
 
   private static async initializeProvider() {
     if (!this.provider) {
@@ -47,6 +55,14 @@ export class TokenManagementService {
 
     if (!this.contract) {
       this.contract = new ethers.Contract(TOKEN_ADDRESS, TOKEN_ABI, this.signer || this.provider);
+    }
+
+    if (!this.tierUpdaterContract && TIER_UPDATER_CONTRACT_ADDRESS) {
+      this.tierUpdaterContract = new ethers.Contract(
+        TIER_UPDATER_CONTRACT_ADDRESS,
+        TIER_UPDATER_ABI,
+        this.signer || this.provider
+      );
     }
   }
 
@@ -130,6 +146,9 @@ export class TokenManagementService {
       if (!this.signer) {
         throw new Error('Admin private key not configured');
       }
+      if (!isValidTier(holdingDate)) {
+        throw new Error('Invalid fee tier');
+      }
 
       // Get current fee percentage for the specific holding date
       const currentFee = await this.contract!.feePercent(holdingDate);
@@ -191,20 +210,44 @@ export class TokenManagementService {
   }
 
   // Update user holding date in contract and database
-  static async updateUserHoldingDate(userAddress: string, holdingDate: number, adminAddress: string): Promise<{ success: boolean; txHash?: string; error?: string }> {
+  static async updateUserHoldingDate(
+    userAddress: string,
+    holdingDate: number,
+    adminAddress: string,
+    reason?: Exclude<TierReasonName, 'REGULAR_SYNC'>
+  ): Promise<{ success: boolean; txHash?: string; error?: string }> {
     try {
       await this.initializeProvider();
 
       if (!this.signer) {
         throw new Error('Admin private key not configured');
       }
+      if (!this.tierUpdaterContract) {
+        throw new Error('Tier updater contract is not configured');
+      }
+      if (!isValidTier(holdingDate)) {
+        throw new Error('Invalid holding date tier');
+      }
 
       // Get current holding date
-      const currentHoldingDate = await this.contract!.holdingDate(userAddress);
+      const currentHoldingDate = await this.tierUpdaterContract.holdingDate(userAddress);
       const oldValue = currentHoldingDate.toString();
+      const currentTier = Number(currentHoldingDate);
+
+      if (holdingDate < currentTier && !reason) {
+        throw new Error('Explicit downgrade/reset reason is required');
+      }
 
       // Update holding date in contract
-      const tx = await this.contract!.update_holding_date(userAddress, holdingDate);
+      const batchId = createTierBatchId('ADMIN_TIER_UPDATE', userAddress);
+      const tx = await sendTierSyncTransaction(
+        this.tierUpdaterContract,
+        userAddress,
+        holdingDate,
+        batchId,
+        currentTier,
+        { explicitReason: reason }
+      );
       const receipt = await tx.wait();
 
       // Save to database
@@ -230,7 +273,7 @@ export class TokenManagementService {
       await this.initializeProvider();
 
       // Holding date options (matching contract defaults)
-      const holdingDateOptions = [0, 30, 180, 360, 720];
+      const holdingDateOptions = [...VALID_TIER_DAYS];
       
       // Fetch fee percentages for all holding dates
       const feePercentPromises = holdingDateOptions.map(holdingDate => 
