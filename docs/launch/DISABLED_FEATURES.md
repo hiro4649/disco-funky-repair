@@ -1,5 +1,25 @@
 # Disabled Features for BSC Launch MVP
 
+## P0-02 Disabled NFT Mint Status Update
+
+`PATCH /api/nft/:id` is disabled for the BSC launch MVP and returns `410 FEATURE_DISABLED`.
+
+Reason:
+- The old route accepted `holderId` and `mintStatus` from the request body.
+- The old controller path could update NFT ownership state and increment FanPoint without on-chain receipt verification.
+- Re-enabling this endpoint requires server-side verification of `chainId`, NFT contract address, transaction receipt status, Transfer event logs, token owner, idempotency, and authenticated user/admin authorization.
+
+Disabled behavior:
+- `PATCH /api/nft/:id` does not call `NftController.updateNFT`.
+- It does not update `holderId`.
+- It does not update `mintStatus`.
+- It does not create `PointHistory`.
+- It does not increment `fan_points`.
+
+Human verification:
+- `PATCH /api/nft/:id` returns `410 FEATURE_DISABLED`.
+- Backend route tests confirm the controller is not called.
+
 作成日: 2026-05-15
 
 この文書は、BSCローンチ前P0-01として本番MVPから外した機能の記録です。Crash gameは実装予定なしのため、今回はゲーム修理、乱数改善、残高連携修正、資産送金、NFT、ticket、tier、contract修正は行っていません。
