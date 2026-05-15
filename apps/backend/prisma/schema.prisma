@@ -361,6 +361,9 @@ enum Status {
   BROADCASTED
   MANUAL_REVIEW
   RECEIVED
+  EXPIRED
+  CANCELLED
+  FAILED
 }
 
 enum TicketCodeStatus {

@@ -990,3 +990,34 @@ P2: frontend buildでlint無視設定
   - Successful send consumes reserved and balance inventory once, and receipt retry does not double-consume either amount.
   - Confirmed send without token tracking does not recreate available inventory for another READY win.
   - Already released reservations do not change inventory again on retry.
+
+## 2026-05-15 P0-07C implementation record
+
+- Task: Release Prize reservations when a win is finally unpaid due to expiration, cancellation, or confirmed failure.
+- Target routes:
+  - `GET /airdrop/prize/transactions/:user_id`
+  - `POST /airdrop/prize/send/:prize_id`
+  - `POST /admin/airdrop/prize/transaction/:prize_id/cancel`
+  - `POST /admin/airdrop/prize/transaction/:prize_id/fail`
+- Changed files:
+  - `apps/backend/prisma/schema.prisma`
+  - `apps/backend/src/app/controllers/prize.controller.ts`
+  - `apps/backend/src/app/routes/prize.routes.ts`
+  - `apps/backend/src/app/controllers/__tests__/prize.controller.test.ts`
+  - `docs/security/BSC_LAUNCH_P0_FIXES.md`
+- Fix summary:
+  - Added Prize transaction statuses `EXPIRED`, `CANCELLED`, and `FAILED`.
+  - Added an unpaid reservation finalization path that only runs for tx-hash-free READY or already-final unpaid transactions.
+  - Expired READY transactions are finalized during prize transaction fetch or send attempt, and release `reserved_amount` once.
+  - Admin-only cancellation and failed-finalization routes release `reserved_amount` once for unpaid transactions.
+  - `reservation_released_at` guards expiration, cancellation, and failed finalization so retries do not double-release.
+  - Unpaid finalization decrements `reserved_amount` only and does not increase or decrement `balance_amount`.
+  - Transactions with `tx_hash`, `SENDING`, or `BROADCASTED` are moved to `MANUAL_REVIEW` instead of auto-release.
+  - `RECEIVED` transactions are not auto-released by unpaid finalization.
+- Tests added:
+  - Expired READY transaction releases `reserved_amount` once.
+  - Cancelled READY transaction releases `reserved_amount` once.
+  - tx-hash-free FAILED finalization releases `reserved_amount` once.
+  - tx-hash-present FAILED finalization does not auto-release and moves to `MANUAL_REVIEW`.
+  - Already released reservations do not change `reserved_amount` again.
+  - `RECEIVED` transactions do not run unpaid reservation release.
