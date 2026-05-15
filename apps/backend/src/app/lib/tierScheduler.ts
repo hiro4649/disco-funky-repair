@@ -32,7 +32,7 @@ import {
 
 const prisma = new PrismaClient();
 
-const ADMIN_PRIVATE_KEY = process.env.ADMIN_PRIVATE_KEY || '';
+const TIER_RELAYER_PRIVATE_KEY = process.env.TIER_RELAYER_PRIVATE_KEY || '';
 const QUICKNODE_HTTP_RPC_URL = process.env.QUICKNODE_HTTP_RPC_URL || '';
 const TIER_UPDATER_CONTRACT_ADDRESS = process.env.TIER_UPDATER_CONTRACT_ADDRESS || '';
 
@@ -89,7 +89,8 @@ export const scheduleTierUpdate = async (userId: number, currentHoldingDays: num
         console.log(`📅 Scheduled tier update for user ${userId}: ${currentTier} → ${nextTierDays} in ${daysUntilNextTier.toFixed(2)} days`);
 
     } catch (error) {
-        console.error(`Failed to schedule tier update for user ${userId}:`, error);
+        const errorName = error instanceof Error ? error.name : typeof error;
+        console.error(`Failed to schedule tier update for user ${userId}:`, { errorName });
     }
 };
 
@@ -163,14 +164,16 @@ export const processScheduledTierUpdates = async (): Promise<void> => {
                 }
 
             } catch (error) {
-                console.error(`Failed to process scheduled update for user ${scheduled.userId}:`, error);
+                const errorName = error instanceof Error ? error.name : typeof error;
+                console.error(`Failed to process scheduled update for user ${scheduled.userId}:`, { errorName });
             }
         }
 
         console.log('✅ Scheduled tier updates processing complete');
 
     } catch (error) {
-        console.error('Error processing scheduled tier updates:', error);
+        const errorName = error instanceof Error ? error.name : typeof error;
+        console.error('Error processing scheduled tier updates:', { errorName });
     }
 };
 
@@ -187,8 +190,8 @@ export const updateUserContractTier = async (
 
     for (let attempt = 0; attempt < retries; attempt++) {
         try {
-            if (!ADMIN_PRIVATE_KEY || !QUICKNODE_HTTP_RPC_URL || !TIER_UPDATER_CONTRACT_ADDRESS) {
-                console.error('Missing required environment variables for contract update');
+            if (!TIER_RELAYER_PRIVATE_KEY || !QUICKNODE_HTTP_RPC_URL || !TIER_UPDATER_CONTRACT_ADDRESS) {
+                console.error('Missing required environment variables for tier updater contract update');
                 return;
             }
 
@@ -209,7 +212,7 @@ export const updateUserContractTier = async (
 
             // Initialize provider and contract
             const provider = new ethers.JsonRpcProvider(QUICKNODE_HTTP_RPC_URL);
-            const wallet = new ethers.Wallet(ADMIN_PRIVATE_KEY, provider);
+            const wallet = new ethers.Wallet(TIER_RELAYER_PRIVATE_KEY, provider);
             const contract = new ethers.Contract(TIER_UPDATER_CONTRACT_ADDRESS, TIER_UPDATER_ABI, wallet);
 
             const milestoneTier = getMilestoneTier(user.holdingDate);
@@ -250,25 +253,22 @@ export const updateUserContractTier = async (
             }
 
             // ============================================================
-            // CRITICAL: Check admin wallet balance before transaction
+            // CRITICAL: Check tier relayer wallet balance before transaction
             // ============================================================
-            const balanceCheck = await walletBalanceMonitor.checkBalanceBeforeTransaction(
-                estimatedGas,
-                gasPriceForCost
-            );
+            const estimatedCost = estimatedGas * gasPriceForCost;
+            const relayerBalance = await provider.getBalance(wallet.address);
+            const remainingTransactions = estimatedCost > 0n
+                ? Number(relayerBalance / estimatedCost)
+                : 0;
 
-            if (!balanceCheck) {
-                throw new Error('Failed to check admin wallet balance');
-            }
-
-            if (!balanceCheck.sufficient) {
+            if (relayerBalance < estimatedCost) {
                 console.error(`❌ Insufficient balance for user ${userId} contract update`);
-                console.error(`   Required: ${ethers.formatEther(balanceCheck.estimatedCost)} BNB`);
-                console.error(`   Available: ${ethers.formatEther(balanceCheck.balance)} BNB`);
-                throw new Error('Insufficient admin wallet balance');
+                console.error(`   Required: ${ethers.formatEther(estimatedCost)} BNB`);
+                console.error(`   Available: ${ethers.formatEther(relayerBalance)} BNB`);
+                throw new Error('Insufficient tier relayer wallet balance');
             }
 
-            console.log(`💰 Balance check passed: ${ethers.formatEther(balanceCheck.balance)} BNB (can afford ${balanceCheck.remainingTransactions} more updates)`);
+            console.log(`💰 Tier relayer balance check passed: ${ethers.formatEther(relayerBalance)} BNB (can afford ${remainingTransactions} more updates)`);
 
             // Check for gas price spikes
             await walletBalanceMonitor.checkGasPriceSpike(gasPriceForCost);
@@ -313,11 +313,12 @@ export const updateUserContractTier = async (
 
         } catch (error) {
             lastError = error as Error;
-            console.error(`❌ Attempt ${attempt + 1}/${retries} failed for user ${userId}:`, error);
+            const errorName = error instanceof Error ? error.name : typeof error;
+            console.error(`❌ Attempt ${attempt + 1}/${retries} failed for user ${userId}:`, { errorName });
 
             // If insufficient balance, no point retrying
-            if (error instanceof Error && error.message.includes('Insufficient admin wallet balance')) {
-                console.error(`💰 Admin wallet out of funds - stopping retries`);
+            if (error instanceof Error && error.message.includes('Insufficient tier relayer wallet balance')) {
+                console.error(`💰 Tier relayer wallet out of funds - stopping retries`);
                 await alertContractUpdateFailed(userId, user?.wallet_address || '', error, attempt + 1);
                 throw error;
             }
@@ -338,7 +339,7 @@ export const updateUserContractTier = async (
             where: { id: userId },
             select: { wallet_address: true }
         });
-        await alertContractUpdateFailed(userId, user?.wallet_address || '', lastError, retries);
+        await alertContractUpdateFailed(userId, user?.wallet_address || '', new Error('Tier update failed'), retries);
         throw lastError;
     }
 };

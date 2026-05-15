@@ -1107,3 +1107,28 @@ P2: frontend buildでlint無視設定
   - A token outside `PRIZE_TRANSFER_TOKEN_ALLOWLIST` does not call ERC-20 `transfer`.
   - An allowlisted token proceeds through the existing transfer flow.
   - `sendToWallet` moves non-allowlisted prize transactions to `MANUAL_REVIEW` without calling the transfer helper.
+
+## 2026-05-15 P0-10B implementation record
+
+- Task: Separate tier relayer signing from `ADMIN_PRIVATE_KEY`.
+- Target files:
+  - `apps/backend/src/app/config/env.ts`
+  - `apps/backend/src/app/lib/validateEnvs.ts`
+  - `apps/backend/src/app/lib/holdingDateService.ts`
+  - `apps/backend/src/app/lib/tierScheduler.ts`
+  - `apps/backend/src/app/services/tokenManagementService.ts`
+  - `apps/backend/src/app/services/__tests__/tokenManagementService.test.ts`
+  - `docs/launch/KEY_SEPARATION_RUNBOOK.md`
+- Fix summary:
+  - Added `TIER_RELAYER_PRIVATE_KEY` for backend tier updater transactions.
+  - `holdingDateService` and `tierScheduler` now construct tier updater wallets from `TIER_RELAYER_PRIVATE_KEY`, not `ADMIN_PRIVATE_KEY`.
+  - `TokenManagementService.updateUserHoldingDate` uses a dedicated tier relayer signer and `TIER_UPDATER_CONTRACT_ADDRESS`.
+  - `ADMIN_PRIVATE_KEY` fallback is not used for tier updater writes.
+  - Missing `TIER_RELAYER_PRIVATE_KEY` or `TIER_UPDATER_CONTRACT_ADDRESS` prevents tier transactions from being sent.
+  - Tier update error responses and logs use safe fixed messages or error names instead of raw RPC/key/config errors.
+  - `KEY_SEPARATION_RUNBOOK.md` now documents tier relayer wallet setup, relayer permission, owner/multisig assumptions, and staging/production checks.
+- Tests added:
+  - Tier update uses `TIER_RELAYER_PRIVATE_KEY`.
+  - `ADMIN_PRIVATE_KEY` alone cannot send a tier update.
+  - Missing `TIER_UPDATER_CONTRACT_ADDRESS` prevents tx send.
+  - Raw secret-like tier update errors are not returned or logged.
