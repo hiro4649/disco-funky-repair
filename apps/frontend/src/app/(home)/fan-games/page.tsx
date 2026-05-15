@@ -1,13 +1,5 @@
-"use client";
-import CrashGame from "@/components/CrashGame/CrashGame";
-import DefaultLayout from "@/components/Layouts/DefaultLayout";
+import { notFound } from "next/navigation";
 
 export default function CrashGamePage() {
-  return (
-    <>
-      <DefaultLayout>
-        <CrashGame />
-      </DefaultLayout>
-    </>
-  );
+  notFound();
 }
