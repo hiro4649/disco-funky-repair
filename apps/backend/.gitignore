@@ -2,7 +2,8 @@ node_modules/
 dist/
 coverage/
 *.env
-prisma/migrations
+!prisma/migrations/
+!prisma/migrations/**
 
 uploads/
 
