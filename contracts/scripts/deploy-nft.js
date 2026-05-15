@@ -42,6 +42,17 @@ async function main() {
   // Royalty configuration
   const ROYALTY_RECIPIENT = deployer.address; // Change to your royalty wallet
   const ROYALTY_PERCENT = 500; // 5% (in basis points: 500 = 5%)
+  const maxSupplyInput = process.env.NFT_MAX_SUPPLY;
+
+  if (!maxSupplyInput && network.name !== "hardhat" && network.name !== "localhost") {
+    throw new Error("NFT_MAX_SUPPLY must be set before BSC NFT deployment");
+  }
+
+  const MAX_SUPPLY = BigInt(maxSupplyInput || "10000");
+
+  if (MAX_SUPPLY <= 0n) {
+    throw new Error("NFT_MAX_SUPPLY must be greater than 0");
+  }
 
   // ==========================================
   // Deploy
@@ -70,12 +81,14 @@ async function main() {
   console.log("  Price Feed:", priceFeedAddress);
   console.log("  Royalty Recipient:", ROYALTY_RECIPIENT);
   console.log("  Royalty Percent:", ROYALTY_PERCENT / 100, "%");
+  console.log("  Max Supply:", MAX_SUPPLY.toString());
 
   const FunkyNFT = await ethers.getContractFactory("FunkyNFT");
   const nft = await FunkyNFT.deploy(
     priceFeedAddress,
     ROYALTY_RECIPIENT,
-    ROYALTY_PERCENT
+    ROYALTY_PERCENT,
+    MAX_SUPPLY
   );
   await nft.waitForDeployment();
 
@@ -87,6 +100,8 @@ async function main() {
   console.log("  Name:", await nft.name());
   console.log("  Symbol:", await nft.symbol());
   console.log("  Mint Price (USD):", ethers.formatUnits(await nft.mintUsdPrice(), 8), "USD");
+  console.log("  Max Supply:", (await nft.MAX_SUPPLY()).toString());
+  console.log("  Mint Enabled:", await nft.mintEnabled());
   console.log("  Next Token ID:", (await nft.nextTokenId()).toString());
   console.log("  Owner:", await nft.owner());
 
@@ -99,10 +114,10 @@ async function main() {
   console.log(`\nContract Address: ${nftAddress}`);
   console.log(`Network: ${network.name}`);
   console.log(`\nNext steps:`);
-  console.log(`  1. Update NEXT_PUBLIC_NFT_ADDRESS in your frontend .env:`);
-  console.log(`     NEXT_PUBLIC_NFT_ADDRESS=${nftAddress}`);
-  console.log(`  2. If deploying to BSC testnet/mainnet, verify the contract:`);
-  console.log(`     npx hardhat verify --config hardhat.config.nft.js --network ${network.name} ${nftAddress} "${priceFeedAddress}" "${ROYALTY_RECIPIENT}" ${ROYALTY_PERCENT}`);
+  console.log(`  1. Transfer ownership to the production multisig before enabling mint.`);
+  console.log(`  2. Use the multisig to setBaseURI(...) and setMintEnabled(true).`);
+  console.log(`  3. If deploying to BSC testnet/mainnet, verify the contract:`);
+  console.log(`     npx hardhat verify --config hardhat.config.nft.js --network ${network.name} ${nftAddress} "${priceFeedAddress}" "${ROYALTY_RECIPIENT}" ${ROYALTY_PERCENT} ${MAX_SUPPLY}`);
 }
 
 main()

@@ -1,17 +1,18 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.30;
 
-import {
-    ERC721,
-    ERC721URIStorage
-} from "@openzeppelin/contracts/token/ERC721/extensions/ERC721URIStorage.sol";
+import {ERC721} from "@openzeppelin/contracts/token/ERC721/ERC721.sol";
 import {AggregatorV3Interface} from "@chainlink/contracts/src/v0.8/shared/interfaces/AggregatorV3Interface.sol";
 import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
 import "@openzeppelin/contracts/token/common/ERC2981.sol";
 
-contract FunkyNFT is ERC721URIStorage, ERC2981, Ownable {
+contract FunkyNFT is ERC721, ERC2981, Ownable {
     uint256 private _nextTokenId;
     AggregatorV3Interface internal priceFeed;
+    string private _baseTokenURI;
+
+    uint256 public immutable MAX_SUPPLY;
+    bool public mintEnabled;
 
     // Minimum USD price per NFT (default: $500, Chainlink feed has 8 decimals)
     uint256 public mintUsdPrice = 500 * 10 ** 8;
@@ -19,9 +20,12 @@ contract FunkyNFT is ERC721URIStorage, ERC2981, Ownable {
     constructor(
         address priceFeedAddress,
         address royaltyRecipient,
-        uint16 royaltyPercent
+        uint16 royaltyPercent,
+        uint256 maxSupply
     ) ERC721("FUNKY NFT", "FUNKY") Ownable(msg.sender) {
+        require(maxSupply > 0, "Max supply must be greater than 0");
         priceFeed = AggregatorV3Interface(priceFeedAddress);
+        MAX_SUPPLY = maxSupply;
         _setDefaultRoyalty(royaltyRecipient, royaltyPercent);
     }
 
@@ -29,7 +33,7 @@ contract FunkyNFT is ERC721URIStorage, ERC2981, Ownable {
     function supportsInterface(bytes4 interfaceId)
         public
         view
-        override(ERC721URIStorage, ERC2981)
+        override(ERC721, ERC2981)
         returns (bool)
     {
         return super.supportsInterface(interfaceId);
@@ -39,43 +43,59 @@ contract FunkyNFT is ERC721URIStorage, ERC2981, Ownable {
         return _nextTokenId;
     }
 
-    /// @notice Mint a single NFT (must send >= mintUsdPrice in BNB)
-    function mint(
-        address to,
-        string memory tokenURI
-    ) public payable returns (uint256) {
+    function baseURI() external view returns (string memory) {
+        return _baseTokenURI;
+    }
+
+    function setBaseURI(string calldata newBaseURI) external onlyOwner {
+        require(bytes(newBaseURI).length > 0, "Base URI must not be empty");
+        _baseTokenURI = newBaseURI;
+    }
+
+    function setMintEnabled(bool enabled) external onlyOwner {
+        mintEnabled = enabled;
+    }
+
+    function _baseURI() internal view override returns (string memory) {
+        return _baseTokenURI;
+    }
+
+    function _requireMintOpen(uint256 quantity) internal view {
+        require(mintEnabled, "Mint is disabled");
+        require(bytes(_baseTokenURI).length > 0, "Base URI not set");
+        require(_nextTokenId + quantity <= MAX_SUPPLY, "Max supply exceeded");
+    }
+
+    /// @notice Mint a single NFT to the caller (must send >= mintUsdPrice in BNB)
+    function mint() public payable returns (uint256) {
+        _requireMintOpen(1);
         require(
             getConversionRate(msg.value) >= mintUsdPrice,
             "Must send at least minimum price in BNB"
         );
 
         uint256 tokenId = _nextTokenId++;
-        _mint(to, tokenId);
-        _setTokenURI(tokenId, tokenURI);
+        _safeMint(msg.sender, tokenId);
 
         return tokenId;
     }
 
-    /// @notice Mint multiple NFTs in a single transaction
+    /// @notice Owner-only batch mint using the contract base URI metadata
     /// @param to The address to mint NFTs to
-    /// @param tokenURIs Array of metadata URIs for each NFT
+    /// @param quantity Number of NFTs to mint
     /// @return tokenIds Array of minted token IDs
     function batchMint(
         address to,
-        string[] memory tokenURIs
-    ) public payable returns (uint256[] memory) {
-        uint256 quantity = tokenURIs.length;
+        uint256 quantity
+    ) external onlyOwner returns (uint256[] memory) {
+        require(to != address(0), "Invalid recipient");
         require(quantity > 0, "Must mint at least 1 NFT");
-        require(
-            getConversionRate(msg.value) >= mintUsdPrice * quantity,
-            "Must send enough BNB for all NFTs"
-        );
+        _requireMintOpen(quantity);
 
         uint256[] memory tokenIds = new uint256[](quantity);
         for (uint256 i = 0; i < quantity; i++) {
             uint256 tokenId = _nextTokenId++;
-            _mint(to, tokenId);
-            _setTokenURI(tokenId, tokenURIs[i]);
+            _safeMint(to, tokenId);
             tokenIds[i] = tokenId;
         }
 
