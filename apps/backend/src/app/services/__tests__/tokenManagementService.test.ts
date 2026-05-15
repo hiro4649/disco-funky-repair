@@ -148,4 +148,56 @@ describe('TokenManagementService tier relayer key separation', () => {
     expect(logged).not.toContain('https://rpc.invalid');
     expect(logged).not.toContain(RAW_SECRET_LIKE_ERROR);
   });
+
+  it('does not send governance txs with ADMIN_PRIVATE_KEY for DEX registration', async () => {
+    const { TokenManagementService, Wallet, Contract, syncHoldingDate } = loadService({
+      TIER_RELAYER_PRIVATE_KEY: undefined
+    });
+
+    const result = await TokenManagementService.addDexToContract(
+      '0x0000000000000000000000000000000000000003',
+      'admin'
+    );
+
+    expect(result).toEqual({
+      success: false,
+      code: 'MANUAL_REVIEW_REQUIRED',
+      error: 'Governance, fee, DEX, and pair management transactions are disabled in the backend. Use the governance runbook and multisig/timelock process.'
+    });
+    expect(Wallet).not.toHaveBeenCalled();
+    expect(Contract).not.toHaveBeenCalled();
+    expect(syncHoldingDate).not.toHaveBeenCalled();
+  });
+
+  it('does not send governance txs or write DB records for fee changes', async () => {
+    const { TokenManagementService, Wallet, Contract } = loadService();
+
+    const result = await TokenManagementService.updateFeePercentage(31, '200', 'admin');
+
+    expect(result).toEqual({
+      success: false,
+      code: 'MANUAL_REVIEW_REQUIRED',
+      error: 'Governance, fee, DEX, and pair management transactions are disabled in the backend. Use the governance runbook and multisig/timelock process.'
+    });
+    expect(Wallet).not.toHaveBeenCalled();
+    expect(Contract).not.toHaveBeenCalled();
+    expect(mockPrisma.feeChangeHistory.create).not.toHaveBeenCalled();
+  });
+
+  it('does not send governance txs for fee recipient changes', async () => {
+    const { TokenManagementService, Wallet, Contract } = loadService();
+
+    const result = await TokenManagementService.updateFeeRecipient(
+      '0x0000000000000000000000000000000000000004',
+      'admin'
+    );
+
+    expect(result).toEqual({
+      success: false,
+      code: 'MANUAL_REVIEW_REQUIRED',
+      error: 'Governance, fee, DEX, and pair management transactions are disabled in the backend. Use the governance runbook and multisig/timelock process.'
+    });
+    expect(Wallet).not.toHaveBeenCalled();
+    expect(Contract).not.toHaveBeenCalled();
+  });
 });

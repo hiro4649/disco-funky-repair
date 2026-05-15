@@ -1132,3 +1132,26 @@ P2: frontend buildでlint無視設定
   - `ADMIN_PRIVATE_KEY` alone cannot send a tier update.
   - Missing `TIER_UPDATER_CONTRACT_ADDRESS` prevents tx send.
   - Raw secret-like tier update errors are not returned or logged.
+
+## 2026-05-15 P0-10C implementation record
+
+- Task: Remove backend execution path for governance, fee, DEX, and pair-management on-chain writes.
+- Target files:
+  - `apps/backend/src/app/controllers/dexFeeController.ts`
+  - `apps/backend/src/app/routes/__tests__/dexFee.routes.test.ts`
+  - `apps/backend/src/app/services/tokenManagementService.ts`
+  - `apps/backend/src/app/services/__tests__/tokenManagementService.test.ts`
+  - `docs/launch/KEY_SEPARATION_RUNBOOK.md`
+  - `docs/launch/GOVERNANCE_RUNBOOK.md`
+- Fix summary:
+  - `TokenManagementService` no longer imports or constructs a signer from `ADMIN_PRIVATE_KEY`.
+  - Backend methods for DEX registration, DEX removal, fee percentage updates, and fee recipient updates now return `MANUAL_REVIEW_REQUIRED` without initializing a wallet, creating a write contract, broadcasting txs, or writing DB records as on-chain-complete.
+  - Token contract ABI in backend service is reduced to read-only calls used by current state display.
+  - `POST /dex/add`, `DELETE /dex/remove/:address`, and `POST /fee/record` return fixed `410 MANUAL_REVIEW_REQUIRED` responses before DB mutation.
+  - Read-only DEX/fee routes keep DB display behavior but no longer return raw error messages to clients.
+  - Governance operations are documented as multisig/timelock/manual-runbook actions, not backend hot-wallet actions.
+- Tests added:
+  - `ADMIN_PRIVATE_KEY` alone cannot send DEX registration or fee-management txs.
+  - Disabled governance service methods do not instantiate wallet/contract send paths.
+  - Disabled DEX/fee write routes return `410 MANUAL_REVIEW_REQUIRED`.
+  - Disabled DEX/fee write routes do not update DB tables as if on-chain operations completed.
