@@ -23,10 +23,6 @@ jest.mock('@prisma/client', () => ({
   PrismaClient: jest.fn(() => mockPrisma)
 }));
 
-jest.mock('jwt-decode', () => ({
-  jwtDecode: jest.fn()
-}));
-
 jest.mock('../../utils/tokenHeplers', () => ({
   calculateTokenQuantity: jest.fn(),
   fetchTokenBalance: jest.fn(),
@@ -40,7 +36,6 @@ jest.mock('../../lib/trialNftService', () => ({
   getTotalNFTCount: jest.fn()
 }));
 
-import { jwtDecode } from 'jwt-decode';
 import { getTransactionReceiptStatus, isPrizeTransferTokenAllowed, sendTokensToWallet } from '../../utils/tokenHeplers';
 import { PrizeController } from '../prize.controller';
 
@@ -53,13 +48,34 @@ const createResponse = () => {
   return res;
 };
 
-const createRequest = () => ({
+const authenticatedUser = {
+  user_id: 1,
+  address: '0xuser'
+};
+
+const createRequest = (overrides: any = {}) => ({
   cookies: { userAuth: 'user-token' },
-  params: { prize_id: '7' }
+  user: authenticatedUser,
+  ...overrides,
+  params: { prize_id: '7', ...(overrides.params ?? {}) }
 } as any);
 
-const createDrawRequest = () => ({
-  params: { user_id: '1' }
+const createDrawRequest = (overrides: any = {}) => ({
+  user: authenticatedUser,
+  ...overrides,
+  params: { user_id: '1', ...(overrides.params ?? {}) }
+} as any);
+
+const createPrizeTransactionsRequest = (overrides: any = {}) => ({
+  user: authenticatedUser,
+  ...overrides,
+  params: { user_id: '1', ...(overrides.params ?? {}) }
+} as any);
+
+const createWithdrawRequest = (overrides: any = {}) => ({
+  user: authenticatedUser,
+  ...overrides,
+  params: { user_id: '1', prize_id: '7', ...(overrides.params ?? {}) }
 } as any);
 
 const createFinalizeRequest = () => ({
@@ -117,7 +133,6 @@ describe('PrizeController.sendToWallet', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     consoleErrorSpy = jest.spyOn(console, 'error').mockImplementation(() => undefined);
-    (jwtDecode as jest.Mock).mockReturnValue({ address: '0xUser' });
     mockPrisma.$transaction.mockImplementation(async (callback: any) => callback(mockPrisma));
     mockPrisma.user.findUnique.mockResolvedValue({ id: 1, wallet_address: '0xuser' });
     mockPrisma.user.update.mockResolvedValue({});
@@ -144,6 +159,9 @@ describe('PrizeController.sendToWallet', () => {
 
     await PrizeController.sendToWallet(createRequest(), res);
 
+    expect(mockPrisma.user.findUnique).toHaveBeenCalledWith({
+      where: { id: 1 }
+    });
     expect(mockPrisma.prizeTransactions.findFirst).toHaveBeenCalledWith(expect.objectContaining({
       where: { id: 7, userId: 1 }
     }));
@@ -191,6 +209,31 @@ describe('PrizeController.sendToWallet', () => {
       }
     });
     expect(res.status).toHaveBeenCalledWith(200);
+  });
+
+  it('does not send without an authenticated user context', async () => {
+    const res = createResponse();
+
+    await PrizeController.sendToWallet(createRequest({ user: undefined }), res);
+
+    expect(mockPrisma.user.findUnique).not.toHaveBeenCalled();
+    expect(mockPrisma.prizeTransactions.findFirst).not.toHaveBeenCalled();
+    expect(sendTokensToWallet).not.toHaveBeenCalled();
+    expect(res.status).toHaveBeenCalledWith(401);
+  });
+
+  it('does not send another user prize transaction', async () => {
+    mockPrisma.prizeTransactions.findFirst.mockResolvedValue(null);
+    const res = createResponse();
+
+    await PrizeController.sendToWallet(createRequest({ params: { prize_id: '999' } }), res);
+
+    expect(mockPrisma.prizeTransactions.findFirst).toHaveBeenCalledWith(expect.objectContaining({
+      where: { id: 999, userId: 1 }
+    }));
+    expect(sendTokensToWallet).not.toHaveBeenCalled();
+    expect(mockPrisma.prizeTransactions.updateMany).not.toHaveBeenCalled();
+    expect(res.status).toHaveBeenCalledWith(404);
   });
 
   it('does not send a new transfer when conditional READY update fails', async () => {
@@ -503,7 +546,7 @@ describe('PrizeController unpaid prize reservation finalization', () => {
   it('releases reserved amount once when a READY prize transaction expires', async () => {
     const res = createResponse();
 
-    await PrizeController.getPrizeTransactions({ params: { user_id: '1' } } as any, res);
+    await PrizeController.getPrizeTransactions(createPrizeTransactionsRequest(), res);
 
     expect(mockPrisma.prizeTransactions.updateMany).toHaveBeenCalledWith({
       where: {
@@ -696,6 +739,17 @@ describe('PrizeController.drawPrize', () => {
     expect(res.status).toHaveBeenCalledWith(200);
   });
 
+  it('does not draw for a different route user id', async () => {
+    const res = createResponse();
+
+    await PrizeController.drawPrize(createDrawRequest({ params: { user_id: '2' } }), res);
+
+    expect(mockPrisma.$transaction).not.toHaveBeenCalled();
+    expect(mockPrisma.user.updateMany).not.toHaveBeenCalled();
+    expect(mockPrisma.prizeTransactions.create).not.toHaveBeenCalled();
+    expect(res.status).toHaveBeenCalledWith(403);
+  });
+
   it('excludes prizes without enough available inventory', async () => {
     mockPrisma.prize.findMany.mockResolvedValue([
       {
@@ -783,7 +837,6 @@ describe('PrizeController.drawPrize', () => {
   });
 
   it('does not recreate available inventory after a confirmed send without token tracking', async () => {
-    (jwtDecode as jest.Mock).mockReturnValue({ address: '0xUser' });
     mockPrisma.user.findUnique
       .mockResolvedValueOnce({ id: 1, wallet_address: '0xuser' })
       .mockResolvedValueOnce({ id: 1, tickets: 1 });
@@ -813,5 +866,55 @@ describe('PrizeController.drawPrize', () => {
       })
     });
     expect(drawRes.status).toHaveBeenCalledWith(404);
+  });
+});
+
+describe('PrizeController user-owned prize authorization', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    consoleErrorSpy = jest.spyOn(console, 'error').mockImplementation(() => undefined);
+    mockPrisma.$transaction.mockImplementation(async (callback: any) => callback(mockPrisma));
+    mockPrisma.user.findUnique.mockResolvedValue({ id: 1, wallet_address: '0xuser' });
+    mockPrisma.prizeTransactions.findMany.mockResolvedValue([]);
+    mockPrisma.prizeTransactions.findFirst.mockResolvedValue(readyPrizeTransaction());
+  });
+
+  afterEach(() => {
+    consoleErrorSpy.mockRestore();
+  });
+
+  it('does not expire or read another user prize history', async () => {
+    const res = createResponse();
+
+    await PrizeController.getPrizeTransactions(createPrizeTransactionsRequest({ params: { user_id: '2' } }), res);
+
+    expect(mockPrisma.prizeTransactions.findMany).not.toHaveBeenCalled();
+    expect(mockPrisma.prizeTransactions.updateMany).not.toHaveBeenCalled();
+    expect(mockPrisma.prize.updateMany).not.toHaveBeenCalled();
+    expect(res.status).toHaveBeenCalledWith(403);
+  });
+
+  it('withdraw lookup is scoped to the authenticated user', async () => {
+    const res = createResponse();
+
+    await PrizeController.withDrawPrizeToken(createWithdrawRequest(), res);
+
+    expect(mockPrisma.user.findUnique).toHaveBeenCalledWith({
+      where: { id: 1 }
+    });
+    expect(mockPrisma.prizeTransactions.findFirst).toHaveBeenCalledWith({
+      where: { id: 7, userId: 1 }
+    });
+    expect(res.status).toHaveBeenCalledWith(200);
+  });
+
+  it('does not withdraw another user prize transaction', async () => {
+    const res = createResponse();
+
+    await PrizeController.withDrawPrizeToken(createWithdrawRequest({ params: { user_id: '2', prize_id: '7' } }), res);
+
+    expect(mockPrisma.user.findUnique).not.toHaveBeenCalled();
+    expect(mockPrisma.prizeTransactions.findFirst).not.toHaveBeenCalled();
+    expect(res.status).toHaveBeenCalledWith(403);
   });
 });
