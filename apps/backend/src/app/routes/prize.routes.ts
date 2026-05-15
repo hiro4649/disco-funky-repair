@@ -6,9 +6,9 @@ import { asyncHandler } from './utils';
 const router = express.Router();
 
 // Admin Prize Routes
-router.get('/admin/airdrop/prize', asyncHandler(PrizeController.adminGetPrize.bind(PrizeController)));
-router.get('/admin/airdrop/prize/:prize_id', asyncHandler(PrizeController.getEditPrize.bind(PrizeController)));
-router.delete('/admin/airdrop/prize/:prize_id', asyncHandler(PrizeController.deletePrize.bind(PrizeController)));
+router.get('/admin/airdrop/prize', AuthAdmin, asyncHandler(PrizeController.adminGetPrize.bind(PrizeController)));
+router.get('/admin/airdrop/prize/:prize_id', AuthAdmin, asyncHandler(PrizeController.getEditPrize.bind(PrizeController)));
+router.delete('/admin/airdrop/prize/:prize_id', AuthAdmin, asyncHandler(PrizeController.deletePrize.bind(PrizeController)));
 router.patch('/admin/airdrop/prize/:prize_id', AuthAdmin, asyncHandler(PrizeController.editPrize.bind(PrizeController)));
 router.post('/admin/airdrop/prize/transaction/:prize_id/cancel', AuthAdmin, asyncHandler(PrizeController.cancelPrizeTransaction.bind(PrizeController)));
 router.post('/admin/airdrop/prize/transaction/:prize_id/fail', AuthAdmin, asyncHandler(PrizeController.failPrizeTransaction.bind(PrizeController)));

@@ -13,18 +13,32 @@ jest.mock('../../config/passport', () => ({
 
     return res.status(401).json({ success: false, message: 'Unauthenticated' });
   },
-  AuthAdmin: (_req: any, res: any) => res.status(403).json({ success: false, message: 'Invalid token' })
+  AuthAdmin: (req: any, res: any, next: any) => {
+    if (req.headers.authorization === 'Bearer admin-token') {
+      req.user = {
+        admin_id: 1,
+        email: 'admin@example.com'
+      };
+      return next();
+    }
+
+    if (req.headers.authorization === 'Bearer user-token') {
+      return res.status(403).json({ success: false, message: 'Invalid token' });
+    }
+
+    return res.status(401).json({ success: false, message: 'Unauthenticated' });
+  }
 }));
 
 jest.mock('../../controllers/prize.controller', () => ({
   PrizeController: {
-    adminGetPrize: jest.fn(),
-    getEditPrize: jest.fn(),
-    deletePrize: jest.fn(),
-    editPrize: jest.fn(),
-    cancelPrizeTransaction: jest.fn(),
-    failPrizeTransaction: jest.fn(),
-    createNewPrize: jest.fn(),
+    adminGetPrize: jest.fn((_req: any, res: any) => res.status(200).json({ success: true })),
+    getEditPrize: jest.fn((_req: any, res: any) => res.status(200).json({ success: true })),
+    deletePrize: jest.fn((_req: any, res: any) => res.status(200).json({ success: true })),
+    editPrize: jest.fn((_req: any, res: any) => res.status(200).json({ success: true })),
+    cancelPrizeTransaction: jest.fn((_req: any, res: any) => res.status(200).json({ success: true })),
+    failPrizeTransaction: jest.fn((_req: any, res: any) => res.status(200).json({ success: true })),
+    createNewPrize: jest.fn((_req: any, res: any) => res.status(201).json({ success: true })),
     getPrize: jest.fn((_req: any, res: any) => res.status(200).json({ success: true })),
     drawPrize: jest.fn((_req: any, res: any) => res.status(200).json({ success: true })),
     getPrizeTransactions: jest.fn((_req: any, res: any) => res.status(200).json({ success: true })),
@@ -71,5 +85,58 @@ describe('prize user routes authorization', () => {
 
     expect(response.status).toBe(200);
     expect(PrizeController.drawPrize).toHaveBeenCalledTimes(1);
+  });
+
+  it.each([
+    ['get', '/admin/airdrop/prize', 'adminGetPrize'],
+    ['get', '/admin/airdrop/prize/1', 'getEditPrize'],
+    ['post', '/admin/airdrop/prize', 'createNewPrize'],
+    ['post', '/admin/airdrop/prize/1', 'createNewPrize'],
+    ['patch', '/admin/airdrop/prize/1', 'editPrize'],
+    ['delete', '/admin/airdrop/prize/1', 'deletePrize'],
+    ['post', '/admin/airdrop/prize/transaction/1/cancel', 'cancelPrizeTransaction'],
+    ['post', '/admin/airdrop/prize/transaction/1/fail', 'failPrizeTransaction']
+  ])('does not reach Prize admin route %s %s without admin authentication even if adminKey is provided', async (method, path, controllerMethod) => {
+    const response = await (request(createApp()) as any)[method](path)
+      .send({ adminKey: 'legacy-admin-key', tokenName: 'Unsafe' });
+
+    expect(response.status).toBe(401);
+    expect((PrizeController as any)[controllerMethod]).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ['get', '/admin/airdrop/prize', 'adminGetPrize'],
+    ['get', '/admin/airdrop/prize/1', 'getEditPrize'],
+    ['post', '/admin/airdrop/prize', 'createNewPrize'],
+    ['post', '/admin/airdrop/prize/1', 'createNewPrize'],
+    ['patch', '/admin/airdrop/prize/1', 'editPrize'],
+    ['delete', '/admin/airdrop/prize/1', 'deletePrize'],
+    ['post', '/admin/airdrop/prize/transaction/1/cancel', 'cancelPrizeTransaction'],
+    ['post', '/admin/airdrop/prize/transaction/1/fail', 'failPrizeTransaction']
+  ])('does not reach Prize admin route %s %s with a general user token', async (method, path, controllerMethod) => {
+    const response = await (request(createApp()) as any)[method](path)
+      .set('Authorization', 'Bearer user-token')
+      .send({ tokenName: 'Unsafe' });
+
+    expect(response.status).toBe(403);
+    expect((PrizeController as any)[controllerMethod]).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ['get', '/admin/airdrop/prize', 'adminGetPrize', 200],
+    ['get', '/admin/airdrop/prize/1', 'getEditPrize', 200],
+    ['post', '/admin/airdrop/prize', 'createNewPrize', 201],
+    ['post', '/admin/airdrop/prize/1', 'createNewPrize', 201],
+    ['patch', '/admin/airdrop/prize/1', 'editPrize', 200],
+    ['delete', '/admin/airdrop/prize/1', 'deletePrize', 200],
+    ['post', '/admin/airdrop/prize/transaction/1/cancel', 'cancelPrizeTransaction', 200],
+    ['post', '/admin/airdrop/prize/transaction/1/fail', 'failPrizeTransaction', 200]
+  ])('allows admin authentication to reach Prize admin route %s %s', async (method, path, controllerMethod, expectedStatus) => {
+    const response = await (request(createApp()) as any)[method](path)
+      .set('Authorization', 'Bearer admin-token')
+      .send({ tokenName: 'Safe' });
+
+    expect(response.status).toBe(expectedStatus);
+    expect((PrizeController as any)[controllerMethod]).toHaveBeenCalledTimes(1);
   });
 });
