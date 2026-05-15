@@ -10,6 +10,8 @@ router.get('/admin/airdrop/prize', asyncHandler(PrizeController.adminGetPrize.bi
 router.get('/admin/airdrop/prize/:prize_id', asyncHandler(PrizeController.getEditPrize.bind(PrizeController)));
 router.delete('/admin/airdrop/prize/:prize_id', asyncHandler(PrizeController.deletePrize.bind(PrizeController)));
 router.patch('/admin/airdrop/prize/:prize_id', AuthAdmin, asyncHandler(PrizeController.editPrize.bind(PrizeController)));
+router.post('/admin/airdrop/prize/transaction/:prize_id/cancel', AuthAdmin, asyncHandler(PrizeController.cancelPrizeTransaction.bind(PrizeController)));
+router.post('/admin/airdrop/prize/transaction/:prize_id/fail', AuthAdmin, asyncHandler(PrizeController.failPrizeTransaction.bind(PrizeController)));
 router.post('/admin/airdrop/prize/:prize_id?', AuthAdmin, asyncHandler(PrizeController.createNewPrize.bind(PrizeController)));
 
 // User Prize Routes
@@ -19,4 +21,4 @@ router.get('/airdrop/prize/transactions/:user_id', Authenticate, asyncHandler(Pr
 router.post('/airdrop/prize/send/:prize_id', Authenticate, asyncHandler(PrizeController.sendToWallet.bind(PrizeController)));
 router.post('/prize/transaction/:user_id/withDraw/:prize_id', Authenticate, asyncHandler(PrizeController.withDrawPrizeToken.bind(PrizeController)));
 
-export { router as prizeRoutes }; 
+export { router as prizeRoutes };
