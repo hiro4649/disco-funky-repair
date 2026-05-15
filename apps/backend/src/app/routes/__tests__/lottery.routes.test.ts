@@ -7,6 +7,7 @@ const mockPrisma = {
   },
   user: {
     findUnique: jest.fn(),
+    findMany: jest.fn(),
     update: jest.fn()
   },
   lotteryTickets: {
@@ -34,7 +35,21 @@ jest.mock('../../config/passport', () => ({
 
     return res.status(401).json({ success: false, message: 'Unauthenticated' });
   },
-  AuthAdmin: (_req: any, res: any) => res.status(403).json({ success: false, message: 'Invalid token' })
+  AuthAdmin: (req: any, res: any, next: any) => {
+    if (req.headers.authorization === 'Bearer admin-token') {
+      req.user = {
+        admin_id: 1,
+        email: 'admin@example.com'
+      };
+      return next();
+    }
+
+    if (req.headers.authorization === 'Bearer user-token') {
+      return res.status(403).json({ success: false, message: 'Invalid token' });
+    }
+
+    return res.status(401).json({ success: false, message: 'Unauthenticated' });
+  }
 }));
 
 jest.mock('../../lib/getDiscoNFTEVM', () => jest.fn());
@@ -43,6 +58,7 @@ jest.mock('../../lib/trackingTokenBalanceEthereum', () => ({
 }));
 
 import { lotteryRoutes } from '../lottery.routes';
+import getDiscoNFTEVM from '../../lib/getDiscoNFTEVM';
 
 const createApp = () => {
   const app = express();
@@ -59,6 +75,7 @@ describe('lottery user routes authorization', () => {
       claimTickets: 3,
       tickets: 10
     });
+    mockPrisma.user.findMany.mockResolvedValue([]);
     mockPrisma.user.update.mockResolvedValue({});
     mockPrisma.ownedToken.findUnique.mockResolvedValue({
       tallyTokenBalance: '100',
@@ -66,6 +83,7 @@ describe('lottery user routes authorization', () => {
       weeklyTokenBalance: '50'
     });
     mockPrisma.lotteryTickets.findMany.mockResolvedValue([]);
+    (getDiscoNFTEVM as jest.Mock).mockResolvedValue(0);
   });
 
   it('does not reach lottery ticket claim without authentication', async () => {
@@ -143,5 +161,68 @@ describe('lottery user routes authorization', () => {
     expect(response.status).toBe(403);
     expect(mockPrisma.user.findUnique).not.toHaveBeenCalled();
     expect(mockPrisma.ownedToken.findUnique).not.toHaveBeenCalled();
+  });
+
+  it('does not reach admin lottery ticket creation without admin authentication', async () => {
+    const response = await request(createApp())
+      .post('/admin/user/lottery/ticket')
+      .send({ userId: 1, ticket: 1, adminKey: 'legacy-admin-key' });
+
+    expect(response.status).toBe(401);
+    expect(mockPrisma.lotteryTickets.create).not.toHaveBeenCalled();
+  });
+
+  it('does not reach admin lottery ticket creation with a general user token', async () => {
+    const response = await request(createApp())
+      .post('/admin/user/lottery/ticket')
+      .set('Authorization', 'Bearer user-token')
+      .send({ userId: 1, ticket: 1 });
+
+    expect(response.status).toBe(403);
+    expect(mockPrisma.lotteryTickets.create).not.toHaveBeenCalled();
+  });
+
+  it('does not distribute all-user tickets without admin authentication even if adminKey is provided', async () => {
+    const response = await request(createApp())
+      .post('/alluser/distribute/ticket')
+      .send({ adminKey: 'legacy-admin-key' });
+
+    expect(response.status).toBe(401);
+    expect(mockPrisma.user.findMany).not.toHaveBeenCalled();
+    expect(mockPrisma.lotteryTickets.create).not.toHaveBeenCalled();
+    expect(mockPrisma.lotteryTickets.update).not.toHaveBeenCalled();
+  });
+
+  it('does not distribute all-user tickets with a general user token', async () => {
+    const response = await request(createApp())
+      .post('/alluser/distribute/ticket')
+      .set('Authorization', 'Bearer user-token')
+      .send({});
+
+    expect(response.status).toBe(403);
+    expect(mockPrisma.user.findMany).not.toHaveBeenCalled();
+    expect(mockPrisma.lotteryTickets.create).not.toHaveBeenCalled();
+    expect(mockPrisma.lotteryTickets.update).not.toHaveBeenCalled();
+  });
+
+  it('allows only admin authentication to run all-user ticket distribution', async () => {
+    mockPrisma.user.findMany.mockResolvedValue([{ id: 1, wallet_address: '0xuser' }]);
+    mockPrisma.lotteryTickets.findFirst.mockResolvedValue(null);
+    mockPrisma.lotteryTickets.findMany.mockResolvedValue([]);
+    (getDiscoNFTEVM as jest.Mock).mockResolvedValue(2);
+
+    const response = await request(createApp())
+      .post('/alluser/distribute/ticket')
+      .set('Authorization', 'Bearer admin-token')
+      .send({});
+
+    expect(response.status).toBe(200);
+    expect(mockPrisma.user.findMany).toHaveBeenCalledTimes(1);
+    expect(mockPrisma.lotteryTickets.create).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({
+        userId: 1,
+        ticket: 2
+      })
+    }));
   });
 });
