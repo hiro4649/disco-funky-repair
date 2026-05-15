@@ -37,8 +37,15 @@ export function useTicketBalanceUpdates(options?: UseTicketBalanceUpdatesOptions
       return;
     }
 
+    const socketApiUrl = process.env.NEXT_PUBLIC_SOCKET_API_URL ||
+      (process.env.NODE_ENV === 'production' ? '' : 'ws://localhost:8000');
+    if (!socketApiUrl) {
+      console.warn('WebSocket URL is not configured; ticket balance updates are disabled.');
+      return;
+    }
+
     // Initialize Socket.IO connection
-    const socket = io(process.env.NEXT_PUBLIC_SOCKET_API_URL || 'ws://localhost:8000', {
+    const socket = io(socketApiUrl, {
       transports: ['websocket', 'polling'],
       reconnection: true,
       reconnectionDelay: 1000,

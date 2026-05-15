@@ -38,11 +38,16 @@ const OfficalDiscoNft = () => {
   const [availableTemplate, setAvailableTemplate] = useState<any>(null);
 
   // ERC-721 Contract Configuration
-  const NFT_CONTRACT_ADDRESS = process.env.NEXT_PUBLIC_NFT_ADDRESS || "0x7a99D4a57eb1a0f53c71c68B6295c7f727c762a6";
+  const NFT_CONTRACT_ADDRESS = process.env.NEXT_PUBLIC_NFT_ADDRESS || "";
 
   const fetchNftPrice = async () => {
     try {
-      const provider = new ethers.JsonRpcProvider(process.env.NEXT_PUBLIC_RPC_URL || "");
+      const rpcUrl = process.env.NEXT_PUBLIC_RPC_URL;
+      if (!rpcUrl || !NFT_CONTRACT_ADDRESS) {
+        return;
+      }
+
+      const provider = new ethers.JsonRpcProvider(rpcUrl);
       const contract = new Contract(NFT_CONTRACT_ADDRESS, NFT_ABI, provider);
       const ethPrice: bigint = await contract.getPrice();
       const mintPrice: bigint = await contract.mintUsdPrice();

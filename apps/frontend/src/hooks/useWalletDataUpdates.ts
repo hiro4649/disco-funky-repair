@@ -64,7 +64,14 @@ export function useWalletDataUpdates(options?: UseWalletDataUpdatesOptions) {
 
     console.log('🔌 Connecting to WebSocket for wallet data updates...');
 
-    const socket = io(process.env.NEXT_PUBLIC_SOCKET_API_URL || 'ws://localhost:8000', {
+    const socketApiUrl = process.env.NEXT_PUBLIC_SOCKET_API_URL ||
+      (process.env.NODE_ENV === 'production' ? '' : 'ws://localhost:8000');
+    if (!socketApiUrl) {
+      console.warn('WebSocket URL is not configured; wallet data updates are disabled.');
+      return;
+    }
+
+    const socket = io(socketApiUrl, {
       transports: ['websocket', 'polling'],
       reconnection: true,
       reconnectionDelay: 1000,

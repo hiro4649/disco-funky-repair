@@ -17,12 +17,12 @@
 
 import { PrismaClient } from '@prisma/client';
 import moment from 'moment';
+import { TOKEN_CONTRACT_ADDRESS } from '../config/env';
 
 const prisma = new PrismaClient();
 
 const ETHERSCAN_API_URL = process.env.ETHERSCAN_API_URL || 'https://api.etherscan.io/api?';
 const ETHERSCAN_API_KEY = process.env.ETHERSCAN_API_KEY;
-const TOKEN_CONTRACT_ADDRESS = process.env.TOKEN_CONTRACT_ADDRESS || '';
 
 // Rate limiter for Etherscan API
 class RateLimiter {

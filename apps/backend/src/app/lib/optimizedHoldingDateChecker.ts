@@ -32,9 +32,9 @@ import {
     saveFIFOQueue
 } from './incrementalFIFOProcessor';
 import { withUserLock } from './userProcessingLock';
+import { TOKEN_CONTRACT_ADDRESS } from '../config/env';
 
 const prisma = new PrismaClient();
-const TOKEN_CONTRACT_ADDRESS = process.env.TOKEN_CONTRACT_ADDRESS || '';
 
 /**
  * Optimized holding date checker - uses incremental processing

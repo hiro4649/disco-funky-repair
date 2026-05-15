@@ -45,8 +45,15 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
   const getETHPrice = async (retries = 0) => {
     try {
-      const ethersProvider = new JsonRpcProvider(process.env.NEXT_PUBLIC_RPC_URL || "");
-      const contract = new Contract(process.env.NEXT_PUBLIC_NFT_ADDRESS || "", NFT_ABI, ethersProvider);
+      const rpcUrl = process.env.NEXT_PUBLIC_RPC_URL;
+      const nftAddress = process.env.NEXT_PUBLIC_NFT_ADDRESS;
+      if (!rpcUrl || !nftAddress) {
+        setEthPrice(0);
+        return;
+      }
+
+      const ethersProvider = new JsonRpcProvider(rpcUrl);
+      const contract = new Contract(nftAddress, NFT_ABI, ethersProvider);
       const price: bigint = await contract.getPrice();
       setEthPrice(Number(formatUnits(price, 8)));
     } catch (err) {

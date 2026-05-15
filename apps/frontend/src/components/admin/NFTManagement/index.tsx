@@ -66,7 +66,7 @@ export default function NFTManagement() {
   const [royaltyPercent, setRoyaltyPercent] = useState("");
 
   // Get contract address from environment
-  const NFT_CONTRACT_ADDRESS = process.env.NEXT_PUBLIC_NFT_ADDRESS || "0x7a99D4a57eb1a0f53c71c68B6295c7f727c762a6";
+  const NFT_CONTRACT_ADDRESS = process.env.NEXT_PUBLIC_NFT_ADDRESS || "";
   const RPC_URL = process.env.NEXT_PUBLIC_RPC_URL || "";
 
   useEffect(() => {

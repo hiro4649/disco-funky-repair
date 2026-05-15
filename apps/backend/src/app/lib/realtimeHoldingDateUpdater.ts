@@ -22,11 +22,11 @@ import { updateCheckpoint } from './incrementalHoldingDateProcessor';
 import { scheduleTierUpdate, updateUserContractTier, getMilestoneTier } from './tierScheduler';
 import { tokenBalanceService } from './quicknodeRpcService';
 import { withUserLock } from './userProcessingLock';
+import { TOKEN_CONTRACT_ADDRESS } from '../config/env';
 
 const prisma = new PrismaClient();
 
 const ETHERSCAN_API_URL = process.env.ETHERSCAN_API_URL || 'https://api.bscscan.com/api';
-const TOKEN_CONTRACT_ADDRESS = process.env.TOKEN_CONTRACT_ADDRESS || '';
 
 // ERC20 ABI for balance checking
 const TOKEN_ABI = [

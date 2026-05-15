@@ -1155,3 +1155,33 @@ P2: frontend buildでlint無視設定
   - Disabled governance service methods do not instantiate wallet/contract send paths.
   - Disabled DEX/fee write routes return `410 MANUAL_REVIEW_REQUIRED`.
   - Disabled DEX/fee write routes do not update DB tables as if on-chain operations completed.
+
+## 2026-05-15 P0-13C implementation record
+
+- Task: Require BSC production environment settings and remove unsafe production fallbacks.
+- Target files:
+  - `apps/backend/src/app/lib/validateEnvs.ts`
+  - `apps/backend/src/app/config/env.ts`
+  - `apps/backend/src/app/services/tokenManagementService.ts`
+  - `apps/backend/src/app/lib/__tests__/validateEnvs.test.ts`
+  - `apps/frontend/env.validation.mjs`
+  - `apps/frontend/next.config.mjs`
+  - `apps/frontend/utils/imageUtils.ts`
+  - `apps/frontend/src/hooks/useWalletDataUpdates.ts`
+  - `apps/frontend/src/hooks/useTicketBalanceUpdates.ts`
+  - `apps/frontend/src/components/admin/NFTManagement/index.tsx`
+  - `apps/frontend/src/components/OfficalDiscoNFT/index.tsx`
+  - `docs/launch/ENVIRONMENT_RUNBOOK.md`
+  - `docs/launch/P0_CLOSURE_REPORT.md`
+- Fix summary:
+  - Backend production startup now fails fast when BSC RPC, chain ID, JWT, DB, API URLs, prize hot wallet, prize token allowlist, tier relayer/updater, token/NFT contract, or admin auth env is missing.
+  - Production backend rejects localhost/example URLs, placeholder values, zero addresses, known local test keys, non-BSC chain ID, and `NEXT_PUBLIC_*` secret exposure.
+  - Backend token contract address no longer falls back to a hardcoded production value.
+  - Frontend production config rejects `NEXT_PUBLIC_*PRIVATE_KEY` and unsafe public env values. Missing public env leaves API/on-chain dependent features disabled instead of falling back to localhost.
+  - Environment runbook records secret-manager requirements and forbidden frontend public secret patterns without real secret values.
+- Tests added:
+  - Production missing env fails validation.
+  - Placeholder/private-key style values are rejected.
+  - `NEXT_PUBLIC_*PRIVATE_KEY` exposure is rejected.
+  - Development/test env still avoids production validation.
+  - Missing prize transfer allowlist and missing tier updater address fail safely.

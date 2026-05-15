@@ -142,3 +142,14 @@ P0-13B closes the frontend `NEXT_PUBLIC_ADMIN_PRIVATE_KEY` / browser admin signe
 - `apps/frontend/src/utils/constant.ts` no longer exposes token governance/admin write ABI entries used by frontend admin screens.
 - Frontend admin write actions are manual-review/read-only and must be executed through `docs/launch/GOVERNANCE_RUNBOOK.md` plus multisig/timelock procedures.
 - Production frontend env must still be checked by humans: no `NEXT_PUBLIC_*PRIVATE_KEY` value may be configured in hosting, CI, PM2, Docker, or deployment settings.
+
+## P0-13C update
+
+P0-13C closes the BSC production env fallback No-Go at code level.
+
+- `apps/backend/src/app/lib/validateEnvs.ts` now requires BSC production env for backend API URL, frontend URL, JWT, database, RPC, chain ID, FUNKY token, NFT contract, prize hot wallet, prize token allowlist, tier relayer, tier updater, and admin auth settings.
+- Production backend startup now rejects missing values, localhost/example URLs, placeholder values, zero addresses, known test private keys, non-BSC `CHAIN_ID`, and `NEXT_PUBLIC_*` secret exposure.
+- `apps/backend/src/app/config/env.ts` no longer provides a production fallback token contract address.
+- `apps/frontend/env.validation.mjs` rejects frontend public secret env and unsafe production public values. Missing production public env leaves frontend API/on-chain dependent features disabled instead of falling back to localhost.
+- `docs/launch/ENVIRONMENT_RUNBOOK.md` records required backend/frontend env and forbidden `NEXT_PUBLIC_*` secret patterns.
+- Human deployment check remains required: verify secret manager values on staging/production without printing or committing secrets.

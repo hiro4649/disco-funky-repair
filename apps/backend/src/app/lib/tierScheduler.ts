@@ -21,6 +21,11 @@ import { ethers } from 'ethers';
 import { walletBalanceMonitor } from './walletBalanceMonitor';
 import { alertContractUpdateFailed } from './discordAlerts';
 import {
+    QUICKNODE_HTTP_RPC_URL,
+    TIER_RELAYER_PRIVATE_KEY,
+    TIER_UPDATER_CONTRACT_ADDRESS
+} from '../config/env';
+import {
     createTierBatchId,
     estimateTierSyncGas,
     getMilestoneTier,
@@ -31,10 +36,6 @@ import {
 } from './tierSync';
 
 const prisma = new PrismaClient();
-
-const TIER_RELAYER_PRIVATE_KEY = process.env.TIER_RELAYER_PRIVATE_KEY || '';
-const QUICKNODE_HTTP_RPC_URL = process.env.QUICKNODE_HTTP_RPC_URL || '';
-const TIER_UPDATER_CONTRACT_ADDRESS = process.env.TIER_UPDATER_CONTRACT_ADDRESS || '';
 
 export { getMilestoneTier, getNextTierDays };
 
