@@ -932,3 +932,28 @@ P2: frontend buildでlint無視設定
   - Existing `tx_hash` resumes receipt confirmation and does not resend.
   - Broadcast failure with `txHash` stores `MANUAL_REVIEW` and does not return to `READY`.
   - Pre-broadcast failure may return to `READY` and returns a fixed client message.
+
+## 2026-05-15 P0-07A implementation record
+
+- Task: Freeze planned prize transfer token and amount when the prize transaction is created.
+- Target routes:
+  - `POST /airdrop/prize/draw/:user_id`
+  - `POST /airdrop/prize/send/:prize_id`
+- Changed files:
+  - `apps/backend/prisma/schema.prisma`
+  - `apps/backend/src/app/controllers/prize.controller.ts`
+  - `apps/backend/src/app/controllers/__tests__/prize.controller.test.ts`
+  - `docs/security/BSC_LAUNCH_P0_FIXES.md`
+- Fix summary:
+  - Added optional `PrizeTransactions.transfer_token_address` and `PrizeTransactions.transfer_amount`.
+  - `drawPrize` stores the planned ERC-20 token address and smallest-unit amount string at win creation time.
+  - The planned amount is calculated without `Math.round(amount * 10 ** decimals)` and is stored as a decimal-free integer string.
+  - `sendToWallet` no longer recalculates the transfer amount from latest `Prize.quantity`, `Prize.price`, or `Prize.decimals`.
+  - Legacy or invalid prize transactions without a stored token address or positive stored amount are moved to `MANUAL_REVIEW` and do not send a new transfer.
+  - This PR does not add prize inventory reservation, `reserved_amount`, or an inventory ledger.
+- Tests added:
+  - Draw creation stores fixed token address and fixed smallest-unit amount.
+  - Send uses the stored amount even if latest `Prize` settings differ.
+  - Missing stored amount does not call the transfer helper and moves to `MANUAL_REVIEW`.
+  - Zero stored amount does not call the transfer helper and moves to `MANUAL_REVIEW`.
+  - Invalid stored token address does not call the transfer helper and moves to `MANUAL_REVIEW`.

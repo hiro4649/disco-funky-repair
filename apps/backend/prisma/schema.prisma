@@ -114,6 +114,8 @@ model PrizeTransactions {
   prize            Prize     @relation(fields: [prizeId], references: [id], onDelete: Cascade)
   prizeId          Int
   tx_hash          String?   @db.VarChar(255)
+  transfer_token_address String? @db.VarChar(255)
+  transfer_amount  String?   @db.VarChar(255)
   probability_time DateTime  @db.Timestamp(6)
   end_time         DateTime?
   status           Status    @default(READY)
