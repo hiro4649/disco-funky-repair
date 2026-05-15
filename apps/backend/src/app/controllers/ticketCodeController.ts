@@ -17,7 +17,7 @@ export const generateGlobalTicketCode = async (req: Request, res: Response) => {
         let isUnique = false;
         
         while (!isUnique) {
-            code = generateRandomCode(6);
+            code = generateRandomCode(10);
             const existingCode = await prisma.ticketCode.findUnique({
                 where: { code }
             });
@@ -129,93 +129,120 @@ export const getAllTicketCodes = async (req: Request, res: Response) => {
 export const claimTicketCode = async (req: Request, res: Response) => {
     try {
         const { code } = req.body;
-        const wallet_address = req.body.wallet_address.toLowerCase();
+        const walletAddressInput = req.body.wallet_address;
 
-        if (!code || !wallet_address) {
+        if (typeof code !== 'string' || !code || typeof walletAddressInput !== 'string' || !walletAddressInput) {
             return res.status(400).json({
                 success: false,
                 message: 'Code and wallet address are required'
             });
         }
 
-        // Find the ticket code
-        const ticketCode = await prisma.ticketCode.findUnique({
-            where: { code }
-        });
+        const wallet_address = walletAddressInput.toLowerCase();
 
-        if (!ticketCode) {
-            return res.status(404).json({
-                success: false,
-                message: 'Invalid ticket code. Please check your code and try again.'
-            });
-        }
-
-        if (ticketCode.status !== 'PENDING') {
-            return res.status(400).json({
-                success: false,
-                message: 'Ticket code has already been claimed or expired'
-            });
-        }
-
-        // Check if the ticket code is expired (older than 30 days)
-        if (isTicketCodeExpired(ticketCode.created_at)) {
-            // Update the status to EXPIRED
-            await prisma.ticketCode.update({
-                where: { id: ticketCode.id },
-                data: { status: 'EXPIRED' }
+        const claimResult = await prisma.$transaction(async (tx) => {
+            const ticketCode = await tx.ticketCode.findUnique({
+                where: { code }
             });
 
-            return res.status(400).json({
-                success: false,
-                message: 'Ticket code has expired'
-            });
-        }
-
-        // Check if user exists
-        const user = await prisma.user.findFirst({
-            where: { wallet_address }
-        });
-
-        if (!user) {
-            return res.status(404).json({
-                success: false,
-                message: 'User not found'
-            });
-        }
-
-        // Update ticket code status, claim time, and assign to user
-        await prisma.ticketCode.update({
-            where: { id: ticketCode.id },
-            data: {
-                status: 'CLAIMED',
-                claimed_at: moment.utc().toDate(),
-                wallet_address: wallet_address // Assign the code to the user who claimed it
+            if (!ticketCode) {
+                return {
+                    statusCode: 404,
+                    body: {
+                        success: false,
+                        message: 'Invalid ticket code. Please check your code and try again.'
+                    }
+                };
             }
-        });
 
-        // Add 1 ticket to user's balance
-        await prisma.user.update({
-            where: { id: user.id },
-            data: {
-                tickets: {
-                    increment: 1
+            if (ticketCode.status !== 'PENDING') {
+                return {
+                    statusCode: 400,
+                    body: {
+                        success: false,
+                        message: 'Ticket code has already been claimed or expired'
+                    }
+                };
+            }
+
+            if (isTicketCodeExpired(ticketCode.created_at)) {
+                await tx.ticketCode.updateMany({
+                    where: {
+                        id: ticketCode.id,
+                        status: 'PENDING'
+                    },
+                    data: { status: 'EXPIRED' }
+                });
+
+                return {
+                    statusCode: 400,
+                    body: {
+                        success: false,
+                        message: 'Ticket code has expired'
+                    }
+                };
+            }
+
+            const user = await tx.user.findFirst({
+                where: { wallet_address }
+            });
+
+            if (!user) {
+                return {
+                    statusCode: 404,
+                    body: {
+                        success: false,
+                        message: 'User not found'
+                    }
+                };
+            }
+
+            const claimedAt = moment.utc().toDate();
+            const ticketCodeUpdate = await tx.ticketCode.updateMany({
+                where: {
+                    id: ticketCode.id,
+                    status: 'PENDING'
+                },
+                data: {
+                    status: 'CLAIMED',
+                    claimed_at: claimedAt,
+                    wallet_address
                 }
+            });
+
+            if (ticketCodeUpdate.count !== 1) {
+                return {
+                    statusCode: 400,
+                    body: {
+                        success: false,
+                        message: 'Ticket code has already been claimed or expired'
+                    }
+                };
             }
+
+            const updatedUser = await tx.user.update({
+                where: { id: user.id },
+                data: {
+                    tickets: {
+                        increment: 1
+                    }
+                },
+                select: { tickets: true }
+            });
+
+            return {
+                statusCode: 200,
+                body: {
+                    success: true,
+                    message: 'Ticket code claimed successfully',
+                    data: {
+                        new_ticket_balance: updatedUser.tickets
+                    }
+                }
+            };
         });
 
-        // Get updated user data
-        const updatedUser = await prisma.user.findUnique({
-            where: { id: user.id },
-            select: { tickets: true }
-        });
-
-        res.json({
-            success: true,
-            message: 'Ticket code claimed successfully',
-            data: {
-                new_ticket_balance: updatedUser?.tickets || 0
-            }
-        });
+        return res.status(claimResult.statusCode).json(claimResult.body);
     } catch (error) {
         console.error('Error claiming ticket code:', error);
         res.status(500).json({

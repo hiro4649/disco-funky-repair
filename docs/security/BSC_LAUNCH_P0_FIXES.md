@@ -884,3 +884,24 @@ P2: frontend buildでlint無視設定
   - `IllustrationHistory`, `PointHistory`, and `fan_points` updates are not reached from this route.
 - Re-enable condition:
   - Use an admin/internal-only path, or verify a signed one-time draw result/claim token that binds authenticated user and illustration id.
+
+## 2026-05-15 P0-05 implementation record
+
+- Task: Make ticket code claim single-use under concurrency and replace ticket code `Math.random` generation.
+- Changed files:
+  - `apps/backend/src/app/controllers/ticketCodeController.ts`
+  - `apps/backend/src/app/utils/ticketCodeGenerator.ts`
+  - `apps/backend/src/app/controllers/__tests__/ticketCodeController.test.ts`
+  - `apps/backend/src/app/utils/__tests__/ticketCodeGenerator.test.ts`
+  - `docs/security/BSC_LAUNCH_P0_FIXES.md`
+- Fix summary:
+  - `claimTicketCode` now runs inside `prisma.$transaction`.
+  - Claim finalization uses `ticketCode.updateMany({ where: { id, status: 'PENDING' } })`.
+  - User `tickets` increment only runs when the conditional ticket code update count is exactly 1.
+  - Expired pending codes are marked `EXPIRED` inside the same transaction and do not increment user tickets.
+  - Ticket code generation now uses `crypto.randomInt` and admin global ticket codes are generated at 10 characters.
+- Tests added:
+  - Successful claim increments tickets only after conditional code update succeeds.
+  - Two competing claims for one code produce one success and one failure.
+  - Expired code is marked expired and does not increment tickets.
+  - Generator returns a 10-character alphanumeric code without calling `Math.random`.
