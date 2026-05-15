@@ -2,9 +2,24 @@ import { Router } from 'express';
 import { PrismaClient } from '@prisma/client';
 import moment from 'moment';
 import { generateRandomCode } from '../utils/ticketCodeGenerator';
+import { Authenticate } from '../config/passport';
 
 const router = Router();
 const prisma = new PrismaClient();
+
+type AuthenticatedUser = {
+  user_id?: number;
+  address?: string;
+};
+
+const getAuthenticatedUserId = (req: any) => {
+  const userId = Number((req.user as AuthenticatedUser | undefined)?.user_id);
+  return Number.isInteger(userId) && userId > 0 ? userId : null;
+};
+
+const normalizeWalletAddress = (value: unknown) => {
+  return typeof value === 'string' && value.trim() ? value.trim().toLowerCase() : null;
+};
 
 const generateUniqueCode = async () => {
   let code
@@ -20,24 +35,37 @@ const generateUniqueCode = async () => {
 };
 
 // Get user's referral code
-router.get('/referral-code/:walletAddress', async (req, res) => {
+router.get('/referral-code/:walletAddress', Authenticate, async (req, res) => {
   try {
-    const { walletAddress } = req.params;
+    const authenticatedUserId = getAuthenticatedUserId(req);
+    const requestedWalletAddress = normalizeWalletAddress(req.params.walletAddress);
+
+    if (!authenticatedUserId) {
+      return res.status(403).json({ error: 'Invalid authenticated user' });
+    }
+
+    if (!requestedWalletAddress) {
+      return res.status(400).json({ error: 'Wallet address is required' });
+    }
 
     // Find user
     const user = await prisma.user.findUnique({
-      where: { wallet_address: walletAddress.toLowerCase() }
+      where: { id: authenticatedUserId }
     });
 
     if (!user) {
       return res.status(404).json({ error: 'User not found' });
     }
 
+    if (user.wallet_address.toLowerCase() !== requestedWalletAddress) {
+      return res.status(403).json({ error: 'Forbidden' });
+    }
+
     // Generate referral code if user doesn't have one
     if (!user.referral_code || user.referral_code.length !== 6) {
       const referralCode = await generateUniqueCode();
       await prisma.user.update({
-        where: { wallet_address: walletAddress.toLowerCase() },
+        where: { id: user.id },
         data: { referral_code: referralCode }
       });
       return res.json({ referralCode });
@@ -89,81 +117,91 @@ router.get('/referral-stats/:walletAddress', async (req, res) => {
 });
 
 // Track referral when user first logs in
-router.post('/track-referral', async (req, res) => {
+router.post('/track-referral', Authenticate, async (req, res) => {
   try {
-    const { walletAddress, referralCode } = req.body;
+    const { referralCode } = req.body;
+    const requestedWalletAddress = normalizeWalletAddress(req.body.walletAddress);
+    const authenticatedUserId = getAuthenticatedUserId(req);
 
-    if (!walletAddress || !referralCode) {
-      return res.status(400).json({ error: 'Wallet address and referral code are required' });
+    if (!authenticatedUserId) {
+      return res.status(403).json({ error: 'Invalid authenticated user' });
     }
 
-    // Find the referrer by referral code
-    const referrer = await prisma.user.findUnique({
-      where: { referral_code: referralCode }
-    });
-
-    if (!referrer) {
-      return res.status(404).json({ error: 'Invalid referral code' });
+    if (typeof referralCode !== 'string' || !referralCode.trim()) {
+      return res.status(400).json({ error: 'Referral code is required' });
     }
 
-    // Check if user already exists
-    const existingUser = await prisma.user.findUnique({
-      where: { wallet_address: walletAddress.toLowerCase() }
-    });
+    const result = await prisma.$transaction(async (tx) => {
+      const authenticatedUser = await tx.user.findUnique({
+        where: { id: authenticatedUserId }
+      });
 
-    if (existingUser) {
+      if (!authenticatedUser) {
+        return { status: 404, body: { error: 'User not found' } };
+      }
+
+      const authenticatedWalletAddress = authenticatedUser.wallet_address.toLowerCase();
+
+      if (requestedWalletAddress && requestedWalletAddress !== authenticatedWalletAddress) {
+        return { status: 403, body: { error: 'Forbidden' } };
+      }
+
+      const normalizedReferralCode = referralCode.trim();
+
+      // Find the referrer by referral code
+      const referrer = await tx.user.findUnique({
+        where: { referral_code: normalizedReferralCode }
+      });
+
+      if (!referrer) {
+        return { status: 404, body: { error: 'Invalid referral code' } };
+      }
+
+      if (
+        referrer.id === authenticatedUser.id ||
+        referrer.wallet_address.toLowerCase() === authenticatedWalletAddress
+      ) {
+        return { status: 400, body: { error: 'Cannot refer yourself' } };
+      }
+
+      if (authenticatedUser.referred_by) {
+        return { status: 400, body: { error: 'User already has a referrer' } };
+      }
+
+      const existingReferral = await tx.referralRewards.findFirst({
+        where: {
+          referrer_wallet: referrer.wallet_address,
+          referred_wallet: authenticatedWalletAddress
+        }
+      });
+
+      if (existingReferral) {
+        return { status: 400, body: { error: 'Referral already tracked' } };
+      }
+
       // If user exists but doesn't have a referrer, update them
-      if (!existingUser.referred_by) {
-        await prisma.user.update({
-          where: { wallet_address: walletAddress.toLowerCase() },
-          data: { referred_by: referralCode }
-        });
-        
-        // Create referral reward record with 7-day expiration
-        const expiresAt = moment.utc().add(7, 'days').toDate();
+      await tx.user.update({
+        where: { id: authenticatedUser.id },
+        data: { referred_by: normalizedReferralCode }
+      });
 
-        await prisma.referralRewards.create({
-          data: {
-            referrer_wallet: referrer.wallet_address,
-            referred_wallet: walletAddress.toLowerCase(),
-            snapshot_verified: false,
-            rewarded: false,
-            expires_at: expiresAt
-          }
-        });
-        
-        return res.json({ message: 'Referral tracked successfully for existing user' });
-      } else {
-        return res.status(400).json({ error: 'User already has a referrer' });
-      }
-    }
+      // Create referral reward record with 7-day expiration
+      const expiresAt = moment.utc().add(7, 'days').toDate();
 
-    // Create new user with referral
-    await prisma.user.create({
-      data: {
-        wallet_address: walletAddress.toLowerCase(),
-        level: 1,
-        fan_points: 0,
-        disco_balance: 0,
-        holdingDate: 0,
-        referred_by: referralCode
-      }
+      await tx.referralRewards.create({
+        data: {
+          referrer_wallet: referrer.wallet_address,
+          referred_wallet: authenticatedWalletAddress,
+          snapshot_verified: false,
+          rewarded: false,
+          expires_at: expiresAt
+        }
+      });
+
+      return { status: 200, body: { message: 'Referral tracked successfully for existing user' } };
     });
 
-    // Create referral reward record with 7-day expiration
-    const expiresAt = moment.utc().add(7, 'days').toDate();
-
-    await prisma.referralRewards.create({
-      data: {
-        referrer_wallet: referrer.wallet_address,
-        referred_wallet: walletAddress.toLowerCase(),
-        snapshot_verified: false,
-        rewarded: false,
-        expires_at: expiresAt
-      }
-    });
-
-    res.json({ message: 'Referral tracked successfully' });
+    return res.status(result.status).json(result.body);
   } catch (error) {
     console.error('Error tracking referral:', error);
     res.status(500).json({ error: 'Internal server error' });
