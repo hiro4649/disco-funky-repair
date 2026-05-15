@@ -1,4 +1,4 @@
-import express from 'express';
+import express, { Request, Response } from 'express';
 import { NftController } from '../controllers/nft.controller';
 import uploadExcel from '../middlewares/excelMulter';
 import uploadNftImages from '../middlewares/imagesMulter';
@@ -6,6 +6,13 @@ import uploadSingleImage from '../middlewares/singleImageMulter';
 import { asyncHandler } from './utils';
 
 const router = express.Router();
+
+const nftMintStatusUpdateDisabled = (_req: Request, res: Response) =>
+  res.status(410).json({
+    success: false,
+    code: 'FEATURE_DISABLED',
+    message: 'Direct NFT mint status updates are disabled for the BSC launch MVP.'
+  });
 
 // ==========================================
 // Admin NFT Management Routes
@@ -52,7 +59,7 @@ router.get('/nft/:id', asyncHandler(NftController.getNFTById.bind(NftController)
 // Get NFTs by holder ID (for user's collection)
 router.get('/nfts/holder/:holderId', asyncHandler(NftController.getNFTsByHolderId.bind(NftController)));
 
-// Update NFT (after minting)
-router.patch('/nft/:id', asyncHandler(NftController.updateNFT.bind(NftController)));
+// Direct mint status updates require on-chain receipt verification before re-enabling.
+router.patch('/nft/:id', nftMintStatusUpdateDisabled);
 
 export { router as nftRoutes };
