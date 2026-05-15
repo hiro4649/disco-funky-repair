@@ -20,6 +20,27 @@ Human verification:
 - `PATCH /api/nft/:id` returns `410 FEATURE_DISABLED`.
 - Backend route tests confirm the controller is not called.
 
+## P0-04 Disabled Direct User Illustration Assignment
+
+`POST /api/user/illustration` is disabled for the BSC launch MVP and returns `410 FEATURE_DISABLED`.
+
+Reason:
+- The old route accepted `userId` and `illustrationId` from the request body.
+- The old controller path could add arbitrary IllustrationHistory for a user.
+- For NFT holders, the old path could increment FanPoint from `illustration.earned_pts` without a verified draw result.
+- Re-enabling this endpoint requires an admin/internal-only path, or server-side verification of a signed draw result/claim token that binds the authenticated user, illustration id, and one-time use.
+
+Disabled behavior:
+- `POST /api/user/illustration` does not call `IllustrationController.addIllustrationToUser`.
+- It does not trust request body `userId`, `illustrationId`, or wallet address.
+- It does not create `IllustrationHistory`.
+- It does not create `PointHistory`.
+- It does not increment `fan_points`.
+
+Human verification:
+- `POST /api/user/illustration` returns `410 FEATURE_DISABLED`.
+- Backend route tests confirm DB and point update calls are not reached.
+
 作成日: 2026-05-15
 
 この文書は、BSCローンチ前P0-01として本番MVPから外した機能の記録です。Crash gameは実装予定なしのため、今回はゲーム修理、乱数改善、残高連携修正、資産送金、NFT、ticket、tier、contract修正は行っていません。
