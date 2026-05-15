@@ -1,17 +1,21 @@
 const mockPrisma = {
   user: {
     findUnique: jest.fn(),
-    update: jest.fn()
+    update: jest.fn(),
+    updateMany: jest.fn()
   },
   prize: {
-    findMany: jest.fn()
+    findMany: jest.fn(),
+    update: jest.fn(),
+    updateMany: jest.fn()
   },
   prizeTransactions: {
     create: jest.fn(),
     findFirst: jest.fn(),
     update: jest.fn(),
     updateMany: jest.fn()
-  }
+  },
+  $transaction: jest.fn()
 };
 
 jest.mock('@prisma/client', () => ({
@@ -58,6 +62,7 @@ const createDrawRequest = () => ({
 
 const VALID_TOKEN_ADDRESS = '0x0000000000000000000000000000000000000001';
 const FIXED_TRANSFER_AMOUNT = '50000000000000000000';
+const FIXED_TRANSFER_AMOUNT_2 = '25000000000000000000';
 
 const readyPrizeTransaction = () => ({
   id: 7,
@@ -66,6 +71,7 @@ const readyPrizeTransaction = () => ({
   tx_hash: null,
   transfer_token_address: VALID_TOKEN_ADDRESS,
   transfer_amount: FIXED_TRANSFER_AMOUNT,
+  reservation_released_at: null,
   status: 'READY',
   end_time: new Date(Date.now() + 60 * 60 * 1000),
   prize: {
@@ -83,7 +89,21 @@ const winningPrize = () => ({
   price: 2,
   decimals: 18,
   probability: 1,
-  real_probability: 1
+  real_probability: 1,
+  balance_amount: FIXED_TRANSFER_AMOUNT,
+  reserved_amount: '0'
+});
+
+const smallerEligiblePrize = () => ({
+  id: 4,
+  ca: '0x0000000000000000000000000000000000000002',
+  quantity: 50,
+  price: 2,
+  decimals: 18,
+  probability: 0.5,
+  real_probability: 1,
+  balance_amount: FIXED_TRANSFER_AMOUNT_2,
+  reserved_amount: '0'
 });
 
 describe('PrizeController.sendToWallet', () => {
@@ -91,9 +111,13 @@ describe('PrizeController.sendToWallet', () => {
     jest.clearAllMocks();
     consoleErrorSpy = jest.spyOn(console, 'error').mockImplementation(() => undefined);
     (jwtDecode as jest.Mock).mockReturnValue({ address: '0xUser' });
+    mockPrisma.$transaction.mockImplementation(async (callback: any) => callback(mockPrisma));
     mockPrisma.user.findUnique.mockResolvedValue({ id: 1, wallet_address: '0xuser' });
     mockPrisma.user.update.mockResolvedValue({});
+    mockPrisma.user.updateMany.mockResolvedValue({ count: 1 });
     mockPrisma.prize.findMany.mockResolvedValue([winningPrize()]);
+    mockPrisma.prize.update.mockResolvedValue({});
+    mockPrisma.prize.updateMany.mockResolvedValue({ count: 1 });
     mockPrisma.prizeTransactions.create.mockResolvedValue({});
     mockPrisma.prizeTransactions.findFirst.mockResolvedValue(readyPrizeTransaction());
     mockPrisma.prizeTransactions.updateMany.mockResolvedValue({ count: 1 });
@@ -132,6 +156,23 @@ describe('PrizeController.sendToWallet', () => {
     expect(mockPrisma.prizeTransactions.update).toHaveBeenCalledWith({
       where: { id: 7 },
       data: { status: 'RECEIVED', tx_hash: '0xTx' }
+    });
+    expect(mockPrisma.prizeTransactions.updateMany).toHaveBeenCalledWith({
+      where: {
+        id: 7,
+        reservation_released_at: null
+      },
+      data: {
+        reservation_released_at: expect.any(Date)
+      }
+    });
+    expect(mockPrisma.prize.update).toHaveBeenCalledWith({
+      where: { id: 3 },
+      data: {
+        reserved_amount: {
+          decrement: FIXED_TRANSFER_AMOUNT
+        }
+      }
     });
     expect(res.status).toHaveBeenCalledWith(200);
   });
@@ -185,6 +226,31 @@ describe('PrizeController.sendToWallet', () => {
       where: { id: 7 },
       data: { status: 'RECEIVED' }
     });
+    expect(mockPrisma.prize.update).toHaveBeenCalledWith({
+      where: { id: 3 },
+      data: {
+        reserved_amount: {
+          decrement: FIXED_TRANSFER_AMOUNT
+        }
+      }
+    });
+    expect(res.status).toHaveBeenCalledWith(200);
+  });
+
+  it('does not release reserved amount twice after receipt retry', async () => {
+    mockPrisma.prizeTransactions.findFirst.mockResolvedValue({
+      ...readyPrizeTransaction(),
+      status: 'MANUAL_REVIEW',
+      tx_hash: '0xExistingTx'
+    });
+    mockPrisma.prizeTransactions.updateMany.mockResolvedValue({ count: 0 });
+    const res = createResponse();
+
+    await PrizeController.sendToWallet(createRequest(), res);
+
+    expect(sendTokensToWallet).not.toHaveBeenCalled();
+    expect(getTransactionReceiptStatus).toHaveBeenCalledWith('0xExistingTx');
+    expect(mockPrisma.prize.update).not.toHaveBeenCalled();
     expect(res.status).toHaveBeenCalledWith(200);
   });
 
@@ -296,9 +362,12 @@ describe('PrizeController.drawPrize', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     consoleErrorSpy = jest.spyOn(console, 'error').mockImplementation(() => undefined);
+    mockPrisma.$transaction.mockImplementation(async (callback: any) => callback(mockPrisma));
     mockPrisma.user.findUnique.mockResolvedValue({ id: 1, tickets: 1 });
     mockPrisma.user.update.mockResolvedValue({});
+    mockPrisma.user.updateMany.mockResolvedValue({ count: 1 });
     mockPrisma.prize.findMany.mockResolvedValue([winningPrize()]);
+    mockPrisma.prize.updateMany.mockResolvedValue({ count: 1 });
     mockPrisma.prizeTransactions.create.mockResolvedValue({});
   });
 
@@ -311,6 +380,7 @@ describe('PrizeController.drawPrize', () => {
 
     await PrizeController.drawPrize(createDrawRequest(), res);
 
+    expect(mockPrisma.$transaction).toHaveBeenCalledTimes(1);
     expect(mockPrisma.prizeTransactions.create).toHaveBeenCalledWith({
       data: expect.objectContaining({
         prizeId: 3,
@@ -319,8 +389,17 @@ describe('PrizeController.drawPrize', () => {
         transfer_amount: FIXED_TRANSFER_AMOUNT
       })
     });
-    expect(mockPrisma.user.update).toHaveBeenCalledWith({
-      where: { id: 1 },
+    expect(mockPrisma.prize.updateMany).toHaveBeenCalledWith({
+      where: {
+        id: 3,
+        reserved_amount: '0'
+      },
+      data: {
+        reserved_amount: FIXED_TRANSFER_AMOUNT
+      }
+    });
+    expect(mockPrisma.user.updateMany).toHaveBeenCalledWith({
+      where: { id: 1, tickets: { gt: 0 } },
       data: {
         tickets: {
           decrement: 1
@@ -328,5 +407,91 @@ describe('PrizeController.drawPrize', () => {
       }
     });
     expect(res.status).toHaveBeenCalledWith(200);
+  });
+
+  it('excludes prizes without enough available inventory', async () => {
+    mockPrisma.prize.findMany.mockResolvedValue([
+      {
+        ...winningPrize(),
+        balance_amount: FIXED_TRANSFER_AMOUNT,
+        reserved_amount: FIXED_TRANSFER_AMOUNT
+      },
+      smallerEligiblePrize()
+    ]);
+    const res = createResponse();
+
+    await PrizeController.drawPrize(createDrawRequest(), res);
+
+    expect(mockPrisma.prizeTransactions.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        prizeId: 4,
+        transfer_token_address: smallerEligiblePrize().ca,
+        transfer_amount: FIXED_TRANSFER_AMOUNT_2
+      })
+    });
+    expect(mockPrisma.prize.updateMany).toHaveBeenCalledWith({
+      where: {
+        id: 4,
+        reserved_amount: '0'
+      },
+      data: {
+        reserved_amount: FIXED_TRANSFER_AMOUNT_2
+      }
+    });
+  });
+
+  it('does not create a READY prize transaction when reservation update loses a race', async () => {
+    mockPrisma.prize.updateMany.mockResolvedValue({ count: 0 });
+    const res = createResponse();
+
+    await PrizeController.drawPrize(createDrawRequest(), res);
+
+    expect(mockPrisma.prizeTransactions.create).not.toHaveBeenCalled();
+    expect(res.status).toHaveBeenCalledWith(409);
+  });
+
+  it('creates only one READY prize transaction when two draws compete for one reservation', async () => {
+    mockPrisma.prize.updateMany
+      .mockResolvedValueOnce({ count: 1 })
+      .mockResolvedValueOnce({ count: 0 });
+    const firstRes = createResponse();
+    const secondRes = createResponse();
+
+    await PrizeController.drawPrize(createDrawRequest(), firstRes);
+    await PrizeController.drawPrize(createDrawRequest(), secondRes);
+
+    expect(mockPrisma.prizeTransactions.create).toHaveBeenCalledTimes(1);
+    expect(firstRes.status).toHaveBeenCalledWith(200);
+    expect(secondRes.status).toHaveBeenCalledWith(409);
+  });
+
+  it('uses string integer inventory amounts for reservation checks', async () => {
+    const largeReservedAmount = '9007199254740993000000';
+    const largeBalanceAmount = (BigInt(largeReservedAmount) + BigInt(FIXED_TRANSFER_AMOUNT)).toString();
+    mockPrisma.prize.findMany.mockResolvedValue([
+      {
+        ...winningPrize(),
+        balance_amount: largeBalanceAmount,
+        reserved_amount: largeReservedAmount
+      }
+    ]);
+    const res = createResponse();
+
+    await PrizeController.drawPrize(createDrawRequest(), res);
+
+    expect(mockPrisma.prize.updateMany).toHaveBeenCalledWith({
+      where: {
+        id: 3,
+        reserved_amount: largeReservedAmount
+      },
+      data: {
+        reserved_amount: largeBalanceAmount
+      }
+    });
+    expect(mockPrisma.prizeTransactions.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        transfer_amount: FIXED_TRANSFER_AMOUNT
+      })
+    });
   });
 });

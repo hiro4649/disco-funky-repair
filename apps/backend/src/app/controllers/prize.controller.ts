@@ -1,5 +1,5 @@
 import { Request, Response } from 'express';
-import { PrismaClient } from '@prisma/client';
+import { Prisma, PrismaClient } from '@prisma/client';
 import { number, symbol, TypeOf, z } from 'zod';
 import prizeSchema from '../validation/prizeValidate';
 import getTokenPrice from '../lib/getTokenPrice';
@@ -95,6 +95,107 @@ const parseStoredTransferAmount = (amount?: string | null): bigint | null => {
 
     const transferAmount = BigInt(amount);
     return transferAmount > 0n ? transferAmount : null;
+};
+
+const parseInventoryAmount = (amount: unknown): bigint | null => {
+    if (amount === null || amount === undefined) {
+        return null;
+    }
+
+    const text = typeof amount === 'string' ? amount : amount.toString();
+    if (!/^\d+$/.test(text)) {
+        return null;
+    }
+
+    return BigInt(text);
+};
+
+type PrizeCandidate = {
+    id: number;
+    ca: string;
+    quantity: number;
+    price: number;
+    decimals: number;
+    probability: number;
+    real_probability: number;
+    balance_amount: unknown;
+    reserved_amount: unknown;
+};
+
+type EligiblePrizeCandidate = PrizeCandidate & {
+    transferAmount: string;
+    transferAmountValue: bigint;
+    currentReservedAmount: string;
+    nextReservedAmount: string;
+};
+
+const getEligiblePrizeCandidate = (prize: PrizeCandidate): EligiblePrizeCandidate | null => {
+    if (!ethers.isAddress(prize.ca)) {
+        return null;
+    }
+
+    const totalAmount = parseInventoryAmount(prize.balance_amount);
+    const reservedAmount = parseInventoryAmount(prize.reserved_amount);
+    if (totalAmount === null || reservedAmount === null) {
+        return null;
+    }
+
+    const transferAmount = calculatePrizeTransferAmount(
+        prize.quantity,
+        prize.price,
+        prize.decimals
+    );
+    const transferAmountValue = parseStoredTransferAmount(transferAmount);
+    if (!transferAmountValue) {
+        return null;
+    }
+
+    const availableAmount = totalAmount - reservedAmount;
+    if (availableAmount < transferAmountValue) {
+        return null;
+    }
+
+    return {
+        ...prize,
+        transferAmount,
+        transferAmountValue,
+        currentReservedAmount: reservedAmount.toString(),
+        nextReservedAmount: (reservedAmount + transferAmountValue).toString()
+    };
+};
+
+class PrizeInventoryRaceError extends Error {
+    constructor() {
+        super('Prize inventory reservation changed during draw');
+    }
+}
+
+const releasePrizeReservation = async (
+    tx: Prisma.TransactionClient,
+    prizeTransactionId: number,
+    prizeId: number,
+    transferAmount: bigint
+) => {
+    const releaseUpdate = await tx.prizeTransactions.updateMany({
+        where: {
+            id: prizeTransactionId,
+            reservation_released_at: null
+        },
+        data: {
+            reservation_released_at: moment.utc().toDate()
+        }
+    });
+
+    if (releaseUpdate.count === 1) {
+        await tx.prize.update({
+            where: { id: prizeId },
+            data: {
+                reserved_amount: {
+                    decrement: transferAmount.toString()
+                }
+            }
+        });
+    }
 };
 
 interface User extends JwtPayload {
@@ -296,28 +397,32 @@ export class PrizeController {
     static async drawPrize(req: Request, res: Response) {
         const userId = Number(req.params.user_id);
         try {
-            // check user is exist or not
-            const user = await prisma.user.findUnique({
-                where: {
-                    id: userId
-                },
-            });
-            if (!user)
-                return res
-                    .status(404)
-                    .json({ success: true, msg: 'User not found' });
-            if (Number(user.tickets) > 0) {
+            const drawResult = await prisma.$transaction(async (tx) => {
+                const user = await tx.user.findUnique({
+                    where: { id: userId },
+                });
 
-                // Fetch all product tokens with their probabilities
-                const prizes = await prisma.prize.findMany({
+                if (!user) {
+                    return { status: 'USER_NOT_FOUND' as const };
+                }
+
+                if (Number(user.tickets) <= 0) {
+                    return { status: 'NO_TICKET' as const };
+                }
+
+                const prizes = await tx.prize.findMany({
                     where: { flag: true }
                 });
 
-                if (prizes.length === 0) {
-                    res.status(404).json({ msg: 'No Prizes found' }); // Send a meaningful error response
+                const eligiblePrizes = prizes
+                    .map((prize: typeof prizes[0]) => getEligiblePrizeCandidate(prize))
+                    .filter((prize): prize is EligiblePrizeCandidate => prize !== null);
+
+                if (eligiblePrizes.length === 0) {
+                    return { status: 'NO_PRIZES' as const };
                 }
 
-                const bestPrizeCandidates = prizes.reduce((best: typeof prizes, current: typeof prizes[0]) => {
+                const bestPrizeCandidates = eligiblePrizes.reduce((best: EligiblePrizeCandidate[], current) => {
                     if (
                         best.length === 0 ||
                         current.probability > best[0].probability ||
@@ -334,75 +439,78 @@ export class PrizeController {
                 }, []);
 
                 const winningPrize = bestPrizeCandidates[Math.floor(Math.random() * bestPrizeCandidates.length)];
-                if (winningPrize) {
-                    if (!ethers.isAddress(winningPrize.ca)) {
-                        return res.status(400).json({
-                            success: false,
-                            msg: 'Invalid prize transfer token address'
-                        });
-                    }
-
-                    const transferAmount = calculatePrizeTransferAmount(
-                        winningPrize.quantity,
-                        winningPrize.price,
-                        winningPrize.decimals
-                    );
-
-                    const prizeTransaction =
-                        await prisma.prizeTransactions.create({
-                            data: {
-                                prizeId: winningPrize.id,
-                                userId: userId,
-                                transfer_token_address: winningPrize.ca,
-                                transfer_amount: transferAmount,
-                                probability_time: moment.utc().toDate(),
-                                end_time: moment.utc().add(24, 'hours').toDate()
-                            }
-                        });
-
-                    // await prisma.pointHistory.create({
-                    //     data: {
-                    //         userId: userId,
-                    //         point: winningPrize.earned_pts,
-                    //         reason: 2,
-                    //         receivedDate: new Date(new Date().toISOString().split('.')[0]+"Z")
-                    //     }
-                    // });
-                    // await prisma.user.update({
-                    //     where: {
-                    //         id: userId
-                    //     },
-                    //     data: {
-                    // fan_points: {
-                    //     increment: winningPrize.earned_pts
-                    // },
-                    //         tickets: {
-                    //             decrement: 1,
-                    //         }
-                    //     }
-                    // });
-                    
-                    // Deduct 1 ticket from user
-                    await prisma.user.update({
-                        where: { id: userId },
-                        data: {
-                            tickets: {
-                                decrement: 1
-                            }
-                        }
-                    });
-
-                    res.status(200).json({ success: true });
-                } else {
-                    res.status(200).json({
-                        success: false,
-                        msg: 'Failed to determine a winner'
-                    });
+                if (!winningPrize) {
+                    return { status: 'NO_WINNER' as const };
                 }
-            } else {
-                res.status(200).json({ ticket: false, msg: 'There are no Lottery Ticket' });
+
+                const ticketUpdate = await tx.user.updateMany({
+                    where: { id: userId, tickets: { gt: 0 } },
+                    data: {
+                        tickets: {
+                            decrement: 1
+                        }
+                    }
+                });
+
+                if (ticketUpdate.count !== 1) {
+                    return { status: 'NO_TICKET' as const };
+                }
+
+                const reserveUpdate = await tx.prize.updateMany({
+                    where: {
+                        id: winningPrize.id,
+                        reserved_amount: winningPrize.currentReservedAmount
+                    },
+                    data: {
+                        reserved_amount: winningPrize.nextReservedAmount
+                    }
+                });
+
+                if (reserveUpdate.count !== 1) {
+                    throw new PrizeInventoryRaceError();
+                }
+
+                await tx.prizeTransactions.create({
+                    data: {
+                        prizeId: winningPrize.id,
+                        userId: userId,
+                        transfer_token_address: winningPrize.ca,
+                        transfer_amount: winningPrize.transferAmount,
+                        probability_time: moment.utc().toDate(),
+                        end_time: moment.utc().add(24, 'hours').toDate()
+                    }
+                });
+
+                return { status: 'SUCCESS' as const };
+            });
+
+            if (drawResult.status === 'USER_NOT_FOUND') {
+                return res.status(404).json({ success: true, msg: 'User not found' });
             }
+
+            if (drawResult.status === 'NO_TICKET') {
+                return res.status(200).json({ ticket: false, msg: 'There are no Lottery Ticket' });
+            }
+
+            if (drawResult.status === 'NO_PRIZES') {
+                return res.status(404).json({ msg: 'No Prizes found' });
+            }
+
+            if (drawResult.status === 'NO_WINNER') {
+                return res.status(200).json({
+                    success: false,
+                    msg: 'Failed to determine a winner'
+                });
+            }
+
+            return res.status(200).json({ success: true });
         } catch (err) {
+            if (err instanceof PrizeInventoryRaceError) {
+                return res.status(409).json({
+                    success: false,
+                    msg: 'Prize inventory changed during draw. Please try again.'
+                });
+            }
             console.error('Error drawing a lottery winner:', err); // Log the error for debugging
             return res.status(500).json({ error: 'Internal Server Error' }); // Send a meaningful error response
         }
@@ -542,14 +650,30 @@ export class PrizeController {
             if (prizeTransaction.tx_hash) {
                 try {
                     const receiptStatus = await getTransactionReceiptStatus(prizeTransaction.tx_hash);
+
+                    if (receiptStatus === Status.RECEIVED) {
+                        const storedTransferAmount = parseStoredTransferAmount(prizeTransaction.transfer_amount);
+                        await prisma.$transaction(async (tx) => {
+                            if (storedTransferAmount) {
+                                await releasePrizeReservation(
+                                    tx,
+                                    prizeTransaction.id,
+                                    prizeTransaction.prizeId,
+                                    storedTransferAmount
+                                );
+                            }
+                            await tx.prizeTransactions.update({
+                                where: { id: Number(prizeId) },
+                                data: { status: receiptStatus },
+                            });
+                        });
+                        return res.status(200).json({ success: true, txHash: prizeTransaction.tx_hash });
+                    }
+
                     await prisma.prizeTransactions.update({
                         where: { id: Number(prizeId) },
                         data: { status: receiptStatus },
                     });
-
-                    if (receiptStatus === Status.RECEIVED) {
-                        return res.status(200).json({ success: true, txHash: prizeTransaction.tx_hash });
-                    }
 
                     return res.status(202).json({
                         success: false,
@@ -643,10 +767,17 @@ export class PrizeController {
                         correlationId
                     });
                 }
-                // Update the prize transaction status to "RECEIVED"
-                await prisma.prizeTransactions.update({
-                    where: { id: Number(prizeId) },
-                    data: { status: Status.RECEIVED, tx_hash: txHash },
+                await prisma.$transaction(async (tx) => {
+                    await releasePrizeReservation(
+                        tx,
+                        prizeTransaction.id,
+                        prizeTransaction.prizeId,
+                        tokenAmountInSmallestUnit
+                    );
+                    await tx.prizeTransactions.update({
+                        where: { id: Number(prizeId) },
+                        data: { status: Status.RECEIVED, tx_hash: txHash },
+                    });
                 });
 
                 // Return success response

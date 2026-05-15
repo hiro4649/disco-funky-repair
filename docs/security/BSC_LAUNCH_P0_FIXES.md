@@ -957,3 +957,32 @@ P2: frontend buildでlint無視設定
   - Missing stored amount does not call the transfer helper and moves to `MANUAL_REVIEW`.
   - Zero stored amount does not call the transfer helper and moves to `MANUAL_REVIEW`.
   - Invalid stored token address does not call the transfer helper and moves to `MANUAL_REVIEW`.
+
+## 2026-05-15 P0-07B implementation record
+
+- Task: Reserve prize inventory at win creation time and prevent READY wins beyond available inventory.
+- Target routes:
+  - `POST /airdrop/prize/draw/:user_id`
+  - `POST /airdrop/prize/send/:prize_id`
+- Changed files:
+  - `apps/backend/prisma/schema.prisma`
+  - `apps/backend/src/app/controllers/prize.controller.ts`
+  - `apps/backend/src/app/controllers/__tests__/prize.controller.test.ts`
+  - `apps/backend/src/app/lib/trackingTokensEthereum.ts`
+  - `docs/security/BSC_LAUNCH_P0_FIXES.md`
+- Fix summary:
+  - Added smallest-unit Decimal inventory fields `Prize.balance_amount` and `Prize.reserved_amount`.
+  - Added `PrizeTransactions.reservation_released_at` to make reservation release idempotent.
+  - Token tracking now stores on-chain operator wallet balance as `balance_amount` string/Decimal.
+  - `drawPrize` now runs user check, eligible prize filtering, ticket decrement, inventory reservation, and PrizeTransaction creation inside one Prisma transaction.
+  - Eligible prize filtering uses `available = balance_amount - reserved_amount` and excludes prizes whose available inventory is lower than the fixed `transfer_amount`.
+  - Reservation update uses an optimistic `reserved_amount` condition so concurrent draws cannot both reserve the same inventory snapshot.
+  - `sendToWallet` releases the reserved amount on confirmed send, guarded by `reservation_released_at` so receipt retries do not double-decrement.
+  - Expired/cancelled/failed reservation release is intentionally left for P0-07C.
+- Tests added:
+  - Draw stores fixed token/amount and updates `reserved_amount` in the same transaction path.
+  - Out-of-stock prizes are excluded from the draw candidate set.
+  - Reservation update race does not create a READY PrizeTransaction.
+  - Two competing draws against one available reservation create only one READY PrizeTransaction.
+  - Inventory reservation uses integer strings beyond JS safe integer range.
+  - Successful send releases reservation once, and receipt retry does not double-release.
