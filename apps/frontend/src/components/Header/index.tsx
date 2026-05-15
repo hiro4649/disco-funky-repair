@@ -18,6 +18,7 @@ import PrizeMarquee from "./PrizeMarquee";
 import { useAppKitAccount } from "@reown/appkit/react";
 import { useDisconnect } from "@reown/appkit/react";
 import toast from "react-hot-toast";
+import { useAuth } from "@/context/AuthContext";
 
 interface UserData {
   user_id: number;
@@ -37,6 +38,7 @@ const Header = (props: {
 }) => {
   const { address, isConnected } = useAppKitAccount();
   const { disconnect } = useDisconnect();
+  const { login } = useAuth();
   const dispatch = useAppDispatch();
   const { authState, ticket, connectBonus, claimTickets } = useAppSelector((state) => state.user);
   const { isOpenSidebar } = useAppSelector((state) => state.home);
@@ -99,6 +101,10 @@ const Header = (props: {
   const onSignUp = useCallback(
     async (wallet_address?: string) => {
       try {
+        if (!wallet_address) {
+          return;
+        }
+
         // Get referral code from cookie
         const getReferralCode = () => {
           if (typeof document === 'undefined') return null;
@@ -110,15 +116,9 @@ const Header = (props: {
         const referralCode = getReferralCode();
         console.log('Signup with referral code:', referralCode);
 
-        const signupData: any = { wallet_address };
-        if (referralCode) {
-          signupData.referralCode = referralCode;
-        }
+        const success = await login(wallet_address, referralCode);
 
-        const res = await apiClient.post(`/user/signup`, signupData);
-        const { success } = res.data;
-
-        if (success === true) {
+        if (success) {
           if (referralCode) {
             document.cookie = 'ref=; path=/; max-age=0';
             console.log('Referral cookie cleared after successful signup');
@@ -141,7 +141,7 @@ const Header = (props: {
         }
       }
     },
-    [address, fetchUserData],
+    [address, disconnect, fetchUserData, login],
   );
 
   // Handle user signup

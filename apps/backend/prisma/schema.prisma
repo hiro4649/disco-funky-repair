@@ -355,6 +355,21 @@ model TicketCode {
   updated_at     DateTime         @default(now()) @db.Timestamp(6)
 }
 
+model WalletLoginNonce {
+  id             Int       @id @default(autoincrement())
+  wallet_address String    @db.VarChar(255)
+  nonce_hash     String    @db.VarChar(64)
+  message        String    @unique @db.Text
+  issued_at      DateTime  @db.Timestamp(6)
+  expires_at     DateTime  @db.Timestamp(6)
+  used_at        DateTime? @db.Timestamp(6)
+  created_at     DateTime  @default(now()) @db.Timestamp(6)
+  updated_at     DateTime  @default(now()) @db.Timestamp(6)
+
+  @@index([wallet_address, expires_at])
+  @@index([used_at])
+}
+
 enum Status {
   READY
   SENDING
