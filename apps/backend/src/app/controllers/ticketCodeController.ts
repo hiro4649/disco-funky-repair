@@ -130,15 +130,21 @@ export const claimTicketCode = async (req: Request, res: Response) => {
     try {
         const { code } = req.body;
         const walletAddressInput = req.body.wallet_address;
+        const authenticatedUserId = Number((req.user as { user_id?: number } | undefined)?.user_id);
 
-        if (typeof code !== 'string' || !code || typeof walletAddressInput !== 'string' || !walletAddressInput) {
-            return res.status(400).json({
+        if (!Number.isInteger(authenticatedUserId) || authenticatedUserId <= 0) {
+            return res.status(401).json({
                 success: false,
-                message: 'Code and wallet address are required'
+                message: 'Unauthenticated'
             });
         }
 
-        const wallet_address = walletAddressInput.toLowerCase();
+        if (typeof code !== 'string' || !code) {
+            return res.status(400).json({
+                success: false,
+                message: 'Code is required'
+            });
+        }
 
         const claimResult = await prisma.$transaction(async (tx) => {
             const ticketCode = await tx.ticketCode.findUnique({
@@ -183,8 +189,12 @@ export const claimTicketCode = async (req: Request, res: Response) => {
                 };
             }
 
-            const user = await tx.user.findFirst({
-                where: { wallet_address }
+            const user = await tx.user.findUnique({
+                where: { id: authenticatedUserId },
+                select: {
+                    id: true,
+                    wallet_address: true
+                }
             });
 
             if (!user) {
@@ -193,6 +203,21 @@ export const claimTicketCode = async (req: Request, res: Response) => {
                     body: {
                         success: false,
                         message: 'User not found'
+                    }
+                };
+            }
+
+            const wallet_address = user.wallet_address.toLowerCase();
+            if (
+                typeof walletAddressInput === 'string' &&
+                walletAddressInput &&
+                walletAddressInput.toLowerCase() !== wallet_address
+            ) {
+                return {
+                    statusCode: 403,
+                    body: {
+                        success: false,
+                        message: 'Forbidden'
                     }
                 };
             }

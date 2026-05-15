@@ -6,13 +6,39 @@ import { isSixHourUpdateRunning } from '../lib/trackingTokenBalanceEthereum';
 
 const prisma = new PrismaClient();
 
+type AuthenticatedLotteryUser = {
+    user_id?: number;
+};
+
+const getAuthenticatedLotteryUserId = (req: Request): number | null => {
+    const userId = Number((req.user as AuthenticatedLotteryUser | undefined)?.user_id);
+    return Number.isInteger(userId) && userId > 0 ? userId : null;
+};
+
+const routeUserIdMatchesAuthenticatedUser = (
+    req: Request,
+    paramName: string,
+    authenticatedUserId: number
+): boolean => {
+    const routeUserId = Number(req.params[paramName]);
+    return Number.isInteger(routeUserId) && routeUserId === authenticatedUserId;
+};
+
 export class LotteryController {
     static async checkDiscoBalance(req: Request, res: Response) {
-        const userId = req.params.user_id;
+        const userId = getAuthenticatedLotteryUserId(req);
+        if (!userId) {
+            return res.status(401).json({ success: false, message: 'Unauthenticated' });
+        }
+
+        if (!routeUserIdMatchesAuthenticatedUser(req, 'user_id', userId)) {
+            return res.status(403).json({ success: false, message: 'Forbidden' });
+        }
+
         try {
             const data = await prisma.ownedToken.findUnique({
                 where: {
-                    userId: Number(userId)
+                    userId
                 }
             });
 
@@ -39,15 +65,22 @@ export class LotteryController {
         req: Request,
         res: Response
     ): Promise<Response> {
-        const userId = req.params.user_id;
+        const userId = getAuthenticatedLotteryUserId(req);
+        if (!userId) {
+            return res.status(401).json({ success: false, message: 'Unauthenticated' });
+        }
+
+        if (!routeUserIdMatchesAuthenticatedUser(req, 'user_id', userId)) {
+            return res.status(403).json({ success: false, message: 'Forbidden' });
+        }
 
         try {
 
 
             const [user, ownedToken] = await Promise.all([
-                prisma.user.findUnique({ where: { id: Number(userId) } }),
+                prisma.user.findUnique({ where: { id: userId } }),
                 prisma.ownedToken.findUnique({
-                    where: { userId: Number(userId) }
+                    where: { userId }
                 })
             ]);
 
@@ -174,17 +207,19 @@ export class LotteryController {
     }
 
     static async getLotteryTicketDate(req: Request, res: Response) {
-        const id = req.params.user_id;
+        const id = getAuthenticatedLotteryUserId(req);
         if (!id) {
-            return res.status(400).json({
-                success: false,
-                message: 'Invalid input'
-            });
+            return res.status(401).json({ success: false, message: 'Unauthenticated' });
         }
+
+        if (!routeUserIdMatchesAuthenticatedUser(req, 'user_id', id)) {
+            return res.status(403).json({ success: false, message: 'Forbidden' });
+        }
+
         try {
             const data = await prisma.lotteryTickets.findMany({
                 where: {
-                    userId: Number(id),
+                    userId: id,
                 },
                 orderBy: {
                     receivedDate: 'desc'
@@ -200,11 +235,19 @@ export class LotteryController {
     }
 
     static async checkAndUpdateLotteryTicket(req: Request, res: Response) {
-        const userId = req.params.user_id;
+        const userId = getAuthenticatedLotteryUserId(req);
+        if (!userId) {
+            return res.status(401).json({ success: false, message: 'Unauthenticated' });
+        }
+
+        if (!routeUserIdMatchesAuthenticatedUser(req, 'user_id', userId)) {
+            return res.status(403).json({ success: false, message: 'Forbidden' });
+        }
+
         try {
             const totalTickets = await prisma.user.findUnique({
                 where: {
-                    id: Number(userId)
+                    id: userId
                 },
             });
             if (!totalTickets)
@@ -329,15 +372,20 @@ export class LotteryController {
 
     static async lotteryClaimTicketToUser(req: Request, res: Response) {
         try {
-            const rawUserId = req.body.userId;
+            const authenticatedUserId = getAuthenticatedLotteryUserId(req);
+            if (!authenticatedUserId) {
+                return res.status(401).json({ success: false, message: 'Unauthenticated' });
+            }
 
-            const userId = Number(rawUserId);
-            if (!rawUserId || Number.isNaN(userId) || userId <= 0) {
-                return res.status(400).json({
+            const rawUserId = req.body.userId;
+            if (rawUserId !== undefined && Number(rawUserId) !== authenticatedUserId) {
+                return res.status(403).json({
                     success: false,
-                    message: 'Invalid userId'
+                    message: 'Forbidden'
                 });
             }
+
+            const userId = authenticatedUserId;
 
             const user = await prisma.user.findUnique({
                 where: { id: userId },
