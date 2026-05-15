@@ -1082,3 +1082,28 @@ P2: frontend buildでlint無視設定
   - Zero-balance reset and weighted-average downgrade reasons are accepted.
   - `FunkyTierUpdater` separates regular sync from explicit reason sync and enforces relayer authorization.
   - Backend tier helper maps to the fixed tiers and routes downgrade/reset calls through `syncHoldingDateWithReason`.
+
+## 2026-05-15 P0-10A implementation record
+
+- Task: Separate prize payout hot wallet signing from `ADMIN_PRIVATE_KEY`.
+- Target files:
+  - `apps/backend/src/app/config/env.ts`
+  - `apps/backend/src/app/utils/tokenHeplers.ts`
+  - `apps/backend/src/app/controllers/prize.controller.ts`
+  - `apps/backend/src/app/controllers/__tests__/prize.controller.test.ts`
+  - `apps/backend/src/app/utils/__tests__/tokenHeplers.test.ts`
+  - `docs/launch/KEY_SEPARATION_RUNBOOK.md`
+- Fix summary:
+  - Prize token transfers now require `PRIZE_HOT_WALLET_PRIVATE_KEY`.
+  - Prize transfers no longer fall back to `ADMIN_PRIVATE_KEY`.
+  - Prize transfer token contracts are restricted by `PRIZE_TRANSFER_TOKEN_ALLOWLIST`.
+  - Non-allowlisted `Prize.ca` or `PrizeTransactions.transfer_token_address` values are moved to `MANUAL_REVIEW` before `READY -> SENDING`, so no transfer is broadcast.
+  - Missing prize hot wallet key fails before wallet/contract transfer setup.
+  - Client responses continue to use fixed safe messages and `correlationId`; raw RPC/key/config errors are not returned.
+  - Added a launch runbook for prize hot wallet, tier relayer, and governance/multisig separation.
+- Tests added:
+  - `sendTokensToWallet` uses `PRIZE_HOT_WALLET_PRIVATE_KEY`.
+  - `ADMIN_PRIVATE_KEY` alone cannot start a prize transfer.
+  - A token outside `PRIZE_TRANSFER_TOKEN_ALLOWLIST` does not call ERC-20 `transfer`.
+  - An allowlisted token proceeds through the existing transfer flow.
+  - `sendToWallet` moves non-allowlisted prize transactions to `MANUAL_REVIEW` without calling the transfer helper.
