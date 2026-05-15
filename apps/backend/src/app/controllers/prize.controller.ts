@@ -19,7 +19,9 @@ enum Status {
     BROADCASTED = 'BROADCASTED',
     MANUAL_REVIEW = 'MANUAL_REVIEW',
     RECEIVED = 'RECEIVED',
-    EXPIRED = 'EXPIRED'
+    EXPIRED = 'EXPIRED',
+    CANCELLED = 'CANCELLED',
+    FAILED = 'FAILED'
 }
 
 const prisma = new PrismaClient();
@@ -176,6 +178,12 @@ class PrizeInventoryDepletionError extends Error {
     }
 }
 
+class PrizeReservationReleaseError extends Error {
+    constructor() {
+        super('Prize reserved inventory is lower than the release amount');
+    }
+}
+
 const releasePrizeReservation = async (
     tx: Prisma.TransactionClient,
     prizeTransactionId: number,
@@ -213,6 +221,145 @@ const releasePrizeReservation = async (
             throw new PrizeInventoryDepletionError();
         }
     }
+};
+
+const releaseUnpaidPrizeReservation = async (
+    tx: Prisma.TransactionClient,
+    prizeTransactionId: number,
+    prizeId: number,
+    transferAmount: bigint,
+    finalStatus: Status.EXPIRED | Status.CANCELLED | Status.FAILED
+): Promise<boolean> => {
+    const finalStatusValue = finalStatus as string;
+    const releaseUpdate = await tx.prizeTransactions.updateMany({
+        where: {
+            id: prizeTransactionId,
+            status: { in: [Status.READY, finalStatusValue] as any },
+            tx_hash: null,
+            reservation_released_at: null
+        },
+        data: {
+            status: finalStatusValue as any,
+            reservation_released_at: moment.utc().toDate()
+        }
+    });
+
+    if (releaseUpdate.count !== 1) {
+        return false;
+    }
+
+    const inventoryUpdate = await tx.prize.updateMany({
+        where: {
+            id: prizeId,
+            reserved_amount: { gte: transferAmount.toString() }
+        },
+        data: {
+            reserved_amount: {
+                decrement: transferAmount.toString()
+            }
+        }
+    });
+
+    if (inventoryUpdate.count !== 1) {
+        throw new PrizeReservationReleaseError();
+    }
+
+    return true;
+};
+
+type UnpaidReservationFinalStatus = Status.EXPIRED | Status.CANCELLED | Status.FAILED;
+
+type UnpaidReservationFinalizeResult =
+    | { status: 'FINALIZED' | 'ALREADY_RELEASED' }
+    | { status: 'NOT_FOUND' | 'NOT_FINALIZABLE' | 'RACE' | 'MANUAL_REVIEW' };
+
+const finalizeUnpaidPrizeReservation = async (
+    prizeTransactionId: number,
+    finalStatus: UnpaidReservationFinalStatus
+): Promise<UnpaidReservationFinalizeResult> => {
+    try {
+        return await prisma.$transaction(async (tx) => {
+            const prizeTransaction = await tx.prizeTransactions.findFirst({
+                where: { id: prizeTransactionId },
+                select: {
+                    id: true,
+                    prizeId: true,
+                    status: true,
+                    tx_hash: true,
+                    transfer_amount: true,
+                    reservation_released_at: true
+                }
+            });
+
+            if (!prizeTransaction) {
+                return { status: 'NOT_FOUND' as const };
+            }
+
+            const currentStatus = prizeTransaction.status as string;
+
+            if (currentStatus === Status.RECEIVED) {
+                return { status: 'NOT_FINALIZABLE' as const };
+            }
+
+            if (
+                prizeTransaction.tx_hash ||
+                currentStatus === Status.SENDING ||
+                currentStatus === Status.BROADCASTED
+            ) {
+                await tx.prizeTransactions.update({
+                    where: { id: prizeTransactionId },
+                    data: { status: Status.MANUAL_REVIEW }
+                });
+                return { status: 'MANUAL_REVIEW' as const };
+            }
+
+            if (prizeTransaction.reservation_released_at) {
+                return { status: 'ALREADY_RELEASED' as const };
+            }
+
+            if (currentStatus !== Status.READY && currentStatus !== finalStatus) {
+                return { status: 'NOT_FINALIZABLE' as const };
+            }
+
+            const storedTransferAmount = parseStoredTransferAmount(prizeTransaction.transfer_amount);
+            if (!storedTransferAmount) {
+                await tx.prizeTransactions.update({
+                    where: { id: prizeTransactionId },
+                    data: { status: Status.MANUAL_REVIEW }
+                });
+                return { status: 'MANUAL_REVIEW' as const };
+            }
+
+            const released = await releaseUnpaidPrizeReservation(
+                tx,
+                prizeTransaction.id,
+                prizeTransaction.prizeId,
+                storedTransferAmount,
+                finalStatus
+            );
+
+            return released
+                ? { status: 'FINALIZED' as const }
+                : { status: 'RACE' as const };
+        });
+    } catch (err) {
+        if (err instanceof PrizeReservationReleaseError) {
+            await prisma.prizeTransactions.update({
+                where: { id: prizeTransactionId },
+                data: { status: Status.MANUAL_REVIEW }
+            });
+            return { status: 'MANUAL_REVIEW' };
+        }
+        throw err;
+    }
+};
+
+const isPrizeTransactionExpired = (endTime?: Date | string | null): boolean => {
+    if (!endTime) {
+        return false;
+    }
+
+    return moment.utc().isAfter(moment.utc(endTime));
 };
 
 interface User extends JwtPayload {
@@ -565,10 +712,86 @@ export class PrizeController {
         }
     }
 
+    static async cancelPrizeTransaction(req: Request, res: Response) {
+        const prizeId = Number(req.params.prize_id);
+
+        if (Number.isNaN(prizeId)) {
+            return res.status(400).json({ success: false, msg: 'Invalid prize transaction id' });
+        }
+
+        try {
+            const result = await finalizeUnpaidPrizeReservation(prizeId, Status.CANCELLED);
+
+            if (result.status === 'NOT_FOUND') {
+                return res.status(404).json({ success: false, msg: 'Prize transaction not found' });
+            }
+
+            if (result.status === 'MANUAL_REVIEW') {
+                return res.status(202).json({
+                    success: false,
+                    msg: 'Prize transaction requires manual review before cancellation.'
+                });
+            }
+
+            if (result.status === 'NOT_FINALIZABLE' || result.status === 'RACE') {
+                return res.status(409).json({
+                    success: false,
+                    msg: 'Prize transaction cannot be cancelled automatically.'
+                });
+            }
+
+            return res.status(200).json({
+                success: true,
+                status: Status.CANCELLED
+            });
+        } catch (err) {
+            console.error('Error cancelling prize transaction:', err);
+            return res.status(500).json({ success: false, msg: 'Internal server error' });
+        }
+    }
+
+    static async failPrizeTransaction(req: Request, res: Response) {
+        const prizeId = Number(req.params.prize_id);
+
+        if (Number.isNaN(prizeId)) {
+            return res.status(400).json({ success: false, msg: 'Invalid prize transaction id' });
+        }
+
+        try {
+            const result = await finalizeUnpaidPrizeReservation(prizeId, Status.FAILED);
+
+            if (result.status === 'NOT_FOUND') {
+                return res.status(404).json({ success: false, msg: 'Prize transaction not found' });
+            }
+
+            if (result.status === 'MANUAL_REVIEW') {
+                return res.status(202).json({
+                    success: false,
+                    msg: 'Prize transaction requires manual review before marking failed.'
+                });
+            }
+
+            if (result.status === 'NOT_FINALIZABLE' || result.status === 'RACE') {
+                return res.status(409).json({
+                    success: false,
+                    msg: 'Prize transaction cannot be marked failed automatically.'
+                });
+            }
+
+            return res.status(200).json({
+                success: true,
+                status: Status.FAILED
+            });
+        } catch (err) {
+            console.error('Error marking prize transaction failed:', err);
+            return res.status(500).json({ success: false, msg: 'Internal server error' });
+        }
+    }
+
     static async getPrizeTransactions(req: Request, res: Response) {
         try {
             const userId = Number(req.params.user_id);
-            const prizeTransactions = await prisma.prizeTransactions.findMany({
+            let prizeTransactions = await prisma.prizeTransactions.findMany({
                 where: {
                     userId
                 },
@@ -595,6 +818,45 @@ export class PrizeController {
                 }
             });
 
+            const expiredReadyTransactions = prizeTransactions.filter((transaction: typeof prizeTransactions[0]) => (
+                transaction.status === Status.READY &&
+                !transaction.tx_hash &&
+                isPrizeTransactionExpired(transaction.end_time)
+            ));
+
+            if (expiredReadyTransactions.length > 0) {
+                for (const transaction of expiredReadyTransactions) {
+                    await finalizeUnpaidPrizeReservation(transaction.id, Status.EXPIRED);
+                }
+
+                prizeTransactions = await prisma.prizeTransactions.findMany({
+                    where: {
+                        userId
+                    },
+                    orderBy: [
+                        {
+                            probability_time: 'desc'
+                        }
+                    ],
+                    include: {
+                        prize: {
+                            select: {
+                                token_name: true,
+                                symbol: true,
+                                quantity: true,
+                                ca: true,
+                                telegram: true,
+                                earned_pts: true,
+                                twitter: true,
+                                icon: true,
+                                default_image: true,
+                                price: true,
+                            }
+                        }
+                    }
+                });
+            }
+
             if (!prizeTransactions) {
                 res.status(404).json({
                     msg: 'No Prize Transactions found for this user'
@@ -603,16 +865,7 @@ export class PrizeController {
 
             if (prizeTransactions != null || undefined) {
                 res.status(200).json({
-                    data: prizeTransactions.map((transaction: typeof prizeTransactions[0]) => {
-                        if (moment.utc().diff(moment.utc(transaction.end_time ?? "")) > 24 * 60 * 60 * 1000 && transaction.status === Status.READY) {
-                            return {
-                                ...transaction,
-                                status: Status.EXPIRED,
-                            }
-                        } else {
-                            return transaction;
-                        }
-                    }),
+                    data: prizeTransactions,
                     success: true
                 }); // Set status code to 200 for a successful response
             }
@@ -747,7 +1000,30 @@ export class PrizeController {
             const referenceMoment = moment.utc(referenceTime, "YYYY-MM-DD HH:mm");
 
             if (todayMoment.isAfter(referenceMoment)) {
-                return res.status(400).json({ msg: "Prize transaction has expired" });
+                const expirationResult = await finalizeUnpaidPrizeReservation(Number(prizeId), Status.EXPIRED);
+
+                if (expirationResult.status === 'MANUAL_REVIEW') {
+                    return res.status(202).json({
+                        success: false,
+                        msg: 'Expired prize transaction requires manual review.',
+                        correlationId
+                    });
+                }
+
+                if (expirationResult.status === 'RACE') {
+                    return res.status(409).json({
+                        success: false,
+                        msg: 'Prize transaction changed during expiration handling.',
+                        correlationId
+                    });
+                }
+
+                return res.status(410).json({
+                    success: false,
+                    msg: 'Prize transaction has expired.',
+                    status: Status.EXPIRED,
+                    correlationId
+                });
             }
 
             const tokenAmountInSmallestUnit = parseStoredTransferAmount(prizeTransaction.transfer_amount);

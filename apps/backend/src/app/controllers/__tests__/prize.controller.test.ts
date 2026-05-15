@@ -11,6 +11,7 @@ const mockPrisma = {
   },
   prizeTransactions: {
     create: jest.fn(),
+    findMany: jest.fn(),
     findFirst: jest.fn(),
     update: jest.fn(),
     updateMany: jest.fn()
@@ -58,6 +59,10 @@ const createRequest = () => ({
 
 const createDrawRequest = () => ({
   params: { user_id: '1' }
+} as any);
+
+const createFinalizeRequest = () => ({
+  params: { prize_id: '7' }
 } as any);
 
 const VALID_TOKEN_ADDRESS = '0x0000000000000000000000000000000000000001';
@@ -119,6 +124,7 @@ describe('PrizeController.sendToWallet', () => {
     mockPrisma.prize.update.mockResolvedValue({});
     mockPrisma.prize.updateMany.mockResolvedValue({ count: 1 });
     mockPrisma.prizeTransactions.create.mockResolvedValue({});
+    mockPrisma.prizeTransactions.findMany.mockResolvedValue([]);
     mockPrisma.prizeTransactions.findFirst.mockResolvedValue(readyPrizeTransaction());
     mockPrisma.prizeTransactions.updateMany.mockResolvedValue({ count: 1 });
     mockPrisma.prizeTransactions.update.mockResolvedValue({});
@@ -405,6 +411,181 @@ describe('PrizeController.sendToWallet', () => {
       msg: 'Prize transfer could not be started.',
       correlationId: expect.any(String)
     }));
+  });
+});
+
+describe('PrizeController unpaid prize reservation finalization', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    consoleErrorSpy = jest.spyOn(console, 'error').mockImplementation(() => undefined);
+    mockPrisma.$transaction.mockImplementation(async (callback: any) => callback(mockPrisma));
+    mockPrisma.prize.updateMany.mockResolvedValue({ count: 1 });
+    mockPrisma.prizeTransactions.findFirst.mockResolvedValue(readyPrizeTransaction());
+    mockPrisma.prizeTransactions.findMany
+      .mockResolvedValueOnce([
+        {
+          ...readyPrizeTransaction(),
+          end_time: new Date(Date.now() - 60 * 1000)
+        }
+      ])
+      .mockResolvedValueOnce([
+        {
+          ...readyPrizeTransaction(),
+          status: 'EXPIRED',
+          reservation_released_at: new Date(),
+          end_time: new Date(Date.now() - 60 * 1000)
+        }
+      ]);
+    mockPrisma.prizeTransactions.update.mockResolvedValue({});
+    mockPrisma.prizeTransactions.updateMany.mockResolvedValue({ count: 1 });
+  });
+
+  afterEach(() => {
+    consoleErrorSpy.mockRestore();
+  });
+
+  it('releases reserved amount once when a READY prize transaction expires', async () => {
+    const res = createResponse();
+
+    await PrizeController.getPrizeTransactions({ params: { user_id: '1' } } as any, res);
+
+    expect(mockPrisma.prizeTransactions.updateMany).toHaveBeenCalledWith({
+      where: {
+        id: 7,
+        status: { in: ['READY', 'EXPIRED'] },
+        tx_hash: null,
+        reservation_released_at: null
+      },
+      data: {
+        status: 'EXPIRED',
+        reservation_released_at: expect.any(Date)
+      }
+    });
+    expect(mockPrisma.prize.updateMany).toHaveBeenCalledWith({
+      where: {
+        id: 3,
+        reserved_amount: { gte: FIXED_TRANSFER_AMOUNT }
+      },
+      data: {
+        reserved_amount: {
+          decrement: FIXED_TRANSFER_AMOUNT
+        }
+      }
+    });
+    expect(sendTokensToWallet).not.toHaveBeenCalled();
+    expect(res.status).toHaveBeenCalledWith(200);
+  });
+
+  it('releases reserved amount once when a READY prize transaction is cancelled', async () => {
+    const res = createResponse();
+
+    await PrizeController.cancelPrizeTransaction(createFinalizeRequest(), res);
+
+    expect(mockPrisma.prizeTransactions.updateMany).toHaveBeenCalledWith({
+      where: {
+        id: 7,
+        status: { in: ['READY', 'CANCELLED'] },
+        tx_hash: null,
+        reservation_released_at: null
+      },
+      data: {
+        status: 'CANCELLED',
+        reservation_released_at: expect.any(Date)
+      }
+    });
+    expect(mockPrisma.prize.updateMany).toHaveBeenCalledWith({
+      where: {
+        id: 3,
+        reserved_amount: { gte: FIXED_TRANSFER_AMOUNT }
+      },
+      data: {
+        reserved_amount: {
+          decrement: FIXED_TRANSFER_AMOUNT
+        }
+      }
+    });
+    expect(res.status).toHaveBeenCalledWith(200);
+  });
+
+  it('releases reserved amount once when a tx_hash-free prize transaction is marked failed', async () => {
+    const res = createResponse();
+
+    await PrizeController.failPrizeTransaction(createFinalizeRequest(), res);
+
+    expect(mockPrisma.prizeTransactions.updateMany).toHaveBeenCalledWith({
+      where: {
+        id: 7,
+        status: { in: ['READY', 'FAILED'] },
+        tx_hash: null,
+        reservation_released_at: null
+      },
+      data: {
+        status: 'FAILED',
+        reservation_released_at: expect.any(Date)
+      }
+    });
+    expect(mockPrisma.prize.updateMany).toHaveBeenCalledWith({
+      where: {
+        id: 3,
+        reserved_amount: { gte: FIXED_TRANSFER_AMOUNT }
+      },
+      data: {
+        reserved_amount: {
+          decrement: FIXED_TRANSFER_AMOUNT
+        }
+      }
+    });
+    expect(res.status).toHaveBeenCalledWith(200);
+  });
+
+  it('does not auto-release tx_hash-present failed prize transactions', async () => {
+    mockPrisma.prizeTransactions.findFirst.mockResolvedValue({
+      ...readyPrizeTransaction(),
+      status: 'FAILED',
+      tx_hash: '0xBroadcastedTx'
+    });
+    const res = createResponse();
+
+    await PrizeController.failPrizeTransaction(createFinalizeRequest(), res);
+
+    expect(mockPrisma.prizeTransactions.update).toHaveBeenCalledWith({
+      where: { id: 7 },
+      data: { status: 'MANUAL_REVIEW' }
+    });
+    expect(mockPrisma.prizeTransactions.updateMany).not.toHaveBeenCalled();
+    expect(mockPrisma.prize.updateMany).not.toHaveBeenCalled();
+    expect(res.status).toHaveBeenCalledWith(202);
+  });
+
+  it('does not change reserved amount again when reservation was already released', async () => {
+    mockPrisma.prizeTransactions.findFirst.mockResolvedValue({
+      ...readyPrizeTransaction(),
+      status: 'CANCELLED',
+      reservation_released_at: new Date()
+    });
+    const res = createResponse();
+
+    await PrizeController.cancelPrizeTransaction(createFinalizeRequest(), res);
+
+    expect(mockPrisma.prizeTransactions.updateMany).not.toHaveBeenCalled();
+    expect(mockPrisma.prize.updateMany).not.toHaveBeenCalled();
+    expect(res.status).toHaveBeenCalledWith(200);
+  });
+
+  it('does not release reservations for RECEIVED prize transactions', async () => {
+    mockPrisma.prizeTransactions.findFirst.mockResolvedValue({
+      ...readyPrizeTransaction(),
+      status: 'RECEIVED',
+      tx_hash: '0xReceivedTx'
+    });
+    const res = createResponse();
+
+    await PrizeController.cancelPrizeTransaction(createFinalizeRequest(), res);
+
+    expect(mockPrisma.prizeTransactions.update).not.toHaveBeenCalled();
+    expect(mockPrisma.prizeTransactions.updateMany).not.toHaveBeenCalled();
+    expect(mockPrisma.prize.updateMany).not.toHaveBeenCalled();
+    expect(res.status).toHaveBeenCalledWith(409);
   });
 });
 
