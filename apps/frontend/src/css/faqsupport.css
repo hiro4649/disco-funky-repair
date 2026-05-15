@@ -1,0 +1,109 @@
+@import url("https://fonts.googleapis.com/css?family=Hind:300,400&display=swap");
+
+* {
+  box-sizing: border-box;
+}
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+body {
+  font-family: "Hind", sans-serif;
+  background: #fff;
+}
+.container {
+  margin: 0 auto;
+  height: 50vh;
+}
+
+.accordion .icon {
+  color: var(--color-main);
+}
+.accordion .accordion-item button[aria-expanded="true"] {
+  border-bottom: 1px solid var(--color-main);
+}
+.accordion button {
+  position: relative;
+  display: flex;
+  text-align: left;
+  width: 100%;
+  padding: 10px 0;
+  color: #FFFFFF;
+  font-size: 16px;
+  font-weight: 400;
+  border: none;
+  background: none;
+  outline: none;
+}
+.accordion button:hover,
+.accordion button:focus {
+  cursor: pointer;
+}
+.accordion button:hover::after,
+.accordion button:focus::after {
+  cursor: pointer;
+  color: var(--color-main);
+  border: 1px solid var(--color-main);
+}
+.accordion button .accordion-title {
+  padding-right: 22px;
+}
+.accordion button .icon {
+  display: inline-block;
+  position: absolute;
+  right: 0;
+  align-items: center;
+  top: 12px;
+  width: 22px;
+  height: 22px;
+  border: 1px solid;
+  border-radius: 22px;
+}
+.accordion button .icon::before {
+  display: block;
+  position: absolute;
+  content: "";
+  top: 9px;
+  left: 5px;
+  width: 10px;
+  height: 2px;
+  background: currentColor;
+}
+.accordion button .icon::after {
+  display: block;
+  position: absolute;
+  content: "";
+  top: 5px;
+  left: 9px;
+  width: 2px;
+  height: 10px;
+  background: currentColor;
+}
+.accordion button[aria-expanded="true"] {
+  color: var(--color-main);
+}
+.accordion button[aria-expanded="true"] .icon::after {
+  width: 0;
+}
+.accordion button[aria-expanded="true"] + .accordion-content {
+  opacity: 1;
+  max-height: 13em;
+  transition: all 200ms linear;
+  will-change: opacity, max-height;
+}
+.accordion .accordion-content {
+  opacity: 0;
+  max-height: 0;
+  overflow: visible;
+  transition: opacity 200ms linear, max-height 200ms linear;
+  will-change: opacity, max-height;
+}
+.accordion .accordion-content p {
+  font-size: 16px;
+  font-weight: 400;
+  margin: 1.6rem 0;
+  margin-top: 0.6rem;
+  color: #FFFFFF;
+  line-height: 20px;
+}

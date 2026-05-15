@@ -1,0 +1,34 @@
+.airdrop-bg-custom {
+    background: linear-gradient(160deg, #c00, #c00 60%, #fff333);
+}
+
+.gradient-bg-main {
+    background: linear-gradient(160deg,
+            var(--color-main) 0%,
+            var(--color-main) 60%,
+            #FFFF33 100%);
+    ;
+}
+
+.gradient-text {
+    background: linear-gradient(180deg,
+            #ffffff 0%,
+            #ffffff 50%,
+            var(--color-main) 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    /* -webkit-text-stroke: 2px #ffffff; */
+}
+
+.fadeInUpText {
+    opacity: 0;
+}
+
+.custom-text-gray {
+    --tw-text-opacity: 1;
+    color: rgb(255 255 255 / var(--tw-text-opacity, 1));
+}
+
+.custom-text-color {
+    color: rgb(255 255 51 / var(--tw-text-opacity, 1));
+}

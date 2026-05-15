@@ -1,0 +1,75 @@
+.custom-scroll::-webkit-scrollbar {
+    width: 1px;
+}
+
+.custom-scroll::-webkit-scrollbar-track {
+    border-radius: 10px;
+    background: #000;
+    box-shadow: inset 0 0 5px rgba(0, 0, 0, 0.2);
+}
+
+.custom-scroll::-webkit-scrollbar-thumb {
+    border-radius: 10px;
+    background: #000;
+}
+
+/* Mobile-friendly scrollbar */
+@media (max-width: 768px) {
+    .custom-scroll::-webkit-scrollbar {
+        width: 2px;
+    }
+
+    .custom-scroll::-webkit-scrollbar-thumb {
+        background: rgba(0, 0, 0, 0.3);
+    }
+}
+
+/* Hide scrollbar but keep functionality */
+.no-scrollbar {
+    -ms-overflow-style: none;
+    /* IE and Edge */
+    scrollbar-width: none;
+    /* Firefox */
+}
+
+.no-scrollbar::-webkit-scrollbar {
+    display: none;
+    /* Chrome, Safari and Opera */
+}
+
+/* Language selector specific styles */
+.language-selector-dropdown {
+    /* max-height: calc(70vh - 2rem); */
+    /* overflow-y: auto; */
+    width: 280px !important;
+    /* -webkit-overflow-scrolling: touch; */
+    /* Smooth scrolling on iOS */
+}
+
+/* Mobile-specific styles for language selector */
+@media (max-width: 640px) {
+    .language-selector-dropdown {
+        padding: 1rem;
+        /* max-height: 70vh; */
+        width: 260px !important;
+        right: -10rem !important;
+    }
+
+    /* .language-selector-dropdown ul {
+        max-height: calc(70vh - 2rem);
+    } */
+}
+
+html,
+body {
+    scrollbar-width: none;
+    /* Firefox */
+    -ms-overflow-style: none;
+    /* IE/Edge */
+}
+
+html::-webkit-scrollbar,
+body::-webkit-scrollbar {
+    display: none;
+    /* Chrome/Safari/Opera */
+}
