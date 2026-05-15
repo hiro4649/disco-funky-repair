@@ -3,6 +3,7 @@ import { NftController } from '../controllers/nft.controller';
 import uploadExcel from '../middlewares/excelMulter';
 import uploadNftImages from '../middlewares/imagesMulter';
 import uploadSingleImage from '../middlewares/singleImageMulter';
+import { AuthAdmin } from '../config/passport';
 import { asyncHandler } from './utils';
 
 const router = express.Router();
@@ -19,32 +20,32 @@ const nftMintStatusUpdateDisabled = (_req: Request, res: Response) =>
 // ==========================================
 
 // Step 1: Upload Excel metadata (saves to DB without IPFS)
-router.post('/admin/nft/upload/metadata', uploadExcel, asyncHandler(NftController.uploadExcel.bind(NftController)));
+router.post('/admin/nft/upload/metadata', AuthAdmin, uploadExcel, asyncHandler(NftController.uploadExcel.bind(NftController)));
 
 // Upload multiple images (batch)
-router.post('/admin/nft/upload/images', uploadNftImages, asyncHandler(NftController.uploadImages.bind(NftController)));
+router.post('/admin/nft/upload/images', AuthAdmin, uploadNftImages, asyncHandler(NftController.uploadImages.bind(NftController)));
 
 // Upload single image for a specific NFT
-router.post('/admin/nft/:nftId/upload-image', uploadSingleImage, asyncHandler(NftController.uploadSingleImage.bind(NftController)));
+router.post('/admin/nft/:nftId/upload-image', AuthAdmin, uploadSingleImage, asyncHandler(NftController.uploadSingleImage.bind(NftController)));
 
 // Step 2: Upload selected NFTs to IPFS (after admin verification)
-router.post('/admin/nft/upload-to-ipfs', (req, res, next) => {
+router.post('/admin/nft/upload-to-ipfs', AuthAdmin, (req, res, next) => {
   console.log('📩 Received POST /admin/nft/upload-to-ipfs');
   console.log('   Body:', JSON.stringify(req.body));
   next();
 }, asyncHandler(NftController.uploadToIPFS.bind(NftController)));
 
 // Refresh image matches (re-scan uploads directory)
-router.post('/admin/nft/refresh-matches', asyncHandler(NftController.refreshImageMatches.bind(NftController)));
+router.post('/admin/nft/refresh-matches', AuthAdmin, asyncHandler(NftController.refreshImageMatches.bind(NftController)));
 
 // Get list of uploaded images
-router.get('/admin/nft/uploaded-images', asyncHandler(NftController.getUploadedImages.bind(NftController)));
+router.get('/admin/nft/uploaded-images', AuthAdmin, asyncHandler(NftController.getUploadedImages.bind(NftController)));
 
 // Get all NFTs (admin view with all status fields)
-router.get('/admin/nfts', asyncHandler(NftController.getAllNfts.bind(NftController)));
+router.get('/admin/nfts', AuthAdmin, asyncHandler(NftController.getAllNfts.bind(NftController)));
 
 // Delete NFT (admin only)
-router.delete('/admin/nft/:id', asyncHandler(NftController.deleteNFT.bind(NftController)));
+router.delete('/admin/nft/:id', AuthAdmin, asyncHandler(NftController.deleteNFT.bind(NftController)));
 
 // ==========================================
 // Public NFT Routes (for users/minting)

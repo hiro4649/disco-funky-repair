@@ -12,6 +12,15 @@ import getDiscoNFTEVM from '../lib/getDiscoNFTEVM';
 
 const prisma = new PrismaClient();
 
+type AuthenticatedTrialNftUser = {
+    user_id?: number;
+};
+
+const getAuthenticatedTrialNftUserId = (req: Request): number | null => {
+    const userId = Number((req.user as AuthenticatedTrialNftUser | undefined)?.user_id);
+    return Number.isInteger(userId) && userId > 0 ? userId : null;
+};
+
 export class TrialNftController {
     /**
      * Check if user can claim trial NFT this month
@@ -53,15 +62,32 @@ export class TrialNftController {
      */
     static async claimTrialNFT(req: Request, res: Response) {
         try {
-            const userId = parseInt(req.params.userId);
+            const authenticatedUserId = getAuthenticatedTrialNftUserId(req);
+            if (!authenticatedUserId) {
+                return res.status(401).json({
+                    success: false,
+                    message: 'Unauthenticated'
+                });
+            }
+
+            const routeUserId = parseInt(req.params.userId);
             const { templateId } = req.body;
 
-            if (isNaN(userId)) {
+            if (isNaN(routeUserId)) {
                 return res.status(400).json({
                     success: false,
                     message: 'Invalid user ID'
                 });
             }
+
+            if (routeUserId !== authenticatedUserId) {
+                return res.status(403).json({
+                    success: false,
+                    message: 'Forbidden'
+                });
+            }
+
+            const userId = authenticatedUserId;
 
             const user = await prisma.user.findUnique({
                 where: { id: userId }
