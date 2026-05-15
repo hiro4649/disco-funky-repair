@@ -148,6 +148,7 @@ P0-13B closes the frontend `NEXT_PUBLIC_ADMIN_PRIVATE_KEY` / browser admin signe
 P0-13C closes the BSC production env fallback and API-key URL logging No-Go at code level.
 
 - `apps/backend/src/app/lib/validateEnvs.ts` now requires BSC production env for backend API URL, frontend URL, JWT, database, RPC, explorer URL/key, chain ID, FUNKY token, NFT contract, prize hot wallet, prize token allowlist, tier relayer, tier updater, and admin auth settings.
+- Explorer API key validation and runtime request builders now share the same key priority: `ETHERSCAN_API_KEY`, `BSCSCAN_API_KEY`, `ETHERSCAN_API_KEY1`, `ETHERSCAN_API_KEY2`, `BSCSCAN_API_KEY1`, `BSCSCAN_API_KEY2`.
 - Production backend startup now rejects missing values, localhost/example URLs, placeholder values, zero addresses, known test private keys, non-BSC `CHAIN_ID`, Ethereum mainnet explorer fallback, testnet explorer endpoints, and `NEXT_PUBLIC_*` secret exposure.
 - `apps/backend/src/app/config/env.ts` no longer provides a production fallback token contract address.
 - `apps/backend/src/app/lib/incrementalHoldingDateProcessor.ts` no longer falls back to `https://api.etherscan.io/api?` in production.

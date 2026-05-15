@@ -1185,6 +1185,7 @@ P2: frontend buildでlint無視設定
   - `docs/launch/P0_CLOSURE_REPORT.md`
 - Fix summary:
   - Backend production startup now fails fast when BSC RPC, explorer URL/API key, chain ID, JWT, DB, API URLs, prize hot wallet, prize token allowlist, tier relayer/updater, token/NFT contract, or admin auth env is missing.
+  - Production validation and runtime Explorer request builders share the same key priority: `ETHERSCAN_API_KEY`, `BSCSCAN_API_KEY`, `ETHERSCAN_API_KEY1`, `ETHERSCAN_API_KEY2`, `BSCSCAN_API_KEY1`, `BSCSCAN_API_KEY2`.
   - Production backend rejects localhost/example URLs, placeholder values, zero addresses, known local test keys, non-BSC chain ID, Ethereum mainnet explorer fallback, testnet explorer endpoints, and `NEXT_PUBLIC_*` secret exposure.
   - `ETHERSCAN_API_URL` is required in production and the old Ethereum mainnet `https://api.etherscan.io/api?` fallback is not used for holding/tier data.
   - Explorer request URLs containing query strings or API keys are no longer raw-logged in realtime holding updates or token balance lookup.
@@ -1197,6 +1198,7 @@ P2: frontend buildでlint無視設定
   - `NEXT_PUBLIC_*PRIVATE_KEY` exposure is rejected.
   - Development/test env still avoids production validation.
   - Missing prize transfer allowlist, tier updater address, explorer API key, and explorer URL fail safely.
+  - `BSCSCAN_API_KEY` works at runtime when `ETHERSCAN_API_KEY` is unset.
   - Ethereum-mainnet `ETHERSCAN_API_URL` and testnet explorer URL fail production validation.
   - Optional `NEXT_PUBLIC_ALCHEMY_RPC_URL` rejects localhost/example/dummy/empty/invalid/testnet values.
   - `NEXT_PUBLIC_ALCHEMY_RPC_URL` may be unset when `NEXT_PUBLIC_RPC_URL` is valid.

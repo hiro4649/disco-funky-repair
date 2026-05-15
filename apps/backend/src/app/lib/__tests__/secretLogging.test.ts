@@ -24,4 +24,11 @@ describe('explorer request logging safety', () => {
 
     expect(source).not.toContain("https://api.etherscan.io/api?");
   });
+
+  it('does not bypass the shared explorer API key helper in incremental holding updates', () => {
+    const source = readLibFile('incrementalHoldingDateProcessor.ts');
+
+    expect(source).not.toContain('process.env.ETHERSCAN_API_KEY');
+    expect(source).toContain("if (!ETHERSCAN_API_KEY)");
+  });
 });

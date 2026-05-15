@@ -1,4 +1,5 @@
 import dotenv from 'dotenv';
+import { EXPLORER_API_KEY_ENV_ORDER, getExplorerApiKeys } from '../config/explorerApiKeys';
 
 dotenv.config();
 
@@ -193,10 +194,10 @@ export const validateEnvs = (env: EnvMap = process.env): void => {
     if (error) invalid.push(error);
   }
 
-  if (isBlank(env.ETHERSCAN_API_KEY) && isBlank(env.BSCSCAN_API_KEY)) {
+  if (getExplorerApiKeys(env).length === 0) {
     missing.push('ETHERSCAN_API_KEY or BSCSCAN_API_KEY');
   } else {
-    for (const name of ['ETHERSCAN_API_KEY', 'BSCSCAN_API_KEY']) {
+    for (const name of EXPLORER_API_KEY_ENV_ORDER) {
       const value = env[name];
       if (value && looksPlaceholder(value)) {
         invalid.push(`${name} uses a placeholder value`);

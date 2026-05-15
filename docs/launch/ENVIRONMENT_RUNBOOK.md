@@ -18,7 +18,7 @@ Set these for `NODE_ENV=production` before starting `apps/backend`.
 | `QUICKNODE_HTTP_RPC_URL` | yes | BSC mainnet HTTP RPC URL. |
 | `QUICKNODE_WS_RPC_URL` | yes | BSC mainnet WebSocket RPC URL. |
 | `ETHERSCAN_API_URL` | yes | BSC explorer API. Use Etherscan V2 with `chainid=56` or a BSCScan mainnet endpoint. Do not use Ethereum mainnet `/api?` fallback. |
-| `ETHERSCAN_API_KEY` or `BSCSCAN_API_KEY` | yes | Explorer API key. Never log request URLs containing this key. |
+| `ETHERSCAN_API_KEY` or `BSCSCAN_API_KEY` | yes | Primary explorer API key. Never log request URLs containing this key. Optional rotation keys may use `ETHERSCAN_API_KEY1`, `ETHERSCAN_API_KEY2`, `BSCSCAN_API_KEY1`, and `BSCSCAN_API_KEY2`. |
 | `CHAIN_ID` | no | Must be `56` for BSC production. |
 | `TOKEN_CONTRACT_ADDRESS` | no | FUNKY token contract address. Must be non-zero EVM address. |
 | `NFT_CONTRACT_ADDRESS` | no | Official NFT contract address. Must be non-zero EVM address. |
@@ -28,6 +28,8 @@ Set these for `NODE_ENV=production` before starting `apps/backend`.
 | `TIER_UPDATER_CONTRACT_ADDRESS` | no | FunkyTierUpdater contract address. Must be non-zero EVM address. |
 
 `validateEnvs()` runs at backend startup. In production it fails fast if a required value is missing or unsafe. It does not log secret values.
+
+Explorer API key resolution uses this runtime order: `ETHERSCAN_API_KEY`, `BSCSCAN_API_KEY`, `ETHERSCAN_API_KEY1`, `ETHERSCAN_API_KEY2`, `BSCSCAN_API_KEY1`, `BSCSCAN_API_KEY2`. The same order is used by production validation and runtime request builders.
 
 ## Frontend Production Public Env
 

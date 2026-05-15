@@ -1,4 +1,5 @@
 import dotenv from 'dotenv';
+import { getPrimaryExplorerApiKey } from './explorerApiKeys';
 dotenv.config();
 
 const devOnlyFallback = (value: string): string | undefined =>
@@ -27,7 +28,7 @@ export const TOKEN_CONTRACT_ADDRESS = requiredConfigValue(
 );
 export const TIER_UPDATER_CONTRACT_ADDRESS = process.env.TIER_UPDATER_CONTRACT_ADDRESS;
 export const NFT_CONTRACT_ADDRESS = process.env.NFT_CONTRACT_ADDRESS;
-export const ETHERSCAN_API_KEY = process.env.ETHERSCAN_API_KEY || process.env.BSCSCAN_API_KEY;
+export const ETHERSCAN_API_KEY = getPrimaryExplorerApiKey();
 export const ETHERSCAN_API_URL = process.env.ETHERSCAN_API_URL;
 
 // QuickNode RPC configuration
