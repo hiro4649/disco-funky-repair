@@ -4,15 +4,15 @@
 
 2026-05-15 JST
 
-## 対象commit
+## 確認したcommit
 
-`a35674c8bd11ed7fbfaefcfbc1b3c7abe8089d13` (`origin/main`, `fix: require admin auth for referral admin routes (#22)`)
+`69ca470c3131afd63a6174c2de3804759c2d39e9` (`origin/main`, `fix: require admin auth for prize admin routes (#29)`)
 
 ## 目的
 
-P0-12B と P0-12C 反映後の `main` 最新状態で、BSC ローンチ前の API 認可 No-Go が残っているかを再監査した。
+P0-12B から P0-12J までの反映後、BSCローンチ前 No-Go として残っていた API 認可不足が main 最新で閉じているかを静的再監査した。
 
-このPRは監査doc更新のみ。`apps/backend`, `apps/frontend`, `contracts`, `schema.prisma`, lockfile は変更しない。
+このPRは監査docs更新のみ。`apps/backend`, `apps/frontend`, `contracts`, `schema.prisma`, lockfile は変更しない。
 
 ## 確認したファイル
 
@@ -25,137 +25,128 @@ P0-12B と P0-12C 反映後の `main` 最新状態で、BSC ローンチ前の A
 - `apps/backend/src/app/controllers/*.ts`
 - `apps/backend/src/app/middlewares/*.ts`
 - `apps/backend/src/app/config/passport.ts`
-- `apps/backend/src/app/routes/utils.ts`
 
-## 認証middlewareの前提
+## 監査結論
 
-| middleware | 根拠 | 判定 |
+API認可不足No-Goは、静的コード上は production No-Go から staging確認待ちへ降格可能。
+
+根拠:
+- 未認証で資産系DB更新に到達できる公開routeは、今回の確認範囲では見つからなかった。
+- 一般ユーザーJWTで admin mutation に到達できるrouteは、今回の確認範囲では見つからなかった。
+- body `adminKey` だけで管理処理に到達するrouteは、今回の確認範囲では見つからなかった。
+- Prize / Illustration / Daily point / ticket / lottery / referral / Trial NFT claim の user-owned mutation は、`req.user.user_id` またはDB上の本人walletを基準にしている。
+- NFT / Trial NFT template upload route は upload middleware より前に `AuthAdmin` が置かれている。
+- Crash game、user-manage、direct NFT mint status update、direct illustration assignment は 410 またはMVP外として停止済み。
+
+ただし、`apps/backend/src/app/config/passport.ts:84` に admin token / Authorization header をログ出力する `console.log('token', token, req.headers.authorization)` が残っている。これは認可バイパスではないが、admin JWTがログへ漏れる可能性があるため production No-Go として別PRで修正が必要。
+
+## 閉じたAPI認可P0
+
+| 対象 | 現在の判定 | 根拠 |
 | --- | --- | --- |
-| `Authenticate` | `apps/backend/src/app/config/passport.ts` | user JWTを検証し、DB user存在確認とJWT address / DB wallet address照合後に `req.user.user_id` と `req.user.address` を設定する。 |
-| `AuthAdmin` | `apps/backend/src/app/config/passport.ts` | admin JWTを検証し、DB admin存在確認後にadmin処理へ進める。 |
+| wallet署名ログイン | CLOSED | `apps/backend/src/app/controllers/auth.controller.ts:85-124`, `184-274` でnonce発行、署名検証、nonce一回利用後にJWT発行。 |
+| referral通常API | CLOSED | `apps/backend/src/app/routes/referral.routes.ts:38`, `120` は `Authenticate`。controller内で `req.user.user_id` とDB wallet照合後に `prisma.user.update` / `referralRewards.create` へ進む。 |
+| referral admin | CLOSED | `apps/backend/src/app/routes/referral.routes.ts:288`, `330` は `AuthAdmin`。snapshot / reward distribution はadmin JWTなしで到達しない。 |
+| Prize user mutation | CLOSED | `apps/backend/src/app/routes/prize.routes.ts:19-22` は `Authenticate`。`apps/backend/src/app/controllers/prize.controller.ts:574-580`, `704-732`, `820-833`, `917-941` で `req.user.user_id` と本人所有条件を使用。 |
+| Prize admin mutation | CLOSED | `apps/backend/src/app/routes/prize.routes.ts:9-15` は list/detail/create/update/delete/cancel/fail すべて `AuthAdmin`。 |
+| Illustration / Daily point mutation | CLOSED | `apps/backend/src/app/routes/illustration.routes.ts:28`, `apps/backend/src/app/routes/user.routes.ts:20` は `Authenticate`。`illustration.controller.ts:327-340`, `users.controller.ts:315-323` で本人ID一致を確認。 |
+| ticket code claim | CLOSED | `apps/backend/src/app/routes/ticketCodeRoutes.ts:19` は `Authenticate`。`ticketCodeController.ts:129-248` で `req.user.user_id` からDB userを取得し、body wallet不一致は403。 |
+| lottery user-owned mutation | CLOSED | `apps/backend/src/app/routes/lottery.routes.ts:20` は `Authenticate`。`lotter.controller.ts:373-388` でbody `userId` が本人以外なら403。 |
+| all-user ticket distribution | CLOSED | `apps/backend/src/app/routes/lottery.routes.ts:19` は `AuthAdmin`。 |
+| ticket distribution admin | CLOSED | `apps/backend/src/app/routes/ticket-distribution.routes.ts:9-13` は create/list/detail/update/delete すべて `AuthAdmin`。 |
+| NFT admin upload/delete/update | CLOSED | `apps/backend/src/app/routes/nft.routes.ts:23-48` は upload / IPFS / refresh / delete / admin read すべて `AuthAdmin`。upload middleware は `AuthAdmin` の後。 |
+| direct NFT mint status update | CLOSED | `apps/backend/src/app/routes/nft.routes.ts:64` は固定 410。 |
+| Trial NFT claim/admin/template | CLOSED | `apps/backend/src/app/routes/trialNft.routes.ts:15` は `Authenticate`、`trialNft.controller.ts:63-88` でroute userIdと `req.user.user_id` を照合。`trialNft.routes.ts:28-34` と `trialNftTemplate.routes.ts:24-36` は admin/template mutation が `AuthAdmin`。template upload middleware は `AuthAdmin` の後。 |
+| POST `/user/illustration` | CLOSED | `apps/backend/src/app/routes/illustration.routes.ts:27` は固定 410。 |
+| Crash game / user-manage MVP外機能 | CLOSED | `apps/backend/src/app/routes/crashGame.routes.ts:12`, `userManage.routes.ts:12-17` は固定 410。 |
+| governance / fee / DEX / pair write | CLOSED | `apps/backend/src/app/controllers/dexFeeController.ts:49`, `54`, `115` は固定 410 `MANUAL_REVIEW_REQUIRED`。 |
 
-## P0-12B / P0-12Cで閉じたP0
+## まだ残るAPI認可P0
 
-| route | 現在の判定 | 根拠 |
-| --- | --- | --- |
-| `GET /referral/referral-code/:walletAddress` | P0-12Bで完了。未認証ではDB更新に到達しない。本人wallet以外は403。 | `apps/backend/src/app/routes/referral.routes.ts:38` は `Authenticate` 付き。`req.user.user_id` からDB userを取得し、DB walletとURL walletを照合してから `prisma.user.update` する。 |
-| `POST /referral/track-referral` | P0-12Bで完了。未認証ではDB更新に到達しない。body `walletAddress` / `userId` を本人判定に使わない。 | `apps/backend/src/app/routes/referral.routes.ts:120` は `Authenticate` 付き。transaction内で `req.user.user_id` のDB userを正にして `user.update` / `referralRewards.create` する。 |
-| `POST /referral/admin/run-snapshot` | P0-12Cで完了。body `adminKey` 依存なし。admin JWTなしではsnapshot更新に到達しない。 | `apps/backend/src/app/routes/referral.routes.ts:288` は `AuthAdmin` 付き。 |
-| `POST /referral/admin/distribute-rewards` | P0-12Cで完了。body `adminKey` 依存なし。admin JWTなしではFanPoint / PointHistory / referralRewards更新に到達しない。 | `apps/backend/src/app/routes/referral.routes.ts:330` は `AuthAdmin` 付き。 |
+今回の静的監査では、API認可不足として残るP0 routeは見つからなかった。
 
-## 安全またはP0修正済みと判断したroute
+注意:
+- これは main 最新の静的監査結果。stagingで cookie/header、CORS、reverse proxy、admin UI から同じ認可挙動になることは未確認。
+- 本番PM2/nginx/deployが `apps/backend` の main 最新を参照することは、人間がサーバ上で確認する必要がある。
 
-| route / group | 判定 | 根拠 |
-| --- | --- | --- |
-| Wallet署名ログイン | P0-11で完了。wallet addressだけでJWT発行しない。 | `apps/backend/src/app/controllers/auth.controller.ts:85` nonce発行、`:184` 署名検証、nonce一回使用化後にJWT発行。 |
-| Crash game / user-manage | P0-01で完了。MVP外として410固定。 | `apps/backend/src/app/routes/crashGame.routes.ts:12`, `apps/backend/src/app/routes/userManage.routes.ts:12-17` |
-| `PATCH /nft/:id` | P0-02で完了。直接mint status更新routeは410固定。 | `apps/backend/src/app/routes/nft.routes.ts:63` |
-| `POST /user/illustration` | P0-04で完了。任意Illustration追加routeは410固定。 | `apps/backend/src/app/routes/illustration.routes.ts:27` |
-| ticket code admin generate/list | admin認可あり。 | `apps/backend/src/app/routes/ticketCodeRoutes.ts:15-16` |
-| ticket distribution create/update/delete | admin認可あり。 | `apps/backend/src/app/routes/ticket-distribution.routes.ts:9,12,13` |
-| illustration admin create/update/delete | admin認可あり。 | `apps/backend/src/app/routes/illustration.routes.ts:18,20,21` |
-| news admin create/update/delete | admin認可あり。 | `apps/backend/src/app/routes/news.routes.ts:9,12,13` |
-| monitoring daily batch | admin認可あり。 | `apps/backend/src/app/routes/monitoring.routes.ts:54` |
-| backend DEX / fee write | P0-10Cで直接txとDB更新済み扱いを停止。410固定。 | `apps/backend/src/app/routes/dexFee.routes.ts:9-14`, `apps/backend/src/app/controllers/dexFeeController.ts:49,54,115` |
-| prize send | 大きな二重送金P0はP0-06/07/10Aで閉じている。本人transaction条件もある。 | `apps/backend/src/app/controllers/prize.controller.ts:880` 以降で `id` とログインwallet由来userに紐づくPrizeTransactionだけを送金対象にする。ただし `req.user` ではなくcookie decode依存が残るためP1。 |
+## staging確認待ち
 
-## 残っているP0 route
-
-| 優先 | route | 根拠ファイル | P0理由 | 最小修正方針 |
-| --- | --- | --- | --- | --- |
-| P0-12D-1 | `POST /airdrop/prize/draw/:user_id` | `apps/backend/src/app/routes/prize.routes.ts:19`, `apps/backend/src/app/controllers/prize.controller.ts:561-645` | `Authenticate` はあるが、controllerがURL `user_id` を使ってticket decrement、PrizeTransaction作成、Prize在庫予約を行う。`req.user.user_id` との一致確認がないため、一般ユーザーJWTで他人userのticket/当選状態を操作できる可能性がある。 | URL `user_id` を本人判定に使わず `req.user.user_id` 固定にする。必要ならURL user_idは廃止または一致確認。 |
-| P0-12D-2 | `GET /airdrop/prize/transactions/:user_id` | `apps/backend/src/app/routes/prize.routes.ts:20`, `apps/backend/src/app/controllers/prize.controller.ts:791-872` | `Authenticate` はあるが、URL `user_id` のPrizeTransactionを取得し、expired READYを `finalizeUnpaidPrizeReservation(..., EXPIRED)` で状態変更/予約解除する副作用がある。本人確認なしで他人の未払いPrize予約をEXPIRED化できる可能性がある。 | `req.user.user_id` 固定にし、read endpointの副作用を分離するか、本人一致後だけfinalizeを実行。 |
-| P0-12D-3 | `POST /user/:userId/draw-illustration` | `apps/backend/src/app/routes/illustration.routes.ts:28`, `apps/backend/src/app/controllers/illustration.controller.ts:299-430` | `Authenticate` はあるが、URL `userId` を使ってticket decrement、FanPoint、PointHistory、IllustrationHistory、TrialNFT bonus更新へ進む。`req.user.user_id` との一致確認がない。 | `req.user.user_id` 固定にし、URL `userId` を廃止または一致必須にする。 |
-| P0-12D-4 | `POST /user/daily/point/:user_id` | `apps/backend/src/app/routes/user.routes.ts:20`, `apps/backend/src/app/controllers/users.controller.ts:289-352` | `Authenticate` はあるが、URL `user_id` を使って `pointHistory.create` と `user.fan_points increment` を行う。本人確認なしで他人にdaily pointを付与できる可能性がある。 | `req.user.user_id` 固定にし、URL `user_id` を廃止または一致必須にする。 |
-| P0-12D-5 | `POST /lottery/claim/ticket/to/user` | `apps/backend/src/app/routes/lottery.routes.ts:20`, `apps/backend/src/app/controllers/lotter.controller.ts:330-364` | 未認証。body `userId` を信じて `claimTickets` を0にし、`tickets` をincrementする。 | `Authenticate` + `req.user.user_id` 固定。body `userId` は信じない。 |
-| P0-12D-6 | `POST /alluser/distribute/ticket` | `apps/backend/src/app/routes/lottery.routes.ts:19`, `apps/backend/src/app/controllers/lotter.controller.ts:238-307` | 未認証で全ユーザーのLotteryTicket作成/更新/削除に到達する。cron/admin相当の資産系処理。 | `AuthAdmin` またはinternal job専用化。MVP外なら410。 |
-| P0-12D-7 | `POST /ticket-code/claim` | `apps/backend/src/app/routes/ticketCodeRoutes.ts:19`, `apps/backend/src/app/controllers/ticketCodeController.ts:129-223` | P0-05で二重claimは軽減済みだが、未認証でbody `wallet_address` を信じて該当userのticketsをincrementする。 | `Authenticate` + `req.user.address` / `req.user.user_id` 固定。body `wallet_address` は信じない。 |
-| P0-12D-8 | NFT admin upload/delete/refresh/IPFS routes | `apps/backend/src/app/routes/nft.routes.ts:22,25,28,31,38,47`, `apps/backend/src/app/controllers/nft.controller.ts:132,232,303,350,515,903` | `/admin/nft/*` だが `AuthAdmin` なしでExcel upload、image upload、IPFS upload、NFT DB更新、NFT削除に到達する。公式NFT metadata/管理情報を未認証で変更できる可能性。 | 全admin NFT mutation routeに `AuthAdmin`。MVP外のIPFS/upload処理は410も検討。 |
-| P0-12D-9 | `DELETE /admin/airdrop/prize/:prize_id` | `apps/backend/src/app/routes/prize.routes.ts:11`, `apps/backend/src/app/controllers/prize.controller.ts:541-548` | `/admin` routeだが `AuthAdmin` なしで `prisma.prize.delete` に到達する。Prizeカタログ/当選対象を未認証で削除できる。 | `AuthAdmin` 必須。可能なら物理削除ではなくinactive化。 |
-| P0-12D-10 | `POST /trial-nfts/claim/:userId` | `apps/backend/src/app/routes/trialNft.routes.ts:14`, `apps/backend/src/app/controllers/trialNft.controller.ts:56-84`, `apps/backend/src/app/lib/trialNftService.ts:122-203` | 未認証でURL `userId` を使ってTrialNFT作成、template mintCount increment、PointHistory作成、FanPoint incrementへ進む。 | MVPで使わないなら410。使うなら `Authenticate` + `req.user.user_id` 固定 + transaction/unique制約確認。 |
-| P0-12D-11 | `POST /trial-nfts/expire` | `apps/backend/src/app/routes/trialNft.routes.ts:30`, `apps/backend/src/app/lib/trialNftService.ts:222-244` | 未認証で期限切れTrialNFTの状態更新に到達するadmin/cron相当処理。 | `AuthAdmin` またはinternal job専用化。 |
-| P0-12D-12 | Trial NFT template create/update/delete | `apps/backend/src/app/routes/trialNftTemplate.routes.ts:29,32,35`, `apps/backend/src/app/routes/routes.ts:44-45`, `apps/backend/src/app/controllers/trialNftTemplate.controller.ts:17,201,289` | 同一routerが `/trial-nft-templates` と `/admin/trial-nft-templates` にmountされ、create/update/deleteに `AuthAdmin` がない。未認証でtemplate作成、IPFS upload、更新、削除に到達する。 | public routerは `/available` のみに限定。admin mount側だけ `AuthAdmin` 付きmutationを許可。 |
-
-## P1へ回せるroute / 残リスク
-
-| route / group | 分類 | 理由 |
-| --- | --- | --- |
-| `GET /referral/referral-stats/:walletAddress`, `/referral/referral-rewards/:walletAddress`, `/referral/debug/referral-status/:walletAddress` | P1 privacy | P0-12B/Cでmutation系は閉じた。残りはwallet指定readで、個人/紹介情報漏えいの可能性。 |
-| `GET /transaction-history/:walletAddress`, `/holding-date/explain/:walletAddress`, `/fifo-snapshot/:walletAddress`, `/transaction/:txHash` | P1 privacy | 未認証でwallet/txHash指定の取引分類、FIFO、holding情報を取得できる。DB更新は確認できない。 |
-| `GET /user/point/history/:user_id`, `/user/daily/point/:user_id`, `/user/holding/*/:user_id`, `POST /user/info` | P1 privacy / owner-check debt | read系または情報取得。`Authenticate` 付きrouteでもbody/URL user idを使う箇所があるため、本人固定に寄せるべき。 |
-| Admin read routes (`/admin/user/all`, `/admin/user/transaction/:wallet_address`, `/admin/nfts`, `/admin/nft/uploaded-images`, `/admin/ticket-distribution*`, `/admin/news`, `/admin/illustration`, `/admin/airdrop/prize*`) | P1 admin data exposure | 直接DB更新はないが、管理画面情報が未認証で読める。P0 mutation修正後に `AuthAdmin` へ寄せる。 |
-| Lottery read routes (`/lottery/disco/balance/:user_id`, `/lottery/ticket/:user_id`, `/lottery/ticket/date/:user_id`, `/lottery/ticket/count/:user_id`) | P1 privacy | 未認証で他人userのticket/token関連情報を読める。`count` は現状コメントアウト済みでDB更新は確認できない。 |
-| `POST /airdrop/prize/send/:prize_id` | P1 technical debt | `Authenticate` 後にcookie `userAuth` を `jwtDecode` してuserを引く。該当PrizeTransactionはuserIdで絞るが、`req.user.user_id` に統一すべき。 |
-| `POST /prize/transaction/:user_id/withDraw/:prize_id` | UNKNOWN/P1 | `Authenticate` はあるが、route param名とcontroller destructuringが不一致で実処理は400になりやすい。資産更新は確認できないが、不要なら410または削除候補。 |
-| Monitoring read routes | P1 ops exposure | `/monitoring/realtime-status`, `/quicknode-status`, `/service-health`, `/healthcheck` は未認証read。公開healthcheckに必要なもの以外は情報量を下げる。 |
-
-## UNKNOWN
-
-| 対象 | UNKNOWN理由 |
+| 対象 | 確認内容 |
 | --- | --- |
-| 本番PM2/nginx/deployでこの `origin/main` が実際に参照されるか | `docs/launch/RUNTIME_SOURCE_OF_TRUTH.md` では人間のサーバ確認が必要。本監査はrepo上のmain静的解析。 |
-| staging/testnetでadmin JWT cookie/headerが全画面から正しく送られるか | 本監査ではローカル起動/API結合テスト未実行。 |
-| Trial NFTをBSC MVPで使うか | MVP外なら410固定が最短。使うなら認可だけでなくtransaction/unique/idempotencyも必要。 |
+| admin JWT / cookie | Prize、NFT、Trial NFT、ticket distribution、referral admin、monitoring batch が admin JWT だけで通り、未認証・一般ユーザーJWTでは拒否されること。 |
+| user JWT / cookie | Prize draw/send/history、Illustration draw/history、Daily point、ticket claim、lottery claim、Trial NFT claim が本人JWTだけで通り、他人userId/wallet指定では403になること。 |
+| upload middleware order | NFT upload、Trial NFT template uploadで、未認証・一般ユーザーJWTの場合にファイル保存やDB更新へ進まないこと。 |
+| MVP外 route | Crash game、user-manage、`PATCH /nft/:id`、`POST /user/illustration` が本番相当環境でも410のままであること。 |
+| deploy source | `docs/launch/RUNTIME_SOURCE_OF_TRUTH.md` のとおり、var-www / Rave_bk 由来の古いソースがPM2/nginxから参照されないこと。 |
 
-## 次に作るべき小PR案
+## P1へ回せるread/privacy系
 
-優先度順に3つ以内へ絞る。
+| route / group | 理由 |
+| --- | --- |
+| `GET /admin/user/all`, `GET /admin/user/transaction/:wallet_address`, `GET /admin/seting/tokenbalance` | DB更新はないが、admin相当データが未認証で読める。P1で `AuthAdmin` 化推奨。 |
+| `GET /admin/illustration`, `GET /admin/news` | admin画面向けreadが未認証。DB更新はないためP1。 |
+| `GET /user/all`, `POST /user/info` | user情報read。`POST /user/info` は `Authenticate` ありだがbody `user_id` で他人情報を読める。P1 owner-check debt。 |
+| `GET /user/holding/average/:user_id`, `GET /user/holding/history/:user_id` | `Authenticate` はあるがroute `user_id` を本人照合していないread。P1 privacy。 |
+| `GET /referral/referral-stats/:walletAddress`, `GET /referral/referral-rewards/:walletAddress`, `GET /referral/debug/referral-status/:walletAddress` | wallet指定read。referral mutationは閉じているが、情報露出はP1。 |
+| `GET /transaction-history/:walletAddress`, `GET /holding-date/explain/:walletAddress`, `GET /fifo-snapshot/:walletAddress`, `GET /transaction/:txHash` | wallet/txHash指定read。DB更新は確認できないが、取引分類・FIFO・holding情報の露出はP1。 |
+| `GET /trial-nfts/can-claim/:userId`, `GET /trial-nfts/user/:userId`, `GET /trial-nfts/total/:userId` | Trial NFT user情報read。claim mutationは本人照合済みだが、readはP1。 |
+| `GET /nfts/holder/:holderId` | holderId指定read。mint status updateは410だが、collection readはP1 privacy。 |
+| monitoring read routes | `/monitoring/realtime-status`, `/quicknode-status`, `/service-health`, `/healthcheck` はread/ops情報。公開に必要なもの以外はP1で情報量削減。 |
 
-1. `P0-12D-PR1 user-owned asset mutation auth`
-   - 対象: `POST /airdrop/prize/draw/:user_id`, `GET /airdrop/prize/transactions/:user_id`, `POST /user/:userId/draw-illustration`, `POST /user/daily/point/:user_id`
-   - 方針: `req.user.user_id` を唯一の本人IDにする。URL/body userIdは廃止または一致必須。Prize transaction readの副作用は本人確認後だけ実行。
+## production No-Goとして残すべき項目
 
-2. `P0-12D-PR2 ticket claim and lottery admin auth`
-   - 対象: `POST /ticket-code/claim`, `POST /lottery/claim/ticket/to/user`, `POST /alluser/distribute/ticket`
-   - 方針: ticket claimは `Authenticate` + `req.user` 固定。all-user distributionは `AuthAdmin` / internal job / 410 のどれかに固定。
+| 項目 | 判定 | 根拠 / 理由 |
+| --- | --- | --- |
+| `AuthAdmin` のadmin tokenログ出力 | NO-GO | `apps/backend/src/app/config/passport.ts:84` が `console.log('token', token, req.headers.authorization)` で admin cookie token / Authorization header をログに出す可能性がある。認可バイパスではないが、admin JWT漏洩は暗号資産サービス本番ではNo-Go。 |
+| staging未確認 | NO-GO until verified | API認可不足は静的には閉じているが、stagingでcookie/header、admin UI、reverse proxy、PM2/nginx参照先を確認するまでproduction readyとは書けない。 |
+| 本番deploy元未確認 | NO-GO until verified | main最新が実際の本番PM2/nginx/deploy元でなければ、P0修正が反映されない。 |
 
-3. `P0-12D-PR3 admin NFT and Trial NFT gate`
-   - 対象: NFT admin upload/delete/refresh/IPFS、Trial NFT claim/expire、Trial NFT template create/update/delete、Prize admin delete
-   - 方針: 本番MVPで使わないTrial NFT系は410推奨。使うadmin NFT/Prize delete系は `AuthAdmin` 必須化。Trial NFT template routerはpublic/adminを分離。
+## 次に作るべきPR
 
-## 本番前No-Go条件
+API認可不足P0としての追加PRは不要。
 
-- 上記「残っているP0 route」が1つでも残る場合はBSC production launch不可。
-- user資産/ticket/FanPoint/Prize/NFT/TrialNFT状態をURL/body `user_id`, `userId`, `wallet_address`, `walletAddress`, `holderId` で変更できる場合はNo-Go。
-- `/admin/*` またはcron/internal相当のDB更新、file upload、IPFS upload、ticket配布、FanPoint配布、Prize/NFT管理が `AuthAdmin` なしで実行できる場合はNo-Go。
+次に作るべき小PR候補は最大3件:
+
+1. `P0-13 Remove sensitive auth token logging`
+   - 対象: `apps/backend/src/app/config/passport.ts`
+   - 内容: `AuthAdmin` のadmin token / Authorization headerログ出力を削除し、JWT検証失敗ログも秘密値を含まない固定文言へ寄せる。
+2. `P1-01 Protect admin/read privacy routes`
+   - 対象: admin read、user read、transaction/referral/holding read
+   - 内容: DB更新を伴わないread/privacy routeを `AuthAdmin` または本人JWTへ寄せる。
+3. `STAGING-01 API authorization smoke test`
+   - 対象: staging環境
+   - 内容: 未認証、一般ユーザーJWT、admin JWT、他人userId/wallet指定のE2E smoke testを実行し、API認可No-Goを正式にstaging確認済みにする。
 
 ## 実行したコマンド
 
 ```powershell
 Test-Path "C:\Users\HIRO-001\Documents\IRIS_SPEC_AUTHORITY.md"
-git fetch origin
-git log --oneline -5 origin/main
-git switch -c codex/p0-12d-api-auth-reaudit origin/main
-Get-Content -Raw docs/launch/API_AUTHORIZATION_AUDIT.md
-Get-Content -Raw docs/launch/P0_CLOSURE_REPORT.md
-Get-Content -Raw docs/security/BSC_LAUNCH_P0_FIXES.md
+git fetch origin --prune
+git switch -c codex/p0-12k-api-auth-final-audit origin/main
+git rev-parse HEAD
+git log --oneline -10 origin/main
+Get-Content -Path AGENTS.md
+Get-Content -Path docs\launch\API_AUTHORIZATION_AUDIT.md
 rg -n "router\.(get|post|patch|put|delete)|Router\.use\(" apps/backend/src/app/routes
-rg -n "AuthAdmin|Authenticate|req\.user|req\.params\.(user_id|userId|walletAddress|wallet_address|holderId)|req\.body\.(user_id|userId|wallet_address|walletAddress|holderId)|status\(410\)|FEATURE_DISABLED|MANUAL_REVIEW_REQUIRED" apps/backend/src/app/routes apps/backend/src/app/controllers apps/backend/src/app/middlewares apps/backend/src/app/config/passport.ts
-Get-Content -Raw apps/backend/src/app/routes/prize.routes.ts
-Get-Content -Raw apps/backend/src/app/routes/lottery.routes.ts
-Get-Content -Raw apps/backend/src/app/routes/nft.routes.ts
-Get-Content -Raw apps/backend/src/app/routes/trialNftTemplate.routes.ts
-Get-Content -Raw apps/backend/src/app/routes/illustration.routes.ts
-Get-Content -Raw apps/backend/src/app/routes/ticketCodeRoutes.ts
-Get-Content -Raw apps/backend/src/app/routes/trialNft.routes.ts
-Get-Content -Raw apps/backend/src/app/routes/user.routes.ts
-Get-Content -Raw apps/backend/src/app/routes/referral.routes.ts
-Get-Content -Raw apps/backend/src/app/routes/transactionHistory.routes.ts
-Get-Content -Raw apps/backend/src/app/routes/ticket-distribution.routes.ts
-Get-Content -Raw apps/backend/src/app/routes/routes.ts
-Select-String -Path apps/backend/src/app/controllers/prize.controller.ts -Pattern "static async drawPrize|static async getPrizeTransactions|static async sendToWallet|static async withDrawPrizeToken|static async deletePrize|user_id|req.user|finalizeUnpaid" -Context 3,6
-Select-String -Path apps/backend/src/app/controllers/illustration.controller.ts -Pattern "drawIllustration|getUserIllustrations|req.params.userId|req.user|processDraw" -Context 3,6
-Select-String -Path apps/backend/src/app/controllers/ticketCodeController.ts -Pattern "claimTicketCode|wallet_address|req.user|generateGlobalTicketCode" -Context 3,6
-Select-String -Path apps/backend/src/app/controllers/lotter.controller.ts -Pattern "distributeTicketToAllUser|lotteryClaimTicketToUser|checkAndUpdateLotteryTicket|req.params.user_id|req.body.userId|tickets|claimTickets" -Context 3,6
-Select-String -Path apps/backend/src/app/lib/trialNftService.ts -Pattern "export async function claimTrialNFT|prisma\.trialNFT|pointHistory|fan_points|mintCount|update|create" -Context 2,5
-Select-String -Path apps/backend/src/app/controllers/nft.controller.ts -Pattern "uploadExcel|uploadImages|uploadSingleImage|uploadToIPFS|refreshImageMatches|deleteNFT|prisma\.nft|fs\." -Context 2,5
-Select-String -Path apps/backend/src/app/controllers/trialNftTemplate.controller.ts -Pattern "static async create|static async update|static async delete|prisma\.trialNftTemplate|upload" -Context 2,6
-Select-String -Path apps/backend/src/app/controllers/setTicketDistribute.controller.ts -Pattern "static async create|static async update|static async delete|prisma" -Context 2,5
+rg -n "AuthAdmin|Authenticate|adminKey|req\.user|req\.params\.(user_id|userId|walletAddress|wallet_address|holderId|prize_id)|req\.body\.(user_id|userId|wallet_address|walletAddress|holderId|adminKey)|FEATURE_DISABLED|status\(410\)" apps/backend/src/app/routes apps/backend/src/app/controllers apps/backend/src/app/middlewares apps/backend/src/app/config/passport.ts
+Select-String -Path apps/backend/src/app/controllers/prize.controller.ts -Pattern "const getAuthenticatedPrizeUserId|static async drawPrize|static async getPrizeTransactions|static async sendToWallet|static async withDrawPrizeToken|static async deletePrize|static async createNewPrize|static async editPrize" -Context 4,28
+Select-String -Path apps/backend/src/app/controllers/illustration.controller.ts -Pattern "getAuthenticatedIllustrationUserId|static async getUserIllustrations|static async drawIllustration|static async create|static async update|static async delete" -Context 4,24
+Select-String -Path apps/backend/src/app/controllers/users.controller.ts -Pattern "getAuthenticatedUserId|static async getAverageHoldingDate|static async getHoldDateHistory|static async getUserPointHistory|static async getUserDailyPointBonus|static async setUserDailyPointBonus|static async getUserInfo|static async getTokenBalance|static async getAllUserData|static async getUserPrizeTransaction" -Context 4,24
+Select-String -Path apps/backend/src/app/controllers/ticketCodeController.ts -Pattern "export const claimTicketCode|wallet_address|authenticatedUserId|authenticatedWalletAddress|updateMany|ticketCode.update|user.update|generateGlobalTicketCode|getAllTicketCodes" -Context 3,18
+Select-String -Path apps/backend/src/app/controllers/trialNft.controller.ts -Pattern "getAuthenticatedTrialNftUserId|checkCanClaim|claimTrialNFT|getUserTrialNFTs|getTotalNFTCount|getStats|expireOldNFTs|getAllTrialNFTs" -Context 4,24
+Get-Content -Path apps/backend/src/app/controllers/dexFeeController.ts -TotalCount 140
+Get-Content -Path apps/backend/src/app/routes/nft.routes.ts
+Get-Content -Path apps/backend/src/app/routes/trialNftTemplate.routes.ts
+Get-Content -Path apps/backend/src/app/routes/trialNft.routes.ts
+Get-Content -Path apps/backend/src/app/routes/transactionHistory.routes.ts
+Get-Content -Path apps/backend/src/app/controllers/transactionHistoryController.ts -TotalCount 260
+rg -n 'prisma\.[A-Za-z0-9_]+\.(create|update|updateMany|delete|deleteMany|upsert)|\$transaction' apps/backend/src/app/controllers apps/backend/src/app/routes apps/backend/src/app/lib -g '!**/__tests__/**'
+git diff --check
 ```
 
 ## 検証結果
 
-- `IRIS_SPEC_AUTHORITY.md`: 見つからない。今回の対象はDISCO.fan / FUNKY.fan API認可監査のため、IRIS仕様は判定根拠に使っていない。
-- `origin/main`: `a35674c` までfetch済み。P0-12C PR #22 がmerge済みであることを確認。
-- 静的route/controller監査: 実施。
+- `IRIS_SPEC_AUTHORITY.md`: 見つからない。今回の対象はDISCO.fan / FUNKY.fan repoのAPI認可監査であり、IRIS仕様は根拠にしていない。
+- `origin/main`: `69ca470c3131afd63a6174c2de3804759c2d39e9` までfetch済み。P0-12J PR #29 merge済み。
+- 静的route/controller監査: 完了。
 - `git diff --check`: 成功。
