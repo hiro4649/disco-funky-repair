@@ -1021,3 +1021,31 @@ P2: frontend buildでlint無視設定
   - tx-hash-present FAILED finalization does not auto-release and moves to `MANUAL_REVIEW`.
   - Already released reservations do not change `reserved_amount` again.
   - `RECEIVED` transactions do not run unpaid reservation release.
+
+## 2026-05-15 P0-08 implementation record
+
+- Task: Stop unlimited and arbitrary-metadata minting in the official NFT contract.
+- Target contract:
+  - `contracts/funky-nft/funky-nft.sol`
+- Changed files:
+  - `contracts/funky-nft/funky-nft.sol`
+  - `contracts/scripts/deploy-nft.js`
+  - `contracts/test/FunkyNFT.test.js`
+  - `docs/launch/NFT_CONTRACT_RUNBOOK.md`
+  - `docs/security/BSC_LAUNCH_P0_FIXES.md`
+- Fix summary:
+  - Added immutable `MAX_SUPPLY` and enforced it for public and owner batch mint.
+  - Added `mintEnabled` sale control; minting starts disabled after deployment.
+  - Changed public `mint()` so users cannot pass `to` or `tokenURI`; minted NFTs go to `msg.sender`.
+  - Replaced per-token user-supplied URI storage with owner-managed base URI metadata.
+  - Changed `batchMint` to owner-only `batchMint(address,uint256)` with no token URI input.
+  - Updated NFT deploy script to pass and verify `MAX_SUPPLY`, and to instruct multisig ownership transfer before enabling mint.
+  - Added launch runbook covering metadata setup, mint enable/disable, and deployer-to-multisig ownership transfer.
+- Tests added:
+  - Public mint is disabled until owner enables it.
+  - Non-owner cannot change mint state or base URI.
+  - Public mint ABI has no user-controlled `to` or `tokenURI` inputs.
+  - Public mint mints only to `msg.sender` and uses contract-managed metadata.
+  - Public and owner batch mint cannot exceed `MAX_SUPPLY`.
+  - Non-owner cannot call owner batch mint to arbitrary recipients.
+  - Owner batch mint cannot run while mint is disabled.
