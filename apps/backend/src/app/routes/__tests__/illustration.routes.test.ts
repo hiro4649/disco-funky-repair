@@ -15,6 +15,7 @@ const mockPrisma = {
     create: jest.fn()
   },
   illustrationHistory: {
+    findMany: jest.fn(),
     create: jest.fn()
   },
   prizeTransactions: {
@@ -30,7 +31,17 @@ jest.mock('@prisma/client', () => ({
 }));
 
 jest.mock('../../config/passport', () => ({
-  Authenticate: (_req: any, _res: any, next: any) => next(),
+  Authenticate: (req: any, res: any, next: any) => {
+    if (req.headers.authorization === 'Bearer user-token') {
+      req.user = {
+        user_id: 1,
+        address: '0xuser'
+      };
+      return next();
+    }
+
+    return res.status(401).json({ success: false, message: 'Unauthenticated' });
+  },
   AuthAdmin: (_req: any, _res: any, next: any) => next()
 }));
 
@@ -72,6 +83,7 @@ describe('illustration draw route', () => {
     ]);
     mockPrisma.pointHistory.create.mockResolvedValue({});
     mockPrisma.user.update.mockResolvedValue({});
+    mockPrisma.illustrationHistory.findMany.mockResolvedValue([]);
     mockPrisma.illustrationHistory.create.mockResolvedValue({});
     mockPrisma.prizeTransactions.findFirst.mockResolvedValue(null);
     mockPrisma.trialNft.update.mockResolvedValue({});
@@ -88,7 +100,8 @@ describe('illustration draw route', () => {
 
     const response = await request(createApp())
       .post('/user/1/draw-illustration')
-      .send({});
+      .set('Authorization', 'Bearer user-token')
+      .send({ userId: 999, wallet_address: '0xAttacker' });
 
     expect(response.status).toBe(200);
     expect(mockPrisma.user.updateMany).toHaveBeenCalledWith({
@@ -122,6 +135,7 @@ describe('illustration draw route', () => {
 
     const response = await request(createApp())
       .post('/user/1/draw-illustration')
+      .set('Authorization', 'Bearer user-token')
       .send({});
 
     expect(response.status).toBe(400);
@@ -141,8 +155,8 @@ describe('illustration draw route', () => {
       .mockResolvedValueOnce({ count: 0 });
 
     const [first, second] = await Promise.all([
-      request(createApp()).post('/user/1/draw-illustration').send({}),
-      request(createApp()).post('/user/1/draw-illustration').send({})
+      request(createApp()).post('/user/1/draw-illustration').set('Authorization', 'Bearer user-token').send({}),
+      request(createApp()).post('/user/1/draw-illustration').set('Authorization', 'Bearer user-token').send({})
     ]);
 
     expect([first.status, second.status].sort()).toEqual([200, 400]);
@@ -165,5 +179,50 @@ describe('illustration draw route', () => {
     expect(mockPrisma.pointHistory.create).not.toHaveBeenCalled();
     expect(mockPrisma.user.update).not.toHaveBeenCalled();
     expect(mockPrisma.illustrationHistory.create).not.toHaveBeenCalled();
+  });
+
+  it('does not reach illustration draw when unauthenticated', async () => {
+    const response = await request(createApp())
+      .post('/user/1/draw-illustration')
+      .send({});
+
+    expect(response.status).toBe(401);
+    expect(mockPrisma.$transaction).not.toHaveBeenCalled();
+    expect(mockPrisma.user.updateMany).not.toHaveBeenCalled();
+    expect(mockPrisma.pointHistory.create).not.toHaveBeenCalled();
+    expect(mockPrisma.illustrationHistory.create).not.toHaveBeenCalled();
+  });
+
+  it('does not draw for another user id', async () => {
+    const response = await request(createApp())
+      .post('/user/2/draw-illustration')
+      .set('Authorization', 'Bearer user-token')
+      .send({});
+
+    expect(response.status).toBe(403);
+    expect(mockPrisma.$transaction).not.toHaveBeenCalled();
+    expect(mockPrisma.user.updateMany).not.toHaveBeenCalled();
+    expect(mockPrisma.pointHistory.create).not.toHaveBeenCalled();
+    expect(mockPrisma.illustrationHistory.create).not.toHaveBeenCalled();
+  });
+
+  it('does not read another user illustration history', async () => {
+    const response = await request(createApp())
+      .get('/user/2/illustrations')
+      .set('Authorization', 'Bearer user-token');
+
+    expect(response.status).toBe(403);
+    expect(mockPrisma.illustrationHistory.findMany).not.toHaveBeenCalled();
+  });
+
+  it('reads only the authenticated user illustration history', async () => {
+    const response = await request(createApp())
+      .get('/user/1/illustrations')
+      .set('Authorization', 'Bearer user-token');
+
+    expect(response.status).toBe(200);
+    expect(mockPrisma.illustrationHistory.findMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: { userId: 1 }
+    }));
   });
 });

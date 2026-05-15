@@ -13,6 +13,24 @@ class DrawIllustrationError extends Error {
     }
 }
 
+type AuthenticatedIllustrationUser = {
+    user_id?: number;
+};
+
+const getAuthenticatedIllustrationUserId = (req: Request): number | null => {
+    const userId = Number((req.user as AuthenticatedIllustrationUser | undefined)?.user_id);
+    return Number.isInteger(userId) && userId > 0 ? userId : null;
+};
+
+const routeUserIdMatchesAuthenticatedUser = (
+    req: Request,
+    paramName: string,
+    authenticatedUserId: number
+): boolean => {
+    const routeUserId = Number(req.params[paramName]);
+    return Number.isInteger(routeUserId) && routeUserId === authenticatedUserId;
+};
+
 export class IllustrationController {
     // Create a new illustration
     static async create(req: Request, res: Response) {
@@ -141,9 +159,17 @@ export class IllustrationController {
     // Get user's illustration history
     static async getUserIllustrations(req: Request, res: Response) {
         try {
-            const { userId } = req.params;
+            const authenticatedUserId = getAuthenticatedIllustrationUserId(req);
+            if (!authenticatedUserId) {
+                return res.status(401).json({ success: false, message: 'Unauthenticated' });
+            }
+
+            if (!routeUserIdMatchesAuthenticatedUser(req, 'userId', authenticatedUserId)) {
+                return res.status(403).json({ success: false, message: 'Forbidden' });
+            }
+
             const userIllustrations = await prisma.illustrationHistory.findMany({
-                where: { userId: parseInt(userId) },
+                where: { userId: authenticatedUserId },
                 include: {
                     illustration: true
                 },
@@ -298,8 +324,14 @@ export class IllustrationController {
     // Lower fan points have higher probability of being selected
     static async drawIllustration(req: Request, res: Response) {
         try {
-            const { userId } = req.params;
-            const userIdNum = parseInt(userId);
+            const userIdNum = getAuthenticatedIllustrationUserId(req);
+            if (!userIdNum) {
+                return res.status(401).json({ success: false, message: 'Unauthenticated' });
+            }
+
+            if (!routeUserIdMatchesAuthenticatedUser(req, 'userId', userIdNum)) {
+                return res.status(403).json({ success: false, message: 'Forbidden' });
+            }
 
             const drawResult = await prisma.$transaction(async (tx) => {
                 const ticketUpdate = await tx.user.updateMany({
