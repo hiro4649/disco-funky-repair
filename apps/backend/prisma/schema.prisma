@@ -51,6 +51,8 @@ model Prize {
   symbol            String              @db.VarChar(255)
   price             Float               @db.DoublePrecision
   balance           Float               @db.DoublePrecision
+  balance_amount    Decimal             @default(0) @db.Decimal(78, 0)
+  reserved_amount   Decimal             @default(0) @db.Decimal(78, 0)
   default_image     String              @db.Text
   icon              String              @db.Text
   decimals          Int                 @db.Integer
@@ -116,6 +118,7 @@ model PrizeTransactions {
   tx_hash          String?   @db.VarChar(255)
   transfer_token_address String? @db.VarChar(255)
   transfer_amount  String?   @db.VarChar(255)
+  reservation_released_at DateTime?
   probability_time DateTime  @db.Timestamp(6)
   end_time         DateTime?
   status           Status    @default(READY)

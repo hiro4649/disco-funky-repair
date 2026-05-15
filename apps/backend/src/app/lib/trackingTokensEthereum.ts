@@ -81,6 +81,7 @@ export const registerAllEthereumTokens = async () => {
                                 earned_pts: 0,
                                 fake_probability: 0,
                                 balance: tokenData.balance,
+                                balance_amount: tokenData.balanceAmount,
                             }
                         });
                         console.log(`Created new prize entry for token: ${tokenAddress}`);
@@ -94,6 +95,7 @@ export const registerAllEthereumTokens = async () => {
                                 data: {
                                     ...tokenData.prizeDatas,
                                     balance: tokenData.balance,
+                                    balance_amount: tokenData.balanceAmount,
                                     flag: (tokenData.balance > 0 && tokenData.prizeDatas.price > 0 && existingPrize.flag === true) ? true : false,
                                 }
                             });
@@ -201,7 +203,8 @@ const fetchEthereumTokenData = async (tokenAddress: string, provider: ethers.Jso
         return {
             prizeDatas,
             tokenDetails,
-            balance: Number(balance)
+            balance: Number(balance),
+            balanceAmount: balance.toString()
         };
     } catch (error) {
         console.error(`Error fetching Ethereum token data for ${tokenAddress}:`, error);
