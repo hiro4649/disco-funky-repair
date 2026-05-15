@@ -5,7 +5,7 @@ const mockPrisma = {
     updateMany: jest.fn()
   },
   user: {
-    findFirst: jest.fn(),
+    findUnique: jest.fn(),
     update: jest.fn()
   }
 };
@@ -24,7 +24,10 @@ const createResponse = () => {
   return res;
 };
 
-const createRequest = (body: any) => ({ body } as any);
+const createRequest = (body: any, user: any = { user_id: 10 }) => ({
+  body,
+  ...(user ? { user } : {})
+} as any);
 const activeTicketCode = () => ({
   id: 1,
   code: 'AbCdEf1234',
@@ -40,7 +43,7 @@ describe('claimTicketCode', () => {
 
   it('claims a pending ticket code inside a transaction and increments tickets once', async () => {
     mockPrisma.ticketCode.findUnique.mockResolvedValue(activeTicketCode());
-    mockPrisma.user.findFirst.mockResolvedValue({ id: 10 });
+    mockPrisma.user.findUnique.mockResolvedValue({ id: 10, wallet_address: '0xuser' });
     mockPrisma.ticketCode.updateMany.mockResolvedValue({ count: 1 });
     mockPrisma.user.update.mockResolvedValue({ tickets: 4 });
 
@@ -57,6 +60,13 @@ describe('claimTicketCode', () => {
         status: 'CLAIMED',
         claimed_at: expect.any(Date),
         wallet_address: '0xuser'
+      }
+    });
+    expect(mockPrisma.user.findUnique).toHaveBeenCalledWith({
+      where: { id: 10 },
+      select: {
+        id: true,
+        wallet_address: true
       }
     });
     expect(mockPrisma.user.update).toHaveBeenCalledWith({
@@ -80,7 +90,7 @@ describe('claimTicketCode', () => {
 
   it('allows only one successful claim when two requests race for the same code', async () => {
     mockPrisma.ticketCode.findUnique.mockResolvedValue(activeTicketCode());
-    mockPrisma.user.findFirst.mockResolvedValue({ id: 10 });
+    mockPrisma.user.findUnique.mockResolvedValue({ id: 10, wallet_address: '0xuser' });
     mockPrisma.ticketCode.updateMany
       .mockResolvedValueOnce({ count: 1 })
       .mockResolvedValueOnce({ count: 0 });
@@ -120,12 +130,37 @@ describe('claimTicketCode', () => {
       },
       data: { status: 'EXPIRED' }
     });
-    expect(mockPrisma.user.findFirst).not.toHaveBeenCalled();
+    expect(mockPrisma.user.findUnique).not.toHaveBeenCalled();
     expect(mockPrisma.user.update).not.toHaveBeenCalled();
     expect(res.status).toHaveBeenCalledWith(400);
     expect(res.json).toHaveBeenCalledWith({
       success: false,
       message: 'Ticket code has expired'
     });
+  });
+
+  it('does not claim without an authenticated user', async () => {
+    const res = createResponse();
+
+    await claimTicketCode(createRequest({ code: 'AbCdEf1234', wallet_address: '0xUser' }, null), res);
+
+    expect(mockPrisma.$transaction).not.toHaveBeenCalled();
+    expect(mockPrisma.ticketCode.updateMany).not.toHaveBeenCalled();
+    expect(mockPrisma.user.update).not.toHaveBeenCalled();
+    expect(res.status).toHaveBeenCalledWith(401);
+  });
+
+  it('rejects a body wallet address that does not match the authenticated user', async () => {
+    mockPrisma.ticketCode.findUnique.mockResolvedValue(activeTicketCode());
+    mockPrisma.user.findUnique.mockResolvedValue({ id: 10, wallet_address: '0xuser' });
+
+    const res = createResponse();
+    await claimTicketCode(createRequest({ code: 'AbCdEf1234', wallet_address: '0xAttacker' }), res);
+
+    expect(mockPrisma.ticketCode.updateMany).not.toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({ status: 'CLAIMED' })
+    }));
+    expect(mockPrisma.user.update).not.toHaveBeenCalled();
+    expect(res.status).toHaveBeenCalledWith(403);
   });
 });
