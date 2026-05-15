@@ -25,6 +25,7 @@ No decision may use production secrets, production wallets, production DB, produ
 
 | Candidate | Use When | Pros | Risks / No-Go |
 | --- | --- | --- | --- |
+| New Sakura Cloud server | First staging and likely production provider are Sakura Cloud. | Matches planned hosting provider, simple single-server setup, easy PM2/nginx/PostgreSQL inspection. | Single-server risk. No-Go if production secrets, production DB, or old source paths are reused. |
 | New AWS EC2 instance | Team already uses AWS or wants future migration toward managed services. | Easy path to AWS Secrets Manager, RDS, security groups, IAM, snapshots. | More setup complexity. No-Go if production IAM roles or production VPC secrets are reused. |
 | New VPS | Fastest low-cost staging setup. | Simple, cheap, easy to inspect PM2/nginx manually. | Secrets and backups need stronger manual discipline. No-Go if `.env` files are committed or copied around. |
 | Existing non-production server | Only if the server is already isolated and trusted. | Fastest if already provisioned. | No-Go if it hosts production, old `var-www`, `Rave_bk`, old Sui/DISCO source, production logs, or production secrets. |
@@ -32,9 +33,11 @@ No decision may use production secrets, production wallets, production DB, produ
 
 Recommended default for first staging:
 
-- Use a new isolated VPS or new AWS EC2 instance.
+- Use a new isolated Sakura Cloud server if Sakura Cloud is the planned production provider.
+- If Sakura Cloud is not ready, use a new isolated VPS or new AWS EC2 instance.
 - Do not use the existing production server.
 - Do not deploy from `Rave_bk`, `Rave`, `var-www`, local desktop folders, downloaded zips, or copied server directories.
+- If using Sakura Cloud single-server staging, follow `docs/launch/STAGING_SAKURA_SINGLE_SERVER_PLAN.md`.
 
 ## 3. Recommended OS
 
@@ -135,14 +138,18 @@ Do not record DNS provider credentials or API tokens.
 
 | Candidate | Use When | Pros | Risks / No-Go |
 | --- | --- | --- | --- |
+| Same Sakura Cloud server PostgreSQL | First Sakura Cloud staging only. | Cheapest and simplest single-server staging. | Single point of failure. Requires backup, snapshot, disk monitoring, log rotation, and future DB split triggers. |
 | Same staging server PostgreSQL | Fast first staging and low cost. | Simple network and setup. | Requires manual backup, disk, and access discipline. No-Go if production data is copied. |
+| Sakura Cloud database appliance | Production-like Sakura Cloud DB separation is needed. | DB isolation, clearer backup/restore path, reduced app-server blast radius. | More cost and setup. Required when production single-server conditions are no longer acceptable. |
 | AWS RDS / managed PostgreSQL | Team wants cleaner separation and backups. | Snapshots, managed backups, clearer separation from app server. | More setup and cost. No-Go if production instance or production user is reused. |
 | External managed PostgreSQL | Existing vendor is approved for staging. | Quick if already approved. | Need secret manager integration and access controls. No-Go if shared with production DB. |
 
 Recommended default:
 
-- For cheapest first staging: same server PostgreSQL is acceptable if isolated and backed up.
+- For Sakura Cloud first staging: same-server PostgreSQL is acceptable if isolated, backed up, snapshotted, monitored, and covered by the single-server split triggers.
+- For cheapest first staging outside Sakura Cloud: same server PostgreSQL is acceptable if isolated and backed up.
 - For production-like staging: managed PostgreSQL or RDS is preferred.
+- For production MVP on Sakura Cloud: same-server PostgreSQL is temporary only; move to Sakura Cloud database appliance or another approved DB when documented split conditions are met.
 
 Required DB properties:
 
@@ -175,6 +182,7 @@ No-Go:
 
 | Option | Use When | Notes |
 | --- | --- | --- |
+| Sakura Cloud server-side runtime injection | First Sakura Cloud single-server staging. | Acceptable if humans control file permissions, shell history, PM2 startup, and log redaction. Do not commit `.env`. |
 | AWS Secrets Manager | Best if staging is on AWS. | Strong default for EC2/RDS setups. Use IAM with least privilege. |
 | VPS provider secret feature | Use if provider supports runtime secrets. | Confirm values are not printed into logs. |
 | Server process manager env injection | Acceptable for first VPS staging if tightly controlled. | Do not create committed `.env`; avoid printing full env. |
@@ -183,6 +191,7 @@ No-Go:
 
 Recommended default:
 
+- Sakura Cloud first staging: Sakura Cloud server-side runtime injection is acceptable only with strict no-commit, no-print, and log-scan rules.
 - AWS: AWS Secrets Manager.
 - VPS first staging: server-side secret injection managed by humans, with no committed `.env`.
 - GitHub Actions: use only after a deploy workflow is explicitly approved.
