@@ -166,9 +166,16 @@ describe('PrizeController.sendToWallet', () => {
         reservation_released_at: expect.any(Date)
       }
     });
-    expect(mockPrisma.prize.update).toHaveBeenCalledWith({
-      where: { id: 3 },
+    expect(mockPrisma.prize.updateMany).toHaveBeenCalledWith({
+      where: {
+        id: 3,
+        balance_amount: { gte: FIXED_TRANSFER_AMOUNT },
+        reserved_amount: { gte: FIXED_TRANSFER_AMOUNT }
+      },
       data: {
+        balance_amount: {
+          decrement: FIXED_TRANSFER_AMOUNT
+        },
         reserved_amount: {
           decrement: FIXED_TRANSFER_AMOUNT
         }
@@ -226,9 +233,16 @@ describe('PrizeController.sendToWallet', () => {
       where: { id: 7 },
       data: { status: 'RECEIVED' }
     });
-    expect(mockPrisma.prize.update).toHaveBeenCalledWith({
-      where: { id: 3 },
+    expect(mockPrisma.prize.updateMany).toHaveBeenCalledWith({
+      where: {
+        id: 3,
+        balance_amount: { gte: FIXED_TRANSFER_AMOUNT },
+        reserved_amount: { gte: FIXED_TRANSFER_AMOUNT }
+      },
       data: {
+        balance_amount: {
+          decrement: FIXED_TRANSFER_AMOUNT
+        },
         reserved_amount: {
           decrement: FIXED_TRANSFER_AMOUNT
         }
@@ -251,7 +265,43 @@ describe('PrizeController.sendToWallet', () => {
     expect(sendTokensToWallet).not.toHaveBeenCalled();
     expect(getTransactionReceiptStatus).toHaveBeenCalledWith('0xExistingTx');
     expect(mockPrisma.prize.update).not.toHaveBeenCalled();
+    expect(mockPrisma.prize.updateMany).not.toHaveBeenCalled();
     expect(res.status).toHaveBeenCalledWith(200);
+  });
+
+  it('does not change inventory again when reservation was already released', async () => {
+    mockPrisma.prizeTransactions.findFirst.mockResolvedValue({
+      ...readyPrizeTransaction(),
+      reservation_released_at: new Date()
+    });
+    mockPrisma.prizeTransactions.updateMany
+      .mockResolvedValueOnce({ count: 1 })
+      .mockResolvedValueOnce({ count: 0 });
+    const res = createResponse();
+
+    await PrizeController.sendToWallet(createRequest(), res);
+
+    expect(sendTokensToWallet).toHaveBeenCalledTimes(1);
+    expect(mockPrisma.prize.update).not.toHaveBeenCalled();
+    expect(mockPrisma.prize.updateMany).not.toHaveBeenCalled();
+    expect(res.status).toHaveBeenCalledWith(200);
+  });
+
+  it('moves confirmed transfers to manual review when inventory is below transfer amount', async () => {
+    mockPrisma.prize.updateMany.mockResolvedValue({ count: 0 });
+    const res = createResponse();
+
+    await PrizeController.sendToWallet(createRequest(), res);
+
+    expect(sendTokensToWallet).toHaveBeenCalledTimes(1);
+    expect(mockPrisma.prizeTransactions.update).toHaveBeenCalledWith({
+      where: { id: 7 },
+      data: {
+        status: 'MANUAL_REVIEW',
+        tx_hash: '0xTx'
+      }
+    });
+    expect(res.status).toHaveBeenCalledWith(202);
   });
 
   it('does not send legacy prize transactions missing a fixed transfer amount', async () => {
@@ -493,5 +543,38 @@ describe('PrizeController.drawPrize', () => {
         transfer_amount: FIXED_TRANSFER_AMOUNT
       })
     });
+  });
+
+  it('does not recreate available inventory after a confirmed send without token tracking', async () => {
+    (jwtDecode as jest.Mock).mockReturnValue({ address: '0xUser' });
+    mockPrisma.user.findUnique
+      .mockResolvedValueOnce({ id: 1, wallet_address: '0xuser' })
+      .mockResolvedValueOnce({ id: 1, tickets: 1 });
+    mockPrisma.prizeTransactions.findFirst.mockResolvedValue(readyPrizeTransaction());
+    mockPrisma.prizeTransactions.updateMany.mockResolvedValue({ count: 1 });
+    (sendTokensToWallet as jest.Mock).mockResolvedValue('0xTx');
+
+    const sendRes = createResponse();
+    await PrizeController.sendToWallet(createRequest(), sendRes);
+
+    mockPrisma.prize.findMany.mockResolvedValue([
+      {
+        ...winningPrize(),
+        balance_amount: '0',
+        reserved_amount: '0'
+      }
+    ]);
+    const drawRes = createResponse();
+
+    await PrizeController.drawPrize(createDrawRequest(), drawRes);
+
+    expect(sendRes.status).toHaveBeenCalledWith(200);
+    expect(mockPrisma.prizeTransactions.create).not.toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        prizeId: 3,
+        transfer_amount: FIXED_TRANSFER_AMOUNT
+      })
+    });
+    expect(drawRes.status).toHaveBeenCalledWith(404);
   });
 });

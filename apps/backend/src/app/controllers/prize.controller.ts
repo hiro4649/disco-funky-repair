@@ -170,6 +170,12 @@ class PrizeInventoryRaceError extends Error {
     }
 }
 
+class PrizeInventoryDepletionError extends Error {
+    constructor() {
+        super('Prize inventory is lower than the confirmed transfer amount');
+    }
+}
+
 const releasePrizeReservation = async (
     tx: Prisma.TransactionClient,
     prizeTransactionId: number,
@@ -187,14 +193,25 @@ const releasePrizeReservation = async (
     });
 
     if (releaseUpdate.count === 1) {
-        await tx.prize.update({
-            where: { id: prizeId },
+        const inventoryUpdate = await tx.prize.updateMany({
+            where: {
+                id: prizeId,
+                balance_amount: { gte: transferAmount.toString() },
+                reserved_amount: { gte: transferAmount.toString() }
+            },
             data: {
+                balance_amount: {
+                    decrement: transferAmount.toString()
+                },
                 reserved_amount: {
                     decrement: transferAmount.toString()
                 }
             }
         });
+
+        if (inventoryUpdate.count !== 1) {
+            throw new PrizeInventoryDepletionError();
+        }
     }
 };
 
@@ -653,20 +670,35 @@ export class PrizeController {
 
                     if (receiptStatus === Status.RECEIVED) {
                         const storedTransferAmount = parseStoredTransferAmount(prizeTransaction.transfer_amount);
-                        await prisma.$transaction(async (tx) => {
-                            if (storedTransferAmount) {
-                                await releasePrizeReservation(
-                                    tx,
-                                    prizeTransaction.id,
-                                    prizeTransaction.prizeId,
-                                    storedTransferAmount
-                                );
-                            }
-                            await tx.prizeTransactions.update({
-                                where: { id: Number(prizeId) },
-                                data: { status: receiptStatus },
+                        try {
+                            await prisma.$transaction(async (tx) => {
+                                if (storedTransferAmount) {
+                                    await releasePrizeReservation(
+                                        tx,
+                                        prizeTransaction.id,
+                                        prizeTransaction.prizeId,
+                                        storedTransferAmount
+                                    );
+                                }
+                                await tx.prizeTransactions.update({
+                                    where: { id: Number(prizeId) },
+                                    data: { status: receiptStatus },
+                                });
                             });
-                        });
+                        } catch (releaseErr) {
+                            if (releaseErr instanceof PrizeInventoryDepletionError) {
+                                await prisma.prizeTransactions.update({
+                                    where: { id: Number(prizeId) },
+                                    data: { status: Status.MANUAL_REVIEW },
+                                });
+                                return res.status(202).json({
+                                    success: false,
+                                    msg: 'Prize transfer was confirmed but inventory requires manual review.',
+                                    correlationId
+                                });
+                            }
+                            throw releaseErr;
+                        }
                         return res.status(200).json({ success: true, txHash: prizeTransaction.tx_hash });
                     }
 
@@ -767,18 +799,36 @@ export class PrizeController {
                         correlationId
                     });
                 }
-                await prisma.$transaction(async (tx) => {
-                    await releasePrizeReservation(
-                        tx,
-                        prizeTransaction.id,
-                        prizeTransaction.prizeId,
-                        tokenAmountInSmallestUnit
-                    );
-                    await tx.prizeTransactions.update({
-                        where: { id: Number(prizeId) },
-                        data: { status: Status.RECEIVED, tx_hash: txHash },
+                try {
+                    await prisma.$transaction(async (tx) => {
+                        await releasePrizeReservation(
+                            tx,
+                            prizeTransaction.id,
+                            prizeTransaction.prizeId,
+                            tokenAmountInSmallestUnit
+                        );
+                        await tx.prizeTransactions.update({
+                            where: { id: Number(prizeId) },
+                            data: { status: Status.RECEIVED, tx_hash: txHash },
+                        });
                     });
-                });
+                } catch (releaseErr) {
+                    if (releaseErr instanceof PrizeInventoryDepletionError) {
+                        await prisma.prizeTransactions.update({
+                            where: { id: Number(prizeId) },
+                            data: {
+                                status: Status.MANUAL_REVIEW,
+                                tx_hash: txHash
+                            },
+                        });
+                        return res.status(202).json({
+                            success: false,
+                            msg: 'Prize transfer was confirmed but inventory requires manual review.',
+                            correlationId
+                        });
+                    }
+                    throw releaseErr;
+                }
 
                 // Return success response
                 return res.status(200).json({ success: true, txHash });

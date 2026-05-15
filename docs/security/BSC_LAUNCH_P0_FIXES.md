@@ -977,7 +977,9 @@ P2: frontend buildでlint無視設定
   - `drawPrize` now runs user check, eligible prize filtering, ticket decrement, inventory reservation, and PrizeTransaction creation inside one Prisma transaction.
   - Eligible prize filtering uses `available = balance_amount - reserved_amount` and excludes prizes whose available inventory is lower than the fixed `transfer_amount`.
   - Reservation update uses an optimistic `reserved_amount` condition so concurrent draws cannot both reserve the same inventory snapshot.
-  - `sendToWallet` releases the reserved amount on confirmed send, guarded by `reservation_released_at` so receipt retries do not double-decrement.
+  - `sendToWallet` consumes both `reserved_amount` and `balance_amount` on confirmed send inside the same transaction, guarded by `reservation_released_at` so receipt retries do not double-decrement.
+  - Confirmed transfers with insufficient `balance_amount` move to `MANUAL_REVIEW` instead of allowing a negative balance or recreating available inventory.
+  - After a confirmed send, available inventory does not reappear before token tracking refreshes the latest on-chain wallet balance.
   - Expired/cancelled/failed reservation release is intentionally left for P0-07C.
 - Tests added:
   - Draw stores fixed token/amount and updates `reserved_amount` in the same transaction path.
@@ -985,4 +987,6 @@ P2: frontend buildでlint無視設定
   - Reservation update race does not create a READY PrizeTransaction.
   - Two competing draws against one available reservation create only one READY PrizeTransaction.
   - Inventory reservation uses integer strings beyond JS safe integer range.
-  - Successful send releases reservation once, and receipt retry does not double-release.
+  - Successful send consumes reserved and balance inventory once, and receipt retry does not double-consume either amount.
+  - Confirmed send without token tracking does not recreate available inventory for another READY win.
+  - Already released reservations do not change inventory again on retry.
