@@ -8,6 +8,7 @@ import { calculateTokenQuantity, fetchTokenBalance } from '../utils/tokenHeplers
 import jwt, { JwtPayload } from 'jsonwebtoken';
 import { jwtDecode } from 'jwt-decode';
 import { randomUUID } from 'crypto';
+import { ethers } from 'ethers';
 import { getTransactionReceiptStatus, sendTokensToWallet } from '../utils/tokenHeplers';
 import getDiscoNFTEVM from '../lib/getDiscoNFTEVM';
 import { getTotalNFTCount } from '../lib/trialNftService';
@@ -23,6 +24,8 @@ enum Status {
 
 const prisma = new PrismaClient();
 
+const PRIZE_TRANSFER_AMOUNT_SCALE = 3;
+
 const logPrizeTransferError = (
     message: string,
     correlationId: string,
@@ -35,6 +38,63 @@ const logPrizeTransferError = (
         errorName,
         hasTxHash: Boolean(txHash)
     });
+};
+
+const decimalNumberToParts = (value: number): { units: bigint; scale: number } => {
+    if (!Number.isFinite(value) || value <= 0) {
+        throw new Error('Invalid positive decimal number');
+    }
+
+    const decimal = value.toString().includes('e')
+        ? value.toFixed(20).replace(/\.?0+$/, '')
+        : value.toString();
+
+    if (!/^\d+(\.\d+)?$/.test(decimal)) {
+        throw new Error('Invalid decimal format');
+    }
+
+    const [whole, fraction = ''] = decimal.split('.');
+    const units = BigInt(`${whole}${fraction}`);
+    if (units <= 0n) {
+        throw new Error('Invalid decimal value');
+    }
+
+    return { units, scale: fraction.length };
+};
+
+const calculatePrizeTransferAmount = (
+    quantity: number,
+    price: number,
+    decimals: number
+): string => {
+    if (!Number.isInteger(quantity) || quantity <= 0) {
+        throw new Error('Invalid prize quantity');
+    }
+    if (!Number.isInteger(decimals) || decimals < 0) {
+        throw new Error('Invalid prize decimals');
+    }
+
+    const priceParts = decimalNumberToParts(price);
+    const scaleFactor = 10n ** BigInt(priceParts.scale + PRIZE_TRANSFER_AMOUNT_SCALE);
+    const numerator = BigInt(quantity) * scaleFactor;
+    const denominator = priceParts.units;
+    const roundedScaledAmount = (numerator + denominator / 2n) / denominator;
+
+    if (decimals >= PRIZE_TRANSFER_AMOUNT_SCALE) {
+        return (roundedScaledAmount * 10n ** BigInt(decimals - PRIZE_TRANSFER_AMOUNT_SCALE)).toString();
+    }
+
+    const divisor = 10n ** BigInt(PRIZE_TRANSFER_AMOUNT_SCALE - decimals);
+    return ((roundedScaledAmount + divisor / 2n) / divisor).toString();
+};
+
+const parseStoredTransferAmount = (amount?: string | null): bigint | null => {
+    if (!amount || !/^\d+$/.test(amount)) {
+        return null;
+    }
+
+    const transferAmount = BigInt(amount);
+    return transferAmount > 0n ? transferAmount : null;
 };
 
 interface User extends JwtPayload {
@@ -275,11 +335,26 @@ export class PrizeController {
 
                 const winningPrize = bestPrizeCandidates[Math.floor(Math.random() * bestPrizeCandidates.length)];
                 if (winningPrize) {
+                    if (!ethers.isAddress(winningPrize.ca)) {
+                        return res.status(400).json({
+                            success: false,
+                            msg: 'Invalid prize transfer token address'
+                        });
+                    }
+
+                    const transferAmount = calculatePrizeTransferAmount(
+                        winningPrize.quantity,
+                        winningPrize.price,
+                        winningPrize.decimals
+                    );
+
                     const prizeTransaction =
                         await prisma.prizeTransactions.create({
                             data: {
                                 prizeId: winningPrize.id,
                                 userId: userId,
+                                transfer_token_address: winningPrize.ca,
+                                transfer_amount: transferAmount,
                                 probability_time: moment.utc().toDate(),
                                 end_time: moment.utc().add(24, 'hours').toDate()
                             }
@@ -519,16 +594,19 @@ export class PrizeController {
                 return res.status(400).json({ msg: "Prize transaction has expired" });
             }
 
-            // Prepare transaction details
+            const tokenAmountInSmallestUnit = parseStoredTransferAmount(prizeTransaction.transfer_amount);
+            const coinType = prizeTransaction.transfer_token_address;
 
-            const amount = Number(
-                (prizeTransaction.prize.quantity / prizeTransaction.prize.price).toFixed(3)
-            );
-            const tokenAmountInSmallestUnit = BigInt(Math.round(amount * 10 ** prizeTransaction.prize.decimals));
-            const coinType = prizeTransaction.prize.ca;
-
-            if (!tokenAmountInSmallestUnit || !coinType) {
-                return res.status(400).json({ msg: "Invalid prize data: Missing quantity or coin type" });
+            if (!tokenAmountInSmallestUnit || !coinType || !ethers.isAddress(coinType)) {
+                await prisma.prizeTransactions.update({
+                    where: { id: Number(prizeId) },
+                    data: { status: Status.MANUAL_REVIEW },
+                });
+                return res.status(202).json({
+                    success: false,
+                    msg: 'Prize transfer snapshot is missing or invalid and requires manual review.',
+                    correlationId
+                });
             }
 
             const sendingUpdate = await prisma.prizeTransactions.updateMany({
