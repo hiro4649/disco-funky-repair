@@ -17,11 +17,11 @@
 
 import { PrismaClient } from '@prisma/client';
 import moment from 'moment';
-import { TOKEN_CONTRACT_ADDRESS } from '../config/env';
+import { ETHERSCAN_API_URL as CONFIGURED_ETHERSCAN_API_URL, TOKEN_CONTRACT_ADDRESS } from '../config/env';
 
 const prisma = new PrismaClient();
 
-const ETHERSCAN_API_URL = process.env.ETHERSCAN_API_URL || 'https://api.etherscan.io/api?';
+const ETHERSCAN_API_URL = CONFIGURED_ETHERSCAN_API_URL || (process.env.NODE_ENV === 'production' ? '' : 'https://api.bscscan.com/api?');
 const ETHERSCAN_API_KEY = process.env.ETHERSCAN_API_KEY;
 
 // Rate limiter for Etherscan API
@@ -64,6 +64,14 @@ export const fetchIncrementalTransactions = async (
     let hasMore = true;
 
     try {
+        if (!ETHERSCAN_API_URL) {
+            if (process.env.NODE_ENV === 'production') {
+                throw new Error('ETHERSCAN_API_URL is not configured');
+            }
+            console.warn('ETHERSCAN_API_URL is not configured; incremental transaction fetch disabled.');
+            return [];
+        }
+
         while (hasMore) {
             await etherscanRateLimiter.waitForRateLimit();
 
@@ -71,7 +79,6 @@ export const fetchIncrementalTransactions = async (
 
             const response = await fetch(url);
             const data = await response.json();
-            console.log(`url: ${url}`);
             if (data.status === '1' && Array.isArray(data.result) && data.result.length > 0) {
                 transactions.push(...data.result);
 

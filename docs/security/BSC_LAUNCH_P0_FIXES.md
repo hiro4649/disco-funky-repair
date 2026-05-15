@@ -1176,8 +1176,9 @@ P2: frontend buildでlint無視設定
 - Fix summary:
   - Backend production startup now fails fast when BSC RPC, chain ID, JWT, DB, API URLs, prize hot wallet, prize token allowlist, tier relayer/updater, token/NFT contract, or admin auth env is missing.
   - Production backend rejects localhost/example URLs, placeholder values, zero addresses, known local test keys, non-BSC chain ID, and `NEXT_PUBLIC_*` secret exposure.
+  - `ETHERSCAN_API_URL` is required in production and the old Ethereum mainnet `https://api.etherscan.io/api?` fallback is not used for holding/tier data.
   - Backend token contract address no longer falls back to a hardcoded production value.
-  - Frontend production config rejects `NEXT_PUBLIC_*PRIVATE_KEY` and unsafe public env values. Missing public env leaves API/on-chain dependent features disabled instead of falling back to localhost.
+  - Frontend production config rejects `NEXT_PUBLIC_*PRIVATE_KEY` and unsafe public env values, including optional `NEXT_PUBLIC_ALCHEMY_RPC_URL` if configured. Missing public env leaves API/on-chain dependent features disabled instead of falling back to localhost.
   - Environment runbook records secret-manager requirements and forbidden frontend public secret patterns without real secret values.
 - Tests added:
   - Production missing env fails validation.
@@ -1185,3 +1186,5 @@ P2: frontend buildでlint無視設定
   - `NEXT_PUBLIC_*PRIVATE_KEY` exposure is rejected.
   - Development/test env still avoids production validation.
   - Missing prize transfer allowlist and missing tier updater address fail safely.
+  - Missing or Ethereum-mainnet `ETHERSCAN_API_URL` fails production validation.
+  - Optional `NEXT_PUBLIC_ALCHEMY_RPC_URL` rejects localhost/example/dummy/testnet values.

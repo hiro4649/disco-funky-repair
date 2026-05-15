@@ -17,6 +17,7 @@ Set these for `NODE_ENV=production` before starting `apps/backend`.
 | `FRONTEND_APP_URL` | no | Public frontend origin. Must not be localhost/example. |
 | `QUICKNODE_HTTP_RPC_URL` | yes | BSC mainnet HTTP RPC URL. |
 | `QUICKNODE_WS_RPC_URL` | yes | BSC mainnet WebSocket RPC URL. |
+| `ETHERSCAN_API_URL` | yes | BSC explorer API. Use Etherscan V2 with `chainid=56` or a BSCScan mainnet endpoint. Do not use Ethereum mainnet `/api?` fallback. |
 | `CHAIN_ID` | no | Must be `56` for BSC production. |
 | `TOKEN_CONTRACT_ADDRESS` | no | FUNKY token contract address. Must be non-zero EVM address. |
 | `NFT_CONTRACT_ADDRESS` | no | Official NFT contract address. Must be non-zero EVM address. |
@@ -37,6 +38,7 @@ Only non-secret public values may use `NEXT_PUBLIC_`.
 | `NEXT_PUBLIC_APP_URL` | no | Public frontend origin. Must not be localhost/example. |
 | `NEXT_PUBLIC_APP_NAME` | no | Display token/app name. |
 | `NEXT_PUBLIC_RPC_URL` | no | Public BSC RPC endpoint for read-only browser calls. |
+| `NEXT_PUBLIC_ALCHEMY_RPC_URL` | no | Optional public BSC RPC override. If set, it is used before `NEXT_PUBLIC_RPC_URL` and must pass the same production validation. If unset, `NEXT_PUBLIC_RPC_URL` is required and used. |
 | `NEXT_PUBLIC_TOKEN_ADDRESS` | no | FUNKY token contract address. |
 | `NEXT_PUBLIC_NFT_ADDRESS` | no | Official NFT contract address. |
 | `NEXT_PUBLIC_SOCKET_API_URL` | no | Optional public Socket.IO endpoint. If unset in production, realtime browser updates stay disabled. |
@@ -65,6 +67,8 @@ Never use these in production backend values:
 - zero private key
 - known local test private keys
 - BSC testnet `CHAIN_ID=97`
+- BSC testnet, Sepolia, Goerli, dummy, example, or localhost RPC/explorer URLs
+- Ethereum mainnet explorer fallback `https://api.etherscan.io/api?`
 
 ## Deployment Checks
 

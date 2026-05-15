@@ -15,6 +15,7 @@ const validProductionEnv = (): NodeJS.ProcessEnv => ({
   FRONTEND_APP_URL: 'https://funky.fan',
   QUICKNODE_HTTP_RPC_URL: 'https://bsc-mainnet.rpc.provider',
   QUICKNODE_WS_RPC_URL: 'wss://bsc-mainnet.rpc.provider',
+  ETHERSCAN_API_URL: 'https://api.etherscan.io/v2/api?chainid=56',
   CHAIN_ID: '56',
   TOKEN_CONTRACT_ADDRESS: TOKEN_ADDRESS,
   NFT_CONTRACT_ADDRESS: NFT_ADDRESS,
@@ -70,6 +71,29 @@ describe('validateEnvs production safety', () => {
     delete env.TIER_UPDATER_CONTRACT_ADDRESS;
 
     expect(() => validateEnvs(env)).toThrow(/TIER_UPDATER_CONTRACT_ADDRESS/);
+  });
+
+  it('fails when ETHERSCAN_API_URL is missing in production', () => {
+    const env = validProductionEnv();
+    delete env.ETHERSCAN_API_URL;
+
+    expect(() => validateEnvs(env)).toThrow(/ETHERSCAN_API_URL/);
+  });
+
+  it('rejects Ethereum mainnet and testnet explorer endpoints in production', () => {
+    expect(() =>
+      validateEnvs({
+        ...validProductionEnv(),
+        ETHERSCAN_API_URL: 'https://api.etherscan.io/api?'
+      })
+    ).toThrow(/ETHERSCAN_API_URL must use Etherscan V2 with chainid=56/);
+
+    expect(() =>
+      validateEnvs({
+        ...validProductionEnv(),
+        ETHERSCAN_API_URL: 'https://api-testnet.bscscan.com/api?'
+      })
+    ).toThrow(/ETHERSCAN_API_URL must point to BSC mainnet/);
   });
 
   it('rejects localhost and non-BSC chainId in production', () => {

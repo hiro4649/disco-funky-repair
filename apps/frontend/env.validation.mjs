@@ -16,6 +16,7 @@ const PUBLIC_URL_ENV = new Set([
   "NEXT_PUBLIC_API_URL",
   "NEXT_PUBLIC_APP_URL",
   "NEXT_PUBLIC_RPC_URL",
+  "NEXT_PUBLIC_ALCHEMY_RPC_URL",
   "NEXT_PUBLIC_SOCKET_API_URL",
   "NEXT_PUBLIC_ETHERSCAN_EXPLORER",
 ]);
@@ -45,12 +46,16 @@ const validatePublicUrl = (name, value) => {
   try {
     const parsed = new URL(value);
     const hostname = parsed.hostname.toLowerCase();
+    const normalized = value.toLowerCase();
 
     if (["localhost", "127.0.0.1", "0.0.0.0", "::1"].includes(hostname)) {
       return `${name} must not point to localhost in production`;
     }
     if (hostname === "example.com" || hostname.endsWith(".example.com") || hostname.endsWith(".invalid")) {
       return `${name} must not use example or invalid hosts in production`;
+    }
+    if (normalized.includes("testnet") || normalized.includes("sepolia") || normalized.includes("goerli")) {
+      return `${name} must point to BSC mainnet, not a testnet RPC`;
     }
 
     return null;
@@ -112,10 +117,22 @@ export const validateFrontendEnv = (env = process.env) => {
 
   for (const name of PUBLIC_URL_ENV) {
     const value = env[name];
-    if (!isBlank(value)) {
-      const error = validatePublicUrl(name, value.trim());
-      if (error && !invalid.includes(error)) invalid.push(error);
+    if (value === undefined) {
+      continue;
     }
+    if (isBlank(value)) {
+      invalid.push(`${name} must not be empty when configured`);
+      continue;
+    }
+
+    const trimmed = value.trim();
+    if (looksPlaceholder(trimmed)) {
+      invalid.push(`${name} uses a placeholder value`);
+      continue;
+    }
+
+    const error = validatePublicUrl(name, trimmed);
+    if (error && !invalid.includes(error)) invalid.push(error);
   }
 
   if (invalid.length > 0) {

@@ -12,6 +12,7 @@ export const PRODUCTION_REQUIRED_ENV_VARS = [
   'FRONTEND_APP_URL',
   'QUICKNODE_HTTP_RPC_URL',
   'QUICKNODE_WS_RPC_URL',
+  'ETHERSCAN_API_URL',
   'CHAIN_ID',
   'TOKEN_CONTRACT_ADDRESS',
   'NFT_CONTRACT_ADDRESS',
@@ -38,7 +39,8 @@ const URL_ENV_VARS = new Set([
   'BACKEND_API_URL',
   'FRONTEND_APP_URL',
   'QUICKNODE_HTTP_RPC_URL',
-  'QUICKNODE_WS_RPC_URL'
+  'QUICKNODE_WS_RPC_URL',
+  'ETHERSCAN_API_URL'
 ]);
 
 const PLACEHOLDER_PATTERN = /^(dummy|example|placeholder|changeme|change-me|todo|undefined|null)$/i;
@@ -76,6 +78,7 @@ const validateUrl = (name: string, value: string): string | null => {
     const parsed = new URL(value);
     const hostname = parsed.hostname.toLowerCase();
     const protocol = parsed.protocol.toLowerCase();
+    const normalized = value.toLowerCase();
 
     if (!['http:', 'https:', 'ws:', 'wss:', 'postgresql:', 'postgres:'].includes(protocol)) {
       return `${name} has an unsupported protocol`;
@@ -85,6 +88,19 @@ const validateUrl = (name: string, value: string): string | null => {
     }
     if (hostname === 'example.com' || hostname.endsWith('.example.com') || hostname.endsWith('.invalid')) {
       return `${name} must not use example or invalid hosts in production`;
+    }
+    if (normalized.includes('testnet') || normalized.includes('sepolia') || normalized.includes('goerli')) {
+      return `${name} must point to BSC mainnet, not a testnet endpoint`;
+    }
+    if (name === 'ETHERSCAN_API_URL') {
+      if (hostname === 'api.etherscan.io') {
+        const hasBscChainId = parsed.pathname.includes('/v2/api') && parsed.searchParams.get('chainid') === '56';
+        if (!hasBscChainId) {
+          return 'ETHERSCAN_API_URL must use Etherscan V2 with chainid=56 or a BSC explorer endpoint';
+        }
+      } else if (!hostname.endsWith('bscscan.com')) {
+        return 'ETHERSCAN_API_URL must use a BSC explorer endpoint';
+      }
     }
 
     return null;

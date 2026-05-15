@@ -151,5 +151,7 @@ P0-13C closes the BSC production env fallback No-Go at code level.
 - Production backend startup now rejects missing values, localhost/example URLs, placeholder values, zero addresses, known test private keys, non-BSC `CHAIN_ID`, and `NEXT_PUBLIC_*` secret exposure.
 - `apps/backend/src/app/config/env.ts` no longer provides a production fallback token contract address.
 - `apps/frontend/env.validation.mjs` rejects frontend public secret env and unsafe production public values. Missing production public env leaves frontend API/on-chain dependent features disabled instead of falling back to localhost.
+- `NEXT_PUBLIC_ALCHEMY_RPC_URL` is optional, but if configured it is validated as a BSC mainnet public RPC and is used before `NEXT_PUBLIC_RPC_URL`; if unset, `NEXT_PUBLIC_RPC_URL` remains required.
+- `ETHERSCAN_API_URL` is required in production and must not fall back to the Ethereum mainnet `https://api.etherscan.io/api?` endpoint.
 - `docs/launch/ENVIRONMENT_RUNBOOK.md` records required backend/frontend env and forbidden `NEXT_PUBLIC_*` secret patterns.
 - Human deployment check remains required: verify secret manager values on staging/production without printing or committing secrets.
