@@ -5,6 +5,24 @@ import moment from 'moment';
 // import { jwtDecode } from 'jwt-decode'
 // import { number } from 'zod';
 
+type AuthenticatedUser = {
+    user_id?: number;
+};
+
+const getAuthenticatedUserId = (req: Request): number | null => {
+    const userId = Number((req.user as AuthenticatedUser | undefined)?.user_id);
+    return Number.isInteger(userId) && userId > 0 ? userId : null;
+};
+
+const routeUserIdMatchesAuthenticatedUser = (
+    req: Request,
+    paramName: string,
+    authenticatedUserId: number
+): boolean => {
+    const routeUserId = Number(req.params[paramName]);
+    return Number.isInteger(routeUserId) && routeUserId === authenticatedUserId;
+};
+
 export class UserController {
     static async getAllUsers(req: Request, res: Response) {
         try {
@@ -126,7 +144,15 @@ export class UserController {
         }
     }
     static async getUserPointHistory(req: Request, res: Response) {
-        const user_id = Number(req.params.user_id);
+        const user_id = getAuthenticatedUserId(req);
+        if (!user_id) {
+            return res.status(401).json({ success: false, msg: 'Unauthenticated' });
+        }
+
+        if (!routeUserIdMatchesAuthenticatedUser(req, 'user_id', user_id)) {
+            return res.status(403).json({ success: false, msg: 'Forbidden' });
+        }
+
         try {
             const data = await prisma.pointHistory.findMany({
                 where: {
@@ -287,7 +313,15 @@ export class UserController {
     }
 
     static async setUserDailyPointBonus(req: Request, res: Response) {
-        const user_id = Number(req.params.user_id);
+        const user_id = getAuthenticatedUserId(req);
+        if (!user_id) {
+            return res.status(401).json({ success: false, msg: 'Unauthenticated' });
+        }
+
+        if (!routeUserIdMatchesAuthenticatedUser(req, 'user_id', user_id)) {
+            return res.status(403).json({ success: false, msg: 'Forbidden' });
+        }
+
         try {
             // Use moment with UTC timezone
             const now = moment.utc();
@@ -365,7 +399,15 @@ export class UserController {
     
 
     static async getUserDailyPointBonus(req: Request, res: Response) {
-        const user_id = Number(req.params.user_id);
+        const user_id = getAuthenticatedUserId(req);
+        if (!user_id) {
+            return res.status(401).json({ success: false, msg: 'Unauthenticated' });
+        }
+
+        if (!routeUserIdMatchesAuthenticatedUser(req, 'user_id', user_id)) {
+            return res.status(403).json({ success: false, msg: 'Forbidden' });
+        }
+
         try {
             const now = moment.utc();
             const hour = now.hour();

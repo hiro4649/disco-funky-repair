@@ -23,7 +23,7 @@ router.delete('/admin/illustration/:id', AuthAdmin, asyncHandler(IllustrationCon
 // User Illustration Routes
 router.get('/illustration/:id', asyncHandler(IllustrationController.getById.bind(IllustrationController)));
 router.get('/illustration/rarity/:rarity', asyncHandler(IllustrationController.getByRarity.bind(IllustrationController)));
-router.get('/user/:userId/illustrations', asyncHandler(IllustrationController.getUserIllustrations.bind(IllustrationController)));
+router.get('/user/:userId/illustrations', Authenticate, asyncHandler(IllustrationController.getUserIllustrations.bind(IllustrationController)));
 router.post('/user/illustration', userIllustrationDisabledHandler);
 router.post('/user/:userId/draw-illustration', Authenticate, illustrationDrawRateLimiter, asyncHandler(IllustrationController.drawIllustration.bind(IllustrationController)));
 
