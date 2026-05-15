@@ -16,7 +16,6 @@ import GetTokenIcon from "../common/icons/getToken";
 import DiscoRaveIcon from "../common/icons/discoRave";
 import FAQIcon from "../common/icons/faq";
 import TermsOfUseIcon from "../common/icons/term";
-import CrashGameIcon from "../common/icons/crashGame";
 import { X } from "lucide-react";
 import Link from "next/link";
 import Image from "next/image";
@@ -64,18 +63,6 @@ const Sidebar = ({ sidebarToggleRef, mainContentRef }: { sidebarToggleRef: React
           // content: <><p className="text-[17px] normal">Fan <span className="text-main">P</span>oints</p></>,
           content: <><p className="text-[17px] normal">{t('Fan Points')}</p></>,
           route: "/fan-point",
-        },
-        {
-          disabled: true,
-          icon: <CrashGameIcon className="fill-white" />,
-          label: "fan games",
-          content: <div className="flex items-center justify-between w-full">
-            <p className="text-[17px] normal">{t('Fan Games')}</p>
-            <span className="bg-secondary text-gray-300 border-[#333] border-[0.3px] text-[10px] px-1 py-1 rounded-[0.25rem] font-medium leading-none">
-              Cooking P2E
-            </span>
-          </div>,
-          route: "/fan-games",
         },
         {
           disabled: false,
