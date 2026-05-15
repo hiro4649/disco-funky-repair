@@ -31,6 +31,7 @@ jest.mock('../../utils/tokenHeplers', () => ({
   calculateTokenQuantity: jest.fn(),
   fetchTokenBalance: jest.fn(),
   getTransactionReceiptStatus: jest.fn(),
+  isPrizeTransferTokenAllowed: jest.fn(),
   sendTokensToWallet: jest.fn()
 }));
 
@@ -40,7 +41,7 @@ jest.mock('../../lib/trialNftService', () => ({
 }));
 
 import { jwtDecode } from 'jwt-decode';
-import { getTransactionReceiptStatus, sendTokensToWallet } from '../../utils/tokenHeplers';
+import { getTransactionReceiptStatus, isPrizeTransferTokenAllowed, sendTokensToWallet } from '../../utils/tokenHeplers';
 import { PrizeController } from '../prize.controller';
 
 let consoleErrorSpy: jest.SpyInstance;
@@ -66,6 +67,7 @@ const createFinalizeRequest = () => ({
 } as any);
 
 const VALID_TOKEN_ADDRESS = '0x0000000000000000000000000000000000000001';
+const BLOCKED_TOKEN_ADDRESS = '0x0000000000000000000000000000000000000002';
 const FIXED_TRANSFER_AMOUNT = '50000000000000000000';
 const FIXED_TRANSFER_AMOUNT_2 = '25000000000000000000';
 
@@ -128,6 +130,7 @@ describe('PrizeController.sendToWallet', () => {
     mockPrisma.prizeTransactions.findFirst.mockResolvedValue(readyPrizeTransaction());
     mockPrisma.prizeTransactions.updateMany.mockResolvedValue({ count: 1 });
     mockPrisma.prizeTransactions.update.mockResolvedValue({});
+    (isPrizeTransferTokenAllowed as jest.Mock).mockReturnValue(true);
     (sendTokensToWallet as jest.Mock).mockResolvedValue('0xTx');
     (getTransactionReceiptStatus as jest.Mock).mockResolvedValue('RECEIVED');
   });
@@ -362,6 +365,59 @@ describe('PrizeController.sendToWallet', () => {
       data: { status: 'MANUAL_REVIEW' }
     });
     expect(mockPrisma.prizeTransactions.updateMany).not.toHaveBeenCalled();
+    expect(res.status).toHaveBeenCalledWith(202);
+  });
+
+  it('does not send when the fixed transfer token is not allowlisted', async () => {
+    (isPrizeTransferTokenAllowed as jest.Mock).mockReturnValue(false);
+    const res = createResponse();
+
+    await PrizeController.sendToWallet(createRequest(), res);
+
+    expect(sendTokensToWallet).not.toHaveBeenCalled();
+    expect(mockPrisma.prizeTransactions.update).toHaveBeenCalledWith({
+      where: { id: 7 },
+      data: { status: 'MANUAL_REVIEW' }
+    });
+    expect(mockPrisma.prizeTransactions.updateMany).not.toHaveBeenCalledWith({
+      where: {
+        id: 7,
+        userId: 1,
+        status: 'READY',
+        tx_hash: null
+      },
+      data: { status: 'SENDING' }
+    });
+    expect(res.status).toHaveBeenCalledWith(202);
+    expect(res.json).toHaveBeenCalledWith(expect.objectContaining({
+      success: false,
+      msg: 'Prize transfer token is not approved and requires manual review.',
+      correlationId: expect.any(String)
+    }));
+  });
+
+  it('does not send when the linked Prize token is not allowlisted', async () => {
+    (isPrizeTransferTokenAllowed as jest.Mock).mockImplementation(
+      (address: string) => address.toLowerCase() === VALID_TOKEN_ADDRESS.toLowerCase()
+    );
+    mockPrisma.prizeTransactions.findFirst.mockResolvedValue({
+      ...readyPrizeTransaction(),
+      prize: {
+        ...readyPrizeTransaction().prize,
+        ca: BLOCKED_TOKEN_ADDRESS
+      }
+    });
+    const res = createResponse();
+
+    await PrizeController.sendToWallet(createRequest(), res);
+
+    expect(isPrizeTransferTokenAllowed).toHaveBeenCalledWith(VALID_TOKEN_ADDRESS);
+    expect(isPrizeTransferTokenAllowed).toHaveBeenCalledWith(BLOCKED_TOKEN_ADDRESS);
+    expect(sendTokensToWallet).not.toHaveBeenCalled();
+    expect(mockPrisma.prizeTransactions.update).toHaveBeenCalledWith({
+      where: { id: 7 },
+      data: { status: 'MANUAL_REVIEW' }
+    });
     expect(res.status).toHaveBeenCalledWith(202);
   });
 

@@ -9,7 +9,7 @@ import jwt, { JwtPayload } from 'jsonwebtoken';
 import { jwtDecode } from 'jwt-decode';
 import { randomUUID } from 'crypto';
 import { ethers } from 'ethers';
-import { getTransactionReceiptStatus, sendTokensToWallet } from '../utils/tokenHeplers';
+import { getTransactionReceiptStatus, isPrizeTransferTokenAllowed, sendTokensToWallet } from '../utils/tokenHeplers';
 import getDiscoNFTEVM from '../lib/getDiscoNFTEVM';
 import { getTotalNFTCount } from '../lib/trialNftService';
 
@@ -1037,6 +1037,23 @@ export class PrizeController {
                 return res.status(202).json({
                     success: false,
                     msg: 'Prize transfer snapshot is missing or invalid and requires manual review.',
+                    correlationId
+                });
+            }
+
+            const prizeCatalogToken = prizeTransaction.prize?.ca;
+            const prizeCatalogTokenAllowed = prizeCatalogToken
+                ? isPrizeTransferTokenAllowed(prizeCatalogToken)
+                : true;
+
+            if (!isPrizeTransferTokenAllowed(coinType) || !prizeCatalogTokenAllowed) {
+                await prisma.prizeTransactions.update({
+                    where: { id: Number(prizeId) },
+                    data: { status: Status.MANUAL_REVIEW },
+                });
+                return res.status(202).json({
+                    success: false,
+                    msg: 'Prize transfer token is not approved and requires manual review.',
                     correlationId
                 });
             }

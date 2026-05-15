@@ -1,7 +1,13 @@
 import { ethers } from 'ethers';
 import getTokenBalance from "../lib/getToken";
 import getTokenPrice from "../lib/getTokenPrice";
-import { adminWalletAddress, ADMIN_PRIVATE_KEY, QUICKNODE_HTTP_RPC_URL, TOKEN_CONTRACT_ADDRESS } from "../config/env";
+import {
+    adminWalletAddress,
+    PRIZE_HOT_WALLET_PRIVATE_KEY,
+    PRIZE_TRANSFER_TOKEN_ALLOWLIST,
+    QUICKNODE_HTTP_RPC_URL,
+    TOKEN_CONTRACT_ADDRESS
+} from "../config/env";
 import prisma from '../db/prisma_client';
 import { string } from 'zod';
 
@@ -46,6 +52,22 @@ export const fetchTokenBalance = async (ca: string): Promise<number> => {
     }
 };
 
+const getPrizeTransferTokenAllowlist = (): Set<string> => new Set(
+    PRIZE_TRANSFER_TOKEN_ALLOWLIST
+        .split(',')
+        .map((address) => address.trim().toLowerCase())
+        .filter(Boolean)
+);
+
+export const isPrizeTransferTokenAllowed = (tokenAddress?: string): boolean => {
+    const erc20 = tokenAddress || TOKEN_CONTRACT_ADDRESS;
+    if (!erc20 || !ethers.isAddress(erc20)) {
+        return false;
+    }
+
+    return getPrizeTransferTokenAllowlist().has(erc20.toLowerCase());
+};
+
 export const sendTokensToWallet = async (
     userWalletAddress: string,
     tokenAmount: bigint,
@@ -54,20 +76,23 @@ export const sendTokensToWallet = async (
     if (!QUICKNODE_HTTP_RPC_URL) {
         throw new Error('Missing QUICKNODE_HTTP_RPC_URL');
     }
-    if (!ADMIN_PRIVATE_KEY) {
-        throw new Error('Operator private key is not defined');
+    if (!PRIZE_HOT_WALLET_PRIVATE_KEY) {
+        throw new Error('Prize hot wallet private key is not configured');
     }
     if (!userWalletAddress || !tokenAmount) {
         throw new Error('Specify the recipient address and amount');
     }
 
-    const provider = new ethers.JsonRpcProvider(QUICKNODE_HTTP_RPC_URL);
-    const wallet = new ethers.Wallet(ADMIN_PRIVATE_KEY, provider);
-
     const erc20 = tokenAddress || TOKEN_CONTRACT_ADDRESS;
     if (!erc20) {
         throw new Error('ERC-20 token address is not configured');
     }
+    if (!isPrizeTransferTokenAllowed(erc20)) {
+        throw new Error('Prize transfer token is not allowlisted');
+    }
+
+    const provider = new ethers.JsonRpcProvider(QUICKNODE_HTTP_RPC_URL);
+    const wallet = new ethers.Wallet(PRIZE_HOT_WALLET_PRIVATE_KEY, provider);
     const erc20Abi = [
         'function transfer(address to, uint256 amount) returns (bool)',
         'function balanceOf(address account) view returns (uint256)'
