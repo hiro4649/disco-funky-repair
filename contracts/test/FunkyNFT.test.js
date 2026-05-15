@@ -1,8 +1,13 @@
+const path = require("path");
 const { expect } = require("chai");
 const { loadFixture } = require("@nomicfoundation/hardhat-toolbox/network-helpers");
-const { ethers } = require("hardhat");
+const hre = require("hardhat");
+const { ethers } = hre;
 
-describe("FunkyNFT", function () {
+const describeIfNftConfig =
+  path.basename(hre.config.paths.sources) === "funky-nft" ? describe : describe.skip;
+
+describeIfNftConfig("FunkyNFT", function () {
   // Mock price feed: $500 per BNB (Chainlink uses 8 decimals)
   const MOCK_BNB_PRICE = 500n * 10n ** 8n; // $500 with 8 decimals
   const MINT_USD_PRICE = 500n * 10n ** 8n; // $500 per NFT
