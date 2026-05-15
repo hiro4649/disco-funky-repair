@@ -93,8 +93,34 @@ export const sendTokensToWallet = async (
         gasLimit: estimatedGas,
         gasPrice: feeData.gasPrice || undefined
     });
-    const receipt = await tx.wait();
-    return receipt.hash;
+    try {
+        const receipt = await tx.wait();
+        if (receipt?.status !== 1) {
+            const receiptError = new Error('Token transfer receipt was not successful') as Error & { txHash?: string };
+            receiptError.txHash = tx.hash;
+            throw receiptError;
+        }
+        return receipt.hash;
+    } catch (error) {
+        if (error instanceof Error && !('txHash' in error)) {
+            (error as Error & { txHash?: string }).txHash = tx.hash;
+        }
+        throw error;
+    }
+};
+
+export const getTransactionReceiptStatus = async (txHash: string): Promise<'RECEIVED' | 'BROADCASTED' | 'MANUAL_REVIEW'> => {
+    if (!QUICKNODE_HTTP_RPC_URL) {
+        throw new Error('Missing QUICKNODE_HTTP_RPC_URL');
+    }
+    const provider = new ethers.JsonRpcProvider(QUICKNODE_HTTP_RPC_URL);
+    const receipt = await provider.getTransactionReceipt(txHash);
+
+    if (!receipt) {
+        return 'BROADCASTED';
+    }
+
+    return receipt.status === 1 ? 'RECEIVED' : 'MANUAL_REVIEW';
 };
 
 export const requestRPC = 'https://api.dexscreener.com/latest/dex/tokens/';

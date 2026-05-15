@@ -353,6 +353,8 @@ model TicketCode {
 enum Status {
   READY
   SENDING
+  BROADCASTED
+  MANUAL_REVIEW
   RECEIVED
 }
 
