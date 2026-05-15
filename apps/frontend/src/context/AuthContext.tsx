@@ -1,10 +1,10 @@
-import React, { createContext, useContext, useEffect, useState, ReactNode } from 'react';
+import React, { createContext, useCallback, useContext, useEffect, useState, ReactNode } from 'react';
 import { useAppDispatch, useAppSelector } from '@/store/store';
 import { resetUser, setAuthstate, setConnectBonus, setUserId, setWalletAddress, setLotteryTicket, setClaimTickets, setFanPoints, setSixHourTokenBalance, setTallyTokenBalance } from '@/store/slices/userSlice';
 import apiClient from '../../utils/apiClient';
-import { Contract, formatUnits, JsonRpcProvider } from "ethers";
+import { BrowserProvider, Contract, Eip1193Provider, formatUnits, JsonRpcProvider } from "ethers";
 import { NFT_ABI } from "@/utils/constant";
-import { useAppKitAccount } from '@reown/appkit/react';
+import { useAppKitAccount, useAppKitProvider } from '@reown/appkit/react';
 import { usePathname, useRouter } from 'next/navigation';
 
 interface UserData {
@@ -23,7 +23,7 @@ interface AuthContextType {
   user: UserData | null;
   loading: boolean;
   error: string | null;
-  login: (wallet_address: string) => Promise<boolean>;
+  login: (wallet_address: string, referralCode?: string | null) => Promise<boolean>;
   logout: () => Promise<void>;
   refreshToken: () => Promise<boolean>;
 }
@@ -38,6 +38,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const [userData, setUserData] = useState<UserData | null>(null);
   const [ethPrice, setEthPrice] = useState<number>(0);
   const { isConnected, status } = useAppKitAccount();
+  const { walletProvider } = useAppKitProvider("eip155");
   const router = useRouter();
   const pathname = usePathname();
   const protectedRoutes = ['/ticket-code', '/my-wallet', '/referral-link'];
@@ -180,11 +181,38 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   }, [dispatch]);
 
   // Login function
-  const login = async (wallet_address: string): Promise<boolean> => {
+  const login = useCallback(async (wallet_address: string, referralCode?: string | null): Promise<boolean> => {
     setLoading(true);
     setError(null);
     try {
-      const res = await apiClient.post('/user/signup', { wallet_address });
+      if (!walletProvider) {
+        throw new Error('Wallet provider is not available');
+      }
+
+      const ethersProvider = new BrowserProvider(walletProvider as Eip1193Provider);
+      const network = await ethersProvider.getNetwork();
+      const signer = await ethersProvider.getSigner();
+      const signerAddress = (await signer.getAddress()).toLowerCase();
+      const walletAddress = wallet_address.toLowerCase();
+
+      if (signerAddress !== walletAddress) {
+        throw new Error('Connected wallet does not match login wallet');
+      }
+
+      const nonceResponse = await apiClient.post('/user/auth/nonce', {
+        wallet_address: walletAddress,
+        domain: typeof window !== 'undefined' ? window.location.host : undefined,
+        chainId: network.chainId.toString()
+      });
+
+      const message = nonceResponse.data.message;
+      const signature = await signer.signMessage(message);
+      const res = await apiClient.post('/user/signup', {
+        wallet_address: walletAddress,
+        message,
+        signature,
+        ...(referralCode ? { referralCode } : {})
+      });
       if (res.data.success) {
         // After successful signup, fetch user data
         const success = await fetchUserData();
@@ -199,7 +227,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       setLoading(false);
       return false;
     }
-  };
+  }, [walletProvider]);
 
   // Logout function
   const logout = async (): Promise<void> => {
@@ -242,4 +270,4 @@ export const useAuth = () => {
     throw new Error('useAuth must be used within an AuthProvider');
   }
   return context;
-}; 
+};

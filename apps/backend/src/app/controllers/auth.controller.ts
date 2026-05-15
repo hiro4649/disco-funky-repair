@@ -2,12 +2,62 @@ import { Request, Response } from "express";
 import prisma from "../db/prisma_client";
 import { Prisma } from "@prisma/client";
 import moment from 'moment';
-import WalletSchema from "../validation/walletAddressValidate";
+import { WalletNonceRequestSchema, WalletSignatureLoginSchema } from "../validation/walletAddressValidate";
 import { z } from "zod";
 import jwt from "jsonwebtoken";
 import bcrypt from 'bcryptjs';
 import { ETHERSCAN_API_URL, ETHERSCAN_API_KEY, TOKEN_CONTRACT_ADDRESS } from "../config/env";
 import { etherscanRateLimiter } from "../utils/rateLimiter";
+import { createHash, randomBytes } from "crypto";
+import { verifyMessage } from "ethers";
+
+const WALLET_LOGIN_NONCE_TTL_MINUTES = 5;
+
+const hashNonce = (nonce: string): string => createHash('sha256').update(nonce).digest('hex');
+
+const normalizeDomain = (req: Request, requestedDomain?: string): string => {
+    const origin = req.get('origin');
+    const host = req.get('host');
+    const rawDomain = (requestedDomain || origin || host || 'unknown').trim();
+
+    try {
+        const url = new URL(rawDomain.includes('://') ? rawDomain : `https://${rawDomain}`);
+        return url.host.toLowerCase().slice(0, 255);
+    } catch (_err) {
+        const sanitized = rawDomain.replace(/[^a-zA-Z0-9:._-]/g, '').toLowerCase();
+        return (sanitized || 'unknown').slice(0, 255);
+    }
+};
+
+const normalizeChainId = (chainId?: string | number): string => {
+    const rawChainId = String(chainId || process.env.CHAIN_ID || '56').trim();
+    return /^\d+$/.test(rawChainId) ? rawChainId : '56';
+};
+
+const createWalletLoginMessage = ({
+    walletAddress,
+    nonce,
+    issuedAt,
+    expiresAt,
+    domain,
+    chainId
+}: {
+    walletAddress: string;
+    nonce: string;
+    issuedAt: string;
+    expiresAt: string;
+    domain: string;
+    chainId: string;
+}): string => [
+    'DISCO.fan / FUNKY.fan wallet login',
+    '',
+    `Wallet: ${walletAddress}`,
+    `Nonce: ${nonce}`,
+    `Issued At: ${issuedAt}`,
+    `Expires At: ${expiresAt}`,
+    `Domain: ${domain}`,
+    `Chain ID: ${chainId}`
+].join('\n');
 
 // Helper function to get token transactions from Etherscan with rate limiting
 const getTokenTransactions = async (walletAddress: string, tokenAddress: string) => {
@@ -32,6 +82,62 @@ const getTokenTransactions = async (walletAddress: string, tokenAddress: string)
 };
 
 export class AuthController {
+    static async issueWalletNonce(req: Request, res: Response) {
+        try {
+            const validatedData = WalletNonceRequestSchema.parse(req.body);
+            const walletAddress = validatedData.wallet_address.toLowerCase();
+            const nonce = randomBytes(32).toString('hex');
+            const issuedAt = moment.utc();
+            const expiresAt = issuedAt.clone().add(WALLET_LOGIN_NONCE_TTL_MINUTES, 'minutes');
+            const domain = normalizeDomain(req, validatedData.domain);
+            const chainId = normalizeChainId(validatedData.chainId);
+            const issuedAtIso = issuedAt.toISOString();
+            const expiresAtIso = expiresAt.toISOString();
+            const message = createWalletLoginMessage({
+                walletAddress,
+                nonce,
+                issuedAt: issuedAtIso,
+                expiresAt: expiresAtIso,
+                domain,
+                chainId
+            });
+
+            await prisma.walletLoginNonce.create({
+                data: {
+                    wallet_address: walletAddress,
+                    nonce_hash: hashNonce(nonce),
+                    message,
+                    issued_at: issuedAt.toDate(),
+                    expires_at: expiresAt.toDate()
+                }
+            });
+
+            return res.status(200).json({
+                success: true,
+                wallet_address: walletAddress,
+                nonce,
+                message,
+                issuedAt: issuedAtIso,
+                expiresAt: expiresAtIso,
+                domain,
+                chainId
+            });
+        } catch (err) {
+            if (err instanceof z.ZodError) {
+                return res.status(400).json({
+                    success: false,
+                    message: "Validation error",
+                    errors: err.errors
+                });
+            }
+
+            return res.status(500).json({
+                success: false,
+                message: "Internal server error"
+            });
+        }
+    }
+
     static async processReferral(walletAddress: string, referralCode: string) {
         try {
             // Find the referrer by referral code
@@ -79,8 +185,65 @@ export class AuthController {
 
         try {
             // Validate request body
-            const validatedData = WalletSchema.parse(req.body);
+            const validatedData = WalletSignatureLoginSchema.parse(req.body);
             const wallet_address = validatedData.wallet_address.toLowerCase();
+
+            let recoveredAddress: string;
+            try {
+                recoveredAddress = verifyMessage(validatedData.message, validatedData.signature).toLowerCase();
+            } catch (_err) {
+                return res.status(401).json({
+                    success: false,
+                    message: "Invalid wallet signature"
+                });
+            }
+
+            if (recoveredAddress !== wallet_address) {
+                return res.status(401).json({
+                    success: false,
+                    message: "Wallet signature does not match wallet address"
+                });
+            }
+
+            const nonceConsumed = await prisma.$transaction(async (tx) => {
+                const now = moment.utc().toDate();
+                const nonceRecord = await tx.walletLoginNonce.findFirst({
+                    where: {
+                        wallet_address,
+                        message: validatedData.message
+                    },
+                    select: {
+                        id: true,
+                        expires_at: true,
+                        used_at: true
+                    }
+                });
+
+                if (!nonceRecord || nonceRecord.used_at || nonceRecord.expires_at <= now) {
+                    return false;
+                }
+
+                const updateResult = await tx.walletLoginNonce.updateMany({
+                    where: {
+                        id: nonceRecord.id,
+                        used_at: null,
+                        expires_at: { gt: now }
+                    },
+                    data: {
+                        used_at: now,
+                        updated_at: now
+                    }
+                });
+
+                return updateResult.count === 1;
+            });
+
+            if (!nonceConsumed) {
+                return res.status(401).json({
+                    success: false,
+                    message: "Wallet login nonce is invalid, expired, or already used"
+                });
+            }
 
              // Check for referral code in request body or cookies
              const referralCode = req.body.referralCode || req.cookies?.ref;

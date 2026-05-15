@@ -43,16 +43,29 @@ export const Authenticate = async (req: Request, res: Response, next: NextFuncti
         try {
             const decoded = jwt.verify(token, key) as User;
             
+            const userId = Number(decoded.user_id);
+            if (!Number.isInteger(userId)) {
+                return res.status(403).json({ success: false, message: 'Invalid token subject' });
+            }
+
             const user = await prisma.user.findUnique({
-                where: { wallet_address: decoded.address.toLowerCase() },
+                where: { id: userId },
             });
 
             if (!user) {
-                console.log('User not found with address:', decoded.address);
+                console.log('User not found with id:', userId);
                 return res.status(403).json({ success: false, message: 'User not found' });
             }
 
-            req.user = decoded;
+            if (decoded.address && user.wallet_address.toLowerCase() !== decoded.address.toLowerCase()) {
+                return res.status(403).json({ success: false, message: 'Invalid token subject' });
+            }
+
+            req.user = {
+                ...decoded,
+                user_id: user.id,
+                address: user.wallet_address
+            };
             next();
         } catch (jwtError) {
             console.error('JWT verification error:', jwtError);
