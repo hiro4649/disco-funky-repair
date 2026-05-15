@@ -149,4 +149,21 @@ describe('illustration draw route', () => {
     expect(mockPrisma.illustrationHistory.create).toHaveBeenCalledTimes(1);
     expect(mockPrisma.user.update).toHaveBeenCalledTimes(1);
   });
+
+  it('blocks direct user illustration assignment before DB or point updates run', async () => {
+    const response = await request(createApp())
+      .post('/user/illustration')
+      .send({ userId: 1, illustrationId: 7, wallet_address: '0xAttacker' });
+
+    expect(response.status).toBe(410);
+    expect(response.body).toEqual({
+      success: false,
+      code: 'FEATURE_DISABLED',
+      message: 'Direct user illustration assignment is disabled for the BSC launch MVP.'
+    });
+    expect(mockPrisma.user.findUnique).not.toHaveBeenCalled();
+    expect(mockPrisma.pointHistory.create).not.toHaveBeenCalled();
+    expect(mockPrisma.user.update).not.toHaveBeenCalled();
+    expect(mockPrisma.illustrationHistory.create).not.toHaveBeenCalled();
+  });
 });

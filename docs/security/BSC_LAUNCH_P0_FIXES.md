@@ -869,3 +869,18 @@ P2: frontend buildでlint無視設定
 - Verification:
   - `cd apps/backend && npm run build`: pass.
   - `cd apps/backend && npm test -- --runInBand`: pass.
+
+## 2026-05-15 P0-04 implementation record
+
+- Task: Disable arbitrary direct Illustration assignment from `POST /user/illustration`.
+- Changed files:
+  - `apps/backend/src/app/routes/illustration.routes.ts`
+  - `apps/backend/src/app/routes/__tests__/illustration.routes.test.ts`
+  - `docs/launch/DISABLED_FEATURES.md`
+- Fix summary:
+  - `POST /user/illustration` now returns fixed `410 FEATURE_DISABLED`.
+  - The route no longer calls `IllustrationController.addIllustrationToUser` for general users.
+  - Request body `userId`, `illustrationId`, and wallet address are not trusted.
+  - `IllustrationHistory`, `PointHistory`, and `fan_points` updates are not reached from this route.
+- Re-enable condition:
+  - Use an admin/internal-only path, or verify a signed one-time draw result/claim token that binds authenticated user and illustration id.
