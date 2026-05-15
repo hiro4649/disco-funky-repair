@@ -23,7 +23,11 @@ interface IDexPair {
 }
 
 contract FunkyRave is ERC20 {
-    bytes32 private constant REASON_REGULAR_SYNC = keccak256("REGULAR_SYNC");
+    bytes32 public constant REASON_REGULAR_SYNC = keccak256("REGULAR_SYNC");
+    bytes32 public constant REASON_FIFO_DOWNGRADE = keccak256("FIFO_DOWNGRADE");
+    bytes32 public constant REASON_ZERO_BALANCE_RESET = keccak256("ZERO_BALANCE_RESET");
+    bytes32 public constant REASON_FULL_SELL_RESET = keccak256("FULL_SELL_RESET");
+    bytes32 public constant REASON_WEIGHTED_AVERAGE_DOWNGRADE = keccak256("WEIGHTED_AVERAGE_DOWNGRADE");
     bytes32 private constant EXEMPT_CAT_TREASURY_LP = keccak256("TREASURY_LP_BOOTSTRAP");
     bytes32 private constant EXEMPT_CAT_MARKET_MAKER = keccak256("MARKET_MAKER_CONTROLLED");
     bytes32 private constant EXEMPT_CAT_BRIDGE_OPS = keccak256("BRIDGE_OPERATIONAL");
@@ -84,6 +88,8 @@ contract FunkyRave is ERC20 {
     error PairDoesNotContainToken();
     error InvalidReasonCode();
     error InvalidBatchId();
+    error InvalidTier();
+    error InvalidDowngradeReason();
     error TierDowngradeNotAllowed();
     error InvalidExemptCategory();
     error ExemptAddressCapReached();
@@ -217,6 +223,7 @@ contract FunkyRave is ERC20 {
     /// @notice Update the fee percentage (0–1000)
     /// @dev Maps to: update_fee_percentage(_holdingDate, new_fee)
     function update_fee_percentage(uint16 _holdingDate, uint16 _newFeePercent) external onlyAdmin {
+        if (!_isValidTier(_holdingDate)) revert InvalidTier();
         if (_newFeePercent > 1000) revert FeeTooHigh();
         uint16 old = feePercent[_holdingDate];
         feePercent[_holdingDate] = _newFeePercent;
@@ -227,11 +234,13 @@ contract FunkyRave is ERC20 {
     /// @dev Tier is monotonically increasing by default. Downgrade requires non-regular reasonCode.
     function update_holding_date(address user, uint16 _holdingDate, bytes32 reasonCode, bytes32 batchId) external onlyTierUpdater {
         if (user == address(0)) revert InvalidAddress();
-        if (reasonCode == bytes32(0)) revert InvalidReasonCode();
+        if (!_isValidTier(_holdingDate)) revert InvalidTier();
+        if (!_isAllowedTierReason(reasonCode)) revert InvalidReasonCode();
         if (batchId == bytes32(0)) revert InvalidBatchId();
         uint16 old = holdingDate[user];
         if (_holdingDate < old) {
             if (reasonCode == REASON_REGULAR_SYNC) revert TierDowngradeNotAllowed();
+            if (!_isAllowedDowngradeReason(reasonCode)) revert InvalidDowngradeReason();
         }
         holdingDate[user] = _holdingDate;
         emit HoldingDateUpdated(user, old, _holdingDate, reasonCode, batchId, msg.sender);
@@ -378,6 +387,32 @@ contract FunkyRave is ERC20 {
             categoryCode == EXEMPT_CAT_MARKET_MAKER ||
             categoryCode == EXEMPT_CAT_BRIDGE_OPS ||
             categoryCode == EXEMPT_CAT_INCIDENT_TEMP
+        );
+    }
+
+    function _isValidTier(uint16 tier) internal pure returns (bool) {
+        return (
+            tier == 0 ||
+            tier == 31 ||
+            tier == 91 ||
+            tier == 181 ||
+            tier == 271 ||
+            tier == 361 ||
+            tier == 541 ||
+            tier == 721
+        );
+    }
+
+    function _isAllowedTierReason(bytes32 reasonCode) internal pure returns (bool) {
+        return reasonCode == REASON_REGULAR_SYNC || _isAllowedDowngradeReason(reasonCode);
+    }
+
+    function _isAllowedDowngradeReason(bytes32 reasonCode) internal pure returns (bool) {
+        return (
+            reasonCode == REASON_FIFO_DOWNGRADE ||
+            reasonCode == REASON_ZERO_BALANCE_RESET ||
+            reasonCode == REASON_FULL_SELL_RESET ||
+            reasonCode == REASON_WEIGHTED_AVERAGE_DOWNGRADE
         );
     }
 }

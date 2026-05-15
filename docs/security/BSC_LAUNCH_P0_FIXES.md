@@ -1049,3 +1049,36 @@ P2: frontend buildでlint無視設定
   - Public and owner batch mint cannot exceed `MAX_SUPPLY`.
   - Non-owner cannot call owner batch mint to arbitrary recipients.
   - Owner batch mint cannot run while mint is disabled.
+
+## 2026-05-15 P0-09 implementation record
+
+- Task: Add explicit holding-tier reset/downgrade path for BSC tokenomics.
+- Target files:
+  - `contracts/funky/funky.sol`
+  - `contracts/funky/FunkyTierUpdater.sol`
+  - `contracts/test/FunkyRave.test.js`
+  - `apps/backend/src/app/lib/tierSync.ts`
+  - `apps/backend/src/app/lib/holdingDateService.ts`
+  - `apps/backend/src/app/lib/tierScheduler.ts`
+  - `apps/backend/src/app/lib/realtimeHoldingDateUpdater.ts`
+  - `apps/backend/src/app/services/tokenManagementService.ts`
+  - `apps/backend/src/app/config/env.ts`
+  - `apps/backend/src/app/lib/__tests__/tierSync.test.ts`
+- Fix summary:
+  - Contract tiers are fixed to `0,31,91,181,271,361,541,721`.
+  - `FunkyRave.update_holding_date` rejects unknown tiers and rejects arbitrary non-regular downgrade reasons.
+  - `REGULAR_SYNC` still cannot downgrade a wallet tier.
+  - Explicit reset/downgrade reasons are allowed for FIFO/weighted-average downgrade, zero-balance reset, and full-sell reset.
+  - Added `FunkyTierUpdater` with `syncHoldingDate` for regular sync and `syncHoldingDateWithReason` for explicit reset/downgrade sync.
+  - Backend tier mapping now uses the same fixed contract tiers.
+  - Backend tier writes go through `TIER_UPDATER_CONTRACT_ADDRESS`.
+  - Backend sync includes users whose DB tier is `0`, so stale non-zero contract tiers can be reset with an explicit reason.
+  - Realtime tier updates pass current token balance/holding context so downgrade/reset calls receive a justified reason.
+  - Admin token management requires an explicit downgrade/reset reason for manual tier decreases.
+- Tests added:
+  - Unknown fee tiers and holding-date tiers are rejected on-chain.
+  - `REGULAR_SYNC` downgrade is rejected.
+  - Arbitrary non-regular downgrade reasons are rejected.
+  - Zero-balance reset and weighted-average downgrade reasons are accepted.
+  - `FunkyTierUpdater` separates regular sync from explicit reason sync and enforces relayer authorization.
+  - Backend tier helper maps to the fixed tiers and routes downgrade/reset calls through `syncHoldingDateWithReason`.

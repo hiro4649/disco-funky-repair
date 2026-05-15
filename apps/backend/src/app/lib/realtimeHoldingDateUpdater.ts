@@ -336,7 +336,10 @@ export const processUserRealtime = async (
         // Check if tier changed
         if (oldTier !== newTier) {
             console.log(`🎯 Tier changed for user ${userId}! Updating contract immediately...`);
-            await updateUserContractTier(userId);
+            await updateUserContractTier(userId, 3, {
+                tokenBalance: currentBalance,
+                holdingDays: safeAverageDays
+            });
         }
 
         // Schedule next tier update

@@ -6,6 +6,8 @@ describe("FunkyRave", function () {
   const INITIAL_SUPPLY = 30_000_000_000n * 10n ** 18n;
   const REASON_REGULAR_SYNC = ethers.id("REGULAR_SYNC");
   const REASON_FIFO_DOWNGRADE = ethers.id("FIFO_DOWNGRADE");
+  const REASON_ZERO_BALANCE_RESET = ethers.id("ZERO_BALANCE_RESET");
+  const REASON_WEIGHTED_AVERAGE_DOWNGRADE = ethers.id("WEIGHTED_AVERAGE_DOWNGRADE");
   const REASON_TREASURY_OP = ethers.id("TREASURY_OP");
   const BATCH_MAIN = ethers.id("BATCH_MAIN");
   const BATCH_ALT = ethers.id("BATCH_ALT");
@@ -119,6 +121,12 @@ describe("FunkyRave", function () {
       expect(await token.feePercent(31)).to.equal(200);
     });
 
+    it("Rejects unknown fee tiers", async function () {
+      const { token, admin } = await loadFixture(deployFunkyRaveFixture);
+      await expect(token.connect(admin).update_fee_percentage(30, 200))
+        .to.be.revertedWithCustomError(token, "InvalidTier");
+    });
+
     it("Reverts if fee > 1000", async function () {
       const { token, admin } = await loadFixture(deployFunkyRaveFixture);
       await expect(token.connect(admin).update_fee_percentage(0, 1001))
@@ -129,6 +137,12 @@ describe("FunkyRave", function () {
       const { token, tierUpdater, user1 } = await loadFixture(deployFunkyRaveFixture);
       await tierUpdater.updateHoldingDate(token.target, user1.address, 181, REASON_REGULAR_SYNC, BATCH_MAIN);
       expect(await token.holdingDate(user1.address)).to.equal(181);
+    });
+
+    it("Rejects unknown holding-date tiers", async function () {
+      const { token, tierUpdater, user1 } = await loadFixture(deployFunkyRaveFixture);
+      await expect(tierUpdater.updateHoldingDate(token.target, user1.address, 180, REASON_REGULAR_SYNC, BATCH_MAIN))
+        .to.be.revertedWithCustomError(token, "InvalidTier");
     });
 
     it("Non-tier-updater cannot update user holding date", async function () {
@@ -149,6 +163,46 @@ describe("FunkyRave", function () {
       await tierUpdater.updateHoldingDate(token.target, user1.address, 181, REASON_REGULAR_SYNC, BATCH_MAIN);
       await tierUpdater.updateHoldingDate(token.target, user1.address, 31, REASON_FIFO_DOWNGRADE, BATCH_ALT);
       expect(await token.holdingDate(user1.address)).to.equal(31);
+    });
+
+    it("Downgrade rejects arbitrary non-regular reasons", async function () {
+      const { token, tierUpdater, user1 } = await loadFixture(deployFunkyRaveFixture);
+      await tierUpdater.updateHoldingDate(token.target, user1.address, 181, REASON_REGULAR_SYNC, BATCH_MAIN);
+      await expect(tierUpdater.updateHoldingDate(token.target, user1.address, 31, REASON_TREASURY_OP, BATCH_ALT))
+        .to.be.revertedWithCustomError(token, "InvalidReasonCode");
+    });
+
+    it("Allows zero-balance reset and weighted-average downgrade with explicit reasons", async function () {
+      const { token, tierUpdater, user1 } = await loadFixture(deployFunkyRaveFixture);
+      await tierUpdater.updateHoldingDate(token.target, user1.address, 361, REASON_REGULAR_SYNC, BATCH_MAIN);
+
+      await expect(tierUpdater.updateHoldingDate(token.target, user1.address, 181, REASON_WEIGHTED_AVERAGE_DOWNGRADE, BATCH_ALT))
+        .to.emit(token, "HoldingDateUpdated")
+        .withArgs(user1.address, 361, 181, REASON_WEIGHTED_AVERAGE_DOWNGRADE, BATCH_ALT, tierUpdater.target);
+
+      await tierUpdater.updateHoldingDate(token.target, user1.address, 0, REASON_ZERO_BALANCE_RESET, ethers.id("ZERO_RESET_BATCH"));
+      expect(await token.holdingDate(user1.address)).to.equal(0);
+    });
+
+    it("FunkyTierUpdater separates regular sync from explicit downgrade/reset sync", async function () {
+      const { token, admin, user1, user2 } = await loadFixture(deployFunkyRaveFixture);
+      const FunkyTierUpdater = await ethers.getContractFactory("FunkyTierUpdater");
+      const tierModule = await FunkyTierUpdater.deploy(token.target, admin.address, user2.address);
+      await token.connect(admin).add_tier_updater(tierModule.target);
+
+      await tierModule.connect(user2).syncHoldingDate(user1.address, 271, BATCH_MAIN);
+      expect(await token.holdingDate(user1.address)).to.equal(271);
+
+      await expect(tierModule.connect(user2).syncHoldingDate(user1.address, 91, BATCH_ALT))
+        .to.be.revertedWithCustomError(token, "TierDowngradeNotAllowed");
+
+      await tierModule.connect(user2).syncHoldingDateWithReason(user1.address, 91, REASON_WEIGHTED_AVERAGE_DOWNGRADE, BATCH_ALT);
+      expect(await token.holdingDate(user1.address)).to.equal(91);
+
+      await expect(tierModule.connect(user1).syncHoldingDate(user1.address, 181, ethers.id("UNAUTH_BATCH")))
+        .to.be.revertedWithCustomError(tierModule, "NotRelayer");
+      await expect(tierModule.connect(user2).syncHoldingDateWithReason(user1.address, 0, REASON_REGULAR_SYNC, ethers.id("BAD_REASON_BATCH")))
+        .to.be.revertedWithCustomError(tierModule, "InvalidReasonCode");
     });
 
     it("Admin can update fee recipient", async function () {
