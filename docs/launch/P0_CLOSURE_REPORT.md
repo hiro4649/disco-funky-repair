@@ -142,3 +142,17 @@ P0-13B closes the frontend `NEXT_PUBLIC_ADMIN_PRIVATE_KEY` / browser admin signe
 - `apps/frontend/src/utils/constant.ts` no longer exposes token governance/admin write ABI entries used by frontend admin screens.
 - Frontend admin write actions are manual-review/read-only and must be executed through `docs/launch/GOVERNANCE_RUNBOOK.md` plus multisig/timelock procedures.
 - Production frontend env must still be checked by humans: no `NEXT_PUBLIC_*PRIVATE_KEY` value may be configured in hosting, CI, PM2, Docker, or deployment settings.
+
+## P0-13C update
+
+P0-13C closes the BSC production env fallback and API-key URL logging No-Go at code level.
+
+- `apps/backend/src/app/lib/validateEnvs.ts` now requires BSC production env for backend API URL, frontend URL, JWT, database, RPC, explorer URL/key, chain ID, FUNKY token, NFT contract, prize hot wallet, prize token allowlist, tier relayer, tier updater, and admin auth settings.
+- Production backend startup now rejects missing values, localhost/example URLs, placeholder values, zero addresses, known test private keys, non-BSC `CHAIN_ID`, Ethereum mainnet explorer fallback, testnet explorer endpoints, and `NEXT_PUBLIC_*` secret exposure.
+- `apps/backend/src/app/config/env.ts` no longer provides a production fallback token contract address.
+- `apps/backend/src/app/lib/incrementalHoldingDateProcessor.ts` no longer falls back to `https://api.etherscan.io/api?` in production.
+- `apps/backend/src/app/lib/realtimeHoldingDateUpdater.ts` and `apps/backend/src/app/lib/getToken.ts` no longer raw-log explorer URLs containing query strings or API keys.
+- `apps/frontend/env.validation.mjs` rejects frontend public secret env and unsafe production public values. Missing production public env leaves API/on-chain dependent features disabled instead of falling back to localhost.
+- `NEXT_PUBLIC_ALCHEMY_RPC_URL` is optional, but if configured it is validated as a BSC mainnet public RPC and is used before `NEXT_PUBLIC_RPC_URL`; if unset, `NEXT_PUBLIC_RPC_URL` remains required.
+- `docs/launch/ENVIRONMENT_RUNBOOK.md` records required backend/frontend env, forbidden `NEXT_PUBLIC_*` secret patterns, and the raw explorer URL logging ban.
+- Human deployment check remains required: verify secret manager values on staging/production without printing or committing secrets.

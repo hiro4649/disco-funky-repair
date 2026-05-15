@@ -9,8 +9,8 @@ import passport from 'passport';
 import * as http from 'http';
 import { Server as SocketIOServer } from 'socket.io';
 import { configureSecurityMiddleware } from './middlewares/security';
-import './services/trackingService';
 import './lib/validateEnvs';
+import './services/trackingService';
 import { startTrialNFTSchedulers } from './lib/trialNftScheduler';
 
 const app = express();

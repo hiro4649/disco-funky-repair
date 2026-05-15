@@ -1,10 +1,34 @@
 import createNextIntlPlugin from "next-intl/plugin";
+import { validateFrontendEnv } from "./env.validation.mjs";
 
-process.env.NEXT_PUBLIC_APP_URL ||= "http://localhost:3000";
-process.env.NEXT_PUBLIC_APP_NAME ||= "FUNKY";
+if (process.env.NODE_ENV !== "production") {
+  process.env.NEXT_PUBLIC_APP_URL ||= "http://localhost:3000";
+  process.env.NEXT_PUBLIC_APP_NAME ||= "FUNKY";
+}
+
+const frontendEnv = validateFrontendEnv(process.env);
+if (frontendEnv.productionDisabled) {
+  process.env.NEXT_PUBLIC_APP_URL ||= "https://launch-disabled.funky.fan";
+  process.env.NEXT_PUBLIC_APP_NAME ||= "FUNKY";
+  console.warn(
+    `[env] Production frontend public env is incomplete; API/on-chain features remain disabled until configured: ${frontendEnv.missing.join(", ")}`
+  );
+}
 
 const withNextIntl = createNextIntlPlugin();
 const apiUrl = process.env.NEXT_PUBLIC_API_URL?.replace(/\/$/, "");
+const developmentImagePatterns = process.env.NODE_ENV === "production"
+  ? []
+  : [
+      {
+        protocol: "http",
+        hostname: "localhost",
+      },
+      {
+        protocol: "http",
+        hostname: "127.0.0.1",
+      },
+    ];
 
 /** @type {import("next").NextConfig} */
 const nextConfig = {
@@ -33,14 +57,7 @@ const nextConfig = {
         protocol: "https",
         hostname: "**", // allow all domains
       },
-      {
-        protocol: "http",
-        hostname: "localhost", // allow localhost for development
-      },
-      {
-        protocol: "http",
-        hostname: "127.0.0.1", // allow 127.0.0.1 for development
-      },
+      ...developmentImagePatterns,
     ],
     dangerouslyAllowSVG: true, // Optional: Allow SVG images (use with caution)
     unoptimized: true, // Optional: Disables Next.js image optimization

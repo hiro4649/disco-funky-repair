@@ -136,7 +136,12 @@ const Wallet = () => {
 
   const getCurrentSellFee = async () => {
     try {
-      const provider = new ethers.JsonRpcProvider(process.env.NEXT_PUBLIC_RPC_URL);
+      const rpcUrl = process.env.NEXT_PUBLIC_RPC_URL;
+      if (!rpcUrl || !tokenAddress) {
+        setCurrentSellFee("0");
+        return;
+      }
+      const provider = new ethers.JsonRpcProvider(rpcUrl);
       const contract = new ethers.Contract(tokenAddress, TOKEN_ABI, provider);
       const tokenHoldingPeriod = await contract.holdingDate(address);
 

@@ -22,11 +22,11 @@ import { updateCheckpoint } from './incrementalHoldingDateProcessor';
 import { scheduleTierUpdate, updateUserContractTier, getMilestoneTier } from './tierScheduler';
 import { tokenBalanceService } from './quicknodeRpcService';
 import { withUserLock } from './userProcessingLock';
+import { ETHERSCAN_API_URL as CONFIGURED_ETHERSCAN_API_URL, TOKEN_CONTRACT_ADDRESS } from '../config/env';
 
 const prisma = new PrismaClient();
 
-const ETHERSCAN_API_URL = process.env.ETHERSCAN_API_URL || 'https://api.bscscan.com/api';
-const TOKEN_CONTRACT_ADDRESS = process.env.TOKEN_CONTRACT_ADDRESS || '';
+const ETHERSCAN_API_URL = CONFIGURED_ETHERSCAN_API_URL || (process.env.NODE_ENV === 'production' ? '' : 'https://api.bscscan.com/api');
 
 // ERC20 ABI for balance checking
 const TOKEN_ABI = [
@@ -97,6 +97,14 @@ const fetchUserTransactions = async (
     let hasMore = true;
 
     try {
+        if (!ETHERSCAN_API_URL) {
+            if (process.env.NODE_ENV === 'production') {
+                throw new Error('ETHERSCAN_API_URL is not configured');
+            }
+            console.warn('ETHERSCAN_API_URL is not configured; realtime fallback fetch disabled.');
+            return [];
+        }
+
         while (hasMore) {
             // Get API key with automatic rate limiting and rotation
             const url = await apiKeyManager.buildUrl(ETHERSCAN_API_URL, {
@@ -114,7 +122,7 @@ const fetchUserTransactions = async (
             const response = await fetch(url);
             const data = await response.json();
             console.log(`🔍 Fetched page ${page} for ${walletAddress}: ${data.result?.length || 0} txns`);
-            console.log(`url: ${url}`);
+            console.log(`Fetched Etherscan fallback page ${page} for ${walletAddress.slice(0, 10)}...: ${data.result?.length || 0} txns`);
 
             if (data.status === '1' && Array.isArray(data.result) && data.result.length > 0) {
                 transactions.push(...data.result);

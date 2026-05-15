@@ -126,8 +126,8 @@ export default function TokenManagement() {
   const initializeProvider = async () => {
     try {
       const rpcUrl = process.env.NEXT_PUBLIC_ALCHEMY_RPC_URL || process.env.NEXT_PUBLIC_RPC_URL;
-      if (!rpcUrl) {
-        toast.error("RPC URL not configured");
+      if (!rpcUrl || !TOKEN_ADDRESS) {
+        toast.error("Token RPC or contract address not configured");
         return;
       }
 
