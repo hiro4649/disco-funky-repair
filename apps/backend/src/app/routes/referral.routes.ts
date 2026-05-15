@@ -2,7 +2,7 @@ import { Router } from 'express';
 import { PrismaClient } from '@prisma/client';
 import moment from 'moment';
 import { generateRandomCode } from '../utils/ticketCodeGenerator';
-import { Authenticate } from '../config/passport';
+import { Authenticate, AuthAdmin } from '../config/passport';
 
 const router = Router();
 const prisma = new PrismaClient();
@@ -285,15 +285,8 @@ router.get('/debug/referral-status/:walletAddress', async (req, res) => {
 });
 
 // Admin endpoint to run snapshot verification
-router.post('/admin/run-snapshot', async (req, res) => {
+router.post('/admin/run-snapshot', AuthAdmin, async (req, res) => {
   try {
-    const { adminKey } = req.body;
-    
-    // Simple admin key check (in production, use proper authentication)
-    if (adminKey !== process.env.ADMIN_KEY) {
-      return res.status(401).json({ error: 'Unauthorized' });
-    }
-
     // Get all pending referrals
     const pendingReferrals = await prisma.referralRewards.findMany({
       where: { 
@@ -334,14 +327,8 @@ router.post('/admin/run-snapshot', async (req, res) => {
 });
 
 // Admin endpoint to distribute rewards
-router.post('/admin/distribute-rewards', async (req, res) => {
+router.post('/admin/distribute-rewards', AuthAdmin, async (req, res) => {
   try {
-    const { adminKey } = req.body;
-    
-    if (adminKey !== process.env.ADMIN_KEY) {
-      return res.status(401).json({ error: 'Unauthorized' });
-    }
-
     // Get all verified but not rewarded referrals
     const verifiedReferrals = await prisma.referralRewards.findMany({
       where: { 
