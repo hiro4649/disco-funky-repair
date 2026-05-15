@@ -40,6 +40,14 @@ P0-10A separates prize token transfers from the broader backend admin key. A com
 - Fee changes, fee recipient changes, pair/factory registration, tier updater registration, and fee exemption changes must go through the governance runbook, then multisig or timelock execution.
 - Backend governance APIs, if present, must be disabled, manual-review only, or read-only.
 
+### Frontend public environment variables
+
+- Never put private keys, admin keys, owner keys, relayer keys, hot wallet keys, or multisig signer keys in `NEXT_PUBLIC_*`.
+- `NEXT_PUBLIC_*` values are bundled into browser JavaScript and must be treated as public.
+- Frontend admin screens must not create `ethers.Wallet` from any private key.
+- Frontend admin screens must not directly sign or broadcast governance, fee, DEX, pair, token owner, NFT owner, tier updater, or hot-wallet transactions.
+- Frontend admin screens may show read-only chain state. Write operations must route to disabled backend endpoints, manual review, or the governance runbook and multisig/timelock workflow.
+
 ## Staging Setup
 
 1. Create a fresh prize hot wallet for staging.
@@ -53,6 +61,7 @@ P0-10A separates prize token transfers from the broader backend admin key. A com
 9. Confirm `ADMIN_PRIVATE_KEY` alone cannot start prize transfers, tier updates, fee changes, or DEX/pair management transactions.
 10. Confirm governance/fee/DEX/pair write APIs return manual-review or disabled responses and do not update DB records as on-chain-complete.
 11. Confirm an allowlist-missing token moves the prize transaction to manual review and does not broadcast a transfer.
+12. Confirm staging frontend env does not contain `NEXT_PUBLIC_*PRIVATE_KEY` and admin screens remain manual-review/read-only.
 
 ## Production Setup
 
@@ -68,6 +77,7 @@ P0-10A separates prize token transfers from the broader backend admin key. A com
 10. Confirm the prize hot wallet and tier relayer have no owner, admin, multisig signer, or governance role beyond their narrow purpose.
 11. Configure token owner/admin roles so governance, fee, DEX, pair, factory, and fee-exemption writes require multisig or timelock approval.
 12. Rotate any old backend key that previously held shared payout/tier/admin authority.
+13. Confirm production frontend env does not contain `NEXT_PUBLIC_*PRIVATE_KEY` and browser bundles cannot create admin, owner, relayer, governance, or hot-wallet signers.
 
 ## Verification Commands
 
@@ -99,6 +109,13 @@ unset TIER_UPDATER_CONTRACT_ADDRESS
 # Expected: governance write APIs fail with manual-review or disabled responses and do not broadcast.
 curl -X POST "$BACKEND_URL/dex/add"
 curl -X POST "$BACKEND_URL/fee/record"
+```
+
+Frontend checks:
+
+```bash
+rg -n "NEXT_PUBLIC_.*PRIVATE_KEY|ADMIN_PRIVATE_KEY|PRIVATE_KEY|new ethers\\.Wallet|ethers\\.Wallet|new Wallet|sendTransaction|writeContract" apps/frontend/src apps/frontend/utils
+rg -n "add_admin|remove_admin|add_dex|remove_dex|update_fee_percentage|update_fee_recipient|setMintUsdPrice|setDefaultRoyalty|withdraw\\(" apps/frontend/src/components/admin apps/frontend/src/utils
 ```
 
 Do not print private keys, RPC URLs, DB URLs, API keys, or JWT secrets in logs, tickets, PRs, or runbooks.

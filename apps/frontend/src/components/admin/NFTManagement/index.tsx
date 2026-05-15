@@ -7,6 +7,8 @@ import toast from "react-hot-toast";
 import apiClient from "../../../../utils/apiClient";
 import { useTranslations } from 'next-intl';
 
+const MANUAL_REVIEW_MESSAGE = "MANUAL_REVIEW_REQUIRED: use the NFT contract runbook and multisig/timelock workflow.";
+
 // NFT Contract ABI based on the FunkyNFT contract
 const NFT_ABI = [
   // Basic ERC-721 functions
@@ -18,21 +20,13 @@ const NFT_ABI = [
   "function tokenURI(uint256 tokenId) view returns (string)",
   "function nextTokenId() view returns (uint256)",
   
-  // Minting functions
-  "function mint(address to, string memory tokenURI) payable returns (uint256)",
-  
-  // Price management
+  // Price information
   "function mintUsdPrice() view returns (uint256)",
-  "function setMintUsdPrice(uint256 newMintUsd) external",
   "function getPrice() view returns (int256)",
   "function getConversionRate(uint256 bnbAmount) view returns (uint256)",
-  
-  // Royalty management
-  "function setDefaultRoyalty(address royaltyRecipient, uint16 royaltyPercent) external",
-  
-  // Owner functions
+
+  // Owner information
   "function owner() view returns (address)",
-  "function withdraw() external",
   
   // Events
   "event Transfer(address indexed from, address indexed to, uint256 indexed tokenId)",
@@ -63,7 +57,6 @@ export default function NFTManagement() {
   const [loading, setLoading] = useState(false);
   const [loaded, setLoaded] = useState(false);
   const [contract, setContract] = useState<ethers.Contract | null>(null);
-  const [signer, setSigner] = useState<ethers.Wallet | null>(null);
   
   // Price management forms
   const [newMintPrice, setNewMintPrice] = useState("");
@@ -91,16 +84,6 @@ export default function NFTManagement() {
       const provider = new ethers.JsonRpcProvider(RPC_URL);
       const contract = new ethers.Contract(NFT_CONTRACT_ADDRESS, NFT_ABI, provider);
       setContract(contract);
-
-      // Try to load admin private key from environment
-      const adminPrivateKey = process.env.NEXT_PUBLIC_ADMIN_PRIVATE_KEY;
-      if (adminPrivateKey) {
-        const signer = new ethers.Wallet(adminPrivateKey, provider);
-        setSigner(signer);
-        
-        const contractWithSigner = new ethers.Contract(NFT_CONTRACT_ADDRESS, NFT_ABI, signer);
-        setContract(contractWithSigner);
-      }
 
       await loadNFTInfo(contract);
       setLoaded(true);
@@ -143,88 +126,15 @@ export default function NFTManagement() {
   };
 
   const handleSetMintPrice = async () => {
-    if (!contract || !signer) {
-      toast.error("Admin key not configured");
-      return;
-    }
-
-    if (!newMintPrice) {
-      toast.error("Please enter a new mint price");
-      return;
-    }
-
-    try {
-      setLoading(true);
-      
-      // Convert USD price to 8 decimal format (Chainlink format)
-      const priceInWei = ethers.parseUnits(newMintPrice, 8);
-      
-      const tx = await contract.setMintUsdPrice(priceInWei);
-      await tx.wait();
-      
-      toast.success("Mint price updated successfully!");
-      setNewMintPrice("");
-      
-      // Reload NFT info
-      await loadNFTInfo(contract);
-      
-    } catch (error: any) {
-      console.error("Error setting mint price:", error);
-      toast.error(`Failed to update mint price: ${error.message || 'Unknown error'}`);
-    } finally {
-      setLoading(false);
-    }
+    toast.error(MANUAL_REVIEW_MESSAGE);
   };
 
   const handleSetRoyalty = async () => {
-    if (!contract || !signer) {
-      toast.error("Admin key not configured");
-      return;
-    }
-
-    if (!royaltyRecipient || !royaltyPercent) {
-      toast.error("Please fill in all royalty fields");
-      return;
-    }
-
-    try {
-      setLoading(true);
-      
-      const tx = await contract.setDefaultRoyalty(royaltyRecipient, parseInt(royaltyPercent));
-      await tx.wait();
-      
-      toast.success("Royalty settings updated successfully!");
-      setRoyaltyRecipient("");
-      setRoyaltyPercent("");
-      
-    } catch (error: any) {
-      console.error("Error setting royalty:", error);
-      toast.error(`Failed to update royalty: ${error.message || 'Unknown error'}`);
-    } finally {
-      setLoading(false);
-    }
+    toast.error(MANUAL_REVIEW_MESSAGE);
   };
 
   const handleWithdraw = async () => {
-    if (!contract || !signer) {
-      toast.error("Admin key not configured");
-      return;
-    }
-
-    try {
-      setLoading(true);
-      
-      const tx = await contract.withdraw();
-      await tx.wait();
-      
-      toast.success("Funds withdrawn successfully!");
-      
-    } catch (error: any) {
-      console.error("Error withdrawing funds:", error);
-      toast.error(`Withdrawal failed: ${error.message || 'Unknown error'}`);
-    } finally {
-      setLoading(false);
-    }
+    toast.error(MANUAL_REVIEW_MESSAGE);
   };
 
   const formatUsdPrice = (priceWei: string) => {
@@ -243,11 +153,14 @@ export default function NFTManagement() {
         <div>
           <h1 className="text-2xl font-bold text-gray-900">{t('NFT Management')}</h1>
           <div className="flex items-center gap-2 mt-1">
-            <div className={`w-2 h-2 rounded-full ${signer ? 'bg-green-500' : 'bg-red-500'}`}></div>
+            <div className="w-2 h-2 rounded-full bg-yellow-500"></div>
             <span className="text-sm text-gray-600">
-              {signer ? t('Admin Key Configured') : t('Read-Only Mode')}
+              {t('Manual Review Required')}
             </span>
           </div>
+          <p className="mt-1 text-sm text-amber-700">
+            MANUAL_REVIEW_REQUIRED: frontend contract writes are disabled.
+          </p>
         </div>
         <Button
           color="primary"
@@ -316,7 +229,7 @@ export default function NFTManagement() {
                 color="primary"
                 onClick={handleSetMintPrice}
                 isLoading={loading}
-                isDisabled={!newMintPrice}
+                isDisabled
               >
                 {t('Update Price')}
               </Button>
@@ -351,7 +264,7 @@ export default function NFTManagement() {
               color="primary"
               onClick={handleSetRoyalty}
               isLoading={loading}
-              isDisabled={!royaltyRecipient || !royaltyPercent}
+              isDisabled
               className="w-full md:w-auto"
             >
               {t('Update Royalty')}
@@ -374,6 +287,7 @@ export default function NFTManagement() {
               color="warning"
               onClick={handleWithdraw}
               isLoading={loading}
+              isDisabled
               className="w-full md:w-auto"
             >
               {t('Withdraw Funds')}

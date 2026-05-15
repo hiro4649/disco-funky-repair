@@ -62,8 +62,8 @@
 | --- | --- | --- |
 | wallet署名ログイン未実装 | `POST /user/signup` は `wallet_address` の形式検証だけでJWTを発行する経路が残る。nonce発行、署名検証、`ethers.verifyMessage` / SIWE相当の確認が見当たらない。第三者が任意wallet addressでuserAuthを取得できるためNo-Go。 | `apps/backend/src/app/routes/auth.routes.ts`, `apps/backend/src/app/controllers/auth.controller.ts`, `apps/backend/src/app/validation/walletAddressValidate.ts` |
 | API認可不足 | admin/内部系の状態変更routeに `AuthAdmin` / `Authenticate` が無い箇所が残る。NFT upload/delete、ticket配布、referral admin実行、Trial NFT template作成/更新/削除などが該当。暗号資産サービスではticket、NFT metadata、reward配布に影響するためNo-Go。 | `apps/backend/src/app/routes/nft.routes.ts`, `apps/backend/src/app/routes/lottery.routes.ts`, `apps/backend/src/app/routes/referral.routes.ts`, `apps/backend/src/app/routes/trialNftTemplate.routes.ts`, `apps/backend/src/app/routes/prize.routes.ts`, `apps/backend/src/app/routes/routes.ts` |
-| frontend秘密鍵露出/ブラウザ直接署名 | `NEXT_PUBLIC_ADMIN_PRIVATE_KEY` をfrontendで読み、`ethers.Wallet` をブラウザ側で生成するコードが残る。TokenManagementは `add_admin`, `remove_admin`, `add_dex`, `update_fee_percentage` を直接送信可能。NFTManagementも `setMintUsdPrice` を直接送信可能。`NEXT_PUBLIC_*` はブラウザ公開値なのでNo-Go。 | `apps/frontend/src/components/admin/TokenManagement/index.tsx`, `apps/frontend/src/components/admin/NFTManagement/index.tsx`, `apps/frontend/src/utils/constant.ts` |
-| backend停止済みgovernanceをfrontendから迂回できる | P0-10Cでbackendのgovernance txは止まったが、frontend admin画面に直接contract writeが残るため、backend無効化を迂回できる。 | `apps/frontend/src/components/admin/TokenManagement/index.tsx`, `apps/frontend/src/components/admin/NFTManagement/index.tsx` |
+| frontend秘密鍵露出/ブラウザ直接署名 | P0-13Bで完了。frontendは `NEXT_PUBLIC_ADMIN_PRIVATE_KEY` を参照せず、`ethers.Wallet` をブラウザ側で生成しない。TokenManagement / NFTManagement のadmin・owner・governance直接writeはmanual-review/read-onlyへ停止済み。 | `apps/frontend/src/components/admin/TokenManagement/index.tsx`, `apps/frontend/src/components/admin/NFTManagement/index.tsx`, `apps/frontend/src/utils/constant.ts` |
+| backend停止済みgovernanceをfrontendから迂回できる | P0-13Bで完了。frontend admin画面から `add_admin`, `remove_admin`, `add_dex`, `remove_dex`, `update_fee_percentage`, `update_fee_recipient`, `setMintUsdPrice`, `setDefaultRoyalty`, `withdraw` へ直接到達しない。 | `apps/frontend/src/components/admin/TokenManagement/index.tsx`, `apps/frontend/src/components/admin/NFTManagement/index.tsx` |
 | BSC本番env必須設定が未固定 | `validateEnvs.ts` の必須envは `JWT_SECRET`, admin情報, tier relayer系のみ。`PRIZE_HOT_WALLET_PRIVATE_KEY`, `PRIZE_TRANSFER_TOKEN_ALLOWLIST`, `TOKEN_CONTRACT_ADDRESS`, `NFT_CONTRACT_ADDRESS`, `QUICKNODE_HTTP_RPC_URL`, `QUICKNODE_WS_RPC_URL`, explorer/API設定などが起動時必須ではない。`TOKEN_CONTRACT_ADDRESS` には固定fallbackが残る。誤chain/誤contractで起動できるためNo-Go。 | `apps/backend/src/app/lib/validateEnvs.ts`, `apps/backend/src/app/config/env.ts` |
 
 ## P1へ降格できる残リスク
@@ -81,7 +81,7 @@
 
 - GitHub repository `hiro4649/disco-funky-repair` の `apps/backend`, `apps/frontend`, `contracts` だけがdeploy元であること。`Rave_bk`, `var-www`, 手作業コピーからdeployしないこと。
 - サーバ上で `pm2 list`, `pm2 show <backend>`, `pm2 show <frontend>`, nginx site config, deploy scriptを確認し、cwd/scriptがGitHub正本を指すこと。
-- production frontend envに `NEXT_PUBLIC_ADMIN_PRIVATE_KEY` を絶対に設定しないこと。現コードでは未設定でも危険コードが残るため、production build前にP0修正が必要。
+- production frontend envに `NEXT_PUBLIC_ADMIN_PRIVATE_KEY` や `NEXT_PUBLIC_*PRIVATE_KEY` を絶対に設定しないこと。P0-13Bで危険コードは停止済みだが、hosting/CI/PM2/Docker設定の人間確認は必要。
 - backend production envに誤chain/誤contract fallbackで起動できないこと。BSC mainnet/testnetのchain ID、RPC、token/NFT/tier updater/prize allowlistをsecret managerで固定すること。
 - 新規staging DBで `migrate deploy`、`prisma generate`、`_prisma_migrations` のbaseline適用を確認すること。
 - BSC testnetでNFT mint停止/開始、MAX_SUPPLY、owner multisig移管、baseURI、withdraw権限を確認すること。
@@ -95,7 +95,7 @@
 
 1. `POST /user/signup` がwallet署名検証なしでJWTを発行できる。
 2. admin/内部/資産系APIに `AuthAdmin` / `Authenticate` / 本人確認が無い状態変更routeが残る。
-3. frontend bundleが `NEXT_PUBLIC_ADMIN_PRIVATE_KEY` を読み、ブラウザでadmin signerを作れる。
+3. frontend bundleが `NEXT_PUBLIC_ADMIN_PRIVATE_KEY` または `NEXT_PUBLIC_*PRIVATE_KEY` を読む。
 4. frontendから governance / fee / DEX / pair / NFT owner操作を直接送信できる。
 5. BSC必須env未設定でもfallback contract/RPCでbackendやfrontendが起動できる。
 6. production PM2/nginx/deploy元がGitHub正本ではなく、`var-www` / `Rave_bk` / 古いSui/DISCOコピーを指す。
@@ -131,4 +131,14 @@ P0未完了を先に閉じる。P0完了後のP1候補は以下。
 
 - build/test/compile はすべて成功。
 - ただし、成功した検証は「コンパイル・既存テスト通過」を示すだけで、P0完了を保証しない。
-- main最新コード照合では、wallet署名ログイン、API認可、frontend秘密鍵/直接署名、BSC env必須化が未完了。これらはproduction launch前のNo-Go。
+- main最新コード照合では、BSC env必須化などの残No-Goは別PRで確認が必要。frontend秘密鍵/直接署名はP0-13Bでcode-level close。
+
+## P0-13B update
+
+P0-13B closes the frontend `NEXT_PUBLIC_ADMIN_PRIVATE_KEY` / browser admin signer No-Go at code level.
+
+- `apps/frontend/src/components/admin/TokenManagement/index.tsx` no longer reads `NEXT_PUBLIC_ADMIN_PRIVATE_KEY`, no longer creates `ethers.Wallet`, and no longer directly calls `add_admin`, `remove_admin`, `add_dex`, `remove_dex`, `update_fee_percentage`, or `update_fee_recipient`.
+- `apps/frontend/src/components/admin/NFTManagement/index.tsx` no longer reads `NEXT_PUBLIC_ADMIN_PRIVATE_KEY`, no longer creates `ethers.Wallet`, and no longer directly calls owner/admin NFT writes such as `setMintUsdPrice`, `setDefaultRoyalty`, or `withdraw`.
+- `apps/frontend/src/utils/constant.ts` no longer exposes token governance/admin write ABI entries used by frontend admin screens.
+- Frontend admin write actions are manual-review/read-only and must be executed through `docs/launch/GOVERNANCE_RUNBOOK.md` plus multisig/timelock procedures.
+- Production frontend env must still be checked by humans: no `NEXT_PUBLIC_*PRIVATE_KEY` value may be configured in hosting, CI, PM2, Docker, or deployment settings.

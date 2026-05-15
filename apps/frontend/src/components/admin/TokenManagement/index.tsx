@@ -9,6 +9,7 @@ import { TOKEN_ABI } from "../../../utils/constant";
 import { useTranslations } from 'next-intl';
 
 const TOKEN_ADDRESS = process.env.NEXT_PUBLIC_TOKEN_ADDRESS as string; // Sepolia contract address
+const MANUAL_REVIEW_MESSAGE = "MANUAL_REVIEW_REQUIRED: use the governance runbook and multisig/timelock workflow.";
 
 interface TokenInfo {
   name: string;
@@ -49,9 +50,7 @@ export default function TokenManagement() {
   const t = useTranslations('Admin');
   const [tokenInfo, setTokenInfo] = useState<TokenInfo | null>(null);
   const [loading, setLoading] = useState(false);
-  const [provider, setProvider] = useState<ethers.JsonRpcProvider | null>(null);
   const [contract, setContract] = useState<ethers.Contract | null>(null);
-  const [signer, setSigner] = useState<ethers.Wallet | null>(null);
   
   // DEX and Fee History state
   const [dexList, setDexList] = useState<DexAddress[]>([]);
@@ -134,22 +133,7 @@ export default function TokenManagement() {
 
       const provider = new ethers.JsonRpcProvider(rpcUrl);
       const contract = new ethers.Contract(TOKEN_ADDRESS, TOKEN_ABI, provider);
-
-      // Initialize signer with admin private key
-      const adminPrivateKey = process.env.NEXT_PUBLIC_ADMIN_PRIVATE_KEY;
-      if (adminPrivateKey) {
-        const wallet = new ethers.Wallet(adminPrivateKey, provider);
-        setSigner(wallet);
-        
-        // Create contract instance with signer for transactions
-        const contractWithSigner = new ethers.Contract(TOKEN_ADDRESS, TOKEN_ABI, wallet);
-        setContract(contractWithSigner);
-      } else {
-        setContract(contract);
-        toast.error("Admin private key not configured. Transactions will be read-only.");
-      }
-
-      setProvider(provider);
+      setContract(contract);
       await loadTokenInfo(contract);
     } catch (error) {
       console.error("Failed to initialize provider:", error);
@@ -204,302 +188,29 @@ export default function TokenManagement() {
 
   // Admin Management Functions
   const handleAddAdmin = async () => {
-    if (!contract || !newAdmin) {
-      toast.error("Please enter admin address");
-      return;
-    }
-
-    if (!signer) {
-      toast.error("Admin private key not configured");
-      return;
-    }
-
-    try {
-      setLoading(true);
-      toast.loading("Adding admin...", { id: "add-admin" });
-      
-      const isAdmin = await contract.isAdmin(newAdmin);
-      if (isAdmin) {
-        toast.error("Admin already exists");
-        return;
-      }
-      
-      const estimatedGas = await contract.add_admin.estimateGas(newAdmin);
-      const gasPrice = await provider?.getFeeData();
-      const tx = await contract.add_admin(newAdmin, { gasLimit: estimatedGas, gasPrice: gasPrice?.gasPrice || BigInt(0) });
-      await tx.wait();
-
-      toast.success("Admin added successfully!", { id: "add-admin" });
-      setNewAdmin("");
-      
-      // Refresh token info
-      if (provider) {
-        const readContract = new ethers.Contract(TOKEN_ADDRESS, TOKEN_ABI, provider);
-        await loadTokenInfo(readContract);
-      }
-    } catch (error) {
-      console.error("Add admin failed:", error);
-      toast.error("Add admin transaction failed", { id: "add-admin" });
-    } finally {
-      setLoading(false);
-    }
+    toast.error(MANUAL_REVIEW_MESSAGE);
   };
 
   const handleRemoveAdmin = async () => {
-    if (!contract || !removeAdmin) {
-      toast.error("Please enter admin address to remove");
-      return;
-    }
-
-    if (!signer) {
-      toast.error("Admin private key not configured");
-      return;
-    }
-
-    try {
-      setLoading(true);
-      toast.loading("Removing admin...", { id: "remove-admin" });
-      
-      const isAdmin = await contract.isAdmin(removeAdmin);
-      if (!isAdmin) {
-        toast.error("Admin does not exist");
-        return;
-      }
-
-      const estimatedGas = await contract.remove_admin.estimateGas(removeAdmin);
-      const gasPrice = await provider?.getFeeData();
-      const tx = await contract.remove_admin(removeAdmin, { gasLimit: estimatedGas, gasPrice: gasPrice?.gasPrice || BigInt(0) });
-      await tx.wait();
-      
-      toast.success("Admin removed successfully!", { id: "remove-admin" });
-      setRemoveAdmin("");
-      
-      // Refresh token info
-      if (provider) {
-        const readContract = new ethers.Contract(TOKEN_ADDRESS, TOKEN_ABI, provider);
-        await loadTokenInfo(readContract);
-      }
-    } catch (error) {
-      console.error("Remove admin failed:", error);
-      toast.error("Remove admin transaction failed", { id: "remove-admin" });
-    } finally {
-      setLoading(false);
-    }
+    toast.error(MANUAL_REVIEW_MESSAGE);
   };
 
   // DEX Management Functions
   const handleAddDex = async () => {
-    if (!contract || !newDex) {
-      toast.error("Please enter DEX address");
-      return;
-    }
-
-    if (!signer) {
-      toast.error("Admin private key not configured");
-      return;
-    }
-
-    try {
-      setLoading(true);
-      toast.loading("Adding DEX...", { id: "add-dex" });
-      
-      const isDex = await contract.isDex(newDex);
-      if (isDex) {
-        toast.error("DEX already exists");
-        return;
-      }
-
-      const estimatedGas = await contract.add_dex.estimateGas(newDex);
-      const gasPrice = await provider?.getFeeData();
-      const tx = await contract.add_dex(newDex, { gasLimit: estimatedGas, gasPrice: gasPrice?.gasPrice || BigInt(0) });
-      const receipt = await tx.wait();
-      
-      // Save to database
-      try {
-        await apiClient.post('/dex/add', {
-          address: newDex,
-          addedBy: await signer.getAddress(),
-          txHash: receipt.hash
-        });
-      } catch (dbError) {
-        console.error("Failed to save DEX to database:", dbError);
-        // Continue even if database save fails
-      }
-      
-      toast.success("DEX added successfully!", { id: "add-dex" });
-      setNewDex("");
-      
-      // Refresh data
-      await fetchDexList();
-      if (provider) {
-        const readContract = new ethers.Contract(TOKEN_ADDRESS, TOKEN_ABI, provider);
-        await loadTokenInfo(readContract);
-      }
-    } catch (error) {
-      console.error("Add DEX failed:", error);
-      toast.error("Add DEX transaction failed", { id: "add-dex" });
-    } finally {
-      setLoading(false);
-    }
+    toast.error(MANUAL_REVIEW_MESSAGE);
   };
 
   const handleRemoveDex = async () => {
-    if (!contract || !removeDex) {
-      toast.error("Please enter DEX address to remove");
-      return;
-    }
-
-    if (!signer) {
-      toast.error("Admin private key not configured");
-      return;
-    }
-
-    try {
-      setLoading(true);
-      toast.loading("Removing DEX...", { id: "remove-dex" });
-      
-      const isDex = await contract.isDex(removeDex);
-      if (!isDex) {
-        toast.error("DEX does not exist");
-        return;
-      }
-
-      const estimatedGas = await contract.remove_dex.estimateGas(removeDex);
-      const gasPrice = await provider?.getFeeData();
-      const tx = await contract.remove_dex(removeDex, { gasLimit: estimatedGas, gasPrice: gasPrice?.gasPrice || BigInt(0) });
-      await tx.wait();
-      
-      // Update database
-      try {
-        await apiClient.delete(`/dex/remove/${removeDex}`);
-      } catch (dbError) {
-        console.error("Failed to update DEX in database:", dbError);
-        // Continue even if database update fails
-      }
-      
-      toast.success("DEX removed successfully!", { id: "remove-dex" });
-      setRemoveDex("");
-      
-      // Refresh data
-      await fetchDexList();
-      if (provider) {
-        const readContract = new ethers.Contract(TOKEN_ADDRESS, TOKEN_ABI, provider);
-        await loadTokenInfo(readContract);
-      }
-    } catch (error) {
-      console.error("Remove DEX failed:", error);
-      toast.error("Remove DEX transaction failed", { id: "remove-dex" });
-    } finally {
-      setLoading(false);
-    }
+    toast.error(MANUAL_REVIEW_MESSAGE);
   };
 
   // Fee Management Functions
   const handleUpdateFeePercentage = async () => {
-    if (!contract || !newFeePercent) {
-      toast.error("Please enter new fee percentage");
-      return;
-    }
-
-    if (!signer) {
-      toast.error("Admin private key not configured");
-      return;
-    }
-
-    try {
-      setLoading(true);
-      toast.loading("Updating fee percentage...", { id: "update-fee" });
-      
-      // Get current fee percentage for history
-      const currentFee = await contract.feePercent(selectedHoldingDate);
-
-      const estimatedGas = await contract.update_fee_percentage.estimateGas(selectedHoldingDate, newFeePercent);
-      const gasPrice = await provider?.getFeeData();
-      const tx = await contract.update_fee_percentage(selectedHoldingDate, newFeePercent, { gasLimit: estimatedGas, gasPrice: gasPrice?.gasPrice || BigInt(0) });
-      const receipt = await tx.wait();
-      
-      // Save to database
-      try {
-        await apiClient.post('/fee/record', {
-          changeType: 'percentage',
-          oldValue: currentFee.toString(),
-          newValue: newFeePercent,
-          changedBy: await signer.getAddress(),
-          txHash: receipt.hash,
-          holdingDate: selectedHoldingDate
-        });
-      } catch (dbError) {
-        console.error("Failed to save fee change to database:", dbError);
-        // Continue even if database save fails
-      }
-      
-      toast.success(`Fee percentage updated successfully for ${selectedHoldingDate} days holding!`, { id: "update-fee" });
-      setNewFeePercent("");
-      
-      // Refresh data
-      await fetchFeeHistory();
-      if (provider) {
-        const readContract = new ethers.Contract(TOKEN_ADDRESS, TOKEN_ABI, provider);
-        await loadTokenInfo(readContract);
-      }
-    } catch (error) {
-      console.error("Update fee percentage failed:", error);
-      toast.error("Update fee percentage transaction failed", { id: "update-fee" });
-    } finally {
-      setLoading(false);
-    }
+    toast.error(MANUAL_REVIEW_MESSAGE);
   };
 
   const handleUpdateFeeRecipient = async () => {
-    if (!contract || !newFeeRecipient) {
-      toast.error("Please enter new fee recipient address");
-      return;
-    }
-
-    if (!signer) {
-      toast.error("Admin private key not configured");
-      return;
-    }
-
-    try {
-      setLoading(true);
-      toast.loading("Updating fee recipient...", { id: "update-recipient" });
-      
-      // Get current fee recipient for history
-      const currentRecipient = await contract.feeRecipient();
-      
-      const tx = await contract.update_fee_recipient(newFeeRecipient);
-      const receipt = await tx.wait();
-      
-      // Save to database
-      try {
-        await apiClient.post('/fee/record', {
-          changeType: 'recipient',
-          oldValue: currentRecipient,
-          newValue: newFeeRecipient,
-          changedBy: await signer.getAddress(),
-          txHash: receipt.hash
-        });
-      } catch (dbError) {
-        console.error("Failed to save fee change to database:", dbError);
-        // Continue even if database save fails
-      }
-      
-      toast.success("Fee recipient updated successfully!", { id: "update-recipient" });
-      setNewFeeRecipient("");
-      
-      // Refresh data
-      await fetchFeeHistory();
-      if (provider) {
-        const readContract = new ethers.Contract(TOKEN_ADDRESS, TOKEN_ABI, provider);
-        await loadTokenInfo(readContract);
-      }
-    } catch (error) {
-      console.error("Update fee recipient failed:", error);
-      toast.error("Update fee recipient transaction failed", { id: "update-recipient" });
-    } finally {
-      setLoading(false);
-    }
+    toast.error(MANUAL_REVIEW_MESSAGE);
   };
 
 
@@ -523,11 +234,14 @@ export default function TokenManagement() {
         <div>
           <h1 className="text-2xl font-bold text-gray-900">{t('Token Management')}</h1>
           <div className="flex items-center gap-2 mt-1">
-            <div className={`w-2 h-2 rounded-full ${signer ? 'bg-green-500' : 'bg-red-500'}`}></div>
+            <div className="w-2 h-2 rounded-full bg-yellow-500"></div>
             <span className="text-sm text-gray-600">
-              {signer ? t('Admin Key Configured') : t('Read-Only Mode')}
+              {t('Manual Review Required')}
             </span>
           </div>
+          <p className="mt-1 text-sm text-amber-700">
+            MANUAL_REVIEW_REQUIRED: frontend contract writes are disabled.
+          </p>
         </div>
         <Button
           color="primary"
@@ -615,6 +329,7 @@ export default function TokenManagement() {
               color="success"
               onClick={handleAddAdmin}
               isLoading={loading}
+              isDisabled
               className="w-full"
             >
               {t('Add Admin')}
@@ -638,6 +353,7 @@ export default function TokenManagement() {
               color="danger"
               onClick={handleRemoveAdmin}
               isLoading={loading}
+              isDisabled
               className="w-full"
             >
               {t('Remove Admin')}
@@ -664,6 +380,7 @@ export default function TokenManagement() {
               color="primary"
               onClick={handleAddDex}
               isLoading={loading}
+              isDisabled
               className="w-full"
             >
               {t('Add DEX')}
@@ -687,6 +404,7 @@ export default function TokenManagement() {
               color="warning"
               onClick={handleRemoveDex}
               isLoading={loading}
+              isDisabled
               className="w-full"
             >
               {t('Remove DEX')}
@@ -729,6 +447,7 @@ export default function TokenManagement() {
               color="secondary"
               onClick={handleUpdateFeePercentage}
               isLoading={loading}
+              isDisabled
               className="w-full"
             >
               {t('Update Fee Percentage')}
@@ -752,6 +471,7 @@ export default function TokenManagement() {
               color="secondary"
               onClick={handleUpdateFeeRecipient}
               isLoading={loading}
+              isDisabled
               className="w-full"
             >
               {t('Update Fee Recipient')}
