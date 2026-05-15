@@ -22,6 +22,22 @@ if (!key) {
     throw new Error('JWT_SECRET environment variable not set');
 }
 
+type SafeAuthLogMetadata = Record<string, string | number | boolean | undefined>;
+
+const safeAuthLog = (message: string, metadata?: SafeAuthLogMetadata) => {
+    if (metadata && Object.keys(metadata).length > 0) {
+        console.log(message, metadata);
+        return;
+    }
+
+    console.log(message);
+};
+
+const safeAuthError = (message: string, error: unknown, metadata?: SafeAuthLogMetadata) => {
+    const errorName = error instanceof Error ? error.name : typeof error;
+    console.error(message, { ...(metadata || {}), errorName });
+};
+
 export const Authenticate = async (req: Request, res: Response, next: NextFunction) => {
     try {
         // Check for token in cookies first
@@ -36,7 +52,10 @@ export const Authenticate = async (req: Request, res: Response, next: NextFuncti
         }
 
         if (!token) {
-            console.log('No token found in cookies or Authorization header');
+            safeAuthLog('User authentication token missing', {
+                cookiePresent: Boolean(req.cookies.userAuth),
+                authorizationHeaderPresent: Boolean(req.headers.authorization)
+            });
             return res.status(401).json({ success: false, message: 'Unauthenticated' });
         }
 
@@ -53,7 +72,7 @@ export const Authenticate = async (req: Request, res: Response, next: NextFuncti
             });
 
             if (!user) {
-                console.log('User not found with id:', userId);
+                safeAuthLog('Authenticated user not found', { userId });
                 return res.status(403).json({ success: false, message: 'User not found' });
             }
 
@@ -68,11 +87,11 @@ export const Authenticate = async (req: Request, res: Response, next: NextFuncti
             };
             next();
         } catch (jwtError) {
-            console.error('JWT verification error:', jwtError);
+            safeAuthError('User JWT verification failed', jwtError);
             return res.status(403).json({ success: false, message: 'Invalid token' });
         }
     } catch (err) {
-        console.error('Authentication error:', err);
+        safeAuthError('User authentication failed', err);
         return res.status(403).json({ success: false, message: 'Authentication failed' });
     }
 };
@@ -81,7 +100,6 @@ export const AuthAdmin = async (req: Request, res: Response, next: NextFunction)
     try {
         // Check for token in cookies first
         let token = req.cookies.adminAuth;
-        console.log('token', token, req.headers.authorization);
 
         // If no token in cookies, check Authorization header
         if (!token && req.headers.authorization) {
@@ -92,7 +110,10 @@ export const AuthAdmin = async (req: Request, res: Response, next: NextFunction)
         }
 
         if (!token) {
-            console.log('No admin token found in cookies or Authorization header');
+            safeAuthLog('Admin authentication token missing', {
+                cookiePresent: Boolean(req.cookies.adminAuth),
+                authorizationHeaderPresent: Boolean(req.headers.authorization)
+            });
             return res.status(401).json({ success: false, message: 'Unauthenticated' });
         }
 
@@ -104,18 +125,21 @@ export const AuthAdmin = async (req: Request, res: Response, next: NextFunction)
             });
 
             if (!admin) {
-                console.log('Admin not found with email:', decoded.email);
+                safeAuthLog('Authenticated admin not found', {
+                    adminId: Number.isFinite(Number(decoded.id)) ? Number(decoded.id) : undefined,
+                    emailPresent: Boolean(decoded.email)
+                });
                 return res.status(403).json({ success: false, message: 'Admin not found' });
             }
 
             req.user = decoded;
             next();
         } catch (jwtError) {
-            console.error('JWT verification error:', jwtError);
+            safeAuthError('Admin JWT verification failed', jwtError);
             return res.status(403).json({ success: false, message: 'Invalid token' });
         }
     } catch (err) {
-        console.error('Authentication error:', err);
+        safeAuthError('Admin authentication failed', err);
         return res.status(403).json({ success: false, message: 'Authentication failed' });
     }
 };
