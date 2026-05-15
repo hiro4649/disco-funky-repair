@@ -849,3 +849,23 @@ P2: frontend buildでlint無視設定
 - 今回の追加確認で、新規の未記録P0/P1は追加発見なし。
 - 修正タスク数は既存記録のまま 54件。P0: 12件、P1: 38件、P2: 4件。
 - 静的セキュリティ監査はここで停止。次工程は追加監査ではなく、P0実装、secret rotation、依存脆弱性対応、build/test/Hardhat compile、BSC testnet検証、実サーバのPM2/nginx/deploy参照先確認。
+
+## 2026-05-15 P0-03 implementation record
+
+- Task: Stop Illustration draw from creating FanPoint or IllustrationHistory without consuming a ticket.
+- Target route: `POST /user/:userId/draw-illustration`
+- Changed files:
+  - `apps/backend/src/app/controllers/illustration.controller.ts`
+  - `apps/backend/src/app/routes/__tests__/illustration.routes.test.ts`
+- Fix summary:
+  - Wrapped the draw flow in a Prisma transaction.
+  - First operation is `user.updateMany({ where: { id, tickets: { gt: 0 } }, data: { tickets: { decrement: 1 } } })`.
+  - Draw selection, `PointHistory`, `fan_points`, Trial NFT bonus counter update, latest prize lookup, and `IllustrationHistory` only run after the conditional ticket decrement succeeds.
+  - Replaced Illustration draw `Math.random()` with `crypto.randomInt()`.
+- Tests added:
+  - Successful draw consumes exactly one ticket before point/history updates.
+  - Ticketless draw returns 400 and does not reach illustration draw, point update, or history creation.
+  - Two competing requests for one ticket produce one success and one 400 in the route-level regression test.
+- Verification:
+  - `cd apps/backend && npm run build`: pass.
+  - `cd apps/backend && npm test -- --runInBand`: pass.

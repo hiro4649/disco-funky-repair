@@ -1,10 +1,17 @@
 import { Request, Response } from 'express';
 import { PrismaClient } from '@prisma/client';
+import { randomInt } from 'crypto';
 import moment from 'moment';
 import getDiscoNFTEVM from '../lib/getDiscoNFTEVM';
-import { getTotalNFTCount, getTrialNFTBonusPoints, applyTrialNFTBonus } from '../lib/trialNftService';
+import { getTrialNFTBonusPoints } from '../lib/trialNftService';
 
 const prisma = new PrismaClient();
+
+class DrawIllustrationError extends Error {
+    constructor(public statusCode: number, message: string) {
+        super(message);
+    }
+}
 
 export class IllustrationController {
     // Create a new illustration
@@ -294,24 +301,41 @@ export class IllustrationController {
             const { userId } = req.params;
             const userIdNum = parseInt(userId);
 
-            // Check if user exists
-            const user = await prisma.user.findUnique({
-                where: { id: userIdNum }
-            });
-
-            if (!user) {
-                return res.status(404).json({
-                    success: false,
-                    message: 'User not found'
+            const drawResult = await prisma.$transaction(async (tx) => {
+                const ticketUpdate = await tx.user.updateMany({
+                    where: {
+                        id: userIdNum,
+                        tickets: { gt: 0 }
+                    },
+                    data: {
+                        tickets: { decrement: 1 }
+                    }
                 });
-            }
 
-            if (Number(user.tickets) < 1) {
-                return res.status(400).json({
-                    success: false,
-                    message: 'User has no tickets'
+                if (ticketUpdate.count !== 1) {
+                    const existingUser = await tx.user.findUnique({
+                        where: { id: userIdNum },
+                        select: { id: true }
+                    });
+
+                    if (!existingUser) {
+                        throw new DrawIllustrationError(404, 'User not found');
+                    }
+
+                    throw new DrawIllustrationError(400, 'User has no tickets');
+                }
+
+                const user = await tx.user.findUnique({
+                    where: { id: userIdNum },
+                    select: {
+                        id: true,
+                        wallet_address: true
+                    }
                 });
-            }
+
+                if (!user) {
+                    throw new DrawIllustrationError(404, 'User not found');
+                }
 
             // Get all illustrations grouped by earned_pts (1-9)
             // Weight distribution: lower points = higher weight
@@ -337,7 +361,7 @@ export class IllustrationController {
             };
 
             // Get all illustrations with probability > 0, grouped by earned_pts
-            const allIllustrations = await prisma.illustration.findMany({
+            const allIllustrations = await tx.illustration.findMany({
                 where: {
                     probability: {
                         gt: 0
@@ -350,10 +374,7 @@ export class IllustrationController {
             });
 
             if (allIllustrations.length === 0) {
-                return res.status(404).json({
-                    success: false,
-                    message: 'No illustrations available for drawing'
-                });
+                throw new DrawIllustrationError(404, 'No illustrations available for drawing');
             }
 
             // Group illustrations by earned_pts
@@ -383,14 +404,11 @@ export class IllustrationController {
             }
 
             if (fanPointLevels.length === 0) {
-                return res.status(404).json({
-                    success: false,
-                    message: 'No illustrations available for drawing'
-                });
+                throw new DrawIllustrationError(404, 'No illustrations available for drawing');
             }
 
             // Select a fan point level based on weighted probability
-            const randomValue = Math.random() * totalWeight;
+            const randomValue = randomInt(totalWeight) + 1;
             let cumulativeWeight = 0;
             let selectedFanPointLevel = fanPointLevels[0];
 
@@ -408,10 +426,10 @@ export class IllustrationController {
                 return (prev.probability > current.probability) ? prev : current;
             });
 
-            // Process the draw: deduct ticket, update fan_points, add history
-            await this.processDraw(userIdNum, selectedIllustration, user.wallet_address);
+            // Process the draw after ticket consumption: update fan_points and add history
+            await this.processDraw(userIdNum, selectedIllustration, user.wallet_address, tx);
 
-            const prizeTransaction = await prisma.prizeTransactions.findFirst({
+            const prizeTransaction = await tx.prizeTransactions.findFirst({
                 where: {
                     userId: userIdNum
                 },
@@ -430,18 +448,27 @@ export class IllustrationController {
                 }
             });
 
-            // Return the drawn illustration with required fields
+            return { selectedIllustration, prizeTransaction };
+            });
+
             return res.status(200).json({
                 success: true,
                 data: {
-                    image_url: selectedIllustration.image_url,
-                    earned_pts: selectedIllustration.earned_pts,
+                    image_url: drawResult.selectedIllustration.image_url,
+                    earned_pts: drawResult.selectedIllustration.earned_pts,
                     jumpStatus: false,
-                    dance: prizeTransaction?.prize.dance || false,
+                    dance: drawResult.prizeTransaction?.prize.dance || false,
                 },
                 message: 'Illustration drawn successfully'
             });
         } catch (error) {
+            if (error instanceof DrawIllustrationError) {
+                return res.status(error.statusCode).json({
+                    success: false,
+                    message: error.message
+                });
+            }
+
             return res.status(500).json({
                 success: false,
                 message: 'Error drawing illustration',
@@ -451,7 +478,7 @@ export class IllustrationController {
 
     }
     
-    static async processDraw(userId: number, illustration: any, userWalletAddress: string) {
+    static async processDraw(userId: number, illustration: any, userWalletAddress: string, db: any = prisma) {
         if (!userWalletAddress) {
             throw new Error('User wallet address is required');
         }
@@ -461,7 +488,7 @@ export class IllustrationController {
             // Get user's wallet address to check NFT balance
                 // Check if user has NFT balance before giving NFT bonus
                 try {
-                    await prisma.pointHistory.create({
+                    await db.pointHistory.create({
                         data: {
                             userId: userId,
                             point: illustration.earned_pts,
@@ -470,7 +497,7 @@ export class IllustrationController {
                         }
                     });
 
-                    await prisma.user.update({
+                    await db.user.update({
                         where: { id: userId },
                         data: {
                             fan_points: {
@@ -491,7 +518,7 @@ export class IllustrationController {
                     if (totalBonus > 0) {
                         // Record real NFT bonus if any
                         if (realNFTCount > 0) {
-                            await prisma.pointHistory.create({
+                            await db.pointHistory.create({
                                 data: {
                                     userId: userId,
                                     point: realNFTCount,
@@ -504,7 +531,7 @@ export class IllustrationController {
 
                         // Record trial NFT bonus if any (with day info)
                         if (trialBonus.points > 0) {
-                            await prisma.pointHistory.create({
+                            await db.pointHistory.create({
                                 data: {
                                     userId: userId,
                                     point: trialBonus.points,
@@ -513,12 +540,21 @@ export class IllustrationController {
                                 }
                             });
                             // Update bonusApplied counter
-                            await applyTrialNFTBonus(userId);
+                            if (trialBonus.trialNftId) {
+                                await db.trialNft.update({
+                                    where: { id: trialBonus.trialNftId },
+                                    data: {
+                                        bonusApplied: {
+                                            increment: trialBonus.points
+                                        }
+                                    }
+                                });
+                            }
                             console.log(`User ${userWalletAddress} received ${trialBonus.points} trial NFT bonus points (Day ${trialBonus.dayOfHolding})`);
                         }
 
                         // Update user fan_points with total bonus
-                        await prisma.user.update({
+                        await db.user.update({
                             where: { id: userId },
                             data: {
                                 fan_points: {
@@ -537,7 +573,7 @@ export class IllustrationController {
         }
 
         // Add illustration to user's history
-        await prisma.illustrationHistory.create({
+        await db.illustrationHistory.create({
             data: {
                 userId: userId,
                 illustrationId: illustration.id
@@ -547,4 +583,4 @@ export class IllustrationController {
             }
         });
     }
-} 
+}
