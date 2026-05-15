@@ -25,9 +25,12 @@ P0-10A separates prize token transfers from the broader backend admin key. A com
 
 ### Tier relayer
 
-- Env currently used by tier code: `ADMIN_PRIVATE_KEY`
-- P0-10A does not change tier relayer signing.
-- Follow-up P0 work should move tier sync to a dedicated relayer key that has only the minimum relayer permission on `FunkyTierUpdater`.
+- Env: `TIER_RELAYER_PRIVATE_KEY`
+- Scope: holding tier sync through `FunkyTierUpdater` only.
+- Must not reuse `ADMIN_PRIVATE_KEY` or `PRIZE_HOT_WALLET_PRIVATE_KEY`.
+- Must be granted relayer permission on `FunkyTierUpdater` by the contract owner or launch multisig.
+- Must not be the `FunkyTierUpdater` owner, token owner, governance wallet, prize hot wallet, or multisig signer.
+- If `TIER_RELAYER_PRIVATE_KEY` or `TIER_UPDATER_CONTRACT_ADDRESS` is missing, backend tier sync must not send a transaction.
 
 ### Governance / owner / admin authority
 
@@ -42,8 +45,11 @@ P0-10A separates prize token transfers from the broader backend admin key. A com
 3. Transfer only test prize tokens required for payout testing.
 4. Set `PRIZE_HOT_WALLET_PRIVATE_KEY` in the server secret manager.
 5. Set `PRIZE_TRANSFER_TOKEN_ALLOWLIST` to the staging prize ERC-20 token address list.
-6. Confirm `ADMIN_PRIVATE_KEY` alone cannot start prize transfers.
-7. Confirm an allowlist-missing token moves the prize transaction to manual review and does not broadcast a transfer.
+6. Set `TIER_RELAYER_PRIVATE_KEY` to a separate staging relayer wallet.
+7. Set `TIER_UPDATER_CONTRACT_ADDRESS` to the staging `FunkyTierUpdater`.
+8. From the staging `FunkyTierUpdater` owner or multisig, grant relayer permission only to the tier relayer wallet.
+9. Confirm `ADMIN_PRIVATE_KEY` alone cannot start prize transfers or tier updates.
+10. Confirm an allowlist-missing token moves the prize transaction to manual review and does not broadcast a transfer.
 
 ## Production Setup
 
@@ -52,8 +58,12 @@ P0-10A separates prize token transfers from the broader backend admin key. A com
 3. Fund the wallet with limited operational gas and prize token inventory.
 4. Set `PRIZE_HOT_WALLET_PRIVATE_KEY`.
 5. Set `PRIZE_TRANSFER_TOKEN_ALLOWLIST` to the approved BSC prize ERC-20 addresses.
-6. Confirm the prize hot wallet has no owner, tier updater, admin, multisig, or governance role.
-7. Rotate any old backend key that previously held shared payout/admin authority.
+6. Set `TIER_RELAYER_PRIVATE_KEY`.
+7. Set `TIER_UPDATER_CONTRACT_ADDRESS`.
+8. Transfer `FunkyTierUpdater` ownership to multisig before launch.
+9. From multisig, grant relayer permission to the tier relayer wallet and revoke any deployer/test relayers.
+10. Confirm the prize hot wallet and tier relayer have no owner, admin, multisig signer, or governance role beyond their narrow purpose.
+11. Rotate any old backend key that previously held shared payout/tier/admin authority.
 
 ## Verification Commands
 
@@ -75,12 +85,18 @@ export PRIZE_TRANSFER_TOKEN_ALLOWLIST="0x..."
 
 # Expected: non-allowlisted token cannot be transferred and requires manual review.
 export PRIZE_TRANSFER_TOKEN_ALLOWLIST="0xApprovedOnly..."
+
+# Expected: tier sync fails safely and does not broadcast.
+unset TIER_RELAYER_PRIVATE_KEY
+
+# Expected: tier sync fails safely and does not broadcast.
+unset TIER_UPDATER_CONTRACT_ADDRESS
 ```
 
 Do not print private keys, RPC URLs, DB URLs, API keys, or JWT secrets in logs, tickets, PRs, or runbooks.
 
 ## Remaining P0 Follow-ups
 
-- Split tier relayer signing from `ADMIN_PRIVATE_KEY`.
 - Disable or move governance/admin on-chain operations behind multisig or timelock.
 - Add operational monitoring for hot wallet token and gas balances without exposing the secret key.
+- Add dedicated monitoring for the tier relayer gas balance without exposing the secret key.

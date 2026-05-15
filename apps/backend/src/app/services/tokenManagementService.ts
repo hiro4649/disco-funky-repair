@@ -1,7 +1,12 @@
 import { ethers } from 'ethers';
 import moment from 'moment';
 import prisma from '../db/prisma_client';
-import { QUICKNODE_HTTP_RPC_URL, ADMIN_PRIVATE_KEY, TIER_UPDATER_CONTRACT_ADDRESS } from '../config/env';
+import {
+  QUICKNODE_HTTP_RPC_URL,
+  ADMIN_PRIVATE_KEY,
+  TIER_RELAYER_PRIVATE_KEY,
+  TIER_UPDATER_CONTRACT_ADDRESS
+} from '../config/env';
 import {
   createTierBatchId,
   isValidTier,
@@ -38,6 +43,7 @@ const TOKEN_ADDRESS = "0xd3d43ebe408e0ac3eba1aabcd6c18e2ac105ee47"; // Sepolia c
 export class TokenManagementService {
   private static provider: ethers.JsonRpcProvider | null = null;
   private static signer: ethers.Wallet | null = null;
+  private static tierRelayerSigner: ethers.Wallet | null = null;
   private static contract: ethers.Contract | null = null;
   private static tierUpdaterContract: ethers.Contract | null = null;
 
@@ -57,11 +63,32 @@ export class TokenManagementService {
       this.contract = new ethers.Contract(TOKEN_ADDRESS, TOKEN_ABI, this.signer || this.provider);
     }
 
-    if (!this.tierUpdaterContract && TIER_UPDATER_CONTRACT_ADDRESS) {
+  }
+
+  private static async initializeTierUpdaterProvider() {
+    if (!this.provider) {
+      if (!QUICKNODE_HTTP_RPC_URL) {
+        throw new Error('QUICKNODE_HTTP_RPC_URL is not configured');
+      }
+      this.provider = new ethers.JsonRpcProvider(QUICKNODE_HTTP_RPC_URL);
+    }
+
+    if (!TIER_UPDATER_CONTRACT_ADDRESS) {
+      throw new Error('Tier updater contract is not configured');
+    }
+    if (!TIER_RELAYER_PRIVATE_KEY) {
+      throw new Error('Tier relayer private key is not configured');
+    }
+
+    if (!this.tierRelayerSigner) {
+      this.tierRelayerSigner = new ethers.Wallet(TIER_RELAYER_PRIVATE_KEY, this.provider);
+    }
+
+    if (!this.tierUpdaterContract) {
       this.tierUpdaterContract = new ethers.Contract(
         TIER_UPDATER_CONTRACT_ADDRESS,
         TIER_UPDATER_ABI,
-        this.signer || this.provider
+        this.tierRelayerSigner
       );
     }
   }
@@ -217,11 +244,8 @@ export class TokenManagementService {
     reason?: Exclude<TierReasonName, 'REGULAR_SYNC'>
   ): Promise<{ success: boolean; txHash?: string; error?: string }> {
     try {
-      await this.initializeProvider();
+      await this.initializeTierUpdaterProvider();
 
-      if (!this.signer) {
-        throw new Error('Admin private key not configured');
-      }
       if (!this.tierUpdaterContract) {
         throw new Error('Tier updater contract is not configured');
       }
@@ -239,7 +263,7 @@ export class TokenManagementService {
       }
 
       // Update holding date in contract
-      const batchId = createTierBatchId('ADMIN_TIER_UPDATE', userAddress);
+      const batchId = createTierBatchId('TIER_RELAYER_UPDATE', userAddress);
       const tx = await sendTierSyncTransaction(
         this.tierUpdaterContract,
         userAddress,
@@ -259,12 +283,30 @@ export class TokenManagementService {
       };
 
     } catch (error) {
-      console.error('Error updating user holding date:', error);
+      const safeError = this.toSafeTierUpdateError(error);
+      const errorName = error instanceof Error ? error.name : typeof error;
+      console.error('Error updating user holding date:', { errorName });
       return {
         success: false,
-        error: error instanceof Error ? error.message : 'Unknown error'
+        error: safeError
       };
     }
+  }
+
+  private static toSafeTierUpdateError(error: unknown): string {
+    if (!(error instanceof Error)) {
+      return 'Tier update failed';
+    }
+
+    const safeMessages = new Set([
+      'QUICKNODE_HTTP_RPC_URL is not configured',
+      'Tier updater contract is not configured',
+      'Tier relayer private key is not configured',
+      'Invalid holding date tier',
+      'Explicit downgrade/reset reason is required'
+    ]);
+
+    return safeMessages.has(error.message) ? error.message : 'Tier update failed';
   }
 
   // Get current contract state

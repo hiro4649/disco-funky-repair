@@ -1,6 +1,6 @@
 import prisma from '../db/prisma_client';
 import { ethers } from 'ethers';
-import { QUICKNODE_HTTP_RPC_URL, ADMIN_PRIVATE_KEY, TIER_UPDATER_CONTRACT_ADDRESS } from '../config/env';
+import { QUICKNODE_HTTP_RPC_URL, TIER_RELAYER_PRIVATE_KEY, TIER_UPDATER_CONTRACT_ADDRESS } from '../config/env';
 import {
   createTierBatchId,
   estimateTierSyncGas,
@@ -18,13 +18,13 @@ interface HoldingDateSyncUser {
 }
 
 const createTierUpdaterContract = () => {
-  if (!ADMIN_PRIVATE_KEY || !QUICKNODE_HTTP_RPC_URL || !TIER_UPDATER_CONTRACT_ADDRESS) {
+  if (!TIER_RELAYER_PRIVATE_KEY || !QUICKNODE_HTTP_RPC_URL || !TIER_UPDATER_CONTRACT_ADDRESS) {
     console.error('Missing required environment variables for tier updater sync');
     return null;
   }
 
   const provider = new ethers.JsonRpcProvider(QUICKNODE_HTTP_RPC_URL);
-  const wallet = new ethers.Wallet(ADMIN_PRIVATE_KEY, provider);
+  const wallet = new ethers.Wallet(TIER_RELAYER_PRIVATE_KEY, provider);
   const contract = new ethers.Contract(TIER_UPDATER_CONTRACT_ADDRESS, TIER_UPDATER_ABI, wallet);
 
   return { provider, contract };
@@ -105,7 +105,8 @@ const syncUsersToContract = async (source: string): Promise<void> => {
       const receipt = await tx.wait();
       console.log(`Successfully synced user ${user.id} to tier ${milestoneTier}. TX: ${receipt.hash}`);
     } catch (error) {
-      console.error(`Error syncing holding date for user ${user.id}:`, error);
+      const errorName = error instanceof Error ? error.name : typeof error;
+      console.error(`Error syncing holding date for user ${user.id}:`, { errorName });
     }
   }
 };
@@ -122,7 +123,8 @@ export const updateHoldingDateMilestones = async () => {
     await syncUsersToContract('MILESTONE_SYNC');
     console.log('Holding date milestone update process completed');
   } catch (error) {
-    console.error('Error in updateHoldingDateMilestones:', error);
+    const errorName = error instanceof Error ? error.name : typeof error;
+    console.error('Error in updateHoldingDateMilestones:', { errorName });
   }
 };
 
@@ -135,7 +137,8 @@ export const syncAllHoldingDates = async () => {
     await syncUsersToContract('FULL_SYNC');
     console.log('Full holding date sync process completed');
   } catch (error) {
-    console.error('Error in syncAllHoldingDates:', error);
+    const errorName = error instanceof Error ? error.name : typeof error;
+    console.error('Error in syncAllHoldingDates:', { errorName });
   }
 };
 

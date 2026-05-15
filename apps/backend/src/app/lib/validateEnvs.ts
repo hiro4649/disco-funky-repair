@@ -8,7 +8,9 @@ const requiredEnvVars = [
     'JWT_SECRET',
     'ADMIN_WALLET_ADDRESS',
     'ADMIN_EMAIL',
-    'ADMIN_PASSWORD'
+    'ADMIN_PASSWORD',
+    'TIER_RELAYER_PRIVATE_KEY',
+    'TIER_UPDATER_CONTRACT_ADDRESS'
 ];
 
 for (const envVar of requiredEnvVars) {
