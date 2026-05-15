@@ -16,7 +16,7 @@ router.get('/lottery/ticket/count/:user_id', Authenticate, asyncHandler(LotteryC
 router.get('/lottery/update-status', asyncHandler(LotteryController.checkUpdateStatus.bind(LotteryController)));
 
 // Lottery Ticket Distribution Routes
-router.post('/alluser/distribute/ticket', asyncHandler(LotteryController.distributeTicketToAllUser.bind(LotteryController)));
+router.post('/alluser/distribute/ticket', AuthAdmin, asyncHandler(LotteryController.distributeTicketToAllUser.bind(LotteryController)));
 router.post('/lottery/claim/ticket/to/user', Authenticate, asyncHandler(LotteryController.lotteryClaimTicketToUser.bind(LotteryController)));
 
 export { router as lotteryRoutes };
