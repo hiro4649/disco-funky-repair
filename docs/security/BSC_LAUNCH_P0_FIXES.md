@@ -905,3 +905,30 @@ P2: frontend buildでlint無視設定
   - Two competing claims for one code produce one success and one failure.
   - Expired code is marked expired and does not increment tickets.
   - Generator returns a 10-character alphanumeric code without calling `Math.random`.
+
+## 2026-05-15 P0-06 implementation record
+
+- Task: Stop duplicate on-chain prize transfers after a transfer transaction has been broadcast.
+- Target route: prize `sendToWallet`.
+- Changed files:
+  - `apps/backend/prisma/schema.prisma`
+  - `apps/backend/src/app/controllers/prize.controller.ts`
+  - `apps/backend/src/app/utils/tokenHeplers.ts`
+  - `apps/backend/src/app/controllers/__tests__/prize.controller.test.ts`
+  - `docs/security/BSC_LAUNCH_P0_FIXES.md`
+- Fix summary:
+  - Added non-resendable `BROADCASTED` and `MANUAL_REVIEW` prize transaction states.
+  - Prize transaction lookup and guarded state transitions are scoped to the authenticated user id.
+  - `sendToWallet` now starts a new transfer only from `READY` and guards `READY -> SENDING` with `updateMany({ status: READY, tx_hash: null })`.
+  - If `tx_hash` already exists, retry resumes receipt status confirmation instead of calling a new token transfer.
+  - Transfer failures before any `txHash` is available may return `SENDING -> READY`; failures after broadcast never return to `READY`.
+  - Broadcasted-but-unconfirmed or uncertain transfers are moved to `MANUAL_REVIEW` with `tx_hash` saved when available.
+  - Client error responses use fixed messages plus a `correlationId` instead of returning raw RPC/DB errors.
+  - Prize transfer logs record sanitized metadata (`correlationId`, error name, tx hash presence) instead of raw RPC/DB error objects.
+  - `sendTokensToWallet` now preserves `txHash` on receipt wait failure so the controller can store it and block resends.
+- Tests added:
+  - New transfer starts only after the conditional `READY -> SENDING` update succeeds.
+  - Failed conditional update does not call the token transfer helper.
+  - Existing `tx_hash` resumes receipt confirmation and does not resend.
+  - Broadcast failure with `txHash` stores `MANUAL_REVIEW` and does not return to `READY`.
+  - Pre-broadcast failure may return to `READY` and returns a fixed client message.

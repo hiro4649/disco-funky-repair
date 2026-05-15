@@ -7,18 +7,35 @@ import moment from 'moment';
 import { calculateTokenQuantity, fetchTokenBalance } from '../utils/tokenHeplers';
 import jwt, { JwtPayload } from 'jsonwebtoken';
 import { jwtDecode } from 'jwt-decode';
-import { sendTokensToWallet } from '../utils/tokenHeplers';
+import { randomUUID } from 'crypto';
+import { getTransactionReceiptStatus, sendTokensToWallet } from '../utils/tokenHeplers';
 import getDiscoNFTEVM from '../lib/getDiscoNFTEVM';
 import { getTotalNFTCount } from '../lib/trialNftService';
 
 enum Status {
     READY = 'READY',
     SENDING = 'SENDING',
+    BROADCASTED = 'BROADCASTED',
+    MANUAL_REVIEW = 'MANUAL_REVIEW',
     RECEIVED = 'RECEIVED',
     EXPIRED = 'EXPIRED'
 }
 
 const prisma = new PrismaClient();
+
+const logPrizeTransferError = (
+    message: string,
+    correlationId: string,
+    err: unknown,
+    txHash?: string | null
+) => {
+    const errorName = err instanceof Error ? err.name : typeof err;
+    console.error(message, {
+        correlationId,
+        errorName,
+        hasTxHash: Boolean(txHash)
+    });
+};
 
 interface User extends JwtPayload {
     address: string;
@@ -408,6 +425,7 @@ export class PrizeController {
     }
 
     static async sendToWallet(req: Request, res: Response) {
+        const correlationId = randomUUID();
         try {
             const token = req.cookies.userAuth;
             const prizeId = req.params.prize_id;
@@ -434,7 +452,7 @@ export class PrizeController {
 
             // Fetch the prize transaction details
             const prizeTransaction = await prisma.prizeTransactions.findFirst({
-                where: { id: Number(prizeId) },
+                where: { id: Number(prizeId), userId: user.id },
                 include: {
                     prize: {
                         select: { quantity: true, ca: true, price: true, decimals: true },
@@ -444,6 +462,52 @@ export class PrizeController {
 
             if (!prizeTransaction) {
                 return res.status(404).json({ msg: "Prize transaction not found" });
+            }
+
+            if (prizeTransaction.tx_hash) {
+                try {
+                    const receiptStatus = await getTransactionReceiptStatus(prizeTransaction.tx_hash);
+                    await prisma.prizeTransactions.update({
+                        where: { id: Number(prizeId) },
+                        data: { status: receiptStatus },
+                    });
+
+                    if (receiptStatus === Status.RECEIVED) {
+                        return res.status(200).json({ success: true, txHash: prizeTransaction.tx_hash });
+                    }
+
+                    return res.status(202).json({
+                        success: false,
+                        msg: 'Prize transfer is already broadcasted and is awaiting confirmation.',
+                        status: receiptStatus,
+                        correlationId
+                    });
+                } catch (receiptErr) {
+                    logPrizeTransferError(
+                        'Prize transfer receipt check failed',
+                        correlationId,
+                        receiptErr,
+                        prizeTransaction.tx_hash
+                    );
+                    await prisma.prizeTransactions.update({
+                        where: { id: Number(prizeId) },
+                        data: { status: Status.MANUAL_REVIEW },
+                    });
+                    return res.status(202).json({
+                        success: false,
+                        msg: 'Prize transfer requires manual review.',
+                        correlationId
+                    });
+                }
+            }
+
+            if (prizeTransaction.status !== Status.READY) {
+                return res.status(409).json({
+                    success: false,
+                    msg: 'Prize transaction is not ready for transfer.',
+                    status: prizeTransaction.status,
+                    correlationId
+                });
             }
 
             // Validate transaction timing
@@ -467,17 +531,39 @@ export class PrizeController {
                 return res.status(400).json({ msg: "Invalid prize data: Missing quantity or coin type" });
             }
 
-            // Update the prize transaction status to "SENDING"
-            await prisma.prizeTransactions.update({
-                where: { id: Number(prizeId) },
+            const sendingUpdate = await prisma.prizeTransactions.updateMany({
+                where: {
+                    id: Number(prizeId),
+                    userId: user.id,
+                    status: Status.READY,
+                    tx_hash: null
+                },
                 data: { status: Status.SENDING },
             });
 
+            if (sendingUpdate.count !== 1) {
+                return res.status(409).json({
+                    success: false,
+                    msg: 'Prize transaction is not ready for transfer.',
+                    correlationId
+                });
+            }
+
+            let txHash: string | null = null;
+
             // Send tokens to the user's wallet using EVM with balance check and detailed errors
             try {
-                const txHash = await sendTokensToWallet(user.wallet_address, tokenAmountInSmallestUnit, coinType);
+                txHash = await sendTokensToWallet(user.wallet_address, tokenAmountInSmallestUnit, coinType);
                 if (!txHash || typeof txHash !== 'string') {
-                    return res.status(500).json({ msg: "Failed to send tokens to wallet" });
+                    await prisma.prizeTransactions.update({
+                        where: { id: Number(prizeId) },
+                        data: { status: Status.MANUAL_REVIEW },
+                    });
+                    return res.status(202).json({
+                        success: false,
+                        msg: 'Prize transfer requires manual review.',
+                        correlationId
+                    });
                 }
                 // Update the prize transaction status to "RECEIVED"
                 await prisma.prizeTransactions.update({
@@ -488,19 +574,49 @@ export class PrizeController {
                 // Return success response
                 return res.status(200).json({ success: true, txHash });
             } catch (transferErr: any) {
-                // Rollback SENDING status on failure
-                await prisma.prizeTransactions.update({
-                    where: { id: Number(prizeId) },
+                const broadcastTxHash = txHash || (typeof transferErr?.txHash === 'string' ? transferErr.txHash : null);
+                logPrizeTransferError(
+                    'Prize transfer failed',
+                    correlationId,
+                    transferErr,
+                    broadcastTxHash
+                );
+
+                if (broadcastTxHash) {
+                    await prisma.prizeTransactions.update({
+                        where: { id: Number(prizeId) },
+                        data: {
+                            status: Status.MANUAL_REVIEW,
+                            tx_hash: broadcastTxHash
+                        },
+                    });
+                    return res.status(202).json({
+                        success: false,
+                        msg: 'Prize transfer was broadcasted and requires manual review.',
+                        correlationId
+                    });
+                }
+
+                await prisma.prizeTransactions.updateMany({
+                    where: {
+                        id: Number(prizeId),
+                        userId: user.id,
+                        status: Status.SENDING,
+                        tx_hash: null
+                    },
                     data: { status: Status.READY },
                 });
-                const msg = transferErr?.message || 'Failed to send tokens to wallet';
-                return res.status(400).json({ msg });
+                return res.status(400).json({
+                    success: false,
+                    msg: 'Prize transfer could not be started.',
+                    correlationId
+                });
             }
         } catch (err) {
-            console.error("Error in sendToWallet:", err);
+            logPrizeTransferError('Error in sendToWallet', correlationId, err);
 
             // Handle unexpected errors gracefully
-            return res.status(500).json({ msg: "Internal server error", error: err });
+            return res.status(500).json({ msg: "Internal server error", correlationId });
         }
     }
 
