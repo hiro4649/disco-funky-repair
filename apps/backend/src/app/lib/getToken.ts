@@ -18,7 +18,6 @@ async function getTokenBalance(
   // Wait for rate limit before making request
   await etherscanRateLimiter.waitForRateLimit();
   const apiUrl = `${ETHERSCAN_API_URL}&module=account&action=tokenbalance&contractaddress=${tokenAddress}&address=${walletAddress}&tag=latest&apikey=${ETHERSCAN_API_KEY}`;
-  console.log("url:", apiUrl)
   try {
     const resp = await fetch(apiUrl);
     const data = await resp.json();

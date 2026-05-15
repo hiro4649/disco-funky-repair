@@ -11,6 +11,10 @@ async function getTokenBalance(walletAddress?: string, tokenAddress?: string) {
 
   try {
     const rpcUrl = process.env.NEXT_PUBLIC_ALCHEMY_RPC_URL || process.env.NEXT_PUBLIC_RPC_URL;
+    if (!rpcUrl) {
+      console.warn('RPC URL is not configured; token balance lookup is disabled.');
+      return null;
+    }
     const provider = new ethers.JsonRpcProvider(rpcUrl);
     const contract = new ethers.Contract(tokenAddress, ERC20_ABI, provider);
     const balance: bigint = await contract.balanceOf(walletAddress);

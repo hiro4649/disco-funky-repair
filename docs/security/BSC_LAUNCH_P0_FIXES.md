@@ -1155,3 +1155,51 @@ P2: frontend buildでlint無視設定
   - Disabled governance service methods do not instantiate wallet/contract send paths.
   - Disabled DEX/fee write routes return `410 MANUAL_REVIEW_REQUIRED`.
   - Disabled DEX/fee write routes do not update DB tables as if on-chain operations completed.
+
+## 2026-05-15 P0-13C implementation record
+
+- Task: Require BSC production environment settings, remove unsafe production fallbacks, and stop API-key-bearing explorer URL logs.
+- Target files:
+  - `apps/backend/src/app/lib/validateEnvs.ts`
+  - `apps/backend/src/app/config/env.ts`
+  - `apps/backend/src/app/index.ts`
+  - `apps/backend/src/app/lib/incrementalHoldingDateProcessor.ts`
+  - `apps/backend/src/app/lib/realtimeHoldingDateUpdater.ts`
+  - `apps/backend/src/app/lib/getToken.ts`
+  - `apps/backend/src/app/services/tokenManagementService.ts`
+  - `apps/backend/src/app/lib/__tests__/validateEnvs.test.ts`
+  - `apps/backend/src/app/lib/__tests__/secretLogging.test.ts`
+  - `apps/frontend/env.validation.mjs`
+  - `apps/frontend/env.validation.test.mjs`
+  - `apps/frontend/next.config.mjs`
+  - `apps/frontend/src/context/AuthContext.tsx`
+  - `apps/frontend/src/components/OfficalDiscoNFT/index.tsx`
+  - `apps/frontend/src/components/User/UserWallet/Wallet.tsx`
+  - `apps/frontend/src/components/admin/NFTManagement/index.tsx`
+  - `apps/frontend/src/components/admin/TokenManagement/index.tsx`
+  - `apps/frontend/src/hooks/useTicketBalanceUpdates.ts`
+  - `apps/frontend/src/hooks/useWalletDataUpdates.ts`
+  - `apps/frontend/utils/getTokens.ts`
+  - `apps/frontend/utils/imageUtils.ts`
+  - `docs/launch/ENVIRONMENT_RUNBOOK.md`
+  - `docs/launch/P0_CLOSURE_REPORT.md`
+- Fix summary:
+  - Backend production startup now fails fast when BSC RPC, explorer URL/API key, chain ID, JWT, DB, API URLs, prize hot wallet, prize token allowlist, tier relayer/updater, token/NFT contract, or admin auth env is missing.
+  - Production validation and runtime Explorer request builders share the same key priority: `ETHERSCAN_API_KEY`, `BSCSCAN_API_KEY`, `ETHERSCAN_API_KEY1`, `ETHERSCAN_API_KEY2`, `BSCSCAN_API_KEY1`, `BSCSCAN_API_KEY2`.
+  - Production backend rejects localhost/example URLs, placeholder values, zero addresses, known local test keys, non-BSC chain ID, Ethereum mainnet explorer fallback, testnet explorer endpoints, and `NEXT_PUBLIC_*` secret exposure.
+  - `ETHERSCAN_API_URL` is required in production and the old Ethereum mainnet `https://api.etherscan.io/api?` fallback is not used for holding/tier data.
+  - Explorer request URLs containing query strings or API keys are no longer raw-logged in realtime holding updates or token balance lookup.
+  - Backend token contract address no longer falls back to a hardcoded production value.
+  - Frontend production config rejects `NEXT_PUBLIC_*PRIVATE_KEY` and unsafe public env values, including optional `NEXT_PUBLIC_ALCHEMY_RPC_URL` if configured. Missing public env leaves API/on-chain dependent features disabled instead of falling back to localhost.
+  - Environment runbook records secret-manager requirements, frontend public env priority, and forbidden raw URL logging without real secret values.
+- Tests added:
+  - Production missing env fails validation.
+  - Placeholder/private-key style values are rejected.
+  - `NEXT_PUBLIC_*PRIVATE_KEY` exposure is rejected.
+  - Development/test env still avoids production validation.
+  - Missing prize transfer allowlist, tier updater address, explorer API key, and explorer URL fail safely.
+  - `BSCSCAN_API_KEY` works at runtime when `ETHERSCAN_API_KEY` is unset.
+  - Ethereum-mainnet `ETHERSCAN_API_URL` and testnet explorer URL fail production validation.
+  - Optional `NEXT_PUBLIC_ALCHEMY_RPC_URL` rejects localhost/example/dummy/empty/invalid/testnet values.
+  - `NEXT_PUBLIC_ALCHEMY_RPC_URL` may be unset when `NEXT_PUBLIC_RPC_URL` is valid.
+  - API-key-bearing explorer URL log statements are absent from the targeted backend files.

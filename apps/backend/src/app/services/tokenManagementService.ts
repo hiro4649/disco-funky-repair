@@ -2,6 +2,7 @@ import { ethers } from 'ethers';
 import prisma from '../db/prisma_client';
 import {
   QUICKNODE_HTTP_RPC_URL,
+  TOKEN_CONTRACT_ADDRESS,
   TIER_RELAYER_PRIVATE_KEY,
   TIER_UPDATER_CONTRACT_ADDRESS
 } from '../config/env';
@@ -23,7 +24,6 @@ const TOKEN_ABI = [
   "function feeRecipient() view returns (address)"
 ];
 
-const TOKEN_ADDRESS = "0xd3d43ebe408e0ac3eba1aabcd6c18e2ac105ee47"; // Sepolia contract address
 const GOVERNANCE_WRITE_DISABLED = 'MANUAL_REVIEW_REQUIRED';
 const GOVERNANCE_WRITE_DISABLED_MESSAGE =
   'Governance, fee, DEX, and pair management transactions are disabled in the backend. Use the governance runbook and multisig/timelock process.';
@@ -45,7 +45,10 @@ export class TokenManagementService {
     }
 
     if (!this.contract) {
-      this.contract = new ethers.Contract(TOKEN_ADDRESS, TOKEN_ABI, this.provider);
+      if (!TOKEN_CONTRACT_ADDRESS) {
+        throw new Error('TOKEN_CONTRACT_ADDRESS is not configured');
+      }
+      this.contract = new ethers.Contract(TOKEN_CONTRACT_ADDRESS, TOKEN_ABI, this.provider);
     }
 
   }

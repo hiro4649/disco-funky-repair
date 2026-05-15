@@ -74,11 +74,17 @@ export const getImageUrl = (imagePath: string | null | undefined, baseUrl?: stri
   // Normalize the path (this will handle old paths and convert them)
   const normalizedPath = normalizeImagePath(imagePath);
   
-  // For other images that might still be on backend, construct backend URL
-  // Get base URL
-  const backendBaseUrl = baseUrl || (typeof window !== 'undefined' 
-    ? (process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000/api').replace(/\/api\/?$/, '')
-    : 'http://localhost:8000');
+  // For other images that might still be on backend, construct backend URL.
+  // Production must not silently fall back to localhost when public env is missing.
+  const configuredApiUrl = process.env.NEXT_PUBLIC_API_URL?.replace(/\/api\/?$/, '');
+  const developmentFallbackUrl = process.env.NODE_ENV === 'production' ? '' : 'http://localhost:8000';
+  const backendBaseUrl = baseUrl || (typeof window !== 'undefined'
+    ? (configuredApiUrl || developmentFallbackUrl)
+    : developmentFallbackUrl);
+
+  if (!backendBaseUrl) {
+    return normalizedPath;
+  }
   
   // Construct full URL
   return `${backendBaseUrl}${normalizedPath}`;
