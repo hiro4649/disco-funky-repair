@@ -38,12 +38,14 @@ import { useTranslations } from 'next-intl';
 import { setIllustration1Data, setIllustration1Error, resetIllustration1 } from '@/store/slices/transitionSlice';
 import { refreshUserInfo } from "@/utils/refreshUserInfo";
 
+const TICKET_TOKEN_THRESHOLD = 10000;
+
 const Dashboard: React.FC = () => {
   const router = useRouter();
   const { authState, ticket, user_id } = useAppSelector((state) => state.user);
   const { drawLoading, failedDraw } = useAppSelector((state) => state.home);
   const [isButtonClicked, setIsButtonClicked] = useState(false);
-  const [tokenBalance, setTokenBalance] = useState<Number>(10000);
+  const tokenBalance = TICKET_TOKEN_THRESHOLD;
   const dispatch = useAppDispatch();
   const t = useTranslations('Home')
   const aprTargetRef = useRef<HTMLSpanElement>(null);
@@ -156,23 +158,6 @@ const Dashboard: React.FC = () => {
     if (!user_id) return;
     getLotteryTickets();
   }, [user_id, getLotteryTickets]);
-
-  useEffect(() => {
-    const getDiscoTokenBalance = async () => {
-      try {
-        const res = await apiClient.get(`/admin/seting/tokenbalance`);
-        if (res.status == 200) {
-          if (res.data.success) {
-            const data = res.data.data;
-            setTokenBalance(data.balance);
-          }
-        }
-      } catch (e) {
-        console.log(e);
-      }
-    };
-    getDiscoTokenBalance();
-  }, []);
 
   useEffect(() => {
     const countUpTrigger = aprTriggerRef.current;

@@ -15,6 +15,8 @@ interface Day {
   value: string;
 }
 
+const TICKET_TOKEN_THRESHOLD = 10000;
+
 const LotteryTicketCalendar = (props: {
   waitBalance: number;
   totalBalance: number;
@@ -25,7 +27,7 @@ const LotteryTicketCalendar = (props: {
   const { authState, user_id, tallyTokenBalance, claimTickets } = useAppSelector((state) => state.user);
   const [days, setDays] = useState<Day[]>([]);
   const [newDays, setNewDays] = useState<Day[]>([]);
-  const [tokenBalance, setTokenBalance] = useState<number>(10000);
+  const tokenBalance = TICKET_TOKEN_THRESHOLD;
   const [localTallyProgress, setLocalTallyProgress] = useState<number>(0);
   const { isConnected } = useAppKitAccount();
   const t = useTranslations('LotteryTicket');
@@ -60,23 +62,6 @@ const LotteryTicketCalendar = (props: {
       setLocalTallyProgress(props.tallyProgress);
     }
   }, [props.tallyProgress]);
-
-  useEffect(() => {
-    const getDiscoTokenBalance = async () => {
-      try {
-        const res = await apiClient.get(`/admin/seting/tokenbalance`);
-        if (res.status === 200) {
-          if (res.data.success) {
-            const data = res.data.data;
-            setTokenBalance(data.balance);
-          }
-        }
-      } catch (e) {
-        console.error('Error fetching token balance:', e);
-      }
-    };
-    getDiscoTokenBalance();
-  }, []);
 
   const getUserLotteryTicketDate = useCallback(async () => {
     if (user_id && isConnected) {
