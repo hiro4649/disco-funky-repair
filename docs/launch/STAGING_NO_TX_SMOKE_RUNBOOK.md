@@ -66,7 +66,7 @@ Treat status codes consistently:
 
 For P0/P1 protected routes, a `404` can mean the wrong path, stripped `/api` prefix, wrong hostname, wrong HTTP method, old source, or missing deploy. Recheck nginx and route path before marking the control as passed.
 
-Crash game is the only current no-tx exception documented here: it is intentionally not installed for the MVP. A `404` for `/api/crash/games` is acceptable only when all Crash-specific absence checks in section 4A pass. Do not apply this exception to NFT, Illustration, admin, ticket, referral, Prize, user-manage, or other protected routes.
+Crash game is the only current no-tx exception documented here: it is intentionally not installed for the MVP. A `404` for `/api/crash/games` is the expected result when all Crash-specific absence checks in section 4A pass. Do not apply this exception to NFT, Illustration, admin, ticket, referral, Prize, user-manage, or other protected routes.
 
 ## 4. No-Auth Smoke Targets
 
@@ -108,19 +108,20 @@ Confirmed staging no-tx evidence has observed:
 
 Crash game is not planned for installation in the staging or production MVP. Do not repair, enable, or test Crash gameplay as part of no-tx smoke.
 
-For Crash game only, this result is acceptable:
+For Crash game only, this result is expected:
 
 | Target | Method | Acceptable no-tx result | Required follow-up checks |
 | --- | --- | --- | --- |
-| Crash game API | `GET /api/crash/games` | `404 Not Found` if the route is not mounted, or `410 FEATURE_DISABLED` if a disabled handler is mounted. | Confirm the Crash engine, socket, frontend route, and controller update paths are not reachable. |
+| Crash game API | `GET /api/crash/games` | `404 Not Found` because the Crash route is not mounted. | Confirm the Crash engine, socket, frontend route, and controller update paths are not reachable. |
 
 Crash-specific required checks:
 
 - `initCrashServer(io)` is not imported or called by backend startup code.
-- `/crashx` socket namespace does not run the Crash engine; connection must be rejected or otherwise prove no game state is created.
-- frontend `/fan-games` remains `notFound()` and does not import `CrashGame`.
+- `/crashx` socket namespace is not registered by backend startup code and does not run the Crash engine.
+- frontend `/fan-games` remains `notFound()` and the old `components/CrashGame` source is absent.
 - Sidebar and normal frontend navigation do not show `Fan Games` or Crash navigation.
 - no request reaches `CrashGameController`, Crash DB updates, balance updates, ticket updates, FanPoint updates, or on-chain processing.
+- after `cd apps/backend && npm run build`, `apps/backend/dist/src/app/routes/crashGame.routes.js` and `apps/backend/dist/src/app/controllers/crashGame.controller.js` are absent because the build cleans `dist`.
 
 Suggested static checks from the repository root:
 
@@ -128,16 +129,22 @@ Suggested static checks from the repository root:
 rg -n "initCrashServer" apps/backend/src
 rg -n "initCrashServer\\(" apps/backend/src
 rg -n "io\\.of\\('/crashx'\\)|io\\.of\\(\"/crashx\"\\)" apps/backend/src/app/index.ts
+rg -n "crashGameRoutes|crashGame\\.routes" apps/backend/src/app/routes apps/backend/src/app/index.ts
 cat 'apps/frontend/src/app/(home)/fan-games/page.tsx'
 rg -n "Fan Games|fan-games" apps/frontend/src/components/Sidebar/index.tsx
+test ! -e apps/backend/dist/src/app/routes/crashGame.routes.js
+test ! -e apps/backend/dist/src/app/controllers/crashGame.controller.js
+test ! -e apps/frontend/src/components/CrashGame
 ```
 
 Expected:
 
-- `initCrashServer` may exist as dormant controller code, but `initCrashServer(` must not appear as a startup call.
-- `/crashx` startup path does not initialize Crash gameplay.
-- `/fan-games` uses `notFound()` and has no `CrashGame` import.
+- `initCrashServer` returns no source matches.
+- `/crashx` startup path is absent.
+- `crashGameRoutes` is not imported or mounted.
+- `/fan-games` uses `notFound()` and the old `components/CrashGame` source directory is absent.
 - Sidebar search returns no normal navigation item.
+- built `dist` has no `crashGame.routes.js` or `crashGame.controller.js`.
 
 Important: this Crash-only `404` allowance does not change the expected status for other disabled or protected routes. Other disabled direct routes still expect `410 FEATURE_DISABLED`, and admin/auth protected routes still expect `401` or `403`.
 
