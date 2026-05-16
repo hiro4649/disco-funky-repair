@@ -23,6 +23,7 @@
 import { ethers } from 'ethers';
 import { QUICKNODE_HTTP_RPC_URL, ETHERSCAN_API_URL, ETHERSCAN_API_KEY, TOKEN_CONTRACT_ADDRESS } from '../config/env';
 import { etherscanRateLimiter } from '../utils/rateLimiter';
+import { safeLogError, safeLogWarn } from '../utils/safeLogger';
 import { alertQuickNodeFallback, alertQuickNodeRestored } from './discordAlerts';
 
 // ERC20 ABI for balance and transfer events
@@ -123,7 +124,7 @@ class QuickNodeRpcService {
             this.isAvailable = true;
             console.log('✅ QuickNode RPC Service initialized');
         } catch (error) {
-            console.error('❌ Failed to initialize QuickNode RPC:', error);
+            safeLogError('quicknode_rpc_initialize', error);
             this.isAvailable = false;
         }
     }
@@ -150,7 +151,9 @@ class QuickNodeRpcService {
 
             return balance;
         } catch (error) {
-            console.error(`❌ QuickNode getTokenBalance failed:`, error);
+            safeLogError('quicknode_get_token_balance', error, {
+                walletAddressPrefix: walletAddress.slice(0, 10)
+            });
             throw error;
         }
     }
@@ -256,7 +259,10 @@ class QuickNodeRpcService {
 
                     console.log(`✅ QuickNode: Fetched block ${log.blockNumber} timestamp (16 credits)`);
                 } catch (parseError) {
-                    console.error('Error parsing log:', parseError);
+                    safeLogError('quicknode_parse_transfer_log', parseError, {
+                        blockNumber: log.blockNumber,
+                        txHashPrefix: log.transactionHash.slice(0, 10)
+                    });
                 }
             }
 
@@ -266,7 +272,11 @@ class QuickNodeRpcService {
             return transactions;
 
         } catch (error) {
-            console.error(`❌ QuickNode getTokenTransactions failed:`, error);
+            safeLogError('quicknode_get_token_transactions', error, {
+                walletAddressPrefix: walletAddress.slice(0, 10),
+                fromBlock: String(fromBlock),
+                toBlock: String(toBlock)
+            });
             throw error;
         }
     }
@@ -310,7 +320,10 @@ class QuickNodeRpcService {
             return filteredTransactions;
 
         } catch (error) {
-            console.error(`❌ QuickNode getTokenTransactionsInTimeWindow failed:`, error);
+            safeLogError('quicknode_get_transactions_in_time_window', error, {
+                walletAddressPrefix: walletAddress.slice(0, 10),
+                hours
+            });
             throw error;
         }
     }
@@ -345,7 +358,7 @@ class QuickNodeRpcService {
             };
 
         } catch (error) {
-            console.error(`❌ QuickNode getBlock failed for block ${blockNumber}:`, error);
+            safeLogError('quicknode_get_block', error, { blockNumber });
             throw error;
         }
     }
@@ -389,7 +402,9 @@ class EtherscanFallbackService {
 
             return BigInt(data.result);
         } catch (error) {
-            console.error('❌ Etherscan getTokenBalance failed:', error);
+            safeLogError('etherscan_get_token_balance', error, {
+                walletAddressPrefix: walletAddress.slice(0, 10)
+            });
             throw error;
         }
     }
@@ -424,7 +439,10 @@ class EtherscanFallbackService {
 
             return [];
         } catch (error) {
-            console.error('❌ Etherscan getTokenTransactions failed:', error);
+            safeLogError('etherscan_get_token_transactions', error, {
+                walletAddressPrefix: walletAddress.slice(0, 10),
+                hours
+            });
             throw error;
         }
     }
@@ -465,7 +483,9 @@ export class TokenBalanceService {
                 
                 return Number(balance);
             } catch (error) {
-                console.warn('⚠️  QuickNode failed, falling back to Etherscan...', error);
+                safeLogWarn('quicknode_balance_fallback_to_etherscan', error, {
+                    walletAddressPrefix: walletAddress.slice(0, 10)
+                });
                 this.failureCount++;
                 
                 // Determine fallback reason
@@ -519,7 +539,10 @@ export class TokenBalanceService {
                 
                 return transactions;
             } catch (error) {
-                console.warn('⚠️  QuickNode failed, falling back to Etherscan...', error);
+                safeLogWarn('quicknode_transactions_fallback_to_etherscan', error, {
+                    walletAddressPrefix: walletAddress.slice(0, 10),
+                    hours
+                });
                 this.failureCount++;
                 
                 // Determine fallback reason
@@ -566,7 +589,7 @@ export class TokenBalanceService {
                 this.failureCount = 0; // Reset on success
                 return block;
             } catch (error) {
-                console.warn(`⚠️  QuickNode getBlock failed for block ${blockNumber}, falling back to Etherscan...`, error);
+                safeLogWarn('quicknode_block_fallback_unavailable', error, { blockNumber });
                 this.failureCount++;
             }
         }
