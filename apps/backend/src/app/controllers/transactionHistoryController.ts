@@ -14,6 +14,27 @@ import {
 
 const prisma = new PrismaClient();
 
+type AuthenticatedUser = {
+    user_id?: number;
+    address?: string;
+};
+
+const getAuthenticatedUserId = (req: Request): number | null => {
+    const userId = Number((req.user as AuthenticatedUser | undefined)?.user_id);
+    return Number.isInteger(userId) && userId > 0 ? userId : null;
+};
+
+const normalizeWalletAddress = (value: unknown): string | null => {
+    return typeof value === 'string' && value.trim() ? value.trim().toLowerCase() : null;
+};
+
+const requestedWalletMatchesAuthenticatedUser = (req: Request, walletAddress: unknown): boolean => {
+    const requestedWalletAddress = normalizeWalletAddress(walletAddress);
+    const authenticatedWalletAddress = normalizeWalletAddress((req.user as AuthenticatedUser | undefined)?.address);
+
+    return Boolean(requestedWalletAddress && authenticatedWalletAddress && requestedWalletAddress === authenticatedWalletAddress);
+};
+
 export class TransactionHistoryController {
     /**
      * GET /api/transaction-history/:walletAddress
@@ -23,6 +44,15 @@ export class TransactionHistoryController {
         try {
             const { walletAddress } = req.params;
             const { page = 1, limit = 50, type, fifoImpact } = req.query;
+            const authenticatedUserId = getAuthenticatedUserId(req);
+
+            if (!authenticatedUserId) {
+                return res.status(401).json({ success: false, message: 'Unauthenticated' });
+            }
+
+            if (!requestedWalletMatchesAuthenticatedUser(req, walletAddress)) {
+                return res.status(403).json({ success: false, message: 'Forbidden' });
+            }
 
             // Find user by wallet address (case-insensitive for Ethereum addresses)
             const user = await prisma.user.findFirst({
@@ -88,7 +118,15 @@ export class TransactionHistoryController {
     static async explainHoldingDate(req: Request, res: Response): Promise<Response> {
         try {
             const { walletAddress } = req.params;
-            console.log(`Explaining holding date for wallet: ${walletAddress}`);
+            const authenticatedUserId = getAuthenticatedUserId(req);
+
+            if (!authenticatedUserId) {
+                return res.status(401).json({ success: false, message: 'Unauthenticated' });
+            }
+
+            if (!requestedWalletMatchesAuthenticatedUser(req, walletAddress)) {
+                return res.status(403).json({ success: false, message: 'Forbidden' });
+            }
 
             // Find user by wallet address (case-insensitive for Ethereum addresses)
             const user = await prisma.user.findFirst({
@@ -99,7 +137,6 @@ export class TransactionHistoryController {
                     }
                 }
             });
-            console.log(user);
             if (!user) {
                 return res.status(404).json({
                     success: false,
@@ -216,9 +253,17 @@ export class TransactionHistoryController {
     static async getTransactionDetail(req: Request, res: Response): Promise<Response> {
         try {
             const { txHash } = req.params;
+            const authenticatedUserId = getAuthenticatedUserId(req);
+
+            if (!authenticatedUserId) {
+                return res.status(401).json({ success: false, message: 'Unauthenticated' });
+            }
 
             const transaction = await prisma.transactionAudit.findFirst({
-                where: { tx_hash: txHash },
+                where: {
+                    tx_hash: txHash,
+                    userId: authenticatedUserId
+                },
                 include: {
                     user: {
                         select: {
@@ -258,6 +303,16 @@ export class TransactionHistoryController {
     static async getFIFOSnapshot(req: Request, res: Response): Promise<Response> {
         try {
             const { walletAddress } = req.params;
+            const authenticatedUserId = getAuthenticatedUserId(req);
+
+            if (!authenticatedUserId) {
+                return res.status(401).json({ success: false, message: 'Unauthenticated' });
+            }
+
+            if (!requestedWalletMatchesAuthenticatedUser(req, walletAddress)) {
+                return res.status(403).json({ success: false, message: 'Forbidden' });
+            }
+
             const user = await prisma.user.findFirst({
                 where: {
                     wallet_address: {
