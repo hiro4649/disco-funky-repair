@@ -4,6 +4,8 @@ Status: FUNKY-STAGE-08 no-tx staging evidence consolidation.
 
 This report consolidates staging checks that can be completed before BNB/tBNB funding. It records only non-secret status and references. It does not include raw `.env` files, private keys, API keys, JWTs, DB connection strings, RPC URLs with keys, PM2 raw logs, nginx full configs, DB dumps, or secret-manager output.
 
+Repeatable smoke steps and route expectations are documented in `docs/launch/STAGING_NO_TX_SMOKE_RUNBOOK.md`.
+
 This report is not a production launch approval.
 
 ## 1. Confirmed Commit
@@ -47,6 +49,7 @@ The following no-tx checks are recorded as completed from the current staging ev
 | PM2 backend online | PASS | PM2 shows the backend staging process online from the GitHub checkout. |
 | PM2 frontend online | PASS | PM2 shows the frontend staging process online from the GitHub checkout. |
 | nginx active | PASS | nginx service is active and `sudo nginx -t` passes. |
+| nginx `/api` prefix preserved | PASS | no-tx smoke routes reached backend `/api` handlers; `/api` was not stripped by proxying. |
 | frontend build | PASS | `apps/frontend` build completed on staging. |
 | backend build | PASS | `apps/backend` build completed on staging. |
 | backend tests | PASS | `apps/backend` tests completed on staging. |
@@ -56,6 +59,27 @@ The following no-tx checks are recorded as completed from the current staging ev
 | BSC testnet RPC chain ID | PASS | RPC returned chain ID `97`. |
 | secret log scan | PASS | No raw JWT, Authorization header, cookie value, private key, API key, DB URL, RPC URL with query string, explorer API-key URL, or seed phrase was reported in scanned logs. |
 | DB schema dump | PASS | DB schema dump evidence is saved outside git; no dump content is committed here. |
+
+## 3A. No-Tx Smoke Route Evidence
+
+The current no-tx smoke verified these route outcomes without cookies, bearer tokens, or funded blockchain transactions:
+
+| Target | Method and path | Expected | Observed |
+| --- | --- | --- | --- |
+| disabled direct NFT status update | `PATCH /api/nft/<nft-id>` | `410 FEATURE_DISABLED` | PASS |
+| disabled direct user illustration | `POST /api/user/illustration` | `410 FEATURE_DISABLED` | PASS |
+| referral admin snapshot | `POST /api/referral/admin/run-snapshot` | `401 Unauthenticated` | PASS |
+| referral admin reward distribution | `POST /api/referral/admin/distribute-rewards` | `401 Unauthenticated` | PASS |
+| all-user ticket distribution | `POST /api/alluser/distribute/ticket` | `401 Unauthenticated` | PASS |
+| admin NFTs | `GET /api/admin/nfts` | `401 Unauthenticated` | PASS |
+| admin ticket distribution | `GET /api/admin/ticket-distribution` | `401 Unauthenticated` | PASS |
+
+Status interpretation:
+
+- `410 FEATURE_DISABLED` proves the disabled application handler was reached and refused the route.
+- `401 Unauthenticated` proves auth middleware rejected the no-auth request before the protected handler.
+- `403 Forbidden` is expected for authenticated users lacking ownership or admin rights.
+- `404 Not Found` is not protection evidence for these routes. It usually means wrong path, stripped `/api` prefix, wrong HTTP method, wrong hostname, old source, or missing deploy.
 
 ## 4. No-Tx Smoke Scope Confirmed
 
@@ -69,9 +93,11 @@ Confirmed no-tx scope:
 - Prisma baseline migration can apply to the staging DB.
 - PM2 process state and working directories can be inspected.
 - nginx service and reverse proxy wiring can be checked.
+- nginx `/api` prefix preservation can be checked.
 - Frontend public env validation can confirm staging mode and reject unsafe public env.
 - BSC testnet RPC can be queried for chain ID `97`.
 - Secret log scan can verify no known secret patterns appear in recent logs.
+- frontend `MISSING_MESSAGE` logs can be checked after PM2 frontend restart.
 - Disabled/no-tx routes can be smoke-tested if they do not require funded tx execution.
 
 This no-tx scope does not prove prize transfers, NFT minting, tier updater transactions, contract ownership changes, or BSC testnet receipt handling.
@@ -101,6 +127,7 @@ Status: PASS from no-tx staging evidence.
 
 Required scan policy:
 
+- Flush PM2 logs and restart the staging processes before collecting the current smoke window.
 - Scan PM2 backend and frontend logs.
 - Inspect privately if there are matches.
 - Do not paste matching raw lines into git, PRs, tickets, or chat.

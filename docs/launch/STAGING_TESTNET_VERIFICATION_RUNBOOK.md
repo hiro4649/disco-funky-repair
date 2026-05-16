@@ -231,8 +231,11 @@ Confirm:
 - Staging hostnames are not production hostnames.
 - Backend proxy points to the staging backend port.
 - Frontend proxy points to the staging frontend port.
+- If `/api` is proxied on the frontend hostname, nginx preserves the `/api` prefix when forwarding to backend.
 - No `root` or `alias` points to `var-www`, `Rave_bk`, old Sui/DISCO copies, or local user download folders.
 - HTTPS certificates are staging-approved and do not imply production traffic is live.
+
+Do not treat `404` from smoke endpoints as proof that a route is protected. A `404` can mean the wrong URL, stripped `/api` prefix, wrong method, wrong hostname, old source, or missing deploy. Recheck nginx and route path before recording PASS.
 
 ## 11. Confirm This Is Staging, Not Production
 
@@ -366,11 +369,20 @@ No-Go if wallet address alone can issue JWT.
 
 Use staging-only users and admin accounts.
 
+For no-tx route checks before BNB/tBNB funding, follow `docs/launch/STAGING_NO_TX_SMOKE_RUNBOOK.md`.
+
 For each P0 mutation group, run three checks:
 
 - No auth: rejected.
 - Normal user auth: allowed only for own user-owned action, rejected for admin actions.
 - Admin auth: allowed only for admin actions.
+
+Status code expectations:
+
+- `410 FEATURE_DISABLED`: expected for MVP-disabled routes such as direct NFT status update and direct user illustration assignment.
+- `401 Unauthenticated`: expected for protected admin routes when no cookie or Authorization header is sent.
+- `403 Forbidden`: expected when a signed-in normal user is authenticated but lacks owner/admin rights.
+- `404 Not Found`: not valid protection evidence unless the route is intentionally unreachable and documented as such.
 
 Groups:
 
@@ -389,6 +401,18 @@ Groups:
 - Crash game and user-manage disabled routes.
 
 No-Go if unauthenticated or normal user auth can mutate admin state, another user's assets, tickets, points, NFTs, prizes, referrals, or governance state.
+
+Current no-tx unauthenticated smoke targets and expected status:
+
+| Target | Method and path | Expected |
+| --- | --- | --- |
+| Direct NFT status update disabled | `PATCH /api/nft/<nft-id>` | `410 FEATURE_DISABLED` |
+| Direct user illustration disabled | `POST /api/user/illustration` | `410 FEATURE_DISABLED` |
+| Referral admin snapshot | `POST /api/referral/admin/run-snapshot` | `401 Unauthenticated` |
+| Referral admin reward distribution | `POST /api/referral/admin/distribute-rewards` | `401 Unauthenticated` |
+| All-user ticket distribution | `POST /api/alluser/distribute/ticket` | `401 Unauthenticated` |
+| Admin NFT listing | `GET /api/admin/nfts` | `401 Unauthenticated` |
+| Admin ticket distribution listing | `GET /api/admin/ticket-distribution` | `401 Unauthenticated` |
 
 ## 20. Admin Route Smoke Test
 
@@ -509,7 +533,15 @@ Expected:
 
 ## 30. Log Secret Scan
 
-Run in a restricted server terminal. Do not paste log output into PRs or chat. Record PASS/FAIL only.
+Run in a restricted server terminal after PM2 flush/restart and the relevant smoke checks. Do not paste log output into PRs or chat. Record PASS/FAIL only.
+
+Before collecting scan logs:
+
+```bash
+pm2 flush
+pm2 restart disco-funky-backend-staging --update-env
+pm2 restart disco-funky-frontend-staging --update-env
+```
 
 Suggested checks:
 

@@ -389,6 +389,7 @@ Recommended pattern:
 
 - Use one staging frontend hostname proxying to frontend port.
 - Use one staging API hostname proxying to backend port.
+- If frontend and API share one hostname, route `/api/` to backend without stripping the `/api` prefix.
 - Keep backend and frontend hostnames visibly staging.
 - Use TLS.
 - Do not route staging to production services.
@@ -421,6 +422,19 @@ server {
 }
 ```
 
+Single-host `/api` pattern with prefix preserved:
+
+```nginx
+location /api/ {
+    proxy_pass http://127.0.0.1:<backend-port>/api/;
+    proxy_set_header Host $host;
+    proxy_set_header X-Forwarded-Proto $scheme;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+}
+```
+
+Do not configure staging so `/api/nft/:id` is forwarded to backend `/nft/:id`. A stripped `/api` prefix can turn authorization or disabled-route smoke tests into false `404` results.
+
 Do not commit real hostname, TLS key path, or provider-specific secret into this repo.
 
 ## 21. nginx Verification Commands
@@ -435,10 +449,13 @@ Expected:
 
 - `server_name` values are staging hostnames.
 - `proxy_pass` points to local staging ports.
+- `/api` proxying preserves the backend `/api` prefix.
 - No `root` or `alias` points to `var-www`, `Rave_bk`, local desktop folders, old zips, or old Sui/DISCO source.
 - No production hostname or production backend appears.
 
 Do not paste full nginx config if it contains secrets or private internal details.
+
+For no-tx route smoke details and status expectations, use `docs/launch/STAGING_NO_TX_SMOKE_RUNBOOK.md`.
 
 ## 22. Health Check
 
@@ -465,7 +482,13 @@ Expected:
 
 ## 23. Secret Log Scan
 
-Run locally on the staging server. Do not paste matching log lines into PRs or chat.
+Run locally on the staging server after PM2 flush/restart and the current smoke checks. Do not paste matching log lines into PRs or chat.
+
+```bash
+pm2 flush
+pm2 restart disco-funky-backend-staging --update-env
+pm2 restart disco-funky-frontend-staging --update-env
+```
 
 ```bash
 pm2 logs disco-funky-backend-staging --lines 500 --nostream > /tmp/backend-staging-last500.log
@@ -481,6 +504,23 @@ Expected:
 - If non-zero, inspect privately and open a sanitization task with redacted evidence only.
 
 No-Go if logs expose raw JWT, Authorization header, cookie value, private key, API key, DB URL, RPC URL with query string, explorer URL with API key, or seed phrase.
+
+## 23A. Frontend Missing Message Check
+
+After restarting the frontend, check for staging translation noise:
+
+```bash
+pm2 logs disco-funky-frontend-staging --lines 300 --nostream > /tmp/frontend-staging-last300.log
+grep -F "MISSING_MESSAGE" /tmp/frontend-staging-last300.log > /tmp/frontend-missing-message.txt || true
+wc -l /tmp/frontend-missing-message.txt
+rm -f /tmp/frontend-staging-last300.log /tmp/frontend-missing-message.txt
+```
+
+Expected:
+
+- `wc -l` is `0` for known staging keys.
+- If new keys appear, record only the key namespace/name and locale.
+- Do not paste raw frontend logs if they contain request data or environment details.
 
 ## 24. Confirm Staging Is Not Production
 
