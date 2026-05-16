@@ -21,6 +21,36 @@ const getAuthenticatedTrialNftUserId = (req: Request): number | null => {
     return Number.isInteger(userId) && userId > 0 ? userId : null;
 };
 
+const getOwnedTrialNftRouteUserId = (req: Request, res: Response): number | null => {
+    const authenticatedUserId = getAuthenticatedTrialNftUserId(req);
+    if (!authenticatedUserId) {
+        res.status(401).json({
+            success: false,
+            message: 'Unauthenticated'
+        });
+        return null;
+    }
+
+    const routeUserId = parseInt(req.params.userId);
+    if (isNaN(routeUserId)) {
+        res.status(400).json({
+            success: false,
+            message: 'Invalid user ID'
+        });
+        return null;
+    }
+
+    if (routeUserId !== authenticatedUserId) {
+        res.status(403).json({
+            success: false,
+            message: 'Forbidden'
+        });
+        return null;
+    }
+
+    return authenticatedUserId;
+};
+
 export class TrialNftController {
     /**
      * Check if user can claim trial NFT this month
@@ -28,14 +58,8 @@ export class TrialNftController {
      */
     static async checkCanClaim(req: Request, res: Response) {
         try {
-            const userId = parseInt(req.params.userId);
-
-            if (isNaN(userId)) {
-                return res.status(400).json({
-                    success: false,
-                    message: 'Invalid user ID'
-                });
-            }
+            const userId = getOwnedTrialNftRouteUserId(req, res);
+            if (!userId) return res;
 
             const result = await canClaimTrialNFT(userId);
 
@@ -62,32 +86,9 @@ export class TrialNftController {
      */
     static async claimTrialNFT(req: Request, res: Response) {
         try {
-            const authenticatedUserId = getAuthenticatedTrialNftUserId(req);
-            if (!authenticatedUserId) {
-                return res.status(401).json({
-                    success: false,
-                    message: 'Unauthenticated'
-                });
-            }
-
-            const routeUserId = parseInt(req.params.userId);
+            const userId = getOwnedTrialNftRouteUserId(req, res);
+            if (!userId) return res;
             const { templateId } = req.body;
-
-            if (isNaN(routeUserId)) {
-                return res.status(400).json({
-                    success: false,
-                    message: 'Invalid user ID'
-                });
-            }
-
-            if (routeUserId !== authenticatedUserId) {
-                return res.status(403).json({
-                    success: false,
-                    message: 'Forbidden'
-                });
-            }
-
-            const userId = authenticatedUserId;
 
             const user = await prisma.user.findUnique({
                 where: { id: userId }
@@ -132,14 +133,8 @@ export class TrialNftController {
      */
     static async getUserTrialNFTs(req: Request, res: Response) {
         try {
-            const userId = parseInt(req.params.userId);
-
-            if (isNaN(userId)) {
-                return res.status(400).json({
-                    success: false,
-                    message: 'Invalid user ID'
-                });
-            }
+            const userId = getOwnedTrialNftRouteUserId(req, res);
+            if (!userId) return res;
 
             const trialNFTs = await getActiveTrialNFTs(userId);
 
@@ -164,14 +159,8 @@ export class TrialNftController {
      */
     static async getTotalNFTCount(req: Request, res: Response) {
         try {
-            const userId = parseInt(req.params.userId);
-
-            if (isNaN(userId)) {
-                return res.status(400).json({
-                    success: false,
-                    message: 'Invalid user ID'
-                });
-            }
+            const userId = getOwnedTrialNftRouteUserId(req, res);
+            if (!userId) return res;
 
             const user = await prisma.user.findUnique({
                 where: { id: userId },

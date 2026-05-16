@@ -16,6 +16,9 @@ const mockPrisma = {
     update: jest.fn(),
     updateMany: jest.fn()
   },
+  tokenDetail: {
+    findUnique: jest.fn()
+  },
   $transaction: jest.fn()
 };
 
@@ -103,6 +106,121 @@ const readyPrizeTransaction = () => ({
     decimals: 18,
     ca: '0x0000000000000000000000000000000000000999'
   }
+});
+
+describe('PrizeController.getPrize public catalog', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    mockPrisma.prize.findMany.mockResolvedValue([
+      {
+        id: 3,
+        ranking: 1,
+        token_name: 'FUNKY',
+        symbol: 'FUNKY',
+        quantity: 10,
+        price: 1,
+        probability: 0.1,
+        fake_probability: 0.2,
+        ca: VALID_TOKEN_ADDRESS,
+        telegram: 'https://t.me/example',
+        twitter: 'https://x.com/example',
+        discord: 'https://discord.gg/example',
+        icon: '/icon.png',
+        default_image: '/default.png',
+        listed_DEX: 'pancake',
+        balance_amount: '1000000000000000000',
+        reserved_amount: '0',
+        real_probability: 0.5,
+        saved_probability: 0.5,
+        earned_pts: 999,
+        decimals: 18,
+        flag: true
+      }
+    ]);
+    mockPrisma.tokenDetail.findUnique.mockResolvedValue({
+      token_symbol: 'FUNKY',
+      price: 1,
+      fdv: 1000,
+      market_cap: 900,
+      scarcityScore: 7,
+      volume_24h: 10,
+      liquidity: 20,
+      txns_24h: 30,
+      ca: VALID_TOKEN_ADDRESS,
+      holders: 123,
+      total_supply: '1000000'
+    });
+  });
+
+  it('queries only public prize catalog fields and omits inventory/admin fields from response', async () => {
+    const res = createResponse();
+
+    await PrizeController.getPrize({} as any, res);
+
+    expect(mockPrisma.prize.findMany).toHaveBeenCalledWith({
+      where: { flag: true },
+      select: {
+        id: true,
+        ranking: true,
+        token_name: true,
+        symbol: true,
+        quantity: true,
+        price: true,
+        probability: true,
+        fake_probability: true,
+        ca: true,
+        telegram: true,
+        twitter: true,
+        discord: true,
+        icon: true,
+        default_image: true,
+        listed_DEX: true
+      },
+      orderBy: [
+        {
+          ranking: 'asc'
+        }
+      ]
+    });
+    const prizeSelect = mockPrisma.prize.findMany.mock.calls[0][0].select;
+    expect(prizeSelect).not.toHaveProperty('balance');
+    expect(prizeSelect).not.toHaveProperty('balance_amount');
+    expect(prizeSelect).not.toHaveProperty('reserved_amount');
+    expect(prizeSelect).not.toHaveProperty('real_probability');
+    expect(prizeSelect).not.toHaveProperty('saved_probability');
+    expect(prizeSelect).not.toHaveProperty('earned_pts');
+    expect(prizeSelect).not.toHaveProperty('decimals');
+
+    expect(mockPrisma.tokenDetail.findUnique).toHaveBeenCalledWith({
+      where: { ca: VALID_TOKEN_ADDRESS },
+      select: {
+        token_symbol: true,
+        price: true,
+        fdv: true,
+        market_cap: true,
+        scarcityScore: true,
+        volume_24h: true,
+        liquidity: true,
+        txns_24h: true
+      }
+    });
+    const tokenDetailSelect = mockPrisma.tokenDetail.findUnique.mock.calls[0][0].select;
+    expect(tokenDetailSelect).not.toHaveProperty('ca');
+    expect(tokenDetailSelect).not.toHaveProperty('holders');
+    expect(tokenDetailSelect).not.toHaveProperty('total_supply');
+
+    const responsePrize = res.json.mock.calls[0][0].data[0];
+    expect(responsePrize).not.toHaveProperty('balance_amount');
+    expect(responsePrize).not.toHaveProperty('reserved_amount');
+    expect(responsePrize).not.toHaveProperty('real_probability');
+    expect(responsePrize).not.toHaveProperty('saved_probability');
+    expect(responsePrize).not.toHaveProperty('earned_pts');
+    expect(responsePrize).not.toHaveProperty('decimals');
+    expect(responsePrize.tokenDetail).not.toHaveProperty('ca');
+    expect(responsePrize.tokenDetail).not.toHaveProperty('holders');
+    expect(responsePrize.tokenDetail).not.toHaveProperty('total_supply');
+    expect(res.status).toHaveBeenCalledWith(200);
+  });
 });
 
 const winningPrize = () => ({

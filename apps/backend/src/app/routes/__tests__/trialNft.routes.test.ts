@@ -72,6 +72,30 @@ describe('trial NFT routes authorization', () => {
   });
 
   it.each([
+    ['get', '/can-claim/1', 'checkCanClaim'],
+    ['get', '/user/1', 'getUserTrialNFTs'],
+    ['get', '/total/1', 'getTotalNFTCount']
+  ])('does not reach user-specific read route %s %s without authentication', async (method, path, controllerMethod) => {
+    const response = await (request(createApp()) as any)[method](path)
+      .send({ adminKey: 'legacy-admin-key' });
+
+    expect(response.status).toBe(401);
+    expect((mockTrialNftController as any)[controllerMethod]).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ['get', '/can-claim/1', 'checkCanClaim'],
+    ['get', '/user/1', 'getUserTrialNFTs'],
+    ['get', '/total/1', 'getTotalNFTCount']
+  ])('allows authenticated users to reach user-specific read route %s %s', async (method, path, controllerMethod) => {
+    const response = await (request(createApp()) as any)[method](path)
+      .set('Authorization', 'Bearer user-token');
+
+    expect(response.status).toBe(200);
+    expect((mockTrialNftController as any)[controllerMethod]).toHaveBeenCalledTimes(1);
+  });
+
+  it.each([
     ['get', '/stats', 'getStats'],
     ['post', '/expire', 'expireOldNFTs'],
     ['get', '/all', 'getAllTrialNFTs']
