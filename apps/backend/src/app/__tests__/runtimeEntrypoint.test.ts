@@ -26,4 +26,12 @@ describe('backend runtime entrypoint hardening', () => {
     expect(securitySource).toContain('SESSION_SECRET is required');
     expect(securitySource).not.toContain('supersecret_session_key_should_be_in_env');
   });
+
+  it('does not expose the uploads root as a static directory', () => {
+    expect(appIndexSource).not.toMatch(/app\.use\(express\.static\(uploadsPath\)\)/);
+    expect(appIndexSource).toContain("app.use('/uploads/images', express.static(imagesPath))");
+    expect(appIndexSource).toContain("app.use('/api/icons/images', express.static(imagesPath))");
+    expect(appIndexSource).toContain("app.use('/api/icons', express.static(imagesPath))");
+    expect(appIndexSource).not.toContain("app.use('/api/icons', express.static(uploadsPath))");
+  });
 });
