@@ -18,7 +18,8 @@ Do not paste private keys, API keys, RPC URLs, or production wallet secrets into
 2. Prepare the official metadata base URI outside git.
 3. Confirm the BSC network, Chainlink BNB/USD price feed address, royalty recipient, and royalty basis points.
 4. Confirm the production multisig address and signer quorum.
-5. Run local verification:
+5. Complete the no-secret deploy role handoff checklist in `docs/launch/NFT_DEPLOY_ROLE_HANDOFF_CHECKLIST.md`.
+6. Run local verification:
 
 ```powershell
 cd contracts
