@@ -54,6 +54,17 @@ for (const appEnv of [undefined, "production"]) {
   }
 }
 
+for (const appEnv of [undefined, "production"]) {
+  assert.throws(
+    () => validateFrontendEnv({
+      ...validEnv,
+      NEXT_PUBLIC_APP_ENV: appEnv,
+      NEXT_PUBLIC_ETHERSCAN_EXPLORER: "https://testnet.bscscan.com",
+    }),
+    /NEXT_PUBLIC_ETHERSCAN_EXPLORER/
+  );
+}
+
 for (const rpcUrl of [
   "http://localhost:8545",
   "http://127.0.0.1:8545",
@@ -195,10 +206,27 @@ assert.throws(
 
 assert.throws(
   () => validateFrontendEnv({
+    ...validStagingEnv,
+    NEXT_PUBLIC_OWNER_KEY: "",
+  }),
+  /NEXT_PUBLIC_OWNER_KEY/
+);
+
+assert.throws(
+  () => validateFrontendEnv({
     NODE_ENV: "development",
     NEXT_PUBLIC_ADMIN_PRIVATE_KEY: "",
   }),
   /NEXT_PUBLIC_ADMIN_PRIVATE_KEY/
+);
+
+assert.throws(
+  () => validateFrontendEnv({
+    NODE_ENV: "production",
+    NEXT_PUBLIC_SECRET: "",
+    ...validEnv,
+  }),
+  /NEXT_PUBLIC_SECRET/
 );
 
 assert.throws(

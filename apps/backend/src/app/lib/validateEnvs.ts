@@ -26,6 +26,18 @@ export const PRODUCTION_REQUIRED_ENV_VARS = [
   'TIER_UPDATER_CONTRACT_ADDRESS'
 ] as const;
 
+export const STAGING_REQUIRED_ENV_VARS = [
+  'QUICKNODE_HTTP_RPC_URL',
+  'QUICKNODE_WS_RPC_URL',
+  'ETHERSCAN_API_URL',
+  'CHAIN_ID',
+  'TOKEN_CONTRACT_ADDRESS',
+  'NFT_CONTRACT_ADDRESS',
+  'PRIZE_HOT_WALLET_PRIVATE_KEY',
+  'TIER_RELAYER_PRIVATE_KEY',
+  'TIER_UPDATER_CONTRACT_ADDRESS'
+] as const;
+
 const ADDRESS_ENV_VARS = new Set([
   'ADMIN_WALLET_ADDRESS',
   'TOKEN_CONTRACT_ADDRESS',
@@ -62,6 +74,7 @@ const TEST_PRIVATE_KEYS = new Set([
 ]);
 
 type EnvMap = NodeJS.ProcessEnv;
+type ValidationMode = 'development' | 'production' | 'staging';
 
 const isBlank = (value: string | undefined): boolean => !value || value.trim() === '';
 
@@ -79,7 +92,49 @@ const looksPlaceholder = (value: string): boolean => {
   );
 };
 
-const validateUrl = (name: string, value: string): string | null => {
+const getValidationMode = (env: EnvMap): ValidationMode => {
+  const appEnv = env.BACKEND_APP_ENV?.trim().toLowerCase();
+  if (appEnv === 'staging') return 'staging';
+  if (appEnv === 'production' || env.NODE_ENV === 'production') return 'production';
+  return 'development';
+};
+
+const looksLikeBscTestnetRpc = (hostname: string, normalized: string): boolean => {
+  const bscTestnetMarkers = [
+    'prebsc',
+    'bsc-testnet',
+    'testnet-bsc',
+    'bsc/testnet',
+    'testnet/bsc',
+    'bnb-testnet',
+    'testnet-bnb',
+    'bnb/testnet',
+    'testnet/bnb'
+  ];
+
+  if (hostname === 'testnet.bscscan.com' || hostname === 'api-testnet.bscscan.com') {
+    return false;
+  }
+
+  return bscTestnetMarkers.some((marker) => normalized.includes(marker));
+};
+
+const looksLikeBscTestnetExplorer = (hostname: string, parsed: URL): boolean => {
+  return (
+    hostname === 'api-testnet.bscscan.com' ||
+    hostname === 'testnet.bscscan.com' ||
+    (hostname === 'api.etherscan.io' &&
+      parsed.pathname.includes('/v2/api') &&
+      parsed.searchParams.get('chainid') === '97')
+  );
+};
+
+const looksLikeEthereumMainnetRpc = (normalized: string): boolean => {
+  return ['eth.llamarpc.com', 'ethereum', 'eth-mainnet', 'mainnet.infura.io', 'mainnet.infura']
+    .some((marker) => normalized.includes(marker));
+};
+
+const validateUrl = (name: string, value: string, mode: Exclude<ValidationMode, 'development'>): string | null => {
   try {
     const parsed = new URL(value);
     const hostname = parsed.hostname.toLowerCase();
@@ -90,12 +145,31 @@ const validateUrl = (name: string, value: string): string | null => {
       return `${name} has an unsupported protocol`;
     }
     if (['localhost', '127.0.0.1', '0.0.0.0', '::1'].includes(hostname)) {
-      return `${name} must not point to localhost in production`;
+      return `${name} must not point to localhost in ${mode}`;
     }
     if (hostname === 'example.com' || hostname.endsWith('.example.com') || hostname.endsWith('.invalid')) {
-      return `${name} must not use example or invalid hosts in production`;
+      return `${name} must not use example or invalid hosts in ${mode}`;
     }
-    if (normalized.includes('testnet') || normalized.includes('sepolia') || normalized.includes('goerli')) {
+
+    if (mode === 'staging') {
+      if (normalized.includes('sepolia') || normalized.includes('goerli') || looksLikeEthereumMainnetRpc(normalized)) {
+        return `${name} must point to BSC testnet, not Ethereum endpoints`;
+      }
+      if ((name === 'QUICKNODE_HTTP_RPC_URL' || name === 'QUICKNODE_WS_RPC_URL') && !looksLikeBscTestnetRpc(hostname, normalized)) {
+        return `${name} must point to a BSC testnet RPC in staging`;
+      }
+      if (name === 'ETHERSCAN_API_URL' && !looksLikeBscTestnetExplorer(hostname, parsed)) {
+        return `${name} must point to a BSC testnet explorer in staging`;
+      }
+      return null;
+    }
+
+    if (
+      normalized.includes('testnet') ||
+      normalized.includes('sepolia') ||
+      normalized.includes('goerli') ||
+      looksLikeBscTestnetRpc(hostname, normalized)
+    ) {
       return `${name} must point to BSC mainnet, not a testnet endpoint`;
     }
     if (name === 'ETHERSCAN_API_URL') {
@@ -136,6 +210,13 @@ const validatePrivateKey = (name: string, value: string): string | null => {
   }
   if (TEST_PRIVATE_KEYS.has(normalized)) {
     return `${name} must not use a known test private key`;
+  }
+  return null;
+};
+
+const validatePrivateKeyFormat = (name: string, value: string): string | null => {
+  if (!PRIVATE_KEY.test(value)) {
+    return `${name} must be a 0x-prefixed 32-byte private key`;
   }
   return null;
 };
@@ -219,14 +300,16 @@ const validateRequestBodyLimit = (value: string): string | null => {
 };
 
 export const validateEnvs = (env: EnvMap = process.env): void => {
-  if (env.NODE_ENV !== 'production') {
+  const mode = getValidationMode(env);
+  if (mode === 'development') {
     return;
   }
 
   const missing: string[] = [];
   const invalid: string[] = [];
+  const requiredEnvVars = mode === 'production' ? PRODUCTION_REQUIRED_ENV_VARS : STAGING_REQUIRED_ENV_VARS;
 
-  for (const name of PRODUCTION_REQUIRED_ENV_VARS) {
+  for (const name of requiredEnvVars) {
     const value = env[name];
     if (isBlank(value)) {
       missing.push(name);
@@ -240,31 +323,34 @@ export const validateEnvs = (env: EnvMap = process.env): void => {
     }
 
     if (URL_ENV_VARS.has(name)) {
-      const error = validateUrl(name, trimmed);
+      const error = validateUrl(name, trimmed, mode);
       if (error) invalid.push(error);
     }
 
-    if (CORS_ORIGIN_ENV_VARS.has(name)) {
+    if (mode === 'production' && CORS_ORIGIN_ENV_VARS.has(name)) {
       const error = validateCorsOrigins(name, trimmed);
       if (error) invalid.push(error);
     }
 
-    if (ADDRESS_ENV_VARS.has(name)) {
+    if (mode === 'production' && ADDRESS_ENV_VARS.has(name)) {
       const error = validateAddress(name, trimmed);
       if (error) invalid.push(error);
     }
 
     if (PRIVATE_KEY_ENV_VARS.has(name)) {
-      const error = validatePrivateKey(name, trimmed);
+      const error = mode === 'production'
+        ? validatePrivateKey(name, trimmed)
+        : validatePrivateKeyFormat(name, trimmed);
       if (error) invalid.push(error);
     }
   }
 
-  if (env.CHAIN_ID && env.CHAIN_ID.trim() !== '56') {
-    invalid.push('CHAIN_ID must be 56 for BSC production');
+  const expectedChainId = mode === 'production' ? '56' : '97';
+  if (env.CHAIN_ID && env.CHAIN_ID.trim() !== expectedChainId) {
+    invalid.push(`CHAIN_ID must be ${expectedChainId} for BSC ${mode}`);
   }
 
-  if (env.PRIZE_TRANSFER_TOKEN_ALLOWLIST) {
+  if (mode === 'production' && env.PRIZE_TRANSFER_TOKEN_ALLOWLIST) {
     const error = validateAllowlist(env.PRIZE_TRANSFER_TOKEN_ALLOWLIST);
     if (error) invalid.push(error);
   }
@@ -274,9 +360,9 @@ export const validateEnvs = (env: EnvMap = process.env): void => {
     if (error) invalid.push(error);
   }
 
-  if (getExplorerApiKeys(env).length === 0) {
+  if (mode === 'production' && getExplorerApiKeys(env).length === 0) {
     missing.push('ETHERSCAN_API_KEY or BSCSCAN_API_KEY');
-  } else {
+  } else if (mode === 'production') {
     for (const name of EXPLORER_API_KEY_ENV_ORDER) {
       const value = env[name];
       if (value && looksPlaceholder(value)) {
@@ -297,7 +383,7 @@ export const validateEnvs = (env: EnvMap = process.env): void => {
       invalid.length > 0 ? `Invalid production environment variables: ${invalid.join('; ')}` : ''
     ].filter(Boolean);
 
-    throw new Error(`Invalid production environment. ${messages.join('. ')}`);
+    throw new Error(`Invalid ${mode} environment. ${messages.join('. ')}`);
   }
 };
 
