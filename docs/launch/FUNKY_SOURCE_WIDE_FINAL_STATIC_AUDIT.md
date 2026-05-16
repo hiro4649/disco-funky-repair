@@ -39,6 +39,9 @@ rg -n "MANUAL_REVIEW_REQUIRED|GOVERNANCE|update_fee|fee_recipient|add_factory|ad
 rg -n "server\.listen|http\.createServer|from './app'|from \"\./app\"" apps/backend/src -g "*.ts"
 rg -n "SESSION_SECRET|allowedOrigins|FRONTEND_APP_URL|BACKEND_API_URL|CORS|suiet|localhost|153\.127" apps/backend/src/app apps/backend/src apps/backend/src/app/lib/validateEnvs.ts docs/launch/ENVIRONMENT_RUNBOOK.md
 Get-ChildItem apps\backend\prisma\migrations -Filter migration.sql -Recurse | ForEach-Object { $bytes=[System.IO.File]::ReadAllBytes($_.FullName); $rel=$_.FullName.Substring((Get-Location).Path.Length+1); "$rel HasBom=$($bytes.Length -ge 3 -and $bytes[0] -eq 0xEF -and $bytes[1] -eq 0xBB -and $bytes[2] -eq 0xBF)" }
+cd apps/backend && npx prisma validate
+cd apps/backend && rg -n "^model\s+|^enum\s+" prisma\schema.prisma
+cd apps/backend && Select-String -Path prisma\migrations\*\migration.sql -Pattern 'CREATE TABLE|CREATE TYPE|wallet_login_nonces|transfer_token_address|transfer_amount|reservation_released_at|reserved_amount'
 ```
 
 ## PASS
@@ -56,7 +59,7 @@ Get-ChildItem apps\backend\prisma\migrations -Filter migration.sql -Recurse | Fo
 | Backend production env validation | PASS with residual gaps below | `apps/backend/src/app/lib/validateEnvs.ts` requires core production JWT, DB, BSC RPC, Explorer URL/key, BSC chain ID, contract addresses, Prize hot-wallet key, Prize allowlist, tier relayer key, and tier updater address. It rejects placeholder/local/testnet/zero/test-key values. |
 | Explorer key validation/runtime consistency | PASS | `explorerApiKeys.ts`, `dualApiKeyManager.ts`, and `validateEnvs.ts` share the `ETHERSCAN_API_KEY`, `BSCSCAN_API_KEY`, and numbered fallback order. No `apikey=undefined` behavior was found in the checked helper path. |
 | Targeted Explorer/RPC/IPFS log hardening | PASS at code/test level | `safeLogger.ts` is used in the known Explorer/RPC/IPFS failure paths covered by PR #53. `secretLogging.test.ts` verifies URL/API-key/token redaction and absence of previous raw URL log statements. |
-| Prisma migration BOM | PASS | Both `migration.sql` files returned `HasBom=False`. |
+| Prisma migration SQL BOM | PASS | Both `migration.sql` files returned `HasBom=False`. |
 | Prize transfer state and inventory controls | PASS at static/test level | `PrizeTransaction` stores `transfer_token_address`, `transfer_amount`, `reservation_released_at`; send flow checks `READY -> SENDING`, does not recalculate amount from latest Prize data, uses fixed transfer values, and reservation tests cover draw race, send success, retry, expiry/cancel/FAILED release paths. |
 | Governance / fee / DEX backend writes | PASS for direct tx prevention | `dexFeeController.ts` and `tokenManagementService.ts` return `410` / `MANUAL_REVIEW_REQUIRED` for backend governance write attempts rather than sending fee/DEX/pair txs. |
 | NFT contract mint controls | PASS at static/test level | `contracts/funky-nft/funky-nft.sol` has `MAX_SUPPLY`, `mintEnabled`, owner-only sale/base URI controls, public mint to `msg.sender`, and no user-supplied public tokenURI. Hardhat NFT tests pass. |
@@ -71,6 +74,12 @@ Get-ChildItem apps\backend\prisma\migrations -Filter migration.sql -Recurse | Fo
 | Runtime log proof | `FUNKY_RUNTIME_LOG_SANITIZE_EVIDENCE.md` records the scan procedure, but raw staging PM2/nginx logs are external and were not available in this workspace. |
 | Production secret manager | Real secret-manager values were not inspected and must not be committed. Human operators must verify separation, presence, and no production/staging sharing. |
 | Browser wallet E2E | Static tests prove backend signature verification behavior, but a real staging browser-wallet nonce/signature/login flow still needs external evidence. |
+
+## UNKNOWN
+
+| Area | Reason |
+| --- | --- |
+| `schema.prisma` and migration baseline full equivalence | Full equivalence is UNKNOWN in this source-wide static audit. Static checks confirmed the migration set contains `20260515053000_baseline_current_schema` plus `20260515071000_add_wallet_login_nonces`, the P0 schema fields such as `reserved_amount`, `transfer_token_address`, `transfer_amount`, and `reservation_released_at` are present in migration SQL, and `WalletLoginNonce` exists as a follow-up migration. However, `npx prisma validate` could not run in this workspace because `DATABASE_URL` is not set, and no throwaway/shadow database diff was executed because this audit must not create, display, or store DB connection information. Staging DB `migrate deploy` is recorded in staging docs, but this source-wide audit did not inspect the staging DB itself. No DB schema change or new migration was made in this PR. |
 
 ## NO-GO
 
@@ -138,6 +147,7 @@ cd contracts && npx hardhat compile
 cd contracts && npx hardhat test
 cd contracts && npm run compile:nft
 cd contracts && npm run test:nft
+cd apps/backend && npx prisma validate
 git diff --check
 ```
 
@@ -153,4 +163,5 @@ git diff --check
 | `cd contracts && npx hardhat test` | PASS: 34 passing, 16 pending |
 | `cd contracts && npm run compile:nft` | PASS |
 | `cd contracts && npm run test:nft` | PASS: 16 passing |
+| `cd apps/backend && npx prisma validate` | BLOCKED: `DATABASE_URL` is not set in this workspace; no dummy or real DB URL was created for this docs-only audit |
 | `git diff --check` | PASS |
