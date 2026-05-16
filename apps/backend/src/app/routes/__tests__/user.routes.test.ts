@@ -21,6 +21,9 @@ const mockPrisma = {
   },
   airdropTokens: {
     findFirst: jest.fn()
+  },
+  holdDateHistory: {
+    findMany: jest.fn()
   }
 };
 
@@ -256,5 +259,108 @@ describe('user point routes authorization', () => {
 
     expect(response.status).toBe(403);
     expect(mockPrisma.pointHistory.findMany).not.toHaveBeenCalled();
+  });
+});
+
+describe('user privacy read route authorization', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    mockPrisma.user.findUnique.mockResolvedValue({
+      tickets: 2,
+      claimTickets: 1,
+      fan_points: 10,
+      ownedToken: [{
+        sixHourTokenBalance: '100',
+        tallyTokenBalance: '200'
+      }]
+    });
+    mockPrisma.holdDateHistory.findMany.mockResolvedValue([]);
+  });
+
+  it('does not return user info without authentication', async () => {
+    const response = await request(createApp())
+      .post('/user/info')
+      .send({ user_id: 1 });
+
+    expect(response.status).toBe(401);
+    expect(mockPrisma.user.findUnique).not.toHaveBeenCalled();
+  });
+
+  it('does not return user info with body adminKey alone', async () => {
+    const response = await request(createApp())
+      .post('/user/info')
+      .send({ user_id: 1, adminKey: 'legacy-admin-key' });
+
+    expect(response.status).toBe(401);
+    expect(mockPrisma.user.findUnique).not.toHaveBeenCalled();
+  });
+
+  it('does not return another user info from body user_id', async () => {
+    const response = await request(createApp())
+      .post('/user/info')
+      .set('Authorization', 'Bearer user-token')
+      .send({ user_id: 2, adminKey: 'legacy-admin-key' });
+
+    expect(response.status).toBe(403);
+    expect(mockPrisma.user.findUnique).not.toHaveBeenCalled();
+  });
+
+  it('returns only authenticated user info', async () => {
+    const response = await request(createApp())
+      .post('/user/info')
+      .set('Authorization', 'Bearer user-token')
+      .send({ user_id: 1 });
+
+    expect(response.status).toBe(200);
+    expect(mockPrisma.user.findUnique).toHaveBeenCalledWith({
+      where: {
+        id: 1
+      },
+      select: expect.any(Object)
+    });
+  });
+
+  it('does not read another user holding average', async () => {
+    const response = await request(createApp())
+      .get('/user/holding/average/2')
+      .set('Authorization', 'Bearer user-token');
+
+    expect(response.status).toBe(403);
+    expect(mockPrisma.holdDateHistory.findMany).not.toHaveBeenCalled();
+  });
+
+  it('reads holding average only for the authenticated user', async () => {
+    const response = await request(createApp())
+      .get('/user/holding/average/1')
+      .set('Authorization', 'Bearer user-token');
+
+    expect(response.status).toBe(200);
+    expect(mockPrisma.holdDateHistory.findMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: {
+        userId: 1
+      }
+    }));
+  });
+
+  it('does not read another user holding history', async () => {
+    const response = await request(createApp())
+      .get('/user/holding/history/2')
+      .set('Authorization', 'Bearer user-token');
+
+    expect(response.status).toBe(403);
+    expect(mockPrisma.holdDateHistory.findMany).not.toHaveBeenCalled();
+  });
+
+  it('reads holding history only for the authenticated user', async () => {
+    const response = await request(createApp())
+      .get('/user/holding/history/1')
+      .set('Authorization', 'Bearer user-token');
+
+    expect(response.status).toBe(200);
+    expect(mockPrisma.holdDateHistory.findMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: {
+        userId: 1
+      }
+    }));
   });
 });

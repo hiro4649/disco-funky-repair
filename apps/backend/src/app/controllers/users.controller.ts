@@ -180,7 +180,14 @@ export class UserController {
     }
 
     static async getAverageHoldingDate(req: Request, res: Response) {
-        const user_id = Number(req.params.user_id);
+        const user_id = getAuthenticatedUserId(req);
+        if (!user_id) {
+            return res.status(401).json({ success: false, msg: 'Unauthenticated' });
+        }
+
+        if (!routeUserIdMatchesAuthenticatedUser(req, 'user_id', user_id)) {
+            return res.status(403).json({ success: false, msg: 'Forbidden' });
+        }
 
         try {
             // Get FIFO-adjusted purchase history to calculate weighted average
@@ -260,7 +267,14 @@ export class UserController {
     }
 
     static async getHoldDateHistory(req: Request, res: Response) {
-        const user_id = Number(req.params.user_id);
+        const user_id = getAuthenticatedUserId(req);
+        if (!user_id) {
+            return res.status(401).json({ success: false, msg: 'Unauthenticated' });
+        }
+
+        if (!routeUserIdMatchesAuthenticatedUser(req, 'user_id', user_id)) {
+            return res.status(403).json({ success: false, msg: 'Forbidden' });
+        }
 
         try {
             // Fetch FIFO-adjusted purchase records
@@ -487,21 +501,23 @@ export class UserController {
     }
 
     static async getUserInfo(req: Request, res: Response) {
+        const authenticatedUserId = getAuthenticatedUserId(req);
+        if (!authenticatedUserId) {
+            return res.status(401).json({ success: false, message: 'Unauthenticated' });
+        }
+
         try {
             const { user_id } = req.body;
-
-            if (!user_id) {
-                return res.status(400).json({
+            if (user_id !== undefined && Number(user_id) !== authenticatedUserId) {
+                return res.status(403).json({
                     success: false,
-                    message: 'user_id is required'
+                    message: 'Forbidden'
                 });
             }
 
-            const userId = Number(user_id);
-
             const user = await prisma.user.findUnique({
                 where: {
-                    id: userId
+                    id: authenticatedUserId
                 },
                 select: {
                     tickets: true,
