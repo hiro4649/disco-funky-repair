@@ -27,14 +27,31 @@ assert.deepEqual(validateFrontendEnv(validEnv), {
 });
 
 for (const appEnv of [undefined, "production"]) {
-  assert.throws(
-    () => validateFrontendEnv({
-      ...validEnv,
-      NEXT_PUBLIC_APP_ENV: appEnv,
-      NEXT_PUBLIC_RPC_URL: "https://bsc-testnet.public-rpc.provider",
-    }),
-    /NEXT_PUBLIC_RPC_URL/
-  );
+  for (const rpcUrl of [
+    "https://data-seed-prebsc-1-s1.bnbchain.org:8545",
+    "https://bsc-testnet.public-rpc.provider",
+    "https://bnb-testnet.public-rpc.provider",
+    "https://eth.llamarpc.com",
+    "https://mainnet.infura.io/v3/public",
+  ]) {
+    assert.throws(
+      () => validateFrontendEnv({
+        ...validEnv,
+        NEXT_PUBLIC_APP_ENV: appEnv,
+        NEXT_PUBLIC_RPC_URL: rpcUrl,
+      }),
+      /NEXT_PUBLIC_RPC_URL/
+    );
+
+    assert.throws(
+      () => validateFrontendEnv({
+        ...validEnv,
+        NEXT_PUBLIC_APP_ENV: appEnv,
+        NEXT_PUBLIC_ALCHEMY_RPC_URL: rpcUrl,
+      }),
+      /NEXT_PUBLIC_ALCHEMY_RPC_URL/
+    );
+  }
 }
 
 for (const rpcUrl of [
@@ -45,7 +62,11 @@ for (const rpcUrl of [
   "https://dummy.rpc.provider",
   "",
   "not a url",
+  "https://data-seed-prebsc-1-s1.bnbchain.org:8545",
   "https://bsc-testnet.public-rpc.provider",
+  "https://bnb-testnet.public-rpc.provider",
+  "https://eth.llamarpc.com",
+  "https://mainnet.infura.io/v3/public",
   "https://sepolia.public-rpc.provider",
   "https://goerli.public-rpc.provider",
 ]) {

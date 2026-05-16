@@ -88,6 +88,18 @@ const looksLikeBscTestnetRpc = (hostname, normalized) => {
   return bscTestnetMarkers.some((marker) => normalized.includes(marker));
 };
 
+const looksLikeEthereumMainnetRpc = (hostname, normalized) => {
+  const ethereumMainnetMarkers = [
+    "eth.llamarpc.com",
+    "ethereum",
+    "eth-mainnet",
+    "mainnet.infura.io",
+    "mainnet.infura",
+  ];
+
+  return ethereumMainnetMarkers.some((marker) => normalized.includes(marker));
+};
+
 const validatePublicUrl = (name, value, mode) => {
   try {
     const parsed = new URL(value);
@@ -101,7 +113,16 @@ const validatePublicUrl = (name, value, mode) => {
       return `${name} must not use example or invalid hosts in ${mode}`;
     }
 
-    if (mode === "production" && (normalized.includes("testnet") || normalized.includes("sepolia") || normalized.includes("goerli"))) {
+    if (
+      mode === "production" &&
+      (
+        normalized.includes("testnet") ||
+        normalized.includes("sepolia") ||
+        normalized.includes("goerli") ||
+        looksLikeBscTestnetRpc(hostname, normalized) ||
+        looksLikeEthereumMainnetRpc(hostname, normalized)
+      )
+    ) {
       return `${name} must point to BSC mainnet, not a testnet RPC`;
     }
 
