@@ -13,6 +13,7 @@ import {
   Zap,
 } from "lucide-react";
 import { useTranslations } from 'next-intl';
+import apiClient from "../../../../utils/apiClient";
 
 const ReactApexChart = dynamic(() => import("react-apexcharts"), {
   ssr: false,
@@ -67,10 +68,9 @@ export default function MonitoringDashboard() {
 
   const fetchStatus = async () => {
     try {
-      const response = await fetch(
-        `${process.env.NEXT_PUBLIC_API_URL}/monitoring/quicknode-status`
+      const { data } = await apiClient.get<QuickNodeStatus>(
+        "/monitoring/quicknode-status"
       );
-      const data = await response.json();
       setStatus(data);
       setLastUpdated(new Date());
       setLoading(false);

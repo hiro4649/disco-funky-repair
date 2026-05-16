@@ -1,15 +1,15 @@
 "use client"
-import axios from "axios";
 import React, { useCallback, useEffect, useState } from "react";
 import { prizeTransactions } from "@/types/prizeTransactions";
 import PrizeTransactionCell from '@/components/admin/prizeTransaction/prizeTransactionCell';
+import apiClient from "../../../../utils/apiClient";
 
 const PrizeTransaction = (props: { wallet_address: string }) => {
     const [transaction, setTransaction] = useState<prizeTransactions[]>([]);
   const getUserPrizeTransaction = useCallback(async () => {
     try {
-      const transaction = await axios.get(
-        `/api/admin/user/transaction/${props.wallet_address}`,
+      const transaction = await apiClient.get(
+        `/admin/user/transaction/${props.wallet_address}`,
       );
       if (transaction.status == 200) {
         setTransaction(transaction.data.data);
