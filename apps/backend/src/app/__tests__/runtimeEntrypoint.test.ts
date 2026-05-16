@@ -1,5 +1,9 @@
 import fs from 'fs';
 import path from 'path';
+import {
+  isPublicImageAssetRequestPath,
+  PUBLIC_IMAGE_ASSET_EXTENSIONS,
+} from '../middlewares/publicImageAssets';
 
 const readSource = (relativePath: string): string =>
   fs.readFileSync(path.resolve(__dirname, relativePath), 'utf8');
@@ -28,10 +32,43 @@ describe('backend runtime entrypoint hardening', () => {
   });
 
   it('does not expose the uploads root as a static directory', () => {
-    expect(appIndexSource).not.toMatch(/app\.use\(express\.static\(uploadsPath\)\)/);
-    expect(appIndexSource).toContain("app.use('/uploads/images', express.static(imagesPath))");
-    expect(appIndexSource).toContain("app.use('/api/icons/images', express.static(imagesPath))");
-    expect(appIndexSource).toContain("app.use('/api/icons', express.static(imagesPath))");
+    expect(appIndexSource).not.toMatch(/express\.static\(\s*uploadsPath\s*\)/);
+
+    const staticTargets = Array.from(
+      appIndexSource.matchAll(/express\.static\(([^)]+)\)/g),
+      ([, target]) => target.trim()
+    );
+    expect(staticTargets).toEqual(['imagesPath', 'imagesPath', 'imagesPath']);
+  });
+
+  it('keeps public image routes on imagesPath behind the image extension guard', () => {
+    expect(appIndexSource).toContain("app.use('/uploads/images', rejectNonImageStaticAsset, express.static(imagesPath))");
+    expect(appIndexSource).toContain("app.use('/api/icons/images', rejectNonImageStaticAsset, express.static(imagesPath))");
+    expect(appIndexSource).toContain("app.use('/api/icons', rejectNonImageStaticAsset, express.static(imagesPath))");
     expect(appIndexSource).not.toContain("app.use('/api/icons', express.static(uploadsPath))");
+  });
+
+  it('allows only image filename extensions for public static assets', () => {
+    expect(PUBLIC_IMAGE_ASSET_EXTENSIONS).toEqual(['.png', '.jpg', '.jpeg', '.gif', '.webp', '.svg']);
+
+    for (const requestPath of ['/token.png', '/token.JPG', '/nft.jpeg', '/badge.gif', '/card.webp', '/icon.svg']) {
+      expect(isPublicImageAssetRequestPath(requestPath)).toBe(true);
+    }
+
+    for (const requestPath of [
+      '/sheet.xlsx',
+      '/sheet.xls',
+      '/export.csv',
+      '/metadata.json',
+      '/dump.sql',
+      '/secret.env',
+      '/server.log',
+      '/notes.txt',
+      '/temp.tmp',
+      '/no-extension',
+      '/archive.tar.gz',
+    ]) {
+      expect(isPublicImageAssetRequestPath(requestPath)).toBe(false);
+    }
   });
 });

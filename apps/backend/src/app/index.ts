@@ -9,6 +9,7 @@ import passport from 'passport';
 import * as http from 'http';
 import { Server as SocketIOServer } from 'socket.io';
 import { configureSecurityMiddleware } from './middlewares/security';
+import { rejectNonImageStaticAsset } from './middlewares/publicImageAssets';
 import { getCorsOrigins, getRequestBodyLimit } from './config/runtime';
 import './lib/validateEnvs';
 import './services/trackingService';
@@ -75,9 +76,9 @@ if (!fs.existsSync(imagesPath)) {
     console.log('📁 Created uploads/images directory');
 }
 
-app.use('/uploads/images', express.static(imagesPath));
-app.use('/api/icons/images', express.static(imagesPath));
-app.use('/api/icons', express.static(imagesPath));
+app.use('/uploads/images', rejectNonImageStaticAsset, express.static(imagesPath));
+app.use('/api/icons/images', rejectNonImageStaticAsset, express.static(imagesPath));
+app.use('/api/icons', rejectNonImageStaticAsset, express.static(imagesPath));
 
 // API routes
 app.use('/api', Router);

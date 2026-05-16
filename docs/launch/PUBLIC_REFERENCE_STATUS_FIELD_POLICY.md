@@ -2,12 +2,12 @@
 
 ## Status
 
-- Scope: P2-READ-08 public reference/status documentation cleanup
-- Confirmed commit: `8f7d28f`
+- Scope: P2-READ-08 public reference/status documentation cleanup plus P2-READ-09 static asset route narrowing
+- Confirmed base commit: `c1cd240`
 - Staging reflection: not performed because the staging domain is still undecided.
 - Tx verification: not performed because BNB/tBNB is not funded.
 - Production ready: no. This document is not production launch approval.
-- Code changes in this PR: none.
+- P2-READ-09 code changes: backend static image/icon routes are limited to `uploads/images` through an image filename extension allowlist.
 
 ## Purpose
 
@@ -43,9 +43,9 @@ git diff --check
 | `GET /api/illustration/:id` | Public illustration detail | `PASS` | Public response is limited to display fields by P1-READ-07 tests. |
 | `GET /api/illustration/rarity/:rarity` | Public illustration rarity catalog | `PASS` | Public response omits probability/timestamps by P1-READ-07 tests. |
 | `GET /api/news/:id` | Public news detail | `PASS` | Public response is limited to display fields by P1-READ-07 tests. |
-| `/uploads/images` | Public image asset serving | `P2` | Needed for frontend images, but still serves the shared images directory. Confirm only non-sensitive image assets are stored there. |
-| `/api/icons/images` | Public icon/image asset serving | `P2` | Alias to the shared images directory. Confirm whether this alias is still required. |
-| `/api/icons` | Public icon/image asset serving | `P2` | Alias to the shared images directory. Confirm whether this should be narrowed to an icons-only directory. |
+| `/uploads/images` | Public image asset serving | `PASS` for source/test, `BLOCKED` for runtime contents | Serves `imagesPath` only. Requests pass the public image extension allowlist before `express.static`. |
+| `/api/icons/images` | Public icon/image asset serving | `PASS` for source/test, `BLOCKED` for runtime contents | Compatibility alias to the same `imagesPath` directory, guarded by the same extension allowlist. |
+| `/api/icons` | Public icon/image asset serving | `PASS` for source/test, `BLOCKED` for runtime contents | Compatibility alias to the same `imagesPath` directory, guarded by the same extension allowlist. |
 
 ## Allowed And Forbidden Fields
 
@@ -113,6 +113,23 @@ Current assessment: `PASS` at static/test level after P1-READ-07. Runtime stagin
 
 ### Static Image/Icon Serving
 
+Public static routes:
+
+- `/uploads/images`
+- `/api/icons/images`
+- `/api/icons`
+
+All three routes must point to `imagesPath`, which resolves to `uploads/images`. The root `uploadsPath` directory must not be passed to `express.static`.
+
+Allowed filename extensions:
+
+- `.png`
+- `.jpg`
+- `.jpeg`
+- `.gif`
+- `.webp`
+- `.svg`
+
 Allowed content:
 
 - public image assets required by the frontend UI
@@ -121,6 +138,7 @@ Allowed content:
 
 Forbidden content:
 
+- `.xlsx`, `.xls`, `.csv`, `.json`, `.sql`, `.env`, `.log`, `.txt`, `.tmp`, and other non-image filenames
 - `.env` files
 - JSON exports containing user/admin/internal data
 - spreadsheets or upload source files
@@ -129,7 +147,7 @@ Forbidden content:
 - logs
 - API keys, private keys, JWTs, cookies, DB URLs, or secret-like values
 
-Current assessment: `P2`. Source review shows only `imagesPath` is exposed through `/uploads/images`, `/api/icons/images`, and `/api/icons`, but the policy depends on operational discipline: only public-safe assets may be stored in that directory. A future hardening PR may split icons from uploaded images or add static asset extension checks.
+Current assessment: `PASS` at source/test level for route narrowing. Source review shows only `imagesPath` is exposed through `/uploads/images`, `/api/icons/images`, and `/api/icons`, and non-image filename extensions are rejected before `express.static`. Runtime contents of the public image directory remain `BLOCKED` until the staging HTTPS domain is decided.
 
 ## PASS
 
@@ -146,13 +164,13 @@ Current assessment: `P2`. Source review shows only `imagesPath` is exposed throu
 
 - Confirm whether `GET /api/lottery/update-status` should remain public or be moved behind authenticated/admin status.
 - Confirm whether `/api/icons` and `/api/icons/images` both need to exist, or whether one canonical public image route is enough.
-- Confirm static image upload operational rules: no private source files, spreadsheets, DB dumps, logs, or secret-like files in the public image directory.
+- Confirm static image upload operational rules: only public image/icon assets should be stored in the public image directory.
 - Add runtime smoke checks after HTTPS staging migration to verify public response shapes against this document.
 
 ## UNKNOWN
 
 - Product-approved public status semantics for `GET /api/lottery/update-status` are not proven by source alone.
-- Runtime contents of the staging public image directory are unknown in this docs-only PR.
+- Runtime contents of the staging public image directory are unknown.
 
 ## BLOCKED
 
@@ -163,20 +181,20 @@ Current assessment: `P2`. Source review shows only `imagesPath` is exposed throu
 
 1. Decide whether the public lottery update boolean is acceptable as public product behavior.
 2. Decide whether `/api/icons` should continue to alias the same directory as `/uploads/images`.
-3. Confirm operational ownership of the public image directory and what file types are allowed there.
+3. Confirm operational ownership of the public image directory.
 4. Confirm whether public field policy tests should be expanded to NFT detail and fee current in a future code PR, even though current static review matches the documented policy.
 
 ## Next Small PR Candidates
 
-1. `P2-READ-09 Static asset route narrowing`
-   - Goal: split icons from generic uploaded images or add a documented extension allowlist for public static serving.
-
-2. `P2-READ-10 Public status response regression tests`
+1. `P2-READ-10 Public status response regression tests`
    - Goal: add explicit tests for `GET /api/lottery/update-status`, `GET /api/fee/current`, and public healthcheck response fields.
 
-3. `STAGE-READ-11 Public reference/status runtime smoke`
+2. `STAGE-READ-11 Public reference/status runtime smoke`
    - Goal: after HTTPS staging domain migration, capture non-secret runtime evidence for public reference/status field shapes.
+
+3. Optional future static asset split
+   - Goal: split icons into a separate directory if product decides `/api/icons` should no longer alias `/uploads/images`.
 
 ## Final Note
 
-This is a docs-only cleanup. It does not change backend code, frontend code, contracts, schema, package-lock, or environment files. It does not perform staging deployment, tx verification, or production launch approval.
+This policy update does not change frontend code, contracts, schema, package-lock, or environment files. It does not perform staging deployment, tx verification, or production launch approval.
