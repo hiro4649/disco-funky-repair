@@ -310,10 +310,10 @@ No unauthenticated mutation route was newly confirmed in this audit, aside from 
 
 Limit the next work to small PRs:
 
-1. `P1-READ-01 Protect all-user/admin read routes`
+1. `P0-READ-01 Protect all-user/admin read routes`
    - Target: `/admin/user/all`, `/user/all`, `/admin/user/transaction/:wallet_address`, `/admin/seting/tokenbalance`.
    - Change: require `AuthAdmin`, or split safe public aggregate endpoint if public UI still needs token balance.
-   - Reason: closes the only P0 read/privacy candidates from this audit.
+   - Reason: these four P0 candidates must be closed first as P0 before P1/P2 read/privacy cleanup starts.
 
 2. `P1-READ-02 Owner-gate user/referral/transaction read routes`
    - Target: `/user/info`, holding reads, referral stats/rewards/debug, transaction history/explain/FIFO/detail.
