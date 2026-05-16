@@ -130,6 +130,10 @@ describe('PrizeController.getPrize public catalog', () => {
         listed_DEX: 'pancake',
         balance_amount: '1000000000000000000',
         reserved_amount: '0',
+        transfer_token_address: VALID_TOKEN_ADDRESS,
+        transfer_amount: FIXED_TRANSFER_AMOUNT,
+        reservation_released_at: null,
+        txHash: '0xinternal',
         real_probability: 0.5,
         saved_probability: 0.5,
         earned_pts: 999,
@@ -186,6 +190,10 @@ describe('PrizeController.getPrize public catalog', () => {
     expect(prizeSelect).not.toHaveProperty('balance');
     expect(prizeSelect).not.toHaveProperty('balance_amount');
     expect(prizeSelect).not.toHaveProperty('reserved_amount');
+    expect(prizeSelect).not.toHaveProperty('transfer_token_address');
+    expect(prizeSelect).not.toHaveProperty('transfer_amount');
+    expect(prizeSelect).not.toHaveProperty('reservation_released_at');
+    expect(prizeSelect).not.toHaveProperty('txHash');
     expect(prizeSelect).not.toHaveProperty('real_probability');
     expect(prizeSelect).not.toHaveProperty('saved_probability');
     expect(prizeSelect).not.toHaveProperty('earned_pts');
@@ -212,6 +220,10 @@ describe('PrizeController.getPrize public catalog', () => {
     const responsePrize = res.json.mock.calls[0][0].data[0];
     expect(responsePrize).not.toHaveProperty('balance_amount');
     expect(responsePrize).not.toHaveProperty('reserved_amount');
+    expect(responsePrize).not.toHaveProperty('transfer_token_address');
+    expect(responsePrize).not.toHaveProperty('transfer_amount');
+    expect(responsePrize).not.toHaveProperty('reservation_released_at');
+    expect(responsePrize).not.toHaveProperty('txHash');
     expect(responsePrize).not.toHaveProperty('real_probability');
     expect(responsePrize).not.toHaveProperty('saved_probability');
     expect(responsePrize).not.toHaveProperty('earned_pts');

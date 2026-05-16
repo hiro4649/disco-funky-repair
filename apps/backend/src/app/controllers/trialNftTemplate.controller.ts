@@ -173,13 +173,28 @@ export class TrialNftTemplateController {
                         { mintCount: { lt: prisma.trialNftTemplate.fields.maxMints } }
                     ]
                 },
+                select: {
+                    id: true,
+                    name: true,
+                    description: true,
+                    image: true,
+                    validDays: true,
+                    maxMints: true,
+                    mintCount: true
+                },
                 orderBy: { createdAt: 'desc' }
             });
 
             // Filter templates that haven't reached max mints
-            const availableTemplates = templates.filter(t => 
-                t.maxMints === 0 || t.mintCount < t.maxMints
-            );
+            const availableTemplates = templates
+                .filter(t => t.maxMints === 0 || t.mintCount < t.maxMints)
+                .map(({ id, name, description, image, validDays }) => ({
+                    id,
+                    name,
+                    description,
+                    image,
+                    validDays
+                }));
 
             return res.status(200).json({
                 success: true,

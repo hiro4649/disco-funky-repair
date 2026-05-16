@@ -3,10 +3,10 @@
 ## Status
 
 - Date: 2026-05-17 JST
-- Confirmed commit: `f1ce85d`
-- Repository scope: GitHub source tree on `origin/main`
-- Result: read/privacy P0 closure is `PASS` by static source audit; read/privacy P1 closure is not complete.
-- Code changes in this PR: none
+- Confirmed base commit: `29adc25`
+- Repository scope: GitHub source tree on `origin/main`, plus P1-READ-07 branch changes
+- Result: read/privacy P0 closure is `PASS` by static source audit; P1 public catalog field policy is documented and regression-tested by P1-READ-07.
+- Code changes in this PR: limited public catalog field minimization and regression tests
 - Staging reflection: not performed because the staging domain is still undecided
 - Tx verification: not performed because BNB/tBNB is not funded
 - Production ready: no. This audit is not production launch approval.
@@ -80,24 +80,17 @@ Closed P0 evidence:
 
 Status: `P1`
 
-P1 read/privacy cleanup is not fully closed. The remaining items are not classified as P0 by this static audit because they do not show unauthenticated mutation, full-user export, admin secret exposure, or direct cross-user private-history access. They still need follow-up before production launch review.
+P1 read/privacy cleanup has been reduced to product-confirmation and staging-proof work. The remaining items are not classified as P0 by this static audit because they do not show unauthenticated mutation, full-user export, admin secret exposure, or direct cross-user private-history access.
 
-Remaining P1 items:
+Closed P1 follow-ups:
 
-1. `GET /admin/illustration` is public in `apps/backend/src/app/routes/illustration.routes.ts`.
-   - Evidence: create/update/delete illustration admin routes use `AuthAdmin`, but the admin-named read route does not.
-   - Risk: public response can expose full illustration catalog/config fields such as point and probability data. This may be intended as catalog data, but the admin-prefixed route and field policy are unclear.
-   - Required follow-up: protect it with `AuthAdmin` or split a safe public catalog endpoint with explicit minimal fields.
+1. `GET /admin/illustration` and `GET /admin/news` were moved behind `AuthAdmin` by `P1-READ-06`.
+   - Evidence: `apps/backend/src/app/routes/illustration.routes.ts` and `apps/backend/src/app/routes/news.routes.ts` now require `AuthAdmin` for admin-named catalog reads.
+   - Regression tests cover unauthenticated, general-user, and admin access for those reads.
 
-2. `GET /admin/news` is public in `apps/backend/src/app/routes/news.routes.ts`.
-   - Evidence: news create/update/delete routes use `AuthAdmin`, but the admin-named read route does not.
-   - Risk: this may be intended as public news, but the admin-prefixed route and full-record field policy are unclear.
-   - Required follow-up: protect it with `AuthAdmin` or split a safe public news endpoint with explicit minimal fields.
-
-3. Public catalog field policy remains partially `UNKNOWN`.
-   - Evidence: `GET /airdrop/prize` is public and returns public prize/catalog fields including configuration-like values such as `quantity`, `price`, `probability`, `fake_probability`, `ca`, `listed_DEX`, and token detail fields.
-   - Positive evidence: the inspected prize catalog path does not expose `balance_amount`, `reserved_amount`, or fixed transfer fields in the public response.
-   - Risk: exact public field policy is product-dependent and should be explicitly fixed in tests/docs.
+2. Public catalog field policy is fixed by `P1-READ-07`.
+   - Evidence: `docs/launch/PUBLIC_CATALOG_FIELD_POLICY.md` lists allowed and forbidden public fields for Prize, NFT, Trial NFT template, Illustration, News, fee, and public healthcheck routes.
+   - Regression tests verify public Prize, Trial NFT template, Illustration, and News responses do not include internal inventory, reservation, transfer, probability, timestamp, or audit fields outside the documented policy.
 
 ## P2 result
 
@@ -105,9 +98,9 @@ Status: `P2`
 
 P2 cleanup candidates:
 
-- Public `/fee/current` is minimal and appears intended as tokenomics information, but should remain documented as public.
-- Public NFT detail can expose `ipfsCid`; this appears non-secret for mint/display use, but should remain part of an explicit public field policy.
-- Public Trial NFT templates appear intended as public campaign/catalog data, but should remain covered by field-minimization tests.
+- Public `/fee/current` is minimal and appears intended as tokenomics information; it is now covered by `docs/launch/PUBLIC_CATALOG_FIELD_POLICY.md`.
+- Public NFT detail can expose `ipfsCid`; this remains documented as an allowed public display/mint field.
+- Public Trial NFT templates appear intended as public campaign/catalog data and now have field-minimization tests.
 - Public operational/status reads such as lottery update status need product confirmation that no sensitive operational fields are returned.
 
 ## UNKNOWN / BLOCKED
@@ -116,7 +109,7 @@ Status: `UNKNOWN` / `BLOCKED`
 
 - Runtime proof is `BLOCKED`: staging domain is undecided, so this PR did not pull/restart staging.
 - Tx proof is `BLOCKED`: BNB/tBNB is not funded, so tx-related behavior remains unverified.
-- Public catalog intent is partly `UNKNOWN`: source code shows public endpoints, but product-approved public fields for Prize, Illustration, News, NFT, Trial NFT, fee, and lottery reference/status data are not fully formalized here.
+- Public lottery reference/status intent remains partly `UNKNOWN`: source code shows public endpoints, but product-approved public fields for lottery reference/status data are not fully formalized here.
 - Staging browser proof for frontend auth gates is `BLOCKED` until HTTPS staging domain migration is completed.
 
 ## Closure confirmed
@@ -128,32 +121,28 @@ The following read/privacy hardening items remain closed by this static audit:
 - P1-READ-03 detailed monitoring protection and static upload scope reduction
 - P1-READ-04 NFT/Trial NFT user-specific read owner gates
 - P1-READ-05 frontend auth integration audit findings carried forward
+- P1-READ-06 admin-named public catalog reads protected with `AuthAdmin`
+- P1-READ-07 public catalog field minimization policy and regression tests
 - P0-FE-READ-01 public UI removal of admin tokenbalance calls
 - P1-FE-READ-02 admin frontend calls standardized on `apiClient`
 - P1-FE-READ-03 private read UI gated by auth state, user id, wallet state, and connection state
 
 ## Remaining items
 
-- P1: admin-named public catalog reads remain for illustration and news.
-- P1/UNKNOWN: public catalog field policy should be made explicit and tested.
-- P2: public reference/status route documentation and field policy cleanup.
+- P2: public lottery/reference/status route documentation and field policy cleanup.
 - BLOCKED: staging runtime proof and tx proof.
 
 ## Next PR candidates
 
 Maximum three follow-up PRs:
 
-1. `P1-READ-06 Protect or split admin-named public catalog reads`
-   - Target: `GET /admin/illustration`, `GET /admin/news`
-   - Goal: require `AuthAdmin` for admin reads or add separate safe public endpoints with minimal fields.
-
-2. `P1-READ-07 Public catalog field minimization policy`
-   - Target: `/airdrop/prize`, public NFT reads, Trial NFT template reads, public illustration/news catalog if split, `/fee/current`
-   - Goal: fix explicit public response fields and add regression tests.
-
-3. `P2-READ-08 Public reference/status documentation cleanup`
+1. `P2-READ-08 Public reference/status documentation cleanup`
    - Target: lottery status/reference reads, fee public docs, healthcheck docs
    - Goal: document intended public fields and prevent future confusion between health/catalog/read privacy surfaces.
+
+2. `STAGE-READ-09 Runtime read/privacy smoke after HTTPS staging domain`
+   - Target: AuthAdmin reads, owner-gated reads, public catalog fields
+   - Goal: collect non-secret staging evidence after the staging HTTPS domain is decided.
 
 ## Verification commands
 
@@ -167,7 +156,7 @@ git diff --check
 Observed results:
 
 - Backend build: success
-- Backend test: success, 30 test suites passed and 300 tests passed
+- Backend test: success, 32 test suites passed and 312 tests passed
 - Frontend build: success
 - `git diff --check`: success
 - `git diff --cached --check`: success

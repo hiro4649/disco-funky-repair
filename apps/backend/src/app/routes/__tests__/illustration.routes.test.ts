@@ -9,7 +9,8 @@ const mockPrisma = {
     update: jest.fn()
   },
   illustration: {
-    findMany: jest.fn()
+    findMany: jest.fn(),
+    findUnique: jest.fn()
   },
   pointHistory: {
     create: jest.fn()
@@ -95,6 +96,12 @@ describe('illustration draw route', () => {
     mockPrisma.illustration.findMany.mockResolvedValue([
       { id: 7, image_url: 'image.png', earned_pts: 3, probability: 1 }
     ]);
+    mockPrisma.illustration.findUnique.mockResolvedValue({
+      id: 7,
+      image_url: 'image.png',
+      earned_pts: 3,
+      rarity: 2
+    });
     mockPrisma.pointHistory.create.mockResolvedValue({});
     mockPrisma.user.update.mockResolvedValue({});
     mockPrisma.illustrationHistory.findMany.mockResolvedValue([]);
@@ -232,6 +239,59 @@ describe('illustration draw route', () => {
         createdAt: 'desc'
       }
     });
+  });
+
+  it('returns public illustration detail with only safe display fields', async () => {
+    const response = await request(createApp())
+      .get('/illustration/7');
+
+    expect(response.status).toBe(200);
+    expect(mockPrisma.illustration.findUnique).toHaveBeenCalledWith({
+      where: { id: 7 },
+      select: {
+        id: true,
+        image_url: true,
+        earned_pts: true,
+        rarity: true
+      }
+    });
+    expect(response.body.data).toEqual({
+      id: 7,
+      image_url: 'image.png',
+      earned_pts: 3,
+      rarity: 2
+    });
+    expect(response.body.data).not.toHaveProperty('probability');
+    expect(response.body.data).not.toHaveProperty('createdAt');
+    expect(response.body.data).not.toHaveProperty('updatedAt');
+  });
+
+  it('returns public rarity illustration list without probability or audit fields', async () => {
+    mockPrisma.illustration.findMany.mockResolvedValueOnce([
+      { id: 7, image_url: 'image.png', earned_pts: 3, rarity: 2 }
+    ]);
+
+    const response = await request(createApp())
+      .get('/illustration/rarity/2');
+
+    expect(response.status).toBe(200);
+    expect(mockPrisma.illustration.findMany).toHaveBeenCalledWith({
+      where: {
+        rarity: 2
+      },
+      select: {
+        id: true,
+        image_url: true,
+        earned_pts: true,
+        rarity: true
+      },
+      orderBy: {
+        probability: 'desc'
+      }
+    });
+    expect(response.body.data[0]).not.toHaveProperty('probability');
+    expect(response.body.data[0]).not.toHaveProperty('createdAt');
+    expect(response.body.data[0]).not.toHaveProperty('updatedAt');
   });
 
   it('does not reach illustration draw when unauthenticated', async () => {
