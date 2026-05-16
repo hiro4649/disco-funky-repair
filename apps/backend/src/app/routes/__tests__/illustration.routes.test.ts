@@ -42,7 +42,21 @@ jest.mock('../../config/passport', () => ({
 
     return res.status(401).json({ success: false, message: 'Unauthenticated' });
   },
-  AuthAdmin: (_req: any, _res: any, next: any) => next()
+  AuthAdmin: (req: any, res: any, next: any) => {
+    if (req.headers.authorization === 'Bearer admin-token') {
+      req.user = {
+        user_id: 99,
+        role: 'admin'
+      };
+      return next();
+    }
+
+    if (req.headers.authorization === 'Bearer user-token') {
+      return res.status(403).json({ success: false, message: 'Forbidden' });
+    }
+
+    return res.status(401).json({ success: false, message: 'Unauthenticated' });
+  }
 }));
 
 jest.mock('../../middlewares/rateLimiter', () => ({
@@ -179,6 +193,45 @@ describe('illustration draw route', () => {
     expect(mockPrisma.pointHistory.create).not.toHaveBeenCalled();
     expect(mockPrisma.user.update).not.toHaveBeenCalled();
     expect(mockPrisma.illustrationHistory.create).not.toHaveBeenCalled();
+  });
+
+  it('blocks unauthenticated admin illustration reads before controller access', async () => {
+    const response = await request(createApp())
+      .get('/admin/illustration');
+
+    expect(response.status).toBe(401);
+    expect(mockPrisma.illustration.findMany).not.toHaveBeenCalled();
+  });
+
+  it('blocks general users from admin illustration reads before controller access', async () => {
+    const response = await request(createApp())
+      .get('/admin/illustration')
+      .set('Authorization', 'Bearer user-token');
+
+    expect(response.status).toBe(403);
+    expect(mockPrisma.illustration.findMany).not.toHaveBeenCalled();
+  });
+
+  it('does not allow body adminKey to access admin illustration reads', async () => {
+    const response = await request(createApp())
+      .get('/admin/illustration')
+      .send({ adminKey: 'body-only' });
+
+    expect(response.status).toBe(401);
+    expect(mockPrisma.illustration.findMany).not.toHaveBeenCalled();
+  });
+
+  it('allows admin users to read admin illustration catalog', async () => {
+    const response = await request(createApp())
+      .get('/admin/illustration')
+      .set('Authorization', 'Bearer admin-token');
+
+    expect(response.status).toBe(200);
+    expect(mockPrisma.illustration.findMany).toHaveBeenCalledWith({
+      orderBy: {
+        createdAt: 'desc'
+      }
+    });
   });
 
   it('does not reach illustration draw when unauthenticated', async () => {
