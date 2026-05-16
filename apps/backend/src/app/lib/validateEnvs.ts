@@ -1,14 +1,17 @@
 import dotenv from 'dotenv';
+import { isIP } from 'net';
 import { EXPLORER_API_KEY_ENV_ORDER, getExplorerApiKeys } from '../config/explorerApiKeys';
 
 dotenv.config();
 
 export const PRODUCTION_REQUIRED_ENV_VARS = [
   'JWT_SECRET',
+  'SESSION_SECRET',
   'DATABASE_URL',
   'ADMIN_WALLET_ADDRESS',
   'ADMIN_EMAIL',
   'ADMIN_PASSWORD',
+  'BACKEND_CORS_ORIGINS',
   'BACKEND_API_URL',
   'FRONTEND_APP_URL',
   'QUICKNODE_HTTP_RPC_URL',
@@ -44,6 +47,9 @@ const URL_ENV_VARS = new Set([
   'ETHERSCAN_API_URL'
 ]);
 
+const CORS_ORIGIN_ENV_VARS = new Set(['BACKEND_CORS_ORIGINS']);
+const REQUEST_BODY_LIMIT_ENV = 'REQUEST_BODY_LIMIT';
+const MAX_REQUEST_BODY_LIMIT_BYTES = 5 * 1024 * 1024;
 const PLACEHOLDER_PATTERN = /^(dummy|example|placeholder|changeme|change-me|todo|undefined|null)$/i;
 const FORBIDDEN_PUBLIC_SECRET_PATTERN =
   /^NEXT_PUBLIC_.*(PRIVATE_KEY|SECRET|ADMIN_KEY|OWNER_KEY|RELAYER_KEY|HOT_WALLET|JWT)/i;
@@ -148,6 +154,70 @@ const validateAllowlist = (value: string): string | null => {
   return invalid ? 'PRIZE_TRANSFER_TOKEN_ALLOWLIST contains an invalid token address' : null;
 };
 
+const validateCorsOrigins = (name: string, value: string): string | null => {
+  const origins = value
+    .split(',')
+    .map((origin) => origin.trim())
+    .filter(Boolean);
+
+  if (origins.length === 0) {
+    return `${name} must contain at least one origin`;
+  }
+
+  for (const origin of origins) {
+    if (looksPlaceholder(origin)) {
+      return `${name} contains a placeholder origin`;
+    }
+
+    try {
+      const parsed = new URL(origin);
+      const hostname = parsed.hostname.toLowerCase();
+      const normalizedOrigin = origin.endsWith('/') ? origin.slice(0, -1) : origin;
+
+      if (parsed.protocol !== 'https:') {
+        return `${name} must use https origins in production`;
+      }
+      if (parsed.origin !== normalizedOrigin || parsed.pathname !== '/' || parsed.search || parsed.hash) {
+        return `${name} entries must be origins without path, query, or hash`;
+      }
+      if (['localhost', '127.0.0.1', '0.0.0.0', '::1', '[::1]'].includes(hostname) || isIP(hostname) !== 0) {
+        return `${name} must not contain localhost or raw IP origins in production`;
+      }
+      if (hostname === 'example.com' || hostname.endsWith('.example.com') || hostname.endsWith('.invalid')) {
+        return `${name} must not contain example or invalid hosts in production`;
+      }
+    } catch {
+      return `${name} must contain valid URL origins`;
+    }
+  }
+
+  return null;
+};
+
+const parseRequestBodyLimitBytes = (value: string): number | null => {
+  const match = value.trim().toLowerCase().match(/^(\d+)(b|kb|mb)$/);
+  if (!match) return null;
+
+  const amount = Number(match[1]);
+  if (!Number.isSafeInteger(amount) || amount <= 0) return null;
+
+  const unit = match[2];
+  if (unit === 'b') return amount;
+  if (unit === 'kb') return amount * 1024;
+  return amount * 1024 * 1024;
+};
+
+const validateRequestBodyLimit = (value: string): string | null => {
+  const bytes = parseRequestBodyLimitBytes(value);
+  if (!bytes) {
+    return `${REQUEST_BODY_LIMIT_ENV} must use a positive b/kb/mb value`;
+  }
+  if (bytes > MAX_REQUEST_BODY_LIMIT_BYTES) {
+    return `${REQUEST_BODY_LIMIT_ENV} must be 5mb or smaller`;
+  }
+  return null;
+};
+
 export const validateEnvs = (env: EnvMap = process.env): void => {
   if (env.NODE_ENV !== 'production') {
     return;
@@ -174,6 +244,11 @@ export const validateEnvs = (env: EnvMap = process.env): void => {
       if (error) invalid.push(error);
     }
 
+    if (CORS_ORIGIN_ENV_VARS.has(name)) {
+      const error = validateCorsOrigins(name, trimmed);
+      if (error) invalid.push(error);
+    }
+
     if (ADDRESS_ENV_VARS.has(name)) {
       const error = validateAddress(name, trimmed);
       if (error) invalid.push(error);
@@ -191,6 +266,11 @@ export const validateEnvs = (env: EnvMap = process.env): void => {
 
   if (env.PRIZE_TRANSFER_TOKEN_ALLOWLIST) {
     const error = validateAllowlist(env.PRIZE_TRANSFER_TOKEN_ALLOWLIST);
+    if (error) invalid.push(error);
+  }
+
+  if (env[REQUEST_BODY_LIMIT_ENV]) {
+    const error = validateRequestBodyLimit(env[REQUEST_BODY_LIMIT_ENV]!);
     if (error) invalid.push(error);
   }
 

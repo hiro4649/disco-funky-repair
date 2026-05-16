@@ -94,6 +94,17 @@ Production launch remains blocked. In addition to the external BLOCKED items abo
 
 No production ready status is granted by this audit.
 
+## FUNKY-AUDIT-05 Follow-Up
+
+This follow-up PR addresses the four source-level runtime No-Go items above without marking tx-dependent items complete:
+
+- Backend listen ownership is moved to `apps/backend/src/main.ts`; `apps/backend/src/app/index.ts` exports the app/server/socket factory state and no longer calls `server.listen(...)`.
+- `SESSION_SECRET` is production-required through env validation and the hardcoded session fallback is removed.
+- Backend CORS origins are read from `BACKEND_CORS_ORIGINS` and production validation rejects localhost, raw IP, placeholder, and path/query/hash origins.
+- The global JSON and URL-encoded request body parser limit defaults to `5mb`; production `REQUEST_BODY_LIMIT` values above `5mb` are rejected.
+
+This follow-up does not send txs, does not deploy contracts, does not inspect real secret-manager values, and does not grant production launch approval.
+
 ## P1 Candidates
 
 | Candidate | Why |
