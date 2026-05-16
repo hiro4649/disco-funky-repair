@@ -54,7 +54,14 @@ export class NewsController {
         try {
             const { id } = req.params;
             const news = await prisma.news.findUnique({
-                where: { id: parseInt(id) }
+                where: { id: parseInt(id) },
+                select: {
+                    id: true,
+                    title: true,
+                    content: true,
+                    image_url: true,
+                    createdAt: true
+                }
             });
 
             if (!news) {
@@ -125,4 +132,4 @@ export class NewsController {
             });
         }
     }
-} 
+}

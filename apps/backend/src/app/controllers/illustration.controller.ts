@@ -83,7 +83,13 @@ export class IllustrationController {
         try {
             const { id } = req.params;
             const illustration = await prisma.illustration.findUnique({
-                where: { id: parseInt(id) }
+                where: { id: parseInt(id) },
+                select: {
+                    id: true,
+                    image_url: true,
+                    earned_pts: true,
+                    rarity: true
+                }
             });
 
             if (!illustration) {
@@ -301,6 +307,12 @@ export class IllustrationController {
             const illustrations = await prisma.illustration.findMany({
                 where: {
                     rarity: parseInt(rarity)
+                },
+                select: {
+                    id: true,
+                    image_url: true,
+                    earned_pts: true,
+                    rarity: true
                 },
                 orderBy: {
                     probability: 'desc'

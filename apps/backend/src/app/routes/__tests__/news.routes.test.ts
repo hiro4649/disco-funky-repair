@@ -3,7 +3,8 @@ const request = require('supertest');
 
 const mockPrisma = {
   news: {
-    findMany: jest.fn()
+    findMany: jest.fn(),
+    findUnique: jest.fn()
   }
 };
 
@@ -44,6 +45,13 @@ describe('news admin read routes', () => {
     mockPrisma.news.findMany.mockResolvedValue([
       { id: 1, title: 'News', content: 'Body', image_url: 'image.png' }
     ]);
+    mockPrisma.news.findUnique.mockResolvedValue({
+      id: 1,
+      title: 'News',
+      content: 'Body',
+      image_url: 'image.png',
+      createdAt: new Date('2026-01-01T00:00:00.000Z')
+    });
   });
 
   it('blocks unauthenticated admin news reads before controller access', async () => {
@@ -83,5 +91,32 @@ describe('news admin read routes', () => {
         createdAt: 'desc'
       }
     });
+  });
+
+  it('returns public news detail with only safe display fields', async () => {
+    const response = await request(createApp())
+      .get('/news/1');
+
+    expect(response.status).toBe(200);
+    expect(mockPrisma.news.findUnique).toHaveBeenCalledWith({
+      where: { id: 1 },
+      select: {
+        id: true,
+        title: true,
+        content: true,
+        image_url: true,
+        createdAt: true
+      }
+    });
+    expect(response.body.data).toEqual({
+      id: 1,
+      title: 'News',
+      content: 'Body',
+      image_url: 'image.png',
+      createdAt: '2026-01-01T00:00:00.000Z'
+    });
+    expect(response.body.data).not.toHaveProperty('updatedAt');
+    expect(response.body.data).not.toHaveProperty('changedBy');
+    expect(response.body.data).not.toHaveProperty('createdBy');
   });
 });
