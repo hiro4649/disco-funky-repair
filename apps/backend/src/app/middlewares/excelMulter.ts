@@ -4,7 +4,7 @@ import path from 'path';
 import fs from 'fs';
 
 // Define max size (10MB for each file)
-const maxSize = 1000 * 1024 * 1024; // 10MB
+export const EXCEL_UPLOAD_MAX_BYTES = 10 * 1024 * 1024;
 
 // Upload directory for storing files
 const uploadDir = path.join(__dirname, '../../../uploads/excel');
@@ -24,9 +24,9 @@ const storage = multer.diskStorage({
 
 // Configure multer with limits and file filter (optional)
 const upload = multer({
-  storage: storage, 
-  limits: { fileSize: maxSize }, // File size limit for each file
-}).single('file'); // 'files' is the name of the input field, and the second argument is the max number of files (10 in this case)
+  storage: storage,
+  limits: { fileSize: EXCEL_UPLOAD_MAX_BYTES }, // File size limit for each file
+}).single('file'); // Excel metadata upload expects a single `file` field.
 
 // Promisify the middleware for use in async functions
 const uploadExcel = util.promisify(upload);

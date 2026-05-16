@@ -37,6 +37,8 @@ Backend CORS is controlled only by `BACKEND_CORS_ORIGINS` in production/staging.
 
 `BACKEND_APP_ENV` is not a secret. Use `BACKEND_APP_ENV=staging` only for staging; leave it unset for production unless a future runbook explicitly defines another value.
 
+Admin upload limits are intentionally separate from the global JSON/body parser limit. NFT Excel metadata upload is an admin-only route and is capped at 10MB by `EXCEL_UPLOAD_MAX_BYTES`; do not raise it for staging or production without a separate security review.
+
 ## Frontend Production Public Env
 
 Only non-secret public values may use `NEXT_PUBLIC_`.
