@@ -162,21 +162,24 @@ describe('transaction history privacy route authorization', () => {
   });
 
   it('does not read another user transaction detail', async () => {
-    mockPrisma.transactionAudit.findFirst.mockResolvedValue({
-      id: 2,
-      userId: 2,
-      tx_hash: '0xotherhash',
-      user: {
-        wallet_address: '0xvictim',
-        holdingDate: 91
-      }
-    });
+    mockPrisma.transactionAudit.findFirst.mockResolvedValue(null);
 
     const response = await request(createApp())
       .get('/transaction/0xotherhash')
       .set('Authorization', 'Bearer user-token');
 
-    expect(response.status).toBe(403);
+    expect(response.status).toBe(404);
+    expect(mockPrisma.transactionAudit.findFirst).toHaveBeenCalledWith(expect.objectContaining({
+      where: {
+        tx_hash: '0xotherhash',
+        userId: 1
+      }
+    }));
+    expect(mockPrisma.transactionAudit.findFirst).not.toHaveBeenCalledWith(expect.objectContaining({
+      where: {
+        tx_hash: '0xotherhash'
+      }
+    }));
   });
 
   it('reads transaction detail only for the authenticated user', async () => {
@@ -187,7 +190,8 @@ describe('transaction history privacy route authorization', () => {
     expect(response.status).toBe(200);
     expect(mockPrisma.transactionAudit.findFirst).toHaveBeenCalledWith(expect.objectContaining({
       where: {
-        tx_hash: '0xhash'
+        tx_hash: '0xhash',
+        userId: 1
       }
     }));
   });

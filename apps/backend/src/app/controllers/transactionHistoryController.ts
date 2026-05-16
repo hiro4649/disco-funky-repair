@@ -260,7 +260,10 @@ export class TransactionHistoryController {
             }
 
             const transaction = await prisma.transactionAudit.findFirst({
-                where: { tx_hash: txHash },
+                where: {
+                    tx_hash: txHash,
+                    userId: authenticatedUserId
+                },
                 include: {
                     user: {
                         select: {
@@ -275,13 +278,6 @@ export class TransactionHistoryController {
                 return res.status(404).json({
                     success: false,
                     message: 'Transaction not found in audit log'
-                });
-            }
-
-            if (transaction.userId !== authenticatedUserId) {
-                return res.status(403).json({
-                    success: false,
-                    message: 'Forbidden'
                 });
             }
 
