@@ -5,23 +5,23 @@ import { Authenticate, AuthAdmin } from '../config/passport';
 const router = express.Router();
 
 // ==========================================
-// Public routes (for users)
+// Authenticated user routes
 // ==========================================
 
 // Check if user can claim trial NFT this month
-router.get('/can-claim/:userId', TrialNftController.checkCanClaim);
+router.get('/can-claim/:userId', Authenticate, TrialNftController.checkCanClaim);
 
 // User claims their monthly trial NFT (ONE per month only)
 router.post('/claim/:userId', Authenticate, TrialNftController.claimTrialNFT);
 
 // Get active trial NFTs for a user
-router.get('/user/:userId', TrialNftController.getUserTrialNFTs);
+router.get('/user/:userId', Authenticate, TrialNftController.getUserTrialNFTs);
 
 // Get total NFT count (real + trial)
-router.get('/total/:userId', TrialNftController.getTotalNFTCount);
+router.get('/total/:userId', Authenticate, TrialNftController.getTotalNFTCount);
 
 // ==========================================
-// Admin routes (protected - add auth middleware in production)
+// Admin routes
 // ==========================================
 
 // Get trial NFT statistics

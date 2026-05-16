@@ -403,6 +403,23 @@ export class PrizeController {
                 where: {
                     flag: true
                 },
+                select: {
+                    id: true,
+                    ranking: true,
+                    token_name: true,
+                    symbol: true,
+                    quantity: true,
+                    price: true,
+                    probability: true,
+                    fake_probability: true,
+                    ca: true,
+                    telegram: true,
+                    twitter: true,
+                    discord: true,
+                    icon: true,
+                    default_image: true,
+                    listed_DEX: true
+                },
                 orderBy: [
                     {
                         ranking: 'asc'
@@ -414,11 +431,47 @@ export class PrizeController {
                     const tokenDetail = await prisma.tokenDetail.findUnique({
                         where: {
                             ca: prize.ca,
+                        },
+                        select: {
+                            token_symbol: true,
+                            price: true,
+                            fdv: true,
+                            market_cap: true,
+                            scarcityScore: true,
+                            volume_24h: true,
+                            liquidity: true,
+                            txns_24h: true
                         }
                     });
+                    const publicTokenDetail = tokenDetail
+                        ? {
+                            token_symbol: tokenDetail.token_symbol,
+                            price: tokenDetail.price,
+                            fdv: tokenDetail.fdv,
+                            market_cap: tokenDetail.market_cap,
+                            scarcityScore: tokenDetail.scarcityScore,
+                            volume_24h: tokenDetail.volume_24h,
+                            liquidity: tokenDetail.liquidity,
+                            txns_24h: tokenDetail.txns_24h
+                        }
+                        : null;
                     return {
-                        ...prize,
-                        tokenDetail: tokenDetail,
+                        id: prize.id,
+                        ranking: prize.ranking,
+                        token_name: prize.token_name,
+                        symbol: prize.symbol,
+                        quantity: prize.quantity,
+                        price: prize.price,
+                        probability: prize.probability,
+                        fake_probability: prize.fake_probability,
+                        ca: prize.ca,
+                        telegram: prize.telegram,
+                        twitter: prize.twitter,
+                        discord: prize.discord,
+                        icon: prize.icon,
+                        default_image: prize.default_image,
+                        listed_DEX: prize.listed_DEX,
+                        tokenDetail: publicTokenDetail,
                     }
                 })
             )

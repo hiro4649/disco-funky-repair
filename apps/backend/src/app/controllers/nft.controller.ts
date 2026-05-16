@@ -24,6 +24,15 @@ interface NFTData {
 // This ensures paths are consistent with multer configuration
 const UPLOAD_DIR = path.resolve(process.cwd(), 'uploads/images');
 
+type AuthenticatedNftUser = {
+  user_id?: number;
+};
+
+const getAuthenticatedNftUserId = (req: Request): number | null => {
+  const userId = Number((req.user as AuthenticatedNftUser | undefined)?.user_id);
+  return Number.isInteger(userId) && userId > 0 ? userId : null;
+};
+
 export class NftController {
   /**
    * Parse Excel file and return data
@@ -671,6 +680,14 @@ export class NftController {
   static async getNFTsByHolderId(req: Request, res: Response): Promise<Response> {
     try {
       const { holderId } = req.params;
+      const authenticatedUserId = getAuthenticatedNftUserId(req);
+
+      if (!authenticatedUserId) {
+        return res.status(401).json({
+          success: false,
+          message: 'Unauthenticated'
+        });
+      }
 
       if (!holderId || isNaN(Number(holderId))) {
         return res.status(400).json({
@@ -679,9 +696,16 @@ export class NftController {
         });
       }
 
+      if (Number(holderId) !== authenticatedUserId) {
+        return res.status(403).json({
+          success: false,
+          message: 'Forbidden'
+        });
+      }
+
       const nfts = await prisma.nft.findMany({
         where: {
-          holderId: Number(holderId),
+          holderId: authenticatedUserId,
           mintStatus: true
         },
         select: {
@@ -690,16 +714,10 @@ export class NftController {
           name: true,
           description: true,
           image: true,
-          creator: true,
-          owner: true,
-          royalty: true,
           attributes: true,
-          collectionId: true,
           externalUrl: true,
-          ipfsCid: true,
           mintStatus: true,
-          createdAt: true,
-          updatedAt: true
+          createdAt: true
         },
         orderBy: { createdAt: 'desc' }
       });
@@ -732,10 +750,7 @@ export class NftController {
           id: true,
           name: true,
           description: true,
-          image: true,
-          ipfsUploaded: true,
-          mintStatus: true,
-          createdAt: true
+          image: true
         },
         orderBy: { id: 'asc' }
       });
@@ -773,21 +788,14 @@ export class NftController {
         where: { name: `DISCO Genesis #${id}` },
         select: {
           id: true,
-          holderId: true,
           name: true,
           description: true,
           image: true,
-          creator: true,
-          owner: true,
-          royalty: true,
           attributes: true,
-          collectionId: true,
           externalUrl: true,
           ipfsCid: true,
           mintStatus: true,
-          ipfsUploaded: true,
-          createdAt: true,
-          updatedAt: true
+          ipfsUploaded: true
         }
       });
 
@@ -814,7 +822,15 @@ export class NftController {
 
       return res.json({
         success: true,
-        data: nft
+        data: {
+          id: nft.id,
+          name: nft.name,
+          description: nft.description,
+          image: nft.image,
+          attributes: nft.attributes,
+          externalUrl: nft.externalUrl,
+          ipfsCid: nft.ipfsCid
+        }
       });
     } catch (error) {
       console.error('Error fetching NFT by ID:', error);

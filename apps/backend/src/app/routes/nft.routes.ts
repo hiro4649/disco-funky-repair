@@ -3,7 +3,7 @@ import { NftController } from '../controllers/nft.controller';
 import uploadExcel from '../middlewares/excelMulter';
 import uploadNftImages from '../middlewares/imagesMulter';
 import uploadSingleImage from '../middlewares/singleImageMulter';
-import { AuthAdmin } from '../config/passport';
+import { Authenticate, AuthAdmin } from '../config/passport';
 import { asyncHandler } from './utils';
 
 const router = express.Router();
@@ -58,7 +58,7 @@ router.get('/nfts/mintable', asyncHandler(NftController.getMintableNfts.bind(Nft
 router.get('/nft/:id', asyncHandler(NftController.getNFTById.bind(NftController)));
 
 // Get NFTs by holder ID (for user's collection)
-router.get('/nfts/holder/:holderId', asyncHandler(NftController.getNFTsByHolderId.bind(NftController)));
+router.get('/nfts/holder/:holderId', Authenticate, asyncHandler(NftController.getNFTsByHolderId.bind(NftController)));
 
 // Direct mint status updates require on-chain receipt verification before re-enabling.
 router.patch('/nft/:id', nftMintStatusUpdateDisabled);
