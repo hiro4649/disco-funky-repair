@@ -64,6 +64,8 @@ Staging mode allows BSC testnet browser values only where they are expected:
 - `NEXT_PUBLIC_ALCHEMY_RPC_URL` may point to a public BSC testnet RPC and, if set, is used before `NEXT_PUBLIC_RPC_URL`.
 - `NEXT_PUBLIC_ETHERSCAN_EXPLORER` must be `https://testnet.bscscan.com`.
 
+Staging RPC URL validation is static. It allows only URLs that clearly look like BSC testnet, such as `prebsc`, `bsc-testnet`, or `bnb-testnet` hosts/paths, and rejects BSC mainnet-looking, Ethereum mainnet, Sepolia, Goerli, localhost, dummy, example, empty, and invalid URLs. This does not cryptographically prove chain ID; humans must still confirm the configured RPC reports BSC testnet chain ID `97` during STAGE verification.
+
 Staging mode still rejects unsafe browser public values:
 
 - `NEXT_PUBLIC_API_URL` must be a public staging API URL, not localhost or `127.0.0.1`.

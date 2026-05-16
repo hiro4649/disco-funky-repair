@@ -80,6 +80,13 @@ assert.deepEqual(validateFrontendEnv(validStagingEnv), {
 assert.doesNotThrow(() =>
   validateFrontendEnv({
     ...validStagingEnv,
+    NEXT_PUBLIC_RPC_URL: "https://data-seed-prebsc-1-s1.bnbchain.org:8545",
+  })
+);
+
+assert.doesNotThrow(() =>
+  validateFrontendEnv({
+    ...validStagingEnv,
     NEXT_PUBLIC_ALCHEMY_RPC_URL: "https://bsc-testnet.alchemy.public-rpc.provider",
   })
 );
@@ -110,6 +117,10 @@ for (const rpcUrl of [
   "dummy",
   "",
   "not a url",
+  "https://bsc-dataseed.binance.org",
+  "https://bsc-mainnet.public-rpc.provider",
+  "https://eth.llamarpc.com",
+  "https://mainnet.infura.io/v3/public",
   "https://sepolia.public-rpc.provider",
   "https://goerli.public-rpc.provider",
 ]) {
@@ -119,6 +130,21 @@ for (const rpcUrl of [
       NEXT_PUBLIC_ALCHEMY_RPC_URL: rpcUrl,
     }),
     /NEXT_PUBLIC_ALCHEMY_RPC_URL/
+  );
+}
+
+for (const rpcUrl of [
+  "https://bsc-dataseed.binance.org",
+  "https://bsc-mainnet.public-rpc.provider",
+  "https://eth.llamarpc.com",
+  "https://mainnet.infura.io/v3/public",
+]) {
+  assert.throws(
+    () => validateFrontendEnv({
+      ...validStagingEnv,
+      NEXT_PUBLIC_RPC_URL: rpcUrl,
+    }),
+    /NEXT_PUBLIC_RPC_URL/
   );
 }
 
