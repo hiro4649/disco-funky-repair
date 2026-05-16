@@ -64,7 +64,7 @@ const OfficalDiscoNft = () => {
     try {
       const templatesRequest = apiClient.get('/trial-nft-templates/available');
 
-      if (!authState || !user_id) {
+      if (!authState || !user_id || !isConnected) {
         const templatesRes = await templatesRequest;
         if (templatesRes.data.success && templatesRes.data.data.length > 0) {
           setAvailableTemplate(templatesRes.data.data[0]);
@@ -175,7 +175,7 @@ const OfficalDiscoNft = () => {
   // Check trial NFT eligibility when user_id changes
   useEffect(() => {
     checkTrialNftEligibility();
-  }, [authState, user_id]);
+  }, [authState, user_id, isConnected]);
 
   const decrement = () => {
     setNftCount((prev) => {
