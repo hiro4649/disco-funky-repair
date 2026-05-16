@@ -10,10 +10,10 @@ import {
   useDisclosure,
   ModalHeader,
 } from "@nextui-org/modal";
-import axios from "axios";
 import { prizeItem } from "@/types/prizeItem";
 import { useAppDispatch } from "@/store/store";
 import { setAdminLoading, setCreateLoading } from "@/store/slices/adminSlice";
+import apiClient from "../../../../utils/apiClient";
 
 const CreateAirdrop = () => {
   const { isOpen, onOpen, onClose } = useDisclosure();
@@ -79,8 +79,8 @@ const CreateAirdrop = () => {
 
     setLoading(true);
 
-    await axios
-      .post("/api/admin/airdrop/prize", data)
+    await apiClient
+      .post("/admin/airdrop/prize", data)
       .then((res) => {
         const { data } = res;
         if (res.status === 201) {

@@ -1,7 +1,7 @@
 import { useState, useRef, useCallback } from "react";
 import { addToast, Button, Image } from "@heroui/react";
-import axios from "axios";
 import { Dispatch, SetStateAction } from "react";
+import apiClient from "../../../../utils/apiClient";
 
 interface Nft {
   id: number;
@@ -101,16 +101,16 @@ export default function NftsUpload({ setNftlist, onUploadComplete }: NftsUploadP
     setUploading(true);
 
     try {
-      const response = await fetch(
-        `${process.env.NEXT_PUBLIC_API_URL}/admin/nft/upload/metadata`,
+      const response = await apiClient.post(
+        "/admin/nft/upload/metadata",
+        formData,
         {
-          method: "POST",
-          body: formData,
+          headers: { "Content-Type": "multipart/form-data" },
         },
       );
 
-      const result = await response.json();
-      if (response.ok && result.success) {
+      const result = response.data;
+      if (result.success) {
         setNftlist(result.data);
         addToast({
           title: "Upload Metadata Success",

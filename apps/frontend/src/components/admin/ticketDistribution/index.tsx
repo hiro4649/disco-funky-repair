@@ -19,8 +19,8 @@ import {
   Input,
   Checkbox,
 } from "@heroui/react";
-import axios from "axios";
 import { useTranslations } from 'next-intl';
+import apiClient from "../../../../utils/apiClient";
 
 interface TicketDistribution {
   id: number;
@@ -46,7 +46,7 @@ export default function TicketDistributionPage() {
 
   const fetchDistributions = async () => {
     try {
-      const response = await axios.get("/api/admin/ticket-distribution");
+      const response = await apiClient.get("/admin/ticket-distribution");
       if (response.data.success) {
         setDistributions(response.data.data);
       }
@@ -61,7 +61,7 @@ export default function TicketDistributionPage() {
 
   const handleCreate = async () => {
     try {
-      const response = await axios.post("/api/admin/ticket-distribution", formData);
+      const response = await apiClient.post("/admin/ticket-distribution", formData);
       if (response.data.success) {
         fetchDistributions();
         onClose();
@@ -75,8 +75,8 @@ export default function TicketDistributionPage() {
   const handleUpdate = async () => {
     if (!selectedDistribution) return;
     try {
-      const response = await axios.patch(
-        `/api/admin/ticket-distribution/${selectedDistribution.id}`,
+      const response = await apiClient.patch(
+        `/admin/ticket-distribution/${selectedDistribution.id}`,
         formData
       );
       if (response.data.success) {
@@ -92,7 +92,7 @@ export default function TicketDistributionPage() {
 
   const handleDelete = async (id: number) => {
     try {
-      const response = await axios.delete(`/api/admin/ticket-distribution/${id}`);
+      const response = await apiClient.delete(`/admin/ticket-distribution/${id}`);
       if (response.data.success) {
         fetchDistributions();
       }
@@ -228,4 +228,4 @@ export default function TicketDistributionPage() {
       </Modal>
     </div>
   );
-} 
+}
