@@ -18,7 +18,7 @@ import StaticDisplay from "./StaticDisplay";
 import { getImageUrl } from '../../../utils/imageUtils';
 
 const OfficalDiscoNft = () => {
-  const { user_id } = useAppSelector((state) => state.user);
+  const { authState, user_id } = useAppSelector((state) => state.user);
   const [connectWalletModal, setConnectWalletModal] = useState(false);
   const [nftCount, setNftCount] = useState<number>(1);
   const [mintFee, setMintFee] = useState(0.001); // Set default mint fee in ETH
@@ -61,12 +61,23 @@ const OfficalDiscoNft = () => {
 
   // Check if user can claim trial NFT and fetch available templates
   const checkTrialNftEligibility = async () => {
-    if (!user_id) return;
     try {
-      // Check eligibility and fetch available templates in parallel
+      const templatesRequest = apiClient.get('/trial-nft-templates/available');
+
+      if (!authState || !user_id) {
+        const templatesRes = await templatesRequest;
+        if (templatesRes.data.success && templatesRes.data.data.length > 0) {
+          setAvailableTemplate(templatesRes.data.data[0]);
+        }
+        setCanClaimTrial(false);
+        setTrialClaimReason('');
+        return;
+      }
+
+      // Check user-specific eligibility only after wallet signature login is complete.
       const [eligibilityRes, templatesRes] = await Promise.all([
         apiClient.get(`/trial-nfts/can-claim/${user_id}`),
-        apiClient.get('/trial-nft-templates/available')
+        templatesRequest
       ]);
       
       if (eligibilityRes.data.success) {
@@ -89,7 +100,7 @@ const OfficalDiscoNft = () => {
       return;
     }
 
-    if (!user_id) {
+    if (!authState || !user_id) {
       toast('Please log in to claim Trial NFT', {
         style: {
           borderRadius: '10px',
@@ -163,10 +174,8 @@ const OfficalDiscoNft = () => {
 
   // Check trial NFT eligibility when user_id changes
   useEffect(() => {
-    if (user_id) {
-      checkTrialNftEligibility();
-    }
-  }, [user_id]);
+    checkTrialNftEligibility();
+  }, [authState, user_id]);
 
   const decrement = () => {
     setNftCount((prev) => {
@@ -277,24 +286,8 @@ const OfficalDiscoNft = () => {
         }
       }
 
-      // Update NFT record in database
-      const updateResponse = await fetch(`/api/nft/${nextTokenId}`, {
-        method: 'PATCH',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          holderId: user_id, // Use the authenticated user's ID
-          mintStatus: true,
-          txHash: receipt.hash
-        })
-      });
-
-      if (!updateResponse.ok) {
-        console.warn(`Failed to update NFT ${nextTokenId} in database`);
-      } else {
-        console.log(`NFT ${nextTokenId} updated in database`);
-      }
+      // PATCH /nft/:id is intentionally disabled for browser users.
+      // Backend ownership updates must not be driven by frontend body fields.
 
       // Show success toast with real NFT name
       toast(`Successfully minted ${nftData.name}!`, {
