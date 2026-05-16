@@ -16,7 +16,7 @@ const userIllustrationDisabledHandler = (_req: express.Request, res: express.Res
 
 // Admin Illustration Routes
 router.post('/admin/illustration', AuthAdmin, asyncHandler(IllustrationController.create.bind(IllustrationController)));
-router.get('/admin/illustration', asyncHandler(IllustrationController.getAll.bind(IllustrationController)));
+router.get('/admin/illustration', AuthAdmin, asyncHandler(IllustrationController.getAll.bind(IllustrationController)));
 router.patch('/admin/illustration/:id', AuthAdmin, asyncHandler(IllustrationController.update.bind(IllustrationController)));
 router.delete('/admin/illustration/:id', AuthAdmin, asyncHandler(IllustrationController.delete.bind(IllustrationController)));
 
