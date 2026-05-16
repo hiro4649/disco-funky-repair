@@ -6,11 +6,11 @@ import { asyncHandler } from './utils';
 const router = express.Router();
 
 // Admin User Management Routes
-router.get('/admin/seting/tokenbalance', asyncHandler(UserController.getTokenBalance.bind(UserController)));
+router.get('/admin/seting/tokenbalance', AuthAdmin, asyncHandler(UserController.getTokenBalance.bind(UserController)));
 router.post('/admin/seting/tokenbalance', AuthAdmin, asyncHandler(UserController.setTokenBalance.bind(UserController)));
-router.get('/admin/user/all', asyncHandler(UserController.getAllUserData.bind(UserController)));
-router.get('/user/all', asyncHandler(UserController.getAllUsers.bind(UserController)));
-router.get('/admin/user/transaction/:wallet_address', asyncHandler(UserController.getUserPrizeTransaction.bind(UserController)));
+router.get('/admin/user/all', AuthAdmin, asyncHandler(UserController.getAllUserData.bind(UserController)));
+router.get('/user/all', AuthAdmin, asyncHandler(UserController.getAllUsers.bind(UserController)));
+router.get('/admin/user/transaction/:wallet_address', AuthAdmin, asyncHandler(UserController.getUserPrizeTransaction.bind(UserController)));
 router.get('/user/holding/average/:user_id', Authenticate, asyncHandler(UserController.getAverageHoldingDate.bind(UserController)));
 router.get('/user/holding/history/:user_id', Authenticate, asyncHandler(UserController.getHoldDateHistory.bind(UserController)));
 

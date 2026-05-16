@@ -9,7 +9,18 @@ const mockPrisma = {
   },
   user: {
     findUnique: jest.fn(),
+    findMany: jest.fn(),
+    count: jest.fn(),
     update: jest.fn()
+  },
+  prizeTransactions: {
+    findMany: jest.fn()
+  },
+  admin: {
+    findFirst: jest.fn()
+  },
+  airdropTokens: {
+    findFirst: jest.fn()
   }
 };
 
@@ -30,7 +41,21 @@ jest.mock('../../config/passport', () => ({
 
     return res.status(401).json({ success: false, message: 'Unauthenticated' });
   },
-  AuthAdmin: (_req: any, res: any) => res.status(403).json({ success: false, message: 'Invalid token' })
+  AuthAdmin: (req: any, res: any, next: any) => {
+    if (req.headers.authorization === 'Bearer admin-token') {
+      req.user = {
+        id: 1,
+        email: 'admin@example.com'
+      };
+      return next();
+    }
+
+    if (req.headers.authorization === 'Bearer user-token') {
+      return res.status(403).json({ success: false, message: 'Invalid token' });
+    }
+
+    return res.status(401).json({ success: false, message: 'Unauthenticated' });
+  }
 }));
 
 import { userRoutes } from '../user.routes';
@@ -41,6 +66,92 @@ const createApp = () => {
   app.use(userRoutes);
   return app;
 };
+
+const expectAdminReadControllersNotReached = () => {
+  expect(mockPrisma.user.findMany).not.toHaveBeenCalled();
+  expect(mockPrisma.user.count).not.toHaveBeenCalled();
+  expect(mockPrisma.user.findUnique).not.toHaveBeenCalled();
+  expect(mockPrisma.prizeTransactions.findMany).not.toHaveBeenCalled();
+  expect(mockPrisma.admin.findFirst).not.toHaveBeenCalled();
+  expect(mockPrisma.airdropTokens.findFirst).not.toHaveBeenCalled();
+};
+
+describe('admin and all-user read route authorization', () => {
+  const protectedAdminReadRoutes = [
+    {
+      path: '/admin/user/all',
+      expectControllerReached: () => expect(mockPrisma.user.findMany).toHaveBeenCalled()
+    },
+    {
+      path: '/user/all',
+      expectControllerReached: () => expect(mockPrisma.user.findMany).toHaveBeenCalled()
+    },
+    {
+      path: '/admin/user/transaction/0xuser',
+      expectControllerReached: () => expect(mockPrisma.user.findUnique).toHaveBeenCalled()
+    },
+    {
+      path: '/admin/seting/tokenbalance',
+      expectControllerReached: () => expect(mockPrisma.admin.findFirst).toHaveBeenCalled()
+    }
+  ];
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    mockPrisma.user.findMany.mockResolvedValue([{
+      id: 1,
+      wallet_address: '0xuser',
+      tickets: 1,
+      createdAt: new Date('2026-01-01T00:00:00.000Z'),
+      updatedAt: new Date('2026-01-01T00:00:00.000Z'),
+      PrizeTransactions: [],
+      LotteryTickets: [],
+      ownedToken: []
+    }]);
+    mockPrisma.user.count.mockResolvedValue(1);
+    mockPrisma.user.findUnique.mockResolvedValue({
+      id: 1,
+      wallet_address: '0xuser'
+    });
+    mockPrisma.prizeTransactions.findMany.mockResolvedValue([]);
+    mockPrisma.admin.findFirst.mockResolvedValue({ id: 1, email: 'admin@example.com' });
+    mockPrisma.airdropTokens.findFirst.mockResolvedValue({ id: 1, userId: 1, balance: '0' });
+  });
+
+  it.each(protectedAdminReadRoutes)('rejects unauthenticated access before controller for GET $path', async ({ path }) => {
+    const response = await request(createApp()).get(path);
+
+    expect(response.status).toBe(401);
+    expectAdminReadControllersNotReached();
+  });
+
+  it.each(protectedAdminReadRoutes)('rejects general user JWT before controller for GET $path', async ({ path }) => {
+    const response = await request(createApp())
+      .get(path)
+      .set('Authorization', 'Bearer user-token');
+
+    expect(response.status).toBe(403);
+    expectAdminReadControllersNotReached();
+  });
+
+  it.each(protectedAdminReadRoutes)('does not allow body adminKey without admin auth for GET $path', async ({ path }) => {
+    const response = await request(createApp())
+      .get(path)
+      .send({ adminKey: 'not-a-real-admin-auth-mechanism' });
+
+    expect(response.status).toBe(401);
+    expectAdminReadControllersNotReached();
+  });
+
+  it.each(protectedAdminReadRoutes)('allows admin auth to reach controller for GET $path', async ({ path, expectControllerReached }) => {
+    const response = await request(createApp())
+      .get(path)
+      .set('Authorization', 'Bearer admin-token');
+
+    expect(response.status).toBe(200);
+    expectControllerReached();
+  });
+});
 
 describe('user point routes authorization', () => {
   beforeEach(() => {
