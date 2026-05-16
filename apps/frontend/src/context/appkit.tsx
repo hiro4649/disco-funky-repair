@@ -2,7 +2,7 @@
 
 import { createAppKit } from "@reown/appkit/react";
 import { EthersAdapter } from "@reown/appkit-adapter-ethers";
-import { bsc, sepolia } from "@reown/appkit/networks";
+import { bsc } from "@reown/appkit/networks";
 import { ReactNode } from "react";
 
 // 1. Get projectId at https://dashboard.reown.com

@@ -276,7 +276,7 @@ export default function MonitoringDashboard() {
         <div>
           <h1 className="text-3xl font-bold text-gray-900">{t('System Monitoring')}</h1>
           <p className="mt-1 text-sm text-gray-600">
-            {t('QuickNode RPC & Etherscan API health monitoring')}
+            {t('QuickNode RPC & explorer API health monitoring')}
           </p>
         </div>
         <div className="flex items-center gap-3">
@@ -350,7 +350,7 @@ export default function MonitoringDashboard() {
           </div>
         </div>
 
-        {/* Etherscan Status */}
+        {/* Explorer API Status */}
         <div className="rounded-lg border border-gray-200 bg-white p-6 shadow-sm">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
@@ -358,7 +358,7 @@ export default function MonitoringDashboard() {
                 <Database className="h-6 w-6 text-purple-600" />
               </div>
               <div>
-                <p className="text-sm text-gray-600">Etherscan API</p>
+                <p className="text-sm text-gray-600">Explorer API</p>
                 <p className="text-2xl font-bold text-gray-900">
                   {status.services.etherscan.available ? t('Operational') : t('Down')}
                 </p>

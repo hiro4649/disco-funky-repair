@@ -131,7 +131,7 @@ const AirdropPrizeList = () => {
     telegram: "",
     twitter: "",
     listed_dex: "",
-    default_image: "sui-log.png",
+    default_image: "chain-logo.svg",
     dance: false,
   };
   const [formData, setFormData] = useState<prizeEditItem>(initialFormData);

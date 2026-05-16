@@ -14,7 +14,7 @@ const PrizeHistoryCellCustom: React.FC<any> = (data: { item: prizeHistory, index
     const t = useTranslations('PrizeHistory');
     const { address } = useAppKitAccount();
 
-    const shortenSuiAddress = (address: string) => {
+    const shortenWalletAddress = (address: string) => {
         const start = address.substring(0, ((address.length / 2) - 14)); // Get the first 10 characters
         const end = address.substring(address.length - ((address.length / 2) - 14)); // Get the last 10 characters
         return `${start}.....${end}`;
