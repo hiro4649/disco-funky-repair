@@ -188,14 +188,18 @@ cd /srv/disco-funky/app/apps/backend
 <secret-manager-run> node - <<'NODE'
 const required = [
   'NODE_ENV',
+  'BACKEND_APP_ENV',
   'DATABASE_URL',
   'JWT_SECRET',
+  'SESSION_SECRET',
   'ADMIN_WALLET_ADDRESS',
   'ADMIN_EMAIL',
   'ADMIN_PASSWORD',
+  'BACKEND_CORS_ORIGINS',
   'BACKEND_API_URL',
   'FRONTEND_APP_URL',
   'QUICKNODE_HTTP_RPC_URL',
+  'QUICKNODE_WS_RPC_URL',
   'ETHERSCAN_API_URL',
   'CHAIN_ID',
   'TOKEN_CONTRACT_ADDRESS',
@@ -219,7 +223,10 @@ NODE
 
 Notes:
 
-- `QUICKNODE_WS_RPC_URL` is required if realtime WebSocket monitoring is enabled.
+- `SESSION_SECRET` is required; the backend has no hardcoded session fallback.
+- `BACKEND_APP_ENV=staging` should be set for BSC testnet staging so runtime CORS guards reject missing, localhost, raw IP, and malformed origins even when production mainnet env validation is not used.
+- `BACKEND_CORS_ORIGINS` must be a comma-separated list of approved staging HTTPS origins without localhost, raw IPs, paths, query strings, or old production-only values.
+- `REQUEST_BODY_LIMIT` is optional. If set, keep it at `5mb` or smaller; the default is `5mb`.
 - `ADMIN_PRIVATE_KEY` should not be configured unless humans explicitly accept the P1 monitoring-only residual risk.
 - This check does not prove values are correct; it only checks presence without printing values.
 
@@ -338,6 +345,8 @@ Expected:
 
 - cwd points to `/srv/disco-funky/app/apps/backend`.
 - script is `dist/src/main.js`.
+- `apps/backend/package.json` `main` also points to `dist/src/main.js`.
+- `dist/src/main.js` is the only backend listen entrypoint. Do not start `dist/src/app/index.js` directly.
 - backend listens on the approved staging backend port, default `5000` unless non-secret `PORT` is set.
 - PM2 output does not print secret values.
 

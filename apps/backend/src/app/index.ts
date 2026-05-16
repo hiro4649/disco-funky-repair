@@ -9,21 +9,15 @@ import passport from 'passport';
 import * as http from 'http';
 import { Server as SocketIOServer } from 'socket.io';
 import { configureSecurityMiddleware } from './middlewares/security';
+import { getCorsOrigins, getRequestBodyLimit } from './config/runtime';
 import './lib/validateEnvs';
 import './services/trackingService';
-import { startTrialNFTSchedulers } from './lib/trialNftScheduler';
 
-const app = express();
-const PORT = process.env.PORT || 5000;
-const server = http.createServer(app);
+export const app = express();
+export const server = http.createServer(app);
 
-const allowedOrigins = [
-    'http://localhost:3000',
-    'http://127.0.0.1:3000',
-    'https://funky.fan',
-    'https://www.funky.fan',
-    'http://153.127.192.241:3000'
-];
+const allowedOrigins = getCorsOrigins();
+const requestBodyLimit = getRequestBodyLimit();
 
 // Initialize Socket.IO
 export const io = new SocketIOServer(server, {
@@ -63,8 +57,8 @@ app.use(
 configureSecurityMiddleware(app);
 
 // Body parsers and cookie handling
-app.use(express.json({ limit: "1gb" }));
-app.use(bodyParser.urlencoded({ limit: "1gb", extended: true }));
+app.use(express.json({ limit: requestBodyLimit }));
+app.use(bodyParser.urlencoded({ limit: requestBodyLimit, extended: true }));
 
 // Initialize passport
 app.use(passport.initialize());
@@ -95,14 +89,6 @@ app.use((err: Error, req: express.Request, res: express.Response, next: express.
         message: 'Internal server error',
         error: process.env.NODE_ENV === 'development' ? err.message : undefined
     });
-});
-
-// Start the server
-server.listen(PORT, () => {
-    console.log(`Server is running on port: ${PORT}`);
-
-    // Start trial NFT schedulers
-    startTrialNFTSchedulers();
 });
 
 export default app;

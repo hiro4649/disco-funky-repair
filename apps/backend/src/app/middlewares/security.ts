@@ -58,7 +58,11 @@ export const configureSecurityMiddleware = (app: Express) => {
   }
   
   // Configure session management
-  const sessionSecret = process.env.SESSION_SECRET || 'supersecret_session_key_should_be_in_env';
+  const sessionSecret = process.env.SESSION_SECRET;
+  if (!sessionSecret) {
+    throw new Error('SESSION_SECRET is required');
+  }
+  const cookieDomain = process.env.COOKIE_DOMAIN?.trim();
   
   app.use(
     session({
@@ -70,7 +74,7 @@ export const configureSecurityMiddleware = (app: Express) => {
         secure: process.env.NODE_ENV === 'production',
         sameSite: process.env.NODE_ENV === 'production' ? 'strict' : 'lax',
         maxAge: 24 * 60 * 60 * 1000, // 24 hours
-        domain: process.env.NODE_ENV === 'production' ? 'disco.fan' : undefined
+        domain: process.env.NODE_ENV === 'production' ? cookieDomain || undefined : undefined
       }
     })
   );
@@ -95,4 +99,4 @@ export const configureSecurityMiddleware = (app: Express) => {
       preload: true,
     })
   );
-}; 
+};

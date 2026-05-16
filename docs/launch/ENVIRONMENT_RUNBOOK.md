@@ -9,10 +9,12 @@ Set these for `NODE_ENV=production` before starting `apps/backend`.
 | Env | Secret manager | Notes |
 | --- | --- | --- |
 | `JWT_SECRET` | yes | JWT signing secret. Do not reuse frontend or admin passwords. |
+| `SESSION_SECRET` | yes | Express session secret. Required in production/staging runtime. There is no hardcoded fallback. |
 | `DATABASE_URL` | yes | Production PostgreSQL URL. Must not be localhost/example. |
 | `ADMIN_WALLET_ADDRESS` | yes | Admin wallet address used for admin identity checks. Must be non-zero EVM address. |
 | `ADMIN_EMAIL` | yes | Admin login email. |
 | `ADMIN_PASSWORD` | yes | Admin login password/credential. |
+| `BACKEND_CORS_ORIGINS` | no | Comma-separated backend browser origins. Production/staging values must be HTTPS origins without paths, localhost, raw IPs, dummy/example hosts, or old hardcoded origins. |
 | `BACKEND_API_URL` | no | Public backend API origin. Must not be localhost/example. |
 | `FRONTEND_APP_URL` | no | Public frontend origin. Must not be localhost/example. |
 | `QUICKNODE_HTTP_RPC_URL` | yes | BSC mainnet HTTP RPC URL. |
@@ -30,6 +32,10 @@ Set these for `NODE_ENV=production` before starting `apps/backend`.
 `validateEnvs()` runs at backend startup. In production it fails fast if a required value is missing or unsafe. It does not log secret values.
 
 Explorer API key resolution uses this runtime order: `ETHERSCAN_API_KEY`, `BSCSCAN_API_KEY`, `ETHERSCAN_API_KEY1`, `ETHERSCAN_API_KEY2`, `BSCSCAN_API_KEY1`, `BSCSCAN_API_KEY2`. The same order is used by production validation and runtime request builders.
+
+Backend CORS is controlled only by `BACKEND_CORS_ORIGINS` in production/staging. Staging should set `BACKEND_APP_ENV=staging` so the runtime also rejects missing or unsafe CORS origins when BSC testnet values are used. Do not rely on code-hardcoded production domains, local desktop hosts, or raw IP origins. The backend request body parser defaults to `5mb`; `REQUEST_BODY_LIMIT` may be set lower or up to `5mb`, but larger values are rejected in production.
+
+`BACKEND_APP_ENV` is not a secret. Use `BACKEND_APP_ENV=staging` only for staging; leave it unset for production unless a future runbook explicitly defines another value.
 
 ## Frontend Production Public Env
 
@@ -112,7 +118,7 @@ NODE_ENV=production npm run build
 NODE_ENV=production node dist/src/main.js
 ```
 
-The production start must fail if required env is missing or unsafe. Run this only with secrets injected by the deployment secret manager.
+The backend runtime listen entrypoint is `dist/src/main.js`. `apps/backend/src/app/index.ts` builds and exports the Express app, HTTP server, and Socket.IO instance, but does not call `listen`. The production start must fail if required env is missing or unsafe. Run this only with secrets injected by the deployment secret manager.
 
 Frontend:
 

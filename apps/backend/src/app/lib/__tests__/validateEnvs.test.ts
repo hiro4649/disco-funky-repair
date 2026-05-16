@@ -7,10 +7,12 @@ const TIER_UPDATER_ADDRESS = '0x3333333333333333333333333333333333333333';
 const validProductionEnv = (): NodeJS.ProcessEnv => ({
   NODE_ENV: 'production',
   JWT_SECRET: 'jwt-secret-with-enough-entropy-for-production-tests',
+  SESSION_SECRET: 'session-secret-with-enough-entropy-for-production-tests',
   DATABASE_URL: 'postgresql://funky_db_user:db_password@db.funky.internal:5432/funky',
   ADMIN_WALLET_ADDRESS: '0x4444444444444444444444444444444444444444',
   ADMIN_EMAIL: 'admin@funky.internal',
   ADMIN_PASSWORD: 'FunkyAdminCredentialValue123!',
+  BACKEND_CORS_ORIGINS: 'https://funky.fan,https://www.funky.fan',
   BACKEND_API_URL: 'https://api.funky.fan',
   FRONTEND_APP_URL: 'https://funky.fan',
   QUICKNODE_HTTP_RPC_URL: 'https://bsc-mainnet.rpc.provider',
@@ -69,6 +71,61 @@ describe('validateEnvs production safety', () => {
     delete env.PRIZE_TRANSFER_TOKEN_ALLOWLIST;
 
     expect(() => validateEnvs(env)).toThrow(/PRIZE_TRANSFER_TOKEN_ALLOWLIST/);
+  });
+
+  it('fails when SESSION_SECRET is missing in production', () => {
+    const env = validProductionEnv();
+    delete env.SESSION_SECRET;
+
+    expect(() => validateEnvs(env)).toThrow(/SESSION_SECRET/);
+  });
+
+  it('fails when BACKEND_CORS_ORIGINS is missing in production', () => {
+    const env = validProductionEnv();
+    delete env.BACKEND_CORS_ORIGINS;
+
+    expect(() => validateEnvs(env)).toThrow(/BACKEND_CORS_ORIGINS/);
+  });
+
+  it('rejects localhost and raw IP CORS origins in production', () => {
+    expect(() =>
+      validateEnvs({
+        ...validProductionEnv(),
+        BACKEND_CORS_ORIGINS: 'https://funky.fan,https://localhost:3000'
+      })
+    ).toThrow(/BACKEND_CORS_ORIGINS must not contain localhost or raw IP/);
+
+    expect(() =>
+      validateEnvs({
+        ...validProductionEnv(),
+        BACKEND_CORS_ORIGINS: 'https://153.127.192.241'
+      })
+    ).toThrow(/BACKEND_CORS_ORIGINS must not contain localhost or raw IP/);
+  });
+
+  it('rejects oversized production request body limits', () => {
+    expect(() =>
+      validateEnvs({
+        ...validProductionEnv(),
+        REQUEST_BODY_LIMIT: '1gb'
+      })
+    ).toThrow(/REQUEST_BODY_LIMIT must use a positive b\/kb\/mb value/);
+
+    expect(() =>
+      validateEnvs({
+        ...validProductionEnv(),
+        REQUEST_BODY_LIMIT: '6mb'
+      })
+    ).toThrow(/REQUEST_BODY_LIMIT must be 5mb or smaller/);
+  });
+
+  it('allows small production request body limits', () => {
+    expect(() =>
+      validateEnvs({
+        ...validProductionEnv(),
+        REQUEST_BODY_LIMIT: '5mb'
+      })
+    ).not.toThrow();
   });
 
   it('fails when TIER_UPDATER_CONTRACT_ADDRESS is missing in production', () => {
