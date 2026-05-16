@@ -1,5 +1,6 @@
 import { etherscanRateLimiter } from "../utils/rateLimiter";
 import { ETHERSCAN_API_URL, ETHERSCAN_API_KEY } from "../config/env";
+import { safeLogError } from "../utils/safeLogger";
 
 /**
  * Get ERC20 token balance using Etherscan API V2 (with chainid)
@@ -22,7 +23,10 @@ async function getTokenBalance(
     const resp = await fetch(apiUrl);
     const data = await resp.json();
     if (data.status !== "1") {
-        console.log("Error", data.result)
+        console.warn("Etherscan token balance returned non-success", {
+          operation: "get_token_balance",
+          resultType: typeof data.result
+        });
         throw new Error(data.result || "Etherscan returned error");
     }
 
@@ -30,7 +34,10 @@ async function getTokenBalance(
     return Number(data.result);
     
   } catch (err) {
-    console.error("Error fetching ERC20 balance via Etherscan:", err);
+    safeLogError("get_token_balance", err, {
+      walletAddressPrefix: walletAddress.slice(0, 10),
+      tokenAddressPrefix: tokenAddress?.slice(0, 10)
+    });
     throw new Error("Error fetching ERC20 token balance");
   }
 }

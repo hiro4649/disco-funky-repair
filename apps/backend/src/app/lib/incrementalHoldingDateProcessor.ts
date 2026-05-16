@@ -18,6 +18,7 @@
 import { PrismaClient } from '@prisma/client';
 import moment from 'moment';
 import { ETHERSCAN_API_KEY, ETHERSCAN_API_URL as CONFIGURED_ETHERSCAN_API_URL, TOKEN_CONTRACT_ADDRESS } from '../config/env';
+import { safeLogError } from '../utils/safeLogger';
 
 const prisma = new PrismaClient();
 
@@ -98,7 +99,12 @@ export const fetchIncrementalTransactions = async (
             }
         }
     } catch (error) {
-        console.error(`Error fetching incremental transactions for ${walletAddress}:`, error);
+        safeLogError('fetch_incremental_transactions', error, {
+            walletAddressPrefix: walletAddress.slice(0, 10),
+            tokenAddressPrefix: tokenAddress.slice(0, 10),
+            startBlock,
+            page
+        });
     }
 
     return transactions;

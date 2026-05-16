@@ -8,6 +8,7 @@ import jwt from "jsonwebtoken";
 import bcrypt from 'bcryptjs';
 import { ETHERSCAN_API_URL, ETHERSCAN_API_KEY, TOKEN_CONTRACT_ADDRESS } from "../config/env";
 import { etherscanRateLimiter } from "../utils/rateLimiter";
+import { safeLogError } from "../utils/safeLogger";
 import { createHash, randomBytes } from "crypto";
 import { verifyMessage } from "ethers";
 
@@ -76,7 +77,10 @@ const getTokenTransactions = async (walletAddress: string, tokenAddress: string)
 
         return [];
     } catch (error) {
-        console.error('Error fetching token transactions:', error);
+        safeLogError('auth_fetch_token_transactions', error, {
+            walletAddressPrefix: walletAddress.slice(0, 10),
+            tokenAddressPrefix: tokenAddress.slice(0, 10)
+        });
         return [];
     }
 };

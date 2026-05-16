@@ -6,6 +6,7 @@ import { promises as fsPromises } from 'fs';
 import path from 'path';
 import lighthouse from '@lighthouse-web3/sdk'
 import { NFT_STORAGE_ENDPOINT, NFT_STORAGE_API_KEY } from '../config/env';
+import { safeLogError } from '../utils/safeLogger';
 
 interface NFTData {
   Name: string;
@@ -84,7 +85,7 @@ export class NftController {
   private static async imageUpload(imagePath: string): Promise<string> {
     try {
       console.log(`🔼 Lighthouse upload starting for: ${imagePath}`);
-      console.log(`🔑 Using API key: ${NFT_STORAGE_API_KEY ? `${NFT_STORAGE_API_KEY.substring(0, 10)}...` : 'NOT SET'}`);
+      console.log('🔑 Lighthouse API key configured:', Boolean(NFT_STORAGE_API_KEY));
       
       // Verify file exists before upload
       if (!fs.existsSync(imagePath)) {
@@ -104,8 +105,10 @@ export class NftController {
       
       return output.data.Hash;
     } catch (error) {
-      console.error('❌ Error uploading image to Lighthouse:', error);
-      throw new Error(`Failed to upload image: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      safeLogError('lighthouse_upload_image', error, {
+        imagePath: path.basename(imagePath)
+      });
+      throw new Error('Failed to upload image');
     }
   }
 
@@ -120,8 +123,10 @@ export class NftController {
       await fs.promises.unlink(tempFilePath);
       return output.data.Hash;
     } catch (error) {
-      console.error('Error uploading metadata:', error);
-      throw new Error(`Failed to upload metadata: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      safeLogError('lighthouse_upload_metadata', error, {
+        metadataName: typeof metadata?.name === 'string' ? metadata.name : undefined
+      });
+      throw new Error('Failed to upload metadata');
     }
   }
 
@@ -474,14 +479,14 @@ export class NftController {
               console.log(`🗑️ Deleted local file: ${nft.localImagePath}`);
             }
           } catch (deleteError) {
-            console.warn(`⚠️ Could not delete local file ${nft.localImagePath}:`, deleteError);
+            safeLogError('delete_uploaded_nft_local_file', deleteError, { nftId: nft.id });
           }
 
           console.log(`✅ NFT ${nft.name} successfully uploaded to IPFS!`);
           results.push({ id: nftId, name: nft.name, status: 'success: uploaded to IPFS' });
         } catch (error) {
           const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-          console.error(`❌ Error uploading NFT ${nftId}:`, error);
+          safeLogError('upload_nft_to_ipfs', error, { nftId: Number(nftId) });
           results.push({ id: nftId, name: 'Unknown', status: `error: ${errorMessage}` });
         }
       }
@@ -499,11 +504,11 @@ export class NftController {
         errorCount
       });
     } catch (error) {
-      console.error('❌ Error in uploadToIPFS:', error);
+      safeLogError('upload_to_ipfs', error);
       return res.status(500).json({
         success: false,
         message: 'Failed to upload to IPFS',
-        error: error instanceof Error ? error.message : 'Unknown error'
+        error: 'IPFS upload failed'
       });
     }
   }

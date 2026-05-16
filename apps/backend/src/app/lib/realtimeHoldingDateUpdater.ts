@@ -23,6 +23,7 @@ import { scheduleTierUpdate, updateUserContractTier, getMilestoneTier } from './
 import { tokenBalanceService } from './quicknodeRpcService';
 import { withUserLock } from './userProcessingLock';
 import { ETHERSCAN_API_URL as CONFIGURED_ETHERSCAN_API_URL, TOKEN_CONTRACT_ADDRESS } from '../config/env';
+import { safeLogError } from '../utils/safeLogger';
 
 const prisma = new PrismaClient();
 
@@ -78,7 +79,10 @@ const fetchTransactionFromQuickNode = async (eventData: EventData): Promise<any>
         return transaction;
 
     } catch (error) {
-        console.error(`❌ QuickNode RPC failed:`, error);
+        safeLogError('quicknode_fetch_transaction', error, {
+            blockNumber: eventData.blockNumber,
+            txHashPrefix: eventData.hash.slice(0, 10)
+        });
         throw error; // Will trigger fallback to Etherscan API
     }
 };
@@ -137,7 +141,11 @@ const fetchUserTransactions = async (
             }
         }
     } catch (error) {
-        console.error(`Error fetching transactions for ${walletAddress}:`, error);
+        safeLogError('fetch_user_transactions', error, {
+            walletAddressPrefix: walletAddress.slice(0, 10),
+            startBlock,
+            page
+        });
     }
 
     return transactions;
@@ -174,7 +182,7 @@ export const processUserRealtime = async (
             console.log(`   User ID: ${userId}, Wallet: ${walletAddress.slice(0, 10)}...`);
             console.log(`   Connected clients: ${io.engine.clientsCount}`);
         } catch (error) {
-            console.error('❌ Failed to emit WebSocket processing event:', error);
+            safeLogError('emit_holding_date_processing', error, { userId });
         }
 
         const startTime = Date.now();
@@ -208,7 +216,10 @@ export const processUserRealtime = async (
                 console.log(`✅ QuickNode RPC: Retrieved transaction instantly (no indexing delay)`);
 
             } catch (error) {
-                console.error(`❌ QuickNode RPC failed, falling back to Etherscan API:`, error);
+                safeLogError('quicknode_realtime_fallback', error, {
+                    userId,
+                    blockNumber: eventData.blockNumber
+                });
                 // Fall through to Etherscan API fallback below
             }
         }
@@ -374,11 +385,11 @@ export const processUserRealtime = async (
             console.log(`   Tier Changed: ${oldTier !== newTier} (${oldTier} → ${newTier})`);
             console.log(`   Connected clients: ${io.engine.clientsCount}`);
         } catch (error) {
-            console.error('❌ Failed to emit WebSocket event:', error);
+            safeLogError('emit_holding_date_updated', error, { userId });
         }
 
     } catch (error) {
-        console.error(`❌ Failed to process user ${userId} in real-time:`, error);
+        safeLogError('process_user_realtime', error, { userId });
         throw error;
     }
     });
@@ -412,7 +423,7 @@ export const processUsersBatch = async (userIds: number[]): Promise<void> => {
             results.success++;
 
         } catch (error) {
-            console.error(`Failed to process user ${userId}:`, error);
+            safeLogError('process_users_batch_user', error, { userId });
             results.failed++;
         }
     }

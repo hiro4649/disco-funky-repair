@@ -5,6 +5,7 @@ import displayEthereumBalance from './displayEthereumBalance';
 import { TOKEN_CONTRACT_ADDRESS, ETHERSCAN_API_KEY, ETHERSCAN_API_URL } from '../config/env';
 import { etherscanRateLimiter } from '../utils/rateLimiter';
 import { tokenBalanceService } from './quicknodeRpcService';
+import { safeLogError } from '../utils/safeLogger';
 const rewardAmount = 100;
 
 // Add tickets to claim the user's claim tickets.
@@ -101,7 +102,7 @@ const handleUserTickets = async (userId: number, ticketCount: number) => {
             }
         }
     } catch (error) {
-        console.error('Error handling user tickets:', error);
+        safeLogError('handle_user_tickets', error, { userId });
     }
 };
 
@@ -118,7 +119,11 @@ const getTokenTransactions = async (walletAddress: string, tokenAddress: string,
         console.log(`✅ Retrieved ${transactions.length} transaction(s) for ${walletAddress.slice(0, 10)}...`);
         return transactions;
     } catch (error) {
-        console.error('Error fetching token transactions:', error);
+        safeLogError('fetch_recent_token_transactions', error, {
+            walletAddressPrefix: walletAddress.slice(0, 10),
+            tokenAddressPrefix: tokenAddress.slice(0, 10),
+            hours
+        });
         return [];
     }
 };
@@ -150,7 +155,11 @@ const fetchAllTokenTransactions = async (walletAddress: string, tokenAddress: st
             }
         }
     } catch (error) {
-        console.error(`Error fetching full transaction history for ${walletAddress}:`, error);
+        safeLogError('fetch_all_token_transactions', error, {
+            walletAddressPrefix: walletAddress.slice(0, 10),
+            tokenAddressPrefix: tokenAddress.slice(0, 10),
+            page
+        });
     }
 
     return transactions;
@@ -462,7 +471,7 @@ export const processSixHourTokenBalance = async () => {
                         }
                     }
                 } catch (error) {
-                    console.error(`Error updating six-hour token balance for user ${user.id}:`, error);
+                    safeLogError('update_six_hour_token_balance_user', error, { userId: user.id });
                 }
             })
         );
@@ -482,10 +491,10 @@ export const processSixHourTokenBalance = async () => {
             });
             console.log(`📡 WebSocket event emitted: ticket-balance-updated (${users.length} users)`);
         } catch (error) {
-            console.error('Failed to emit WebSocket event:', error);
+            safeLogError('emit_ticket_balance_updated', error);
         }
     } catch (error) {
-        console.error('Error in processSixHourTokenBalance:', error);
+        safeLogError('process_six_hour_token_balance', error);
     } finally {
         isSixHourUpdateInProgress = 'finished';
         setTimeout(() => {
@@ -595,14 +604,14 @@ export const processWeeklyBonus = async () => {
                         }
                     }
                 } catch (error) {
-                    console.error(`Error processing weekly bonus for user ${user.id}:`, error);
+                    safeLogError('process_weekly_bonus_user', error, { userId: user.id });
                 }
             })
         );
 
         console.log('Weekly bonus processing completed successfully');
     } catch (error) {
-        console.error('Error in processWeeklyBonus:', error);
+        safeLogError('process_weekly_bonus', error);
     }
 };
 
@@ -821,14 +830,14 @@ export const checkingHoldingDateFromOnChain = async () => {
 
                 console.log(`Updated weighted average holding days for user ${user.id} -> ${averageDays.toFixed(2)} days (${fifoAdjustedPurchases.length} FIFO-adjusted purchases tracked)`);
             } catch (error) {
-                console.error(`Failed to update holding days for user ${user.id}:`, error);
+                safeLogError('update_holding_days_from_chain_user', error, { userId: user.id });
             }
         }
 
         console.log('Weighted average holding date calculation completed');
     }
     catch (error) {
-        console.error('Error in checkingHoldingDateFromOnChain:', error);
+        safeLogError('checking_holding_date_from_on_chain', error);
     }
 };
 
