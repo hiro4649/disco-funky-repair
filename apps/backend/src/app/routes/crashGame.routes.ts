@@ -6,7 +6,7 @@ const featureDisabled = (_req: Request, res: Response) =>
     res.status(410).json({
         success: false,
         code: 'FEATURE_DISABLED',
-        message: 'Crash game is disabled for the BSC launch MVP.'
+        message: 'Crash game is not installed for the BSC launch MVP.'
     });
 
 router.get('/crash/games', featureDisabled);

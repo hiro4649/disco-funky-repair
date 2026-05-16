@@ -73,6 +73,7 @@ The current no-tx smoke verified these route outcomes without cookies, bearer to
 | all-user ticket distribution | `POST /api/alluser/distribute/ticket` | `401 Unauthenticated` | PASS |
 | admin NFTs | `GET /api/admin/nfts` | `401 Unauthenticated` | PASS |
 | admin ticket distribution | `GET /api/admin/ticket-distribution` | `401 Unauthenticated` | PASS |
+| Crash game API disabled stub | `GET /api/crash/games` | `410 FEATURE_DISABLED` | RECHECK REQUIRED if the only saved evidence is `POST /api/crash/games` returning `404` |
 
 Status interpretation:
 
@@ -80,6 +81,8 @@ Status interpretation:
 - `401 Unauthenticated` proves auth middleware rejected the no-auth request before the protected handler.
 - `403 Forbidden` is expected for authenticated users lacking ownership or admin rights.
 - `404 Not Found` is not protection evidence for these routes. It usually means wrong path, stripped `/api` prefix, wrong HTTP method, wrong hostname, old source, or missing deploy.
+- Crash game method clarification: Crash gameplay is intentionally not installed, but the smoke check must call `GET /api/crash/games` and expect `410 FEATURE_DISABLED`. `POST /api/crash/games` returning `404` is a method mismatch and must not be recorded as a protection PASS. `/crash/games` returning `404` is acceptable only as old non-API path absence evidence.
+- Crash absence checks still apply: `initCrashServer` must be absent from startup/source, `/crashx` must not be registered, frontend must have no Fan Games/Crash navigation or Crash component source, and Crash DB update paths must be unreachable.
 
 ## 4. No-Tx Smoke Scope Confirmed
 
@@ -98,6 +101,7 @@ Confirmed no-tx scope:
 - BSC testnet RPC can be queried for chain ID `97`.
 - Secret log scan can verify no known secret patterns appear in recent logs.
 - frontend `MISSING_MESSAGE` logs can be checked after PM2 frontend restart.
+- Crash game non-installation can be checked without starting gameplay or funding wallets.
 - Disabled/no-tx routes can be smoke-tested if they do not require funded tx execution.
 
 This no-tx scope does not prove prize transfers, NFT minting, tier updater transactions, contract ownership changes, or BSC testnet receipt handling.

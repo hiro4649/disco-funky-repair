@@ -45,10 +45,6 @@ io.on('connection', (socket) => {
     });
 });
 
-io.of('/crashx').use((_socket, next) => {
-    next(new Error('FEATURE_DISABLED'));
-});
-
 // Cookie parser should come first to ensure cookies are parsed before any middleware uses them
 app.use(cookieParser());
 

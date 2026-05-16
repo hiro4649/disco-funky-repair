@@ -66,6 +66,8 @@ Treat status codes consistently:
 
 For P0/P1 protected routes, a `404` can mean the wrong path, stripped `/api` prefix, wrong hostname, wrong HTTP method, old source, or missing deploy. Recheck nginx and route path before marking the control as passed.
 
+Crash game is intentionally not installed for gameplay, but the no-tx smoke check must use the fixed disabled API stub. `GET /api/crash/games` is expected to return `410 FEATURE_DISABLED`. A `404` from `POST /api/crash/games` is only a method mismatch and is not protection evidence. A `404` from the old non-API path `/crash/games` is acceptable as old-path absence evidence only. Do not apply either `404` case to NFT, Illustration, admin, ticket, referral, Prize, user-manage, or other protected routes.
+
 ## 4. No-Auth Smoke Targets
 
 Run with no cookie and no Authorization header. Record status code and sanitized response code/message only.
@@ -101,6 +103,54 @@ Confirmed staging no-tx evidence has observed:
 - all-user ticket distribution: `401 Unauthenticated`.
 - admin NFTs: `401 Unauthenticated`.
 - admin ticket distribution: `401 Unauthenticated`.
+
+## 4A. Crash Game Intentionally Not Installed
+
+Crash game is not planned for installation in the staging or production MVP. Do not repair, enable, or test Crash gameplay as part of no-tx smoke.
+
+For Crash game, use the exact method and path below:
+
+| Target | Method | Expected no-tx result | Required follow-up checks |
+| --- | --- | --- | --- |
+| Crash game API disabled stub | `GET /api/crash/games` | `410 FEATURE_DISABLED`. | Confirm the Crash engine, socket, frontend route, and controller update paths are not reachable. |
+
+Do not use these as Crash protection evidence:
+
+- `POST /api/crash/games` returning `404`; that only proves the wrong HTTP method was used.
+- `/crash/games` returning `404`; that only proves the old non-API path is not installed.
+
+Crash-specific required checks:
+
+- `initCrashServer(io)` is not imported or called by backend startup code.
+- `/crashx` socket namespace is not registered by backend startup code and does not run the Crash engine.
+- frontend `/fan-games` remains `notFound()` and the old `components/CrashGame` source is absent.
+- Sidebar and normal frontend navigation do not show `Fan Games` or Crash navigation.
+- no request reaches a Crash gameplay controller, Crash DB updates, balance updates, ticket updates, FanPoint updates, or on-chain processing.
+- after `cd apps/backend && npm run build`, `apps/backend/dist/src/app/controllers/crashGame.controller.js` is absent because the build cleans `dist`.
+
+Suggested static checks from the repository root:
+
+```bash
+rg -n "initCrashServer" apps/backend/src
+rg -n "initCrashServer\\(" apps/backend/src
+rg -n "io\\.of\\('/crashx'\\)|io\\.of\\(\"/crashx\"\\)" apps/backend/src/app/index.ts
+rg -n "crashGameRoutes|crashGame\\.routes" apps/backend/src/app/routes apps/backend/src/app/index.ts
+cat 'apps/frontend/src/app/(home)/fan-games/page.tsx'
+rg -n "Fan Games|fan-games" apps/frontend/src/components/Sidebar/index.tsx
+test ! -e apps/backend/dist/src/app/controllers/crashGame.controller.js
+test ! -e apps/frontend/src/components/CrashGame
+```
+
+Expected:
+
+- `initCrashServer` returns no source matches.
+- `/crashx` startup path is absent.
+- `crashGameRoutes` exists only as a fixed `410 FEATURE_DISABLED` API stub.
+- `/fan-games` uses `notFound()` and the old `components/CrashGame` source directory is absent.
+- Sidebar search returns no normal navigation item.
+- built `dist` has no `crashGame.controller.js`.
+
+Important: Crash `404` evidence is limited to wrong-method detection (`POST /api/crash/games`) or old-path absence (`/crash/games`). It does not change the expected status for other disabled or protected routes. Other disabled direct routes still expect `410 FEATURE_DISABLED`, and admin/auth protected routes still expect `401` or `403`.
 
 ## 5. Non-Tx Operational Evidence
 
