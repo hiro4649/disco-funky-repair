@@ -384,7 +384,7 @@ Status code expectations:
 - `403 Forbidden`: expected when a signed-in normal user is authenticated but lacks owner/admin rights.
 - `404 Not Found`: not valid protection evidence unless the route is intentionally unreachable and documented as such.
 
-Crash game exception: Crash game is intentionally not installed for the MVP. `/api/crash/games` should return `404` because the route is not mounted, but only after confirming `initCrashServer` is absent from startup/source, `/crashx` is not registered, frontend `/fan-games` is `notFound()`, Sidebar has no Fan Games/Crash navigation, the old Crash component source is absent, and Crash DB update paths are unreachable. Do not use this Crash-only exception for other disabled or protected routes.
+Crash game exception: Crash gameplay is intentionally not installed for the MVP, but the no-tx smoke check must use `GET /api/crash/games` and expect `410 FEATURE_DISABLED` from the fixed disabled API stub. `POST /api/crash/games` returning `404` is only a method mismatch, and `/crash/games` returning `404` is only old non-API path absence evidence. Confirm `initCrashServer` is absent from startup/source, `/crashx` is not registered, frontend `/fan-games` is `notFound()`, Sidebar has no Fan Games/Crash navigation, the old Crash component source is absent, and Crash DB update paths are unreachable. Do not use Crash `404` cases for other disabled or protected routes.
 
 Groups:
 
@@ -415,7 +415,7 @@ Current no-tx unauthenticated smoke targets and expected status:
 | All-user ticket distribution | `POST /api/alluser/distribute/ticket` | `401 Unauthenticated` |
 | Admin NFT listing | `GET /api/admin/nfts` | `401 Unauthenticated` |
 | Admin ticket distribution listing | `GET /api/admin/ticket-distribution` | `401 Unauthenticated` |
-| Crash game API intentionally not installed | `GET /api/crash/games` | `404 Not Found` only if Crash absence checks pass |
+| Crash game API disabled stub | `GET /api/crash/games` | `410 FEATURE_DISABLED` |
 
 ## 20. Admin Route Smoke Test
 
