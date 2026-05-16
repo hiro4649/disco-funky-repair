@@ -57,7 +57,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       const price: bigint = await contract.getPrice();
       setEthPrice(Number(formatUnits(price, 8)));
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to fetch ETH price');
+      setError(err instanceof Error ? err.message : 'Failed to fetch BNB price');
       if (retries < 3) {
         console.log('Backend is updating, waiting 5 seconds before retry...');
         setTimeout(() => getETHPrice(retries + 1), 3000);

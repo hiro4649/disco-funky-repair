@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import Link from "next/link";
 import Image from "next/image";
 import ClickOutside from "@/components/ClickOutside";
-// Removed Suiet wallet-kit in favor of Reown AppKit
+// Removed legacy wallet-kit in favor of Reown AppKit
 import { useAppDispatch, useAppSelector } from "@/store/store";
 import { useRouter } from "next/navigation";
 import {resetUser, setHasPendingTicketCode } from "@/store/slices/userSlice";

@@ -21,7 +21,7 @@ const OfficalDiscoNft = () => {
   const { authState, user_id } = useAppSelector((state) => state.user);
   const [connectWalletModal, setConnectWalletModal] = useState(false);
   const [nftCount, setNftCount] = useState<number>(1);
-  const [mintFee, setMintFee] = useState(0.001); // Set default mint fee in ETH
+  const [mintFee, setMintFee] = useState(0.001); // Set default mint fee in BNB
   const [isMinting, setIsMinting] = useState(false);
   const t = useTranslations('MembershipNFT');
   const { isConnected, address } = useAppKitAccount();
@@ -187,7 +187,7 @@ const OfficalDiscoNft = () => {
       return prev; // Return the previous value if condition isn't met
     });
   };
-  // Remove Sui-specific fee fetching - using fixed ETH fee
+  // Public mint fee is read from the BSC FunkyNFT contract.
 
   const increment = () => {
     setNftCount((prev) => {
