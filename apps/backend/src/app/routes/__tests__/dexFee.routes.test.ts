@@ -157,23 +157,46 @@ describe('dex and fee management routes', () => {
     expect(mockPrisma.feeChangeHistory.count).toHaveBeenCalledTimes(1);
   });
 
-  it('keeps current fee settings as a minimal public read', async () => {
+  it('keeps current fee settings as a minimal public tokenomics read', async () => {
     mockPrisma.feeChangeHistory.findFirst
-      .mockResolvedValueOnce({ newValue: '200', createdAt: new Date('2026-01-01T00:00:00.000Z') })
-      .mockResolvedValueOnce({ newValue: '0x0000000000000000000000000000000000000001', createdAt: new Date('2026-01-02T00:00:00.000Z') });
+      .mockResolvedValueOnce({
+        newValue: '200',
+        changedBy: 'admin',
+        txHash: '0xpercentage',
+        createdAt: new Date('2026-01-01T00:00:00.000Z')
+      })
+      .mockResolvedValueOnce({
+        newValue: '0x0000000000000000000000000000000000000001',
+        changedBy: 'admin',
+        txHash: '0xrecipient',
+        createdAt: new Date('2026-01-02T00:00:00.000Z')
+      });
 
     const response = await request(createApp()).get('/fee/current');
 
     expect(response.status).toBe(200);
-    expect(response.body.data).toEqual({
-      feePercentage: '200',
-      feeRecipient: '0x0000000000000000000000000000000000000001',
-      lastUpdated: {
-        percentage: '2026-01-01T00:00:00.000Z',
-        recipient: '2026-01-02T00:00:00.000Z'
+    expect(response.body).toEqual({
+      success: true,
+      data: {
+        feePercentage: '200',
+        feeRecipient: '0x0000000000000000000000000000000000000001',
+        lastUpdated: {
+          percentage: '2026-01-01T00:00:00.000Z',
+          recipient: '2026-01-02T00:00:00.000Z'
+        }
       }
     });
+    expect(Object.keys(response.body.data).sort()).toEqual(['feePercentage', 'feeRecipient', 'lastUpdated']);
+    expect(Object.keys(response.body.data.lastUpdated).sort()).toEqual(['percentage', 'recipient']);
     expect(response.body.data).not.toHaveProperty('txHash');
     expect(response.body.data).not.toHaveProperty('changedBy');
+    expect(response.body.data).not.toHaveProperty('history');
+    expect(response.body.data).not.toHaveProperty('feeHistory');
+    expect(response.body.data).not.toHaveProperty('admin');
+    expect(response.body.data).not.toHaveProperty('adminMetadata');
+    expect(JSON.stringify(response.body)).not.toContain('0xpercentage');
+    expect(JSON.stringify(response.body)).not.toContain('0xrecipient');
+    expect(JSON.stringify(response.body)).not.toContain('changedBy');
+    expect(JSON.stringify(response.body)).not.toContain('txHash');
   });
 });

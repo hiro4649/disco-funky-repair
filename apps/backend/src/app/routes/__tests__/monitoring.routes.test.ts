@@ -129,5 +129,11 @@ describe('monitoring routes authorization and public health surface', () => {
     expect(response.body).not.toHaveProperty('quickNode');
     expect(response.body).not.toHaveProperty('failureCount');
     expect(response.body).not.toHaveProperty('creditUsage');
+    expect(response.body).not.toHaveProperty('quicknodeRpc');
+    expect(response.body).not.toHaveProperty('etherscan');
+    expect(response.body).not.toHaveProperty('credits');
+    expect(response.body).not.toHaveProperty('projection');
+    expect(response.body).not.toHaveProperty('warnings');
+    expect(response.body).not.toHaveProperty('reconnectAttempts');
   });
 });
