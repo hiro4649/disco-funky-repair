@@ -1,6 +1,8 @@
 'use client';
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import { useAppKitAccount } from '@reown/appkit/react';
+import { useAppSelector } from '@/store/store';
+import apiClient from '../../utils/apiClient';
 
 interface ReferralContextType {
   referralCode: string | null;
@@ -35,83 +37,100 @@ export const ReferralProvider: React.FC<ReferralProviderProps> = ({ children }) 
   const [referralStats, setReferralStats] = useState<ReferralContextType['referralStats']>(null);
   const [isLoading, setIsLoading] = useState(false);
   const { address } = useAppKitAccount();
+  const { authState, user_id, wallet_address } = useAppSelector((state) => state.user);
+
+  const connectedWalletAddress = address?.toLowerCase() || null;
+  const authenticatedWalletAddress = wallet_address?.toLowerCase() || null;
+  const canUsePrivateReferralApi = Boolean(
+    authState &&
+    user_id &&
+    connectedWalletAddress &&
+    authenticatedWalletAddress &&
+    connectedWalletAddress === authenticatedWalletAddress,
+  );
+
+  const getPrivateReferralWalletAddress = () => {
+    if (!canUsePrivateReferralApi || !authenticatedWalletAddress) {
+      setReferralCode(null);
+      setReferralStats(null);
+      return null;
+    }
+
+    return authenticatedWalletAddress;
+  };
+
+  useEffect(() => {
+    if (!canUsePrivateReferralApi) {
+      setReferralCode(null);
+      setReferralStats(null);
+    }
+  }, [canUsePrivateReferralApi]);
 
   const generateReferralCode = async () => {
-    if (!address) {
-      console.error('No wallet address found');
+    const walletAddress = getPrivateReferralWalletAddress();
+    if (!walletAddress) {
+      console.warn('Referral code read skipped until wallet sign-in is complete');
       return;
     }
 
     setIsLoading(true);
     try {
-      const response = await fetch(`/api/referral/referral-code/${address}`);
-      if (response.ok) {
-        const data = await response.json();
-        console.log(data, 'referral response')
-        setReferralCode(data.referralCode);
-      } else {
-        console.error('Failed to generate referral code');
+      const response = await apiClient.get(`/referral/referral-code/${walletAddress}`);
+      setReferralCode(response.data.referralCode || null);
+    } catch (error: any) {
+      const status = error?.response?.status;
+      if (status === 401 || status === 403) {
+        setReferralCode(null);
       }
-    } catch (error) {
-      console.error('Error generating referral code:', error);
+      console.warn('Referral code read failed', { status: status || 'unknown' });
     } finally {
       setIsLoading(false);
     }
   };
 
   const getReferralStats = async () => {
-    if (!address) return;
+    const walletAddress = getPrivateReferralWalletAddress();
+    if (!walletAddress) return;
 
     setIsLoading(true);
     try {
-      const response = await fetch(`/api/referral/referral-stats/${address}`);
-      if (response.ok) {
-        const data = await response.json();
-        setReferralStats(data);
-      } else {
-        console.error('Failed to get referral stats');
+      const response = await apiClient.get(`/referral/referral-stats/${walletAddress}`);
+      setReferralStats(response.data);
+    } catch (error: any) {
+      const status = error?.response?.status;
+      if (status === 401 || status === 403) {
+        setReferralStats(null);
       }
-    } catch (error) {
-      console.error('Error getting referral stats:', error);
+      console.warn('Referral stats read failed', { status: status || 'unknown' });
     } finally {
       setIsLoading(false);
     }
   };
 
   const trackReferral = async (referralCode: string) => {
-    if (!address) {
-      console.log('No wallet address available for referral tracking');
+    const walletAddress = getPrivateReferralWalletAddress();
+    if (!walletAddress) {
+      alert('Please connect your wallet and sign in before tracking a referral.');
       return;
     }
 
-    console.log('Tracking referral:', { referralCode, address });
-
     try {
-      const response = await fetch('/api/referral/track-referral', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          walletAddress: address,
-          referralCode,
-        }),
+      const response = await apiClient.post('/referral/track-referral', {
+        walletAddress,
+        referralCode,
       });
-
-      const data = await response.json();
       
-      if (response.ok) {
-        console.log('Referral tracked successfully:', data);
-        // Show success message to user
+      if (response.status >= 200 && response.status < 300) {
         alert(`Referral tracked successfully! You and your referrer will earn rewards when you hold 10,000+ ${process.env.NEXT_PUBLIC_APP_NAME} tokens for 24+ hours.`);
-      } else {
-        console.error('Failed to track referral:', data);
-        // Show error message to user
-        alert(`Failed to track referral: ${data.error || 'Unknown error'}`);
       }
-    } catch (error) {
-      console.error('Error tracking referral:', error);
-      alert('Error tracking referral. Please try again.');
+    } catch (error: any) {
+      const status = error?.response?.status;
+      if (status === 401 || status === 403) {
+        alert('Please sign in again before tracking a referral.');
+      } else {
+        alert(`Failed to track referral: ${error?.response?.data?.error || 'Please try again.'}`);
+      }
+      console.warn('Referral tracking failed', { status: status || 'unknown' });
     }
   };
 
