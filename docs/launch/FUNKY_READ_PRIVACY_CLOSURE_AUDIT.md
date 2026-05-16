@@ -169,7 +169,8 @@ Observed results:
 - Backend build: success
 - Backend test: success, 30 test suites passed and 300 tests passed
 - Frontend build: success
-- `git diff --check`: to be run after this document is staged
+- `git diff --check`: success
+- `git diff --cached --check`: success
 
 ## Final note
 
