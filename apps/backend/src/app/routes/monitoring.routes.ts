@@ -19,7 +19,7 @@ const router = Router();
  * Returns WebSocket and QuickNode RPC status for daily batch fallback admin page.
  * When WebSocket or RPC is down, admin can run daily batch manually.
  */
-router.get('/realtime-status', (req: Request, res: Response) => {
+router.get('/realtime-status', AuthAdmin, (req: Request, res: Response) => {
     try {
         const wsStatus = getEventListenerStatus();
         const health = tokenBalanceService.getHealthStatus();
@@ -77,7 +77,7 @@ router.post('/run-daily-batch', AuthAdmin, async (req: Request, res: Response) =
  * Returns QuickNode RPC service health and credit usage
  * Useful for monitoring dashboard and alerts
  */
-router.get('/quicknode-status', async (req: Request, res: Response) => {
+router.get('/quicknode-status', AuthAdmin, async (req: Request, res: Response) => {
     try {
         const status = tokenBalanceService.getHealthStatus();
 
@@ -144,7 +144,7 @@ router.get('/quicknode-status', async (req: Request, res: Response) => {
  *
  * Simple health check endpoint for uptime monitoring
  */
-router.get('/service-health', (req: Request, res: Response) => {
+router.get('/service-health', AuthAdmin, (req: Request, res: Response) => {
     const status = tokenBalanceService.getHealthStatus();
 
     res.json({
@@ -170,32 +170,17 @@ router.get('/healthcheck', async (req: Request, res: Response) => {
         const status = tokenBalanceService.getHealthStatus();
         const isHealthy = status.quickNode.available || status.etherscan.available;
 
-        if (isHealthy) {
-            res.status(200).json({
-                status: 'healthy',
-                timestamp: new Date().toISOString(),
-                services: {
-                    quickNode: status.quickNode.available ? 'operational' : 'fallback',
-                    etherscan: 'operational'
-                }
-            });
-        } else {
-            res.status(503).json({
-                status: 'degraded',
-                timestamp: new Date().toISOString(),
-                services: {
-                    quickNode: 'unavailable',
-                    etherscan: 'operational'
-                },
-                message: 'Service is in degraded state'
-            });
-        }
+        res.status(isHealthy ? 200 : 503).json({
+            status: isHealthy ? 'healthy' : 'degraded',
+            timestamp: new Date().toISOString(),
+            healthy: isHealthy
+        });
     } catch (error) {
         console.error('Healthcheck error:', error);
         res.status(503).json({
             status: 'error',
             timestamp: new Date().toISOString(),
-            error: 'Healthcheck failed'
+            healthy: false
         });
     }
 });

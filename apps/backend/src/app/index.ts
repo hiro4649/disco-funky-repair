@@ -63,11 +63,11 @@ app.use(bodyParser.urlencoded({ limit: requestBodyLimit, extended: true }));
 // Initialize passport
 app.use(passport.initialize());
 
-// Static file serving - use project root, not dist folder
-// This ensures files are served from the same location where multer saves them
+// Static file serving is limited to public image assets.
+// Multer may store non-image files under uploads; do not expose the root directory.
 const uploadsPath = path.resolve(process.cwd(), 'uploads');
 const imagesPath = path.resolve(uploadsPath, 'images');
-console.log('📂 Static files served from:', uploadsPath);
+console.log('Static image files served from:', imagesPath);
 
 // Ensure upload directories exist
 if (!fs.existsSync(imagesPath)) {
@@ -75,8 +75,9 @@ if (!fs.existsSync(imagesPath)) {
     console.log('📁 Created uploads/images directory');
 }
 
-app.use(express.static(uploadsPath));
-app.use('/api/icons', express.static(uploadsPath));
+app.use('/uploads/images', express.static(imagesPath));
+app.use('/api/icons/images', express.static(imagesPath));
+app.use('/api/icons', express.static(imagesPath));
 
 // API routes
 app.use('/api', Router);
