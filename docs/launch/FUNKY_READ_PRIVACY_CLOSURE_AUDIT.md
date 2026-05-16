@@ -6,7 +6,8 @@
 - Confirmed base commit: `29adc25`
 - Repository scope: GitHub source tree on `origin/main`, plus P1-READ-07 branch changes
 - Result: read/privacy P0 closure is `PASS` by static source audit; P1 public catalog field policy is documented and regression-tested by P1-READ-07.
-- Code changes in this PR: limited public catalog field minimization and regression tests
+- P1-READ-07 code changes: limited public catalog field minimization and regression tests.
+- P2-READ-08 update: docs-only public reference/status documentation cleanup.
 - Staging reflection: not performed because the staging domain is still undecided
 - Tx verification: not performed because BNB/tBNB is not funded
 - Production ready: no. This audit is not production launch approval.
@@ -101,7 +102,7 @@ P2 cleanup candidates:
 - Public `/fee/current` is minimal and appears intended as tokenomics information; it is now covered by `docs/launch/PUBLIC_CATALOG_FIELD_POLICY.md`.
 - Public NFT detail can expose `ipfsCid`; this remains documented as an allowed public display/mint field.
 - Public Trial NFT templates appear intended as public campaign/catalog data and now have field-minimization tests.
-- Public operational/status reads such as lottery update status need product confirmation that no sensitive operational fields are returned.
+- Public operational/status reads such as lottery update status are documented in `docs/launch/PUBLIC_REFERENCE_STATUS_FIELD_POLICY.md`; product confirmation is still needed for whether the public boolean should remain public.
 
 ## UNKNOWN / BLOCKED
 
@@ -109,7 +110,7 @@ Status: `UNKNOWN` / `BLOCKED`
 
 - Runtime proof is `BLOCKED`: staging domain is undecided, so this PR did not pull/restart staging.
 - Tx proof is `BLOCKED`: BNB/tBNB is not funded, so tx-related behavior remains unverified.
-- Public lottery reference/status intent remains partly `UNKNOWN`: source code shows public endpoints, but product-approved public fields for lottery reference/status data are not fully formalized here.
+- Public lottery reference/status intent remains partly `UNKNOWN`: source code shows a minimal public `isUpdating` boolean, but product approval for keeping that boolean public is still needed.
 - Staging browser proof for frontend auth gates is `BLOCKED` until HTTPS staging domain migration is completed.
 
 ## Closure confirmed
@@ -129,18 +130,22 @@ The following read/privacy hardening items remain closed by this static audit:
 
 ## Remaining items
 
-- P2: public lottery/reference/status route documentation and field policy cleanup.
+- P2: public lottery/reference/status product approval and static image/icon route narrowing remain after documentation cleanup.
 - BLOCKED: staging runtime proof and tx proof.
 
 ## Next PR candidates
 
 Maximum three follow-up PRs:
 
-1. `P2-READ-08 Public reference/status documentation cleanup`
-   - Target: lottery status/reference reads, fee public docs, healthcheck docs
-   - Goal: document intended public fields and prevent future confusion between health/catalog/read privacy surfaces.
+1. `P2-READ-09 Static asset route narrowing`
+   - Target: `/uploads/images`, `/api/icons/images`, `/api/icons`
+   - Goal: split icons from generic uploaded images or add a documented extension allowlist for public static serving.
 
-2. `STAGE-READ-09 Runtime read/privacy smoke after HTTPS staging domain`
+2. `P2-READ-10 Public status response regression tests`
+   - Target: `GET /api/lottery/update-status`, `GET /api/fee/current`, public healthcheck
+   - Goal: add explicit tests that lock the minimal response shapes.
+
+3. `STAGE-READ-11 Runtime read/privacy smoke after HTTPS staging domain`
    - Target: AuthAdmin reads, owner-gated reads, public catalog fields
    - Goal: collect non-secret staging evidence after the staging HTTPS domain is decided.
 
