@@ -105,6 +105,16 @@ This follow-up PR addresses the four source-level runtime No-Go items above with
 
 This follow-up does not send txs, does not deploy contracts, does not inspect real secret-manager values, and does not grant production launch approval.
 
+## FUNKY-AUDIT-06 Follow-Up
+
+This follow-up PR addresses the remaining admin Excel upload limit note without changing business logic:
+
+- `apps/backend/src/app/middlewares/excelMulter.ts` caps Excel metadata upload at `EXCEL_UPLOAD_MAX_BYTES = 10 * 1024 * 1024`.
+- The previous `1000 * 1024 * 1024` implementation is removed so the comment and runtime limit match.
+- Static tests assert the Excel upload limit stays at 10MB and that `/admin/nft/upload/metadata` keeps `AuthAdmin` before `uploadExcel`.
+
+This follow-up does not send txs, does not deploy contracts, does not inspect real secret-manager values, and does not grant production launch approval.
+
 ## P1 Candidates
 
 | Candidate | Why |
