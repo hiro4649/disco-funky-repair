@@ -49,9 +49,9 @@ const OfficalDiscoNft = () => {
 
       const provider = new ethers.JsonRpcProvider(rpcUrl);
       const contract = new Contract(NFT_CONTRACT_ADDRESS, NFT_ABI, provider);
-      const ethPrice: bigint = await contract.getPrice();
+      const bnbUsdPrice: bigint = await contract.getPrice();
       const mintPrice: bigint = await contract.mintUsdPrice();
-      setMintFee(Number((Number(mintPrice) / Number(ethPrice)).toFixed(4)));
+      setMintFee(Number((Number(mintPrice) / Number(bnbUsdPrice)).toFixed(4)));
       const nextTokenIdBig = await contract.nextTokenId();
       setNextTokenId(Number(nextTokenIdBig));
     } catch (error) {
@@ -179,7 +179,7 @@ const OfficalDiscoNft = () => {
 
   const decrement = () => {
     setNftCount((prev) => {
-      if (prev > 0) {
+      if (prev > 1) {
         const updatedCount = prev - 1;
         // conditionMintStatus();
         return updatedCount; // Convert back to string
@@ -191,9 +191,8 @@ const OfficalDiscoNft = () => {
 
   const increment = () => {
     setNftCount((prev) => {
-      const updatedCount = prev + 1;
-      // conditionMintStatus();
-      return updatedCount;
+      // Public FunkyNFT.mint() mints exactly one NFT per transaction.
+      return prev;
     });
   };
 
@@ -230,10 +229,11 @@ const OfficalDiscoNft = () => {
       const ethersProvider = new BrowserProvider(walletProvider as Eip1193Provider);
       const signer = await ethersProvider.getSigner();
       const contract = new Contract(NFT_CONTRACT_ADDRESS, NFT_ABI, signer);
-      const ethPrice: bigint = await contract.getPrice();
+      const bnbUsdPrice: bigint = await contract.getPrice();
       const mintPrice: bigint = await contract.mintUsdPrice();
+      const mintPriceInBnb = Number(mintPrice) / Number(bnbUsdPrice);
 
-      if ((Number(mintPrice) / Number(ethPrice)) > (Number(balance) || 0)) {
+      if (mintPriceInBnb > (Number(balance) || 0)) {
         toast(`Insufficient balance`, {
           style: {
             borderRadius: '10px',
@@ -244,24 +244,20 @@ const OfficalDiscoNft = () => {
         return;
       }
 
-      // Mint NFTs one by one
-      // Get metadata URI from database
-      const nftResponse = await apiClient.get(`/nft/${nextTokenId}`);
-      if (!nftResponse.data.success) {
-        throw new Error(nftResponse.data.message);
+      let nftName = `NFT #${nextTokenId}`;
+      try {
+        const nftResponse = await apiClient.get(`/nft/${nextTokenId}`);
+        if (nftResponse.data.success && nftResponse.data.data?.name) {
+          nftName = nftResponse.data.data.name;
+        }
+      } catch (metadataError) {
+        console.warn('NFT display metadata lookup failed before mint', metadataError);
       }
 
-      const nftData = nftResponse.data.data;
-      const metadataUri = nftData.ipfsCid;
+      console.log(`Minting NFT ${nextTokenId} with FunkyNFT.mint()`);
 
-      if (!metadataUri) {
-        throw new Error(`No metadata URI found for NFT ${nextTokenId}`);
-      }
-
-      console.log(`Minting NFT ${nextTokenId} with metadata: ${metadataUri}`);
-
-      const tx = await contract.mint(address, metadataUri, {
-        value: ethers.parseEther((Number(mintPrice) / Number(ethPrice) + 0.0001).toFixed(8))
+      const tx = await contract.mint({
+        value: ethers.parseEther((mintPriceInBnb + 0.0001).toFixed(8))
       });
 
       console.log(`Transaction hash for NFT ${nextTokenId}:`, tx.hash);
@@ -290,7 +286,7 @@ const OfficalDiscoNft = () => {
       // Backend ownership updates must not be driven by frontend body fields.
 
       // Show success toast with real NFT name
-      toast(`Successfully minted ${nftData.name}!`, {
+      toast(`Successfully minted ${nftName}!`, {
         style: {
           borderRadius: '10px',
           background: 'var(--color-secondary)',
@@ -322,7 +318,7 @@ const OfficalDiscoNft = () => {
       } else if (error.message?.includes("underpriced") || error.message?.includes("replacement fee too low")) {
         message = "Gas price too low. Try increasing gas fees.";
       } else if (error.message?.includes("invalid argument")) {
-        message = "Invalid input parameters sent to contract. Check NFT metadata or wallet address.";
+        message = "Invalid mint transaction parameters. Check wallet and contract configuration.";
       } else if (error.message?.includes("CALL_EXCEPTION")) {
         message = "Smart contract call failed — please contact support or check the contract.";
       } else {
