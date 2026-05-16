@@ -8,6 +8,7 @@
 - Result: read/privacy P0 closure is `PASS` by static source audit; P1 public catalog field policy is documented and regression-tested by P1-READ-07.
 - P1-READ-07 code changes: limited public catalog field minimization and regression tests.
 - P2-READ-08 update: docs-only public reference/status documentation cleanup.
+- P2-READ-10 update: public healthcheck, fee current, and lottery update-status response shapes are regression-tested.
 - Staging reflection: not performed because the staging domain is still undecided
 - Tx verification: not performed because BNB/tBNB is not funded
 - Production ready: no. This audit is not production launch approval.
@@ -102,7 +103,7 @@ P2 cleanup candidates:
 - Public `/fee/current` is minimal and appears intended as tokenomics information; it is now covered by `docs/launch/PUBLIC_CATALOG_FIELD_POLICY.md`.
 - Public NFT detail can expose `ipfsCid`; this remains documented as an allowed public display/mint field.
 - Public Trial NFT templates appear intended as public campaign/catalog data and now have field-minimization tests.
-- Public operational/status reads such as lottery update status are documented in `docs/launch/PUBLIC_REFERENCE_STATUS_FIELD_POLICY.md`; product confirmation is still needed for whether the public boolean should remain public.
+- Public operational/status reads such as lottery update status are documented in `docs/launch/PUBLIC_REFERENCE_STATUS_FIELD_POLICY.md`; product confirmation is still needed for whether the public boolean should remain public, and the minimal response shape is regression-tested by P2-READ-10.
 - Public static image/icon routes are narrowed by P2-READ-09: `/uploads/images`, `/api/icons/images`, and `/api/icons` point only to `uploads/images` and reject non-image filename extensions before `express.static`.
 
 ## UNKNOWN / BLOCKED
@@ -138,15 +139,11 @@ The following read/privacy hardening items remain closed by this static audit:
 
 Maximum three follow-up PRs:
 
-1. `P2-READ-10 Public status response regression tests`
-   - Target: `GET /api/lottery/update-status`, `GET /api/fee/current`, public healthcheck
-   - Goal: add explicit tests that lock the minimal response shapes.
-
-2. `STAGE-READ-11 Runtime read/privacy smoke after HTTPS staging domain`
+1. `STAGE-READ-11 Runtime read/privacy smoke after HTTPS staging domain`
    - Target: AuthAdmin reads, owner-gated reads, public catalog fields
    - Goal: collect non-secret staging evidence after the staging HTTPS domain is decided.
 
-3. Optional future static asset directory split
+2. Optional future static asset directory split
    - Target: `/api/icons`, `/api/icons/images`, `/uploads/images`
    - Goal: split icons from generic uploaded images if product no longer wants these aliases to share one public image directory.
 
@@ -162,7 +159,7 @@ git diff --check
 Observed results:
 
 - Backend build: success
-- Backend test: success, 32 test suites passed and 312 tests passed
+- Backend test: success, 32 test suites passed and 315 tests passed
 - Frontend build: success
 - `git diff --check`: success
 - `git diff --cached --check`: success

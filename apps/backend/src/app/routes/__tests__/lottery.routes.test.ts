@@ -225,4 +225,30 @@ describe('lottery user routes authorization', () => {
       })
     }));
   });
+
+  it('keeps public lottery update status limited to the update boolean', async () => {
+    const response = await request(createApp()).get('/lottery/update-status');
+
+    expect(response.status).toBe(200);
+    expect(response.body).toEqual({
+      success: true,
+      isUpdating: false
+    });
+    expect(Object.keys(response.body).sort()).toEqual(['isUpdating', 'success']);
+    expect(response.body).not.toHaveProperty('userId');
+    expect(response.body).not.toHaveProperty('walletAddress');
+    expect(response.body).not.toHaveProperty('wallet_address');
+    expect(response.body).not.toHaveProperty('ticket');
+    expect(response.body).not.toHaveProperty('tickets');
+    expect(response.body).not.toHaveProperty('claimTickets');
+    expect(response.body).not.toHaveProperty('lotteryTickets');
+    expect(response.body).not.toHaveProperty('admin');
+    expect(response.body).not.toHaveProperty('metadata');
+    expect(response.body).not.toHaveProperty('quickNode');
+    expect(response.body).not.toHaveProperty('failureCount');
+    expect(response.body).not.toHaveProperty('history');
+    expect(mockPrisma.user.findUnique).not.toHaveBeenCalled();
+    expect(mockPrisma.user.findMany).not.toHaveBeenCalled();
+    expect(mockPrisma.lotteryTickets.findMany).not.toHaveBeenCalled();
+  });
 });

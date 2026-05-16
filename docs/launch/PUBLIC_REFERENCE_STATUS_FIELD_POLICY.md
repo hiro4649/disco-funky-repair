@@ -2,12 +2,13 @@
 
 ## Status
 
-- Scope: P2-READ-08 public reference/status documentation cleanup plus P2-READ-09 static asset route narrowing
-- Confirmed base commit: `c1cd240`
+- Scope: P2-READ-08 public reference/status documentation cleanup, P2-READ-09 static asset route narrowing, and P2-READ-10 public status response regression tests
+- Confirmed base commit: `f7db30f`
 - Staging reflection: not performed because the staging domain is still undecided.
 - Tx verification: not performed because BNB/tBNB is not funded.
 - Production ready: no. This document is not production launch approval.
 - P2-READ-09 code changes: backend static image/icon routes are limited to `uploads/images` through an image filename extension allowlist.
+- P2-READ-10 code changes: backend route tests lock public healthcheck, fee current, and lottery update-status response shapes.
 
 ## Purpose
 
@@ -33,9 +34,9 @@ git diff --check
 
 | Route or surface | Public intent | Current status | Notes |
 | --- | --- | --- | --- |
-| `GET /api/monitoring/healthcheck` | External uptime check | `PASS` | Returns only `status`, `timestamp`, `healthy`. Detailed monitoring routes remain `AuthAdmin`. |
-| `GET /api/fee/current` | Public tokenomics reference | `PASS` | Returns current fee percentage/recipient and last-updated timestamps only. Fee history remains `AuthAdmin`. |
-| `GET /api/lottery/update-status` | Frontend polling of ticket distribution/update status | `PASS` for fields, `P2` for product approval | Returns only `success` and `isUpdating`. It exposes no user data, wallet data, ticket records, or operational provider details. Product owner should confirm this boolean should stay public. |
+| `GET /api/monitoring/healthcheck` | External uptime check | `PASS` | Returns only `status`, `timestamp`, `healthy`. Detailed monitoring routes remain `AuthAdmin`. Regression-tested by P2-READ-10. |
+| `GET /api/fee/current` | Public tokenomics reference | `PASS` | Returns current fee percentage/recipient and last-updated timestamps only. Fee history remains `AuthAdmin`. Regression-tested by P2-READ-10. |
+| `GET /api/lottery/update-status` | Frontend polling of ticket distribution/update status | `PASS` for fields, `P2` for product approval | Returns only `success` and `isUpdating`. It exposes no user data, wallet data, ticket records, or operational provider details. Regression-tested by P2-READ-10. Product owner should confirm this boolean should stay public. |
 | `GET /api/airdrop/prize` | Public Prize catalog | `PASS` | Covered by `PUBLIC_CATALOG_FIELD_POLICY.md` and backend regression tests. |
 | `GET /api/nfts/mintable` | Public NFT mintable catalog | `PASS` | Covered by `PUBLIC_CATALOG_FIELD_POLICY.md` and existing backend tests. |
 | `GET /api/nft/:id` | Public NFT mint/detail lookup | `PASS` | Uses internal `mintStatus` / `ipfsUploaded` filtering but does not return them. Covered by `PUBLIC_CATALOG_FIELD_POLICY.md`. |
@@ -151,9 +152,9 @@ Current assessment: `PASS` at source/test level for route narrowing. Source revi
 
 ## PASS
 
-- Public healthcheck field policy is minimal.
-- Public fee current response is minimal.
-- Public lottery update status returns only `success` and `isUpdating`.
+- Public healthcheck field policy is minimal and regression-tested.
+- Public fee current response is minimal and regression-tested.
+- Public lottery update status returns only `success` and `isUpdating`, and that shape is regression-tested.
 - Public Prize catalog field policy is documented and tested.
 - Public NFT mintable/detail field policy is documented.
 - Public Trial NFT template response is minimized and tested.
@@ -182,17 +183,14 @@ Current assessment: `PASS` at source/test level for route narrowing. Source revi
 1. Decide whether the public lottery update boolean is acceptable as public product behavior.
 2. Decide whether `/api/icons` should continue to alias the same directory as `/uploads/images`.
 3. Confirm operational ownership of the public image directory.
-4. Confirm whether public field policy tests should be expanded to NFT detail and fee current in a future code PR, even though current static review matches the documented policy.
+4. Confirm whether public field policy tests should be expanded to NFT detail in a future code PR, even though current static review matches the documented policy.
 
 ## Next Small PR Candidates
 
-1. `P2-READ-10 Public status response regression tests`
-   - Goal: add explicit tests for `GET /api/lottery/update-status`, `GET /api/fee/current`, and public healthcheck response fields.
-
-2. `STAGE-READ-11 Public reference/status runtime smoke`
+1. `STAGE-READ-11 Public reference/status runtime smoke`
    - Goal: after HTTPS staging domain migration, capture non-secret runtime evidence for public reference/status field shapes.
 
-3. Optional future static asset split
+2. Optional future static asset split
    - Goal: split icons into a separate directory if product decides `/api/icons` should no longer alias `/uploads/images`.
 
 ## Final Note
