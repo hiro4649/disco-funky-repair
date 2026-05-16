@@ -1,10 +1,11 @@
 # Staging No-Tx Evidence Report
 
-Status: FUNKY-STAGE-08 no-tx staging evidence consolidation.
+Status: P1-04 refreshed no-tx staging evidence after PR #49 Crash cleanup.
 
 This report consolidates staging checks that can be completed before BNB/tBNB funding. It records only non-secret status and references. It does not include raw `.env` files, private keys, API keys, JWTs, DB connection strings, RPC URLs with keys, PM2 raw logs, nginx full configs, DB dumps, or secret-manager output.
 
 Repeatable smoke steps and route expectations are documented in `docs/launch/STAGING_NO_TX_SMOKE_RUNBOOK.md`.
+Crash-specific post-cleanup evidence is summarized in `docs/launch/STAGING_CRASH_NOT_INSTALLED_EVIDENCE.md`.
 
 This report is not a production launch approval.
 
@@ -12,13 +13,13 @@ This report is not a production launch approval.
 
 Repository: `hiro4649/disco-funky-repair`
 
-Checked commit for this consolidation:
+Checked main commit for this refresh:
 
-- `69a41252fae51a94a759e0600d4396bf5630c6d1`
-- Short SHA: `69a4125`
-- Subject: `fix: add staging frontend message keys (#46)`
+- `6d427580f01bb9a65631f6a71295451515f5d570`
+- Short SHA: `6d42758`
+- Subject: `P1-03 Clarify Crash game no-tx smoke method (#49)`
 
-Human operators must confirm the running staging server is on this same commit, or record the exact running commit in the external staging evidence store before continuing to tx-based checks.
+This commit includes PR #49. Human operators must confirm the running staging server is on this same commit, or record the exact running commit in the external staging evidence store before continuing to tx-based checks.
 
 ## 2. Staging Server Configuration
 
@@ -62,7 +63,7 @@ The following no-tx checks are recorded as completed from the current staging ev
 
 ## 3A. No-Tx Smoke Route Evidence
 
-The current no-tx smoke verified these route outcomes without cookies, bearer tokens, or funded blockchain transactions:
+The current no-tx smoke route expectations after PR #49 are:
 
 | Target | Method and path | Expected | Observed |
 | --- | --- | --- | --- |
@@ -73,7 +74,7 @@ The current no-tx smoke verified these route outcomes without cookies, bearer to
 | all-user ticket distribution | `POST /api/alluser/distribute/ticket` | `401 Unauthenticated` | PASS |
 | admin NFTs | `GET /api/admin/nfts` | `401 Unauthenticated` | PASS |
 | admin ticket distribution | `GET /api/admin/ticket-distribution` | `401 Unauthenticated` | PASS |
-| Crash game API disabled stub | `GET /api/crash/games` | `410 FEATURE_DISABLED` | RECHECK REQUIRED if the only saved evidence is `POST /api/crash/games` returning `404` |
+| Crash game API disabled stub after PR #49 | `GET /api/crash/games` | `410 FEATURE_DISABLED` | RECHECK REQUIRED on staging after deploying `6d42758` |
 
 Status interpretation:
 
@@ -83,6 +84,13 @@ Status interpretation:
 - `404 Not Found` is not protection evidence for these routes. It usually means wrong path, stripped `/api` prefix, wrong HTTP method, wrong hostname, old source, or missing deploy.
 - Crash game method clarification: Crash gameplay is intentionally not installed, but the smoke check must call `GET /api/crash/games` and expect `410 FEATURE_DISABLED`. `POST /api/crash/games` returning `404` is a method mismatch and must not be recorded as a protection PASS. `/crash/games` returning `404` is acceptable only as old non-API path absence evidence.
 - Crash absence checks still apply: `initCrashServer` must be absent from startup/source, `/crashx` must not be registered, frontend must have no Fan Games/Crash navigation or Crash component source, and Crash DB update paths must be unreachable.
+
+Source checks completed at `6d42758`:
+
+- `rg -n "/crashx|initCrashServer|components\\CrashGame|components/CrashGame|crashGame.controller" apps/backend/src apps/frontend/src` returned no matches.
+- `rg -n "crashGameRoutes|crashGame\\.routes|FEATURE_DISABLED" apps/backend/src/app/routes/crashGame.routes.ts apps/backend/src/app/routes/routes.ts` returned only the fixed disabled stub and its route mount.
+
+Staging operators must refresh the external no-tx evidence after deploying `6d42758`; do not reuse prior `POST /api/crash/games` `404` evidence.
 
 ## 4. No-Tx Smoke Scope Confirmed
 
