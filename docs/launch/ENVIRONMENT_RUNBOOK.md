@@ -50,6 +50,8 @@ Only non-secret public values may use `NEXT_PUBLIC_`.
 
 Frontend production build rejects configured unsafe public values such as localhost/example/dummy/testnet hosts, zero contract addresses, invalid URLs, and any `NEXT_PUBLIC_*PRIVATE_KEY` / `NEXT_PUBLIC_*SECRET` style env. If required public env is missing, the build remains safe and API/on-chain dependent features stay disabled until deployment config is fixed. Missing app metadata uses a non-local disabled sentinel URL only so static metadata generation does not point to localhost.
 
+Production and default frontend validation also reject BSC testnet markers such as `prebsc`, `bsc-testnet`, and `bnb-testnet`, plus Ethereum mainnet-looking RPC URLs such as `eth.llamarpc.com` or `mainnet.infura.io`.
+
 ## Frontend Staging Public Env
 
 Next.js build runs with `NODE_ENV=production`, so staging must opt in explicitly:
@@ -63,6 +65,8 @@ Staging mode allows BSC testnet browser values only where they are expected:
 - `NEXT_PUBLIC_RPC_URL` may point to a public BSC testnet RPC.
 - `NEXT_PUBLIC_ALCHEMY_RPC_URL` may point to a public BSC testnet RPC and, if set, is used before `NEXT_PUBLIC_RPC_URL`.
 - `NEXT_PUBLIC_ETHERSCAN_EXPLORER` must be `https://testnet.bscscan.com`.
+
+Staging RPC URL validation is static. It allows only URLs that clearly look like BSC testnet, such as `prebsc`, `bsc-testnet`, or `bnb-testnet` hosts/paths, and rejects BSC mainnet-looking, Ethereum mainnet, Sepolia, Goerli, localhost, dummy, example, empty, and invalid URLs. This does not cryptographically prove chain ID; humans must still confirm the configured RPC reports BSC testnet chain ID `97` during STAGE verification.
 
 Staging mode still rejects unsafe browser public values:
 
@@ -94,7 +98,7 @@ Never use these in production backend or frontend values:
 - zero private key
 - known local test private keys
 - BSC testnet `CHAIN_ID=97`
-- BSC testnet, Sepolia, Goerli, dummy, example, or localhost RPC/explorer URLs
+- BSC testnet markers such as `prebsc`, `bsc-testnet`, `bnb-testnet`, Sepolia, Goerli, Ethereum mainnet, dummy, example, or localhost RPC/explorer URLs
 - Ethereum mainnet explorer fallback `https://api.etherscan.io/api?`
 - raw explorer/RPC request URLs in logs when they include query strings or API keys
 
