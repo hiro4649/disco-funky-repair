@@ -1,6 +1,6 @@
 # Staging No-Tx Smoke Runbook
 
-Status: P1-02 staging no-tx smoke documentation.
+Status: P1-04 staging no-tx smoke documentation refreshed after PR #49.
 
 This runbook covers checks that can be repeated before BNB/tBNB funding. It does not send BSC testnet transactions and does not approve production launch.
 
@@ -9,6 +9,7 @@ Do not paste, commit, or store raw `.env` files, private keys, API keys, JWTs, c
 ## 1. Preconditions
 
 - staging backend and frontend are running from the GitHub clone.
+- staging source is at or after main commit `6d42758` (`P1-03 Clarify Crash game no-tx smoke method (#49)`).
 - PM2 process names include `staging`.
 - nginx is active.
 - staging DB migration has already been applied.
@@ -80,6 +81,7 @@ curl -sS -o /tmp/no-tx-response.json -w "%{http_code}\n" -X POST "<staging-api-b
 curl -sS -o /tmp/no-tx-response.json -w "%{http_code}\n" -X POST "<staging-api-base>/api/alluser/distribute/ticket" -H "Content-Type: application/json" --data '{}'
 curl -sS -o /tmp/no-tx-response.json -w "%{http_code}\n" -X GET "<staging-api-base>/api/admin/nfts"
 curl -sS -o /tmp/no-tx-response.json -w "%{http_code}\n" -X GET "<staging-api-base>/api/admin/ticket-distribution"
+curl -sS -o /tmp/no-tx-response.json -w "%{http_code}\n" -X GET "<staging-api-base>/api/crash/games"
 rm -f /tmp/no-tx-response.json
 ```
 
@@ -94,6 +96,7 @@ Expected results:
 | all-user ticket distribution | `POST /api/alluser/distribute/ticket` | `401 Unauthenticated` without admin credentials. |
 | admin NFT listing | `GET /api/admin/nfts` | `401 Unauthenticated` without admin credentials. |
 | admin ticket distribution listing | `GET /api/admin/ticket-distribution` | `401 Unauthenticated` without admin credentials. |
+| Crash game disabled stub | `GET /api/crash/games` | `410` with `FEATURE_DISABLED`. |
 
 Confirmed staging no-tx evidence has observed:
 
@@ -103,6 +106,7 @@ Confirmed staging no-tx evidence has observed:
 - all-user ticket distribution: `401 Unauthenticated`.
 - admin NFTs: `401 Unauthenticated`.
 - admin ticket distribution: `401 Unauthenticated`.
+- Crash game disabled stub after PR #49: re-run required on staging after deploying main commit `6d42758`; do not use old `POST /api/crash/games` `404` evidence.
 
 ## 4A. Crash Game Intentionally Not Installed
 
@@ -134,6 +138,7 @@ Suggested static checks from the repository root:
 rg -n "initCrashServer" apps/backend/src
 rg -n "initCrashServer\\(" apps/backend/src
 rg -n "io\\.of\\('/crashx'\\)|io\\.of\\(\"/crashx\"\\)" apps/backend/src/app/index.ts
+rg -n "/crashx|initCrashServer|components\\\\CrashGame|components/CrashGame|crashGame.controller" apps/backend/src apps/frontend/src
 rg -n "crashGameRoutes|crashGame\\.routes" apps/backend/src/app/routes apps/backend/src/app/index.ts
 cat 'apps/frontend/src/app/(home)/fan-games/page.tsx'
 rg -n "Fan Games|fan-games" apps/frontend/src/components/Sidebar/index.tsx

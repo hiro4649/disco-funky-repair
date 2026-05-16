@@ -370,6 +370,7 @@ No-Go if wallet address alone can issue JWT.
 Use staging-only users and admin accounts.
 
 For no-tx route checks before BNB/tBNB funding, follow `docs/launch/STAGING_NO_TX_SMOKE_RUNBOOK.md`.
+For PR #49 Crash cleanup evidence, also follow `docs/launch/STAGING_CRASH_NOT_INSTALLED_EVIDENCE.md` and confirm the running staging source is at or after main commit `6d42758`.
 
 For each P0 mutation group, run three checks:
 
