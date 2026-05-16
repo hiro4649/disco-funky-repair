@@ -11,6 +11,8 @@
 
 Public catalog and public reference routes must return only display or user-facing claim fields. Admin-only data, internal inventory, reservation state, transfer configuration, transaction hashes, audit actors, user-specific ownership state, and secret-like values must stay behind `AuthAdmin` or authenticated owner routes.
 
+Public reference/status routes and static image/icon serving are documented separately in `docs/launch/PUBLIC_REFERENCE_STATUS_FIELD_POLICY.md`.
+
 ## Public Routes
 
 ### `GET /api/airdrop/prize`
