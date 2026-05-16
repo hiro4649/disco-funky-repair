@@ -40,6 +40,7 @@ Only non-secret public values may use `NEXT_PUBLIC_`.
 | `NEXT_PUBLIC_API_URL` | no | Public backend API origin. Must not be localhost/example. |
 | `NEXT_PUBLIC_APP_URL` | no | Public frontend origin. Must not be localhost/example. |
 | `NEXT_PUBLIC_APP_NAME` | no | Display token/app name. |
+| `NEXT_PUBLIC_APP_ENV` | no | Optional frontend validation mode. Leave unset or set to `production` for production. Set to `staging` only for staging. |
 | `NEXT_PUBLIC_RPC_URL` | no | Required public BSC mainnet RPC endpoint for read-only browser calls. |
 | `NEXT_PUBLIC_ALCHEMY_RPC_URL` | no | Optional public BSC RPC override. If set, it is used before `NEXT_PUBLIC_RPC_URL` and must pass the same production validation. If unset, `NEXT_PUBLIC_RPC_URL` is required and used. |
 | `NEXT_PUBLIC_TOKEN_ADDRESS` | no | FUNKY token contract address. |
@@ -48,6 +49,29 @@ Only non-secret public values may use `NEXT_PUBLIC_`.
 | `NEXT_PUBLIC_ETHERSCAN_EXPLORER` | no | Optional public explorer base URL. |
 
 Frontend production build rejects configured unsafe public values such as localhost/example/dummy/testnet hosts, zero contract addresses, invalid URLs, and any `NEXT_PUBLIC_*PRIVATE_KEY` / `NEXT_PUBLIC_*SECRET` style env. If required public env is missing, the build remains safe and API/on-chain dependent features stay disabled until deployment config is fixed. Missing app metadata uses a non-local disabled sentinel URL only so static metadata generation does not point to localhost.
+
+## Frontend Staging Public Env
+
+Next.js build runs with `NODE_ENV=production`, so staging must opt in explicitly:
+
+- Set `NEXT_PUBLIC_APP_ENV=staging` for staging frontend builds.
+- Leave `NEXT_PUBLIC_APP_ENV` unset or set it to `production` for production builds.
+- Any other value is invalid when `NODE_ENV=production`.
+
+Staging mode allows BSC testnet browser values only where they are expected:
+
+- `NEXT_PUBLIC_RPC_URL` may point to a public BSC testnet RPC.
+- `NEXT_PUBLIC_ALCHEMY_RPC_URL` may point to a public BSC testnet RPC and, if set, is used before `NEXT_PUBLIC_RPC_URL`.
+- `NEXT_PUBLIC_ETHERSCAN_EXPLORER` must be `https://testnet.bscscan.com`.
+
+Staging mode still rejects unsafe browser public values:
+
+- `NEXT_PUBLIC_API_URL` must be a public staging API URL, not localhost or `127.0.0.1`.
+- `NEXT_PUBLIC_SOCKET_API_URL` must be a public staging Socket.IO/API URL when set, not localhost or `127.0.0.1`.
+- `NEXT_PUBLIC_APP_URL` must be a public staging frontend URL, not localhost or `127.0.0.1`.
+- `NEXT_PUBLIC_*PRIVATE_KEY`, `NEXT_PUBLIC_*SECRET`, `NEXT_PUBLIC_*ADMIN_KEY`, `NEXT_PUBLIC_*OWNER_KEY`, `NEXT_PUBLIC_*RELAYER_KEY`, `NEXT_PUBLIC_*HOT_WALLET`, and `NEXT_PUBLIC_*JWT` are forbidden in every mode.
+
+Staging public URLs should use the staging domain or a temporary public IP URL approved for staging. Do not use browser-facing `NEXT_PUBLIC_*` values that point to the server's loopback address.
 
 ## Forbidden Env And Fallbacks
 
