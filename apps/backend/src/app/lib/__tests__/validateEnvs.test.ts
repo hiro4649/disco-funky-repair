@@ -28,6 +28,19 @@ const validProductionEnv = (): NodeJS.ProcessEnv => ({
   TIER_UPDATER_CONTRACT_ADDRESS: TIER_UPDATER_ADDRESS
 });
 
+const validStagingEnv = (): NodeJS.ProcessEnv => ({
+  BACKEND_APP_ENV: 'staging',
+  QUICKNODE_HTTP_RPC_URL: 'https://data-seed-prebsc-1-s1.bnbchain.org:8545',
+  QUICKNODE_WS_RPC_URL: 'wss://bsc-testnet.public-rpc.provider',
+  ETHERSCAN_API_URL: 'https://api-testnet.bscscan.com/api?',
+  CHAIN_ID: '97',
+  TOKEN_CONTRACT_ADDRESS: 'staging-token-address-exists',
+  NFT_CONTRACT_ADDRESS: 'staging-nft-address-exists',
+  PRIZE_HOT_WALLET_PRIVATE_KEY: `0x${'4'.repeat(64)}`,
+  TIER_RELAYER_PRIVATE_KEY: `0x${'5'.repeat(64)}`,
+  TIER_UPDATER_CONTRACT_ADDRESS: 'staging-tier-updater-address-exists'
+});
+
 describe('validateEnvs production safety', () => {
   it('fails fast when production required env is missing', () => {
     expect(() => validateEnvs({ NODE_ENV: 'production' })).toThrow(
@@ -188,5 +201,100 @@ describe('validateEnvs production safety', () => {
         CHAIN_ID: '97'
       })
     ).toThrow(/CHAIN_ID must be 56/);
+  });
+
+  it('rejects BSC testnet RPC markers in production', () => {
+    expect(() =>
+      validateEnvs({
+        ...validProductionEnv(),
+        QUICKNODE_HTTP_RPC_URL: 'https://data-seed-prebsc-1-s1.bnbchain.org:8545'
+      })
+    ).toThrow(/QUICKNODE_HTTP_RPC_URL must point to BSC mainnet/);
+
+    expect(() =>
+      validateEnvs({
+        ...validProductionEnv(),
+        QUICKNODE_WS_RPC_URL: 'wss://bsc-testnet.public-rpc.provider'
+      })
+    ).toThrow(/QUICKNODE_WS_RPC_URL must point to BSC mainnet/);
+  });
+});
+
+describe('validateEnvs staging BSC testnet mapping', () => {
+  it('accepts a complete BSC testnet staging env shape', () => {
+    expect(() => validateEnvs(validStagingEnv())).not.toThrow();
+  });
+
+  it('uses BACKEND_APP_ENV=staging as explicit staging mode', () => {
+    expect(() =>
+      validateEnvs({
+        ...validStagingEnv(),
+        NODE_ENV: 'development'
+      })
+    ).not.toThrow();
+  });
+
+  it('requires BSC testnet chainId 97 in staging', () => {
+    expect(() =>
+      validateEnvs({
+        ...validStagingEnv(),
+        CHAIN_ID: '56'
+      })
+    ).toThrow(/CHAIN_ID must be 97 for BSC staging/);
+  });
+
+  it('requires BSC testnet RPC URLs in staging', () => {
+    expect(() =>
+      validateEnvs({
+        ...validStagingEnv(),
+        QUICKNODE_HTTP_RPC_URL: 'https://bsc-dataseed.binance.org'
+      })
+    ).toThrow(/QUICKNODE_HTTP_RPC_URL must point to a BSC testnet RPC/);
+
+    expect(() =>
+      validateEnvs({
+        ...validStagingEnv(),
+        QUICKNODE_WS_RPC_URL: 'wss://mainnet.infura.io/ws/v3/public'
+      })
+    ).toThrow(/QUICKNODE_WS_RPC_URL must point to BSC testnet/);
+  });
+
+  it('requires a BSC testnet explorer URL in staging', () => {
+    expect(() =>
+      validateEnvs({
+        ...validStagingEnv(),
+        ETHERSCAN_API_URL: 'https://bscscan.com/api?'
+      })
+    ).toThrow(/ETHERSCAN_API_URL must point to a BSC testnet explorer/);
+
+    expect(() =>
+      validateEnvs({
+        ...validStagingEnv(),
+        ETHERSCAN_API_URL: 'https://api.etherscan.io/v2/api?chainid=97'
+      })
+    ).not.toThrow();
+  });
+
+  it('requires staging contract address env entries to exist without validating deployed values', () => {
+    const env = validStagingEnv();
+    delete env.TOKEN_CONTRACT_ADDRESS;
+
+    expect(() => validateEnvs(env)).toThrow(/TOKEN_CONTRACT_ADDRESS/);
+
+    expect(() =>
+      validateEnvs({
+        ...validStagingEnv(),
+        TOKEN_CONTRACT_ADDRESS: 'pending-staging-token-address'
+      })
+    ).not.toThrow();
+  });
+
+  it('checks staging private key format without exposing values', () => {
+    expect(() =>
+      validateEnvs({
+        ...validStagingEnv(),
+        TIER_RELAYER_PRIVATE_KEY: 'not-a-private-key'
+      })
+    ).toThrow(/TIER_RELAYER_PRIVATE_KEY must be a 0x-prefixed 32-byte private key/);
   });
 });

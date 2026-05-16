@@ -22,6 +22,12 @@ This is not production ready. Staging domain is still pending, and tBNB is not f
 
 Before any transaction-capable command is run, a human must confirm the required environment entries exist in the approved secret manager or local deploy shell. Record only PASS/FAIL and public addresses. Do not paste or commit actual values.
 
+Run the no-tx env mapping checks before any funded deploy/config work:
+
+- Backend staging must use `BACKEND_APP_ENV=staging` and pass validation for BSC testnet chain ID `97`, BSC testnet RPC, BSC testnet explorer/API URL, contract-address env presence, and private-key shape without printing values.
+- Frontend staging must use `NEXT_PUBLIC_APP_ENV=staging` and pass validation for BSC testnet public RPC/explorer values.
+- Production/default validation must reject BSC testnet RPC/explorer values and secret-like `NEXT_PUBLIC_*` values.
+
 Existence check only:
 
 ```text

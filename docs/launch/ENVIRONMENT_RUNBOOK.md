@@ -39,6 +39,18 @@ Backend CORS is controlled only by `BACKEND_CORS_ORIGINS` in production/staging.
 
 Admin upload limits are intentionally separate from the global JSON/body parser limit. NFT Excel metadata upload is an admin-only route and is capped at 10MB by `EXCEL_UPLOAD_MAX_BYTES`; do not raise it for staging or production without a separate security review.
 
+## Backend Staging BSC Testnet Env
+
+Set `BACKEND_APP_ENV=staging` for staging backend no-tx validation. Staging validation is static and must not print values. It checks only that required entries exist and that public mapping values look like BSC testnet:
+
+- `CHAIN_ID` must be `97`.
+- `QUICKNODE_HTTP_RPC_URL` and `QUICKNODE_WS_RPC_URL` must look like BSC testnet RPC URLs.
+- `ETHERSCAN_API_URL` must look like a BSC testnet explorer/API URL, such as BSCScan testnet or Etherscan V2 with BSC testnet chain ID.
+- `TOKEN_CONTRACT_ADDRESS`, `NFT_CONTRACT_ADDRESS`, and `TIER_UPDATER_CONTRACT_ADDRESS` must exist. Staging validation does not prove those contracts are deployed.
+- Prize hot-wallet and tier-relayer secret-manager entries are checked only for private-key shape by backend validation. Do not log, paste, or document their values.
+
+Production validation still rejects BSC testnet chain ID `97`, BSC testnet RPC markers, and BSC testnet explorer URLs.
+
 ## Frontend Production Public Env
 
 Only non-secret public values may use `NEXT_PUBLIC_`.
