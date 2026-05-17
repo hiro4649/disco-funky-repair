@@ -1,0 +1,73 @@
+{
+  "marker": "CODEX_QUALITY_HARNESS_FILE v0.3.1",
+  "profile": "funky",
+  "packageDirs": ["apps/backend", "apps/frontend", "contracts"],
+  "missingScript": "skip",
+  "checks": [
+    {
+      "name": "backend prisma validate",
+      "type": "npmScript",
+      "cwd": "apps/backend",
+      "script": "prisma:validate",
+      "profileRequired": true,
+      "env": {
+        "DATABASE_URL": "postgresql://codex_harness:codex_harness@127.0.0.1:5432/codex_harness?schema=public"
+      }
+    },
+    {
+      "name": "backend build",
+      "type": "npmScript",
+      "cwd": "apps/backend",
+      "script": "build",
+      "profileRequired": true,
+      "env": {
+        "DATABASE_URL": "postgresql://codex_harness:codex_harness@127.0.0.1:5432/codex_harness?schema=public"
+      }
+    },
+    {
+      "name": "backend test",
+      "type": "npmScript",
+      "cwd": "apps/backend",
+      "script": "test",
+      "profileRequired": true,
+      "env": {
+        "DATABASE_URL": "postgresql://codex_harness:codex_harness@127.0.0.1:5432/codex_harness?schema=public"
+      }
+    },
+    {
+      "name": "frontend build",
+      "type": "npmScript",
+      "cwd": "apps/frontend",
+      "script": "build",
+      "profileRequired": true
+    },
+    {
+      "name": "contracts compile",
+      "type": "npmScript",
+      "cwd": "contracts",
+      "script": "compile",
+      "profileRequired": true
+    },
+    {
+      "name": "contracts test",
+      "type": "npmScript",
+      "cwd": "contracts",
+      "script": "test",
+      "profileRequired": true
+    },
+    {
+      "name": "contracts compile nft",
+      "type": "npmScript",
+      "cwd": "contracts",
+      "script": "compile:nft",
+      "profileRequired": true
+    },
+    {
+      "name": "contracts test nft",
+      "type": "npmScript",
+      "cwd": "contracts",
+      "script": "test:nft",
+      "profileRequired": true
+    }
+  ]
+}
