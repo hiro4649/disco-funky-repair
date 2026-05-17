@@ -1,8 +1,33 @@
 {
-  "marker": "CODEX_QUALITY_HARNESS_FILE v0.3.1",
+  "marker": "CODEX_QUALITY_HARNESS_FILE v0.4.0",
   "profile": "funky",
   "packageDirs": ["apps/backend", "apps/frontend", "contracts"],
   "missingScript": "skip",
+  "allowedPaths": [],
+  "blockedPaths": [".env", ".env.*", "**/*.pem", "**/*.p12", "**/*.pfx"],
+  "highRiskPaths": ["apps/backend/", "apps/frontend/", "contracts/", "docs/launch/", "package.json", "package-lock.json", "yarn.lock", "pnpm-lock.yaml"],
+  "diffScope": {
+    "outOfScope": "fail",
+    "blocked": "fail",
+    "highRisk": "warn"
+  },
+  "riskKeywords": {
+    "R3": [
+      "asset",
+      "NFT",
+      "wallet",
+      "transfer",
+      "chain",
+      "receipt",
+      "role-safety",
+      "contract",
+      "admin",
+      "tier",
+      "secret",
+      "execution"
+    ],
+    "R2": ["config", "workflow", "script", "dependency"]
+  },
   "checks": [
     {
       "name": "backend prisma validate",
