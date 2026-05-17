@@ -4,13 +4,12 @@ import React, {
   useEffect,
   useLayoutEffect,
 } from "react";
-import { HeroUIProvider } from "@heroui/react";
+import { HeroUIProvider, ToastProvider } from "@heroui/react";
 import { useRouter, usePathname } from "next/navigation";
 import { useAppSelector, useAppDispatch } from "@/store/store";
 import { clearAdminAuth } from "@/store/slices/adminSlice";
 import Header from "../admin/Header";
 import Sidebar from "../admin/Sidebar";
-import { ToastProvider } from "@heroui/toast";
 import { Toaster } from "react-hot-toast";
 import apiClient from "../../../utils/apiClient";
 import { NextIntlClientProvider } from 'next-intl';
