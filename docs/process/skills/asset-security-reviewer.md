@@ -1,4 +1,4 @@
-<!-- CODEX_QUALITY_HARNESS_FILE v0.3.1 -->
+<!-- CODEX_QUALITY_HARNESS_FILE v0.4.0 -->
 # Skill: Funky Asset Security Reviewer
 
 Use for assets, NFT, FanPoint, ticket, tier, wallet, sendToWallet, admin, contract, or staging env changes.

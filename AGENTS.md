@@ -61,25 +61,17 @@ mainへの直接push
 <!-- CODEX_QUALITY_HARNESS_BEGIN -->
 ## Codex Quality Harness
 
-すべてのCodex作業は、最小差分、証拠ベース、PR前検証を必須とする。
-
-実装前に、目的、非目的、受け入れ条件、テスト計画、残リスクを短く確認する。
-
-仕様、テスト、実装、リリースのレビュー観点は docs/process/skills を参照する。
-
-PR前に scripts/codex-local-quality-gate.sh を実行する。失敗、未実行、スキップはPR本文に明記する。
-
-secret、private key、token、DB URL、raw production log、raw payloadを出力、保存、commitしない。
-
-無関係なリファクタ、依存追加、命名整理、広範囲変更を混ぜない。
+縺吶∋縺ｦ縺ｮCodex菴懈･ｭ縺ｯ縲∵怙蟆丞ｷｮ蛻・∬ｨｼ諡繝吶・繧ｹ縲￣R蜑肴､懆ｨｼ繧貞ｿ・医→縺吶ｋ縲・
+螳溯｣・燕縺ｫ縲∫岼逧・・撼逶ｮ逧・∝女縺大・繧梧擅莉ｶ縲√ユ繧ｹ繝郁ｨ育判縲∵ｮ九Μ繧ｹ繧ｯ繧堤洒縺冗｢ｺ隱阪☆繧九・
+莉墓ｧ倥√ユ繧ｹ繝医∝ｮ溯｣・√Μ繝ｪ繝ｼ繧ｹ縺ｮ繝ｬ繝薙Η繝ｼ隕ｳ轤ｹ縺ｯ docs/process/skills 繧貞盾辣ｧ縺吶ｋ縲・
+PR蜑阪↓ scripts/codex-local-quality-gate.sh 繧貞ｮ溯｡後☆繧九ょ､ｱ謨励∵悴螳溯｡後√せ繧ｭ繝・・縺ｯPR譛ｬ譁・↓譏手ｨ倥☆繧九・
+secret縲｝rivate key縲》oken縲．B URL縲〉aw production log縲〉aw payload繧貞・蜉帙∽ｿ晏ｭ倥…ommit縺励↑縺・・
+辟｡髢｢菫ゅ↑繝ｪ繝輔ぃ繧ｯ繧ｿ縲∽ｾ晏ｭ倩ｿｽ蜉縲∝多蜷肴紛逅・∝ｺ・ｯ・峇螟画峩繧呈ｷｷ縺懊↑縺・・
 
 ## Funky Asset Safety Rule
 
-資産、NFT、FanPoint、ticket、tier、送金、wallet、admin権限、contract、staging envに触れる変更はR3扱いにする。
-
-R3変更では、認証、認可、所有者確認、chainId、contract address、txHash、receipt、event log、idempotency、二重実行防止、rollbackを必ず確認する。
-
-DB更新だけでon-chain成功扱いにしない。
-
-tBNB未入金、staging未反映、receipt未確認の状態をproduction readyと書かない。
+雉・肇縲¨FT縲：anPoint縲》icket縲》ier縲・・≡縲『allet縲∥dmin讓ｩ髯舌…ontract縲《taging env縺ｫ隗ｦ繧後ｋ螟画峩縺ｯR3謇ｱ縺・↓縺吶ｋ縲・
+R3螟画峩縺ｧ縺ｯ縲∬ｪ崎ｨｼ縲∬ｪ榊庄縲∵園譛芽・｢ｺ隱阪…hainId縲…ontract address縲》xHash縲〉eceipt縲‘vent log縲（dempotency縲∽ｺ碁㍾螳溯｡碁亟豁｢縲〉ollback繧貞ｿ・★遒ｺ隱阪☆繧九・
+DB譖ｴ譁ｰ縺縺代〒on-chain謌仙粥謇ｱ縺・↓縺励↑縺・・
+tBNB譛ｪ蜈･驥代《taging譛ｪ蜿肴丐縲〉eceipt譛ｪ遒ｺ隱阪・迥ｶ諷九ｒproduction ready縺ｨ譖ｸ縺九↑縺・・
 <!-- CODEX_QUALITY_HARNESS_END -->
