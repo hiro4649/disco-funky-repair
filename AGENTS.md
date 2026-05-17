@@ -57,3 +57,29 @@ mainへの直接push
 本番値の仮定
 テストなしのproduction ready宣言
 関係ないP1/P2修正の混入
+
+<!-- CODEX_QUALITY_HARNESS_BEGIN -->
+## Codex Quality Harness
+
+すべてのCodex作業は、最小差分、証拠ベース、PR前検証を必須とする。
+
+実装前に、目的、非目的、受け入れ条件、テスト計画、残リスクを短く確認する。
+
+仕様、テスト、実装、リリースのレビュー観点は docs/process/skills を参照する。
+
+PR前に scripts/codex-local-quality-gate.sh を実行する。失敗、未実行、スキップはPR本文に明記する。
+
+secret、private key、token、DB URL、raw production log、raw payloadを出力、保存、commitしない。
+
+無関係なリファクタ、依存追加、命名整理、広範囲変更を混ぜない。
+
+## Funky Asset Safety Rule
+
+資産、NFT、FanPoint、ticket、tier、送金、wallet、admin権限、contract、staging envに触れる変更はR3扱いにする。
+
+R3変更では、認証、認可、所有者確認、chainId、contract address、txHash、receipt、event log、idempotency、二重実行防止、rollbackを必ず確認する。
+
+DB更新だけでon-chain成功扱いにしない。
+
+tBNB未入金、staging未反映、receipt未確認の状態をproduction readyと書かない。
+<!-- CODEX_QUALITY_HARNESS_END -->
