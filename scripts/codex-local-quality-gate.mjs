@@ -4852,10 +4852,10 @@ function evaluatePrSeparation(policy, changed, knownRisks) {
   report.prType = prTypeName;
   const prTypePolicy = policy.prTypes?.[prTypeName] || null;
   const enabled = Boolean(prTypePolicy);
-  const allowed = policy.harnessPrAllowedPaths || defaultPolicy.harnessPrAllowedPaths;
-  const blocked = policy.harnessPrBlockedPaths || [];
-  const typeAllowed = prTypePolicy?.allowedPaths || (prTypeName === 'harness' ? allowed : []);
-  const typeBlocked = [...(blocked || []), ...(prTypePolicy?.blockedPaths || [])];
+  const harnessAllowed = policy.harnessPrAllowedPaths || defaultPolicy.harnessPrAllowedPaths;
+  const harnessBlocked = prTypeName === 'harness' ? (policy.harnessPrBlockedPaths || []) : [];
+  const typeAllowed = prTypePolicy?.allowedPaths || (prTypeName === 'harness' ? harnessAllowed : []);
+  const typeBlocked = [...new Set([...harnessBlocked, ...(prTypePolicy?.blockedPaths || [])])];
   const outOfScope = typeAllowed.length ? changed.filter((file) => !pathMatches(file, typeAllowed)) : [];
   const blockedHits = changed.filter((file) => pathMatches(file, typeBlocked));
   const packageChanges = changed.filter((file) => /(^|\/)package\.json$/.test(file));
