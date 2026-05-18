@@ -9,6 +9,27 @@
 mainへ直接pushしてはいけません。
 すべての修正は小さいPRで行ってください。
 
+## FUNKY Authority Docs
+
+FUNKY repoで作業する場合、Codexは作業前に以下を読んでください。
+
+docs/process/FUNKY_SPEC_AUTHORITY.md
+docs/process/FUNKY_ASSET_OPERATION_RUNBOOK.md
+docs/process/FUNKY_RELEASE_GATE.md
+
+優先順位:
+
+1. docs/process/FUNKY_SPEC_AUTHORITY.md
+2. docs/process/FUNKY_RELEASE_GATE.md
+3. docs/process/FUNKY_ASSET_OPERATION_RUNBOOK.md
+4. AGENTS.md
+5. 個別タスク指示
+6. 既存docs/launch
+
+矛盾がある場合は推測で進めないでください。
+古いdocsを正としないでください。
+authority docsに従い、必要ならdocs更新PRを提案してください。
+
 ## 現在のフェーズ
 
 現在はBSCローンチ前のP0修繕フェーズです。
