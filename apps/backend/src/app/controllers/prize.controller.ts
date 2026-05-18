@@ -7,7 +7,12 @@ import moment from 'moment';
 import { calculateTokenQuantity, fetchTokenBalance } from '../utils/tokenHeplers';
 import { randomUUID } from 'crypto';
 import { ethers } from 'ethers';
-import { getTransactionReceiptStatus, isPrizeTransferTokenAllowed, sendTokensToWallet } from '../utils/tokenHeplers';
+import {
+    getPrizeTransferReceiptEvidence,
+    isPrizeTransferTokenAllowed,
+    PrizeTransferEvidence,
+    sendTokensToWallet
+} from '../utils/tokenHeplers';
 import getDiscoNFTEVM from '../lib/getDiscoNFTEVM';
 import { getTotalNFTCount } from '../lib/trialNftService';
 import { selectPrizeDrawWinner } from '../lib/prizeDrawRng';
@@ -182,6 +187,27 @@ class PrizeReservationReleaseError extends Error {
         super('Prize reserved inventory is lower than the release amount');
     }
 }
+
+const prizeTransferEvidenceUpdate = (
+    evidence?: PrizeTransferEvidence | null
+): Record<string, unknown> => {
+    if (!evidence) {
+        return {};
+    }
+
+    return {
+        tx_hash: evidence.txHash,
+        tx_chain_id: evidence.chainId,
+        tx_from: evidence.from,
+        tx_to: evidence.to,
+        tx_contract_address: evidence.contractAddress,
+        tx_block_number: evidence.blockNumber ? BigInt(evidence.blockNumber) : null,
+        tx_receipt_status: evidence.receiptStatus,
+        tx_receipt_timestamp: evidence.receiptTimestamp,
+        tx_public_amount: evidence.publicAmount,
+        tx_evidence_updated_at: moment.utc().toDate()
+    };
+};
 
 const releasePrizeReservation = async (
     tx: Prisma.TransactionClient,
@@ -990,7 +1016,16 @@ export class PrizeController {
 
             if (prizeTransaction.tx_hash) {
                 try {
-                    const receiptStatus = await getTransactionReceiptStatus(prizeTransaction.tx_hash);
+                    const receiptResult = await getPrizeTransferReceiptEvidence(
+                        prizeTransaction.tx_hash,
+                        {
+                            recipientAddress: user.wallet_address,
+                            tokenAddress: prizeTransaction.transfer_token_address || prizeTransaction.prize?.ca,
+                            publicAmount: prizeTransaction.transfer_amount
+                        }
+                    );
+                    const receiptStatus = receiptResult.status;
+                    const evidenceUpdate = prizeTransferEvidenceUpdate(receiptResult.evidence);
 
                     if (receiptStatus === Status.RECEIVED) {
                         const storedTransferAmount = parseStoredTransferAmount(prizeTransaction.transfer_amount);
@@ -1006,14 +1041,14 @@ export class PrizeController {
                                 }
                                 await tx.prizeTransactions.update({
                                     where: { id: prizeId },
-                                    data: { status: receiptStatus },
+                                    data: { status: receiptStatus, ...evidenceUpdate },
                                 });
                             });
                         } catch (releaseErr) {
                             if (releaseErr instanceof PrizeInventoryDepletionError) {
                                 await prisma.prizeTransactions.update({
                                     where: { id: prizeId },
-                                    data: { status: Status.MANUAL_REVIEW },
+                                    data: { status: Status.MANUAL_REVIEW, ...evidenceUpdate },
                                 });
                                 return res.status(202).json({
                                     success: false,
@@ -1028,7 +1063,7 @@ export class PrizeController {
 
                     await prisma.prizeTransactions.update({
                         where: { id: prizeId },
-                        data: { status: receiptStatus },
+                        data: { status: receiptStatus, ...evidenceUpdate },
                     });
 
                     return res.status(202).json({
@@ -1148,10 +1183,13 @@ export class PrizeController {
             }
 
             let txHash: string | null = null;
+            let txEvidence: PrizeTransferEvidence | null = null;
 
             // Send tokens to the user's wallet using EVM with balance check and detailed errors
             try {
-                txHash = await sendTokensToWallet(user.wallet_address, tokenAmountInSmallestUnit, coinType);
+                const transferResult = await sendTokensToWallet(user.wallet_address, tokenAmountInSmallestUnit, coinType);
+                txHash = transferResult.txHash;
+                txEvidence = transferResult.evidence;
                 if (!txHash || typeof txHash !== 'string') {
                     await prisma.prizeTransactions.update({
                         where: { id: prizeId },
@@ -1173,7 +1211,10 @@ export class PrizeController {
                         );
                         await tx.prizeTransactions.update({
                             where: { id: prizeId },
-                            data: { status: Status.RECEIVED, tx_hash: txHash },
+                            data: {
+                                status: Status.RECEIVED,
+                                ...prizeTransferEvidenceUpdate(txEvidence)
+                            },
                         });
                     });
                 } catch (releaseErr) {
@@ -1182,7 +1223,7 @@ export class PrizeController {
                             where: { id: prizeId },
                             data: {
                                 status: Status.MANUAL_REVIEW,
-                                tx_hash: txHash
+                                ...prizeTransferEvidenceUpdate(txEvidence)
                             },
                         });
                         return res.status(202).json({
@@ -1198,6 +1239,7 @@ export class PrizeController {
                 return res.status(200).json({ success: true, txHash });
             } catch (transferErr: any) {
                 const broadcastTxHash = txHash || (typeof transferErr?.txHash === 'string' ? transferErr.txHash : null);
+                const broadcastEvidence = txEvidence || transferErr?.evidence || null;
                 logPrizeTransferError(
                     'Prize transfer failed',
                     correlationId,
@@ -1210,6 +1252,7 @@ export class PrizeController {
                         where: { id: prizeId },
                         data: {
                             status: Status.MANUAL_REVIEW,
+                            ...prizeTransferEvidenceUpdate(broadcastEvidence),
                             tx_hash: broadcastTxHash
                         },
                     });
