@@ -1097,10 +1097,80 @@ export class PrizeController {
                         receiptErr,
                         prizeTransaction.tx_hash
                     );
-                    await prisma.prizeTransactions.update({
-                        where: { id: prizeId },
+
+                    const currentPrizeTransaction = await prisma.prizeTransactions.findFirst({
+                        where: { id: prizeId, userId: user.id },
+                        select: {
+                            status: true,
+                            tx_hash: true
+                        }
+                    });
+
+                    if (!currentPrizeTransaction) {
+                        return res.status(404).json({
+                            success: false,
+                            msg: 'Prize transaction not found',
+                            correlationId
+                        });
+                    }
+
+                    if (isPrizeTransferFinalStatus(currentPrizeTransaction.status)) {
+                        if (currentPrizeTransaction.status === Status.RECEIVED) {
+                            return res.status(200).json({
+                                success: true,
+                                txHash: currentPrizeTransaction.tx_hash || prizeTransaction.tx_hash
+                            });
+                        }
+
+                        return res.status(409).json({
+                            success: false,
+                            msg: 'Prize transaction is already finalized.',
+                            status: currentPrizeTransaction.status,
+                            correlationId
+                        });
+                    }
+
+                    const manualReviewUpdate = await prisma.prizeTransactions.updateMany({
+                        where: {
+                            id: prizeId,
+                            userId: user.id,
+                            status: { in: PRIZE_TRANSFER_MANUAL_REVIEW_ELIGIBLE_STATUSES as any }
+                        },
                         data: { status: Status.MANUAL_REVIEW },
                     });
+
+                    if (manualReviewUpdate.count !== 1) {
+                        const latestPrizeTransaction = await prisma.prizeTransactions.findFirst({
+                            where: { id: prizeId, userId: user.id },
+                            select: {
+                                status: true,
+                                tx_hash: true
+                            }
+                        });
+
+                        if (isPrizeTransferFinalStatus(latestPrizeTransaction?.status)) {
+                            if (latestPrizeTransaction?.status === Status.RECEIVED) {
+                                return res.status(200).json({
+                                    success: true,
+                                    txHash: latestPrizeTransaction.tx_hash || prizeTransaction.tx_hash
+                                });
+                            }
+
+                            return res.status(409).json({
+                                success: false,
+                                msg: 'Prize transaction is already finalized.',
+                                status: latestPrizeTransaction?.status,
+                                correlationId
+                            });
+                        }
+
+                        return res.status(409).json({
+                            success: false,
+                            msg: 'Prize transaction changed during receipt fallback.',
+                            correlationId
+                        });
+                    }
+
                     return res.status(202).json({
                         success: false,
                         msg: 'Prize transfer requires manual review.',

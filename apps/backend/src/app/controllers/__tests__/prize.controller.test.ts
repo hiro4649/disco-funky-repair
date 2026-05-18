@@ -499,6 +499,186 @@ describe('PrizeController.sendToWallet', () => {
     expect(res.status).toHaveBeenCalledWith(200);
   });
 
+  it('does not downgrade RECEIVED during existing tx_hash receipt-check failure', async () => {
+    (getPrizeTransferReceiptEvidence as jest.Mock).mockRejectedValue(new Error('temporary rpc failure'));
+    mockPrisma.prizeTransactions.findFirst
+      .mockResolvedValueOnce({
+        ...readyPrizeTransaction(),
+        status: 'BROADCASTED',
+        tx_hash: '0xExistingTx'
+      })
+      .mockResolvedValueOnce({
+        ...readyPrizeTransaction(),
+        status: 'RECEIVED',
+        tx_hash: '0xSavedTx',
+        tx_chain_id: 97,
+        tx_from: '0xSavedHotWallet',
+        tx_to: '0xuser',
+        tx_contract_address: VALID_TOKEN_ADDRESS,
+        tx_block_number: 123n,
+        tx_receipt_status: 1,
+        tx_receipt_timestamp: RECEIPT_TIME,
+        tx_public_amount: FIXED_TRANSFER_AMOUNT
+      });
+    const res = createResponse();
+
+    await PrizeController.sendToWallet(createRequest(), res);
+
+    expect(sendTokensToWallet).not.toHaveBeenCalled();
+    expect(mockPrisma.prizeTransactions.update).not.toHaveBeenCalled();
+    expect(mockPrisma.prizeTransactions.updateMany).not.toHaveBeenCalled();
+    expect(res.status).toHaveBeenCalledWith(200);
+    expect(res.json).toHaveBeenCalledWith({
+      success: true,
+      txHash: '0xSavedTx'
+    });
+  });
+
+  it('preserves tx_hash and receipt evidence when existing tx_hash receipt fallback sees RECEIVED', async () => {
+    (getPrizeTransferReceiptEvidence as jest.Mock).mockRejectedValue(new Error('temporary rpc failure'));
+    mockPrisma.prizeTransactions.findFirst
+      .mockResolvedValueOnce({
+        ...readyPrizeTransaction(),
+        status: 'BROADCASTED',
+        tx_hash: '0xExistingTx'
+      })
+      .mockResolvedValueOnce({
+        ...readyPrizeTransaction(),
+        status: 'RECEIVED',
+        tx_hash: '0xSavedTx',
+        tx_chain_id: 97,
+        tx_from: '0xSavedHotWallet',
+        tx_to: '0xuser',
+        tx_contract_address: VALID_TOKEN_ADDRESS,
+        tx_block_number: 123n,
+        tx_receipt_status: 1,
+        tx_receipt_timestamp: RECEIPT_TIME,
+        tx_public_amount: FIXED_TRANSFER_AMOUNT
+      });
+    const res = createResponse();
+
+    await PrizeController.sendToWallet(createRequest(), res);
+
+    expect(mockPrisma.prizeTransactions.update).not.toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({
+        status: 'MANUAL_REVIEW'
+      })
+    }));
+    expect(mockPrisma.prizeTransactions.updateMany).not.toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({
+        tx_hash: expect.any(String)
+      })
+    }));
+    expect(res.status).toHaveBeenCalledWith(200);
+  });
+
+  it('moves non-final existing tx_hash receipt-check failures to MANUAL_REVIEW only', async () => {
+    (getPrizeTransferReceiptEvidence as jest.Mock).mockRejectedValue(new Error('temporary rpc failure'));
+    mockPrisma.prizeTransactions.findFirst
+      .mockResolvedValueOnce({
+        ...readyPrizeTransaction(),
+        status: 'BROADCASTED',
+        tx_hash: '0xExistingTx'
+      })
+      .mockResolvedValueOnce({
+        ...readyPrizeTransaction(),
+        status: 'BROADCASTED',
+        tx_hash: '0xExistingTx',
+        tx_chain_id: 97,
+        tx_receipt_status: null,
+        tx_public_amount: FIXED_TRANSFER_AMOUNT
+      });
+    const res = createResponse();
+
+    await PrizeController.sendToWallet(createRequest(), res);
+
+    expect(mockPrisma.prizeTransactions.updateMany).toHaveBeenCalledWith({
+      where: {
+        id: 7,
+        userId: 1,
+        status: { in: ['READY', 'SENDING', 'BROADCASTED', 'MANUAL_REVIEW'] }
+      },
+      data: { status: 'MANUAL_REVIEW' }
+    });
+    expect(res.status).toHaveBeenCalledWith(202);
+    expect(res.json).toHaveBeenCalledWith(expect.objectContaining({
+      success: false,
+      msg: 'Prize transfer requires manual review.',
+      correlationId: expect.any(String)
+    }));
+  });
+
+  it('does not store fake receipt evidence during existing tx_hash receipt-check failure', async () => {
+    (getPrizeTransferReceiptEvidence as jest.Mock).mockRejectedValue(new Error('temporary rpc failure'));
+    mockPrisma.prizeTransactions.findFirst
+      .mockResolvedValueOnce({
+        ...readyPrizeTransaction(),
+        status: 'SENDING',
+        tx_hash: '0xExistingTx'
+      })
+      .mockResolvedValueOnce({
+        ...readyPrizeTransaction(),
+        status: 'SENDING',
+        tx_hash: '0xExistingTx'
+      });
+    const res = createResponse();
+
+    await PrizeController.sendToWallet(createRequest(), res);
+
+    expect(mockPrisma.prizeTransactions.updateMany).toHaveBeenCalledWith({
+      where: {
+        id: 7,
+        userId: 1,
+        status: { in: ['READY', 'SENDING', 'BROADCASTED', 'MANUAL_REVIEW'] }
+      },
+      data: { status: 'MANUAL_REVIEW' }
+    });
+    expect(mockPrisma.prizeTransactions.updateMany).not.toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({
+        tx_receipt_status: expect.any(Number)
+      })
+    }));
+    expect(res.status).toHaveBeenCalledWith(202);
+  });
+
+  it('treats RECEIVED race during existing tx_hash receipt fallback as idempotent', async () => {
+    (getPrizeTransferReceiptEvidence as jest.Mock).mockRejectedValue(new Error('temporary rpc failure'));
+    mockPrisma.prizeTransactions.findFirst
+      .mockResolvedValueOnce({
+        ...readyPrizeTransaction(),
+        status: 'BROADCASTED',
+        tx_hash: '0xExistingTx'
+      })
+      .mockResolvedValueOnce({
+        ...readyPrizeTransaction(),
+        status: 'BROADCASTED',
+        tx_hash: '0xExistingTx'
+      })
+      .mockResolvedValueOnce({
+        ...readyPrizeTransaction(),
+        status: 'RECEIVED',
+        tx_hash: '0xSavedTx'
+      });
+    mockPrisma.prizeTransactions.updateMany.mockResolvedValueOnce({ count: 0 });
+    const res = createResponse();
+
+    await PrizeController.sendToWallet(createRequest(), res);
+
+    expect(mockPrisma.prizeTransactions.updateMany).toHaveBeenCalledWith({
+      where: {
+        id: 7,
+        userId: 1,
+        status: { in: ['READY', 'SENDING', 'BROADCASTED', 'MANUAL_REVIEW'] }
+      },
+      data: { status: 'MANUAL_REVIEW' }
+    });
+    expect(res.status).toHaveBeenCalledWith(200);
+    expect(res.json).toHaveBeenCalledWith({
+      success: true,
+      txHash: '0xSavedTx'
+    });
+  });
+
   it('does not change inventory again when reservation was already released', async () => {
     mockPrisma.prizeTransactions.findFirst.mockResolvedValue({
       ...readyPrizeTransaction(),
