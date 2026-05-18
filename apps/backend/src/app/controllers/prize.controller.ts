@@ -28,6 +28,20 @@ enum Status {
     FAILED = 'FAILED'
 }
 
+const PRIZE_TRANSFER_FINAL_STATUSES = new Set<string>([
+    Status.RECEIVED,
+    Status.CANCELLED,
+    Status.EXPIRED,
+    Status.FAILED
+]);
+
+const PRIZE_TRANSFER_MANUAL_REVIEW_ELIGIBLE_STATUSES = [
+    Status.READY,
+    Status.SENDING,
+    Status.BROADCASTED,
+    Status.MANUAL_REVIEW
+];
+
 const prisma = new PrismaClient();
 
 const PRIZE_TRANSFER_AMOUNT_SCALE = 3;
@@ -208,6 +222,10 @@ const prizeTransferEvidenceUpdate = (
         tx_evidence_updated_at: moment.utc().toDate()
     };
 };
+
+const isPrizeTransferFinalStatus = (status?: string | null): boolean => (
+    Boolean(status && PRIZE_TRANSFER_FINAL_STATUSES.has(status))
+);
 
 const releasePrizeReservation = async (
     tx: Prisma.TransactionClient,
@@ -1248,14 +1266,91 @@ export class PrizeController {
                 );
 
                 if (broadcastTxHash) {
-                    await prisma.prizeTransactions.update({
-                        where: { id: prizeId },
-                        data: {
-                            status: Status.MANUAL_REVIEW,
-                            ...prizeTransferEvidenceUpdate(broadcastEvidence),
-                            tx_hash: broadcastTxHash
-                        },
+                    const currentPrizeTransaction = await prisma.prizeTransactions.findFirst({
+                        where: { id: prizeId, userId: user.id },
+                        select: {
+                            status: true,
+                            tx_hash: true
+                        }
                     });
+
+                    if (!currentPrizeTransaction) {
+                        return res.status(404).json({
+                            success: false,
+                            msg: 'Prize transaction not found',
+                            correlationId
+                        });
+                    }
+
+                    if (isPrizeTransferFinalStatus(currentPrizeTransaction.status)) {
+                        if (currentPrizeTransaction.status === Status.RECEIVED) {
+                            return res.status(200).json({
+                                success: true,
+                                txHash: currentPrizeTransaction.tx_hash || broadcastTxHash
+                            });
+                        }
+
+                        return res.status(409).json({
+                            success: false,
+                            msg: 'Prize transaction is already finalized.',
+                            status: currentPrizeTransaction.status,
+                            correlationId
+                        });
+                    }
+
+                    const fallbackUpdate: Record<string, unknown> = {
+                        status: Status.MANUAL_REVIEW
+                    };
+
+                    if (!currentPrizeTransaction.tx_hash) {
+                        Object.assign(
+                            fallbackUpdate,
+                            prizeTransferEvidenceUpdate(broadcastEvidence),
+                            { tx_hash: broadcastTxHash }
+                        );
+                    }
+
+                    const manualReviewUpdate = await prisma.prizeTransactions.updateMany({
+                        where: {
+                            id: prizeId,
+                            userId: user.id,
+                            status: { in: PRIZE_TRANSFER_MANUAL_REVIEW_ELIGIBLE_STATUSES as any }
+                        },
+                        data: fallbackUpdate as any,
+                    });
+
+                    if (manualReviewUpdate.count !== 1) {
+                        const latestPrizeTransaction = await prisma.prizeTransactions.findFirst({
+                            where: { id: prizeId, userId: user.id },
+                            select: {
+                                status: true,
+                                tx_hash: true
+                            }
+                        });
+
+                        if (isPrizeTransferFinalStatus(latestPrizeTransaction?.status)) {
+                            if (latestPrizeTransaction?.status === Status.RECEIVED) {
+                                return res.status(200).json({
+                                    success: true,
+                                    txHash: latestPrizeTransaction.tx_hash || broadcastTxHash
+                                });
+                            }
+
+                            return res.status(409).json({
+                                success: false,
+                                msg: 'Prize transaction is already finalized.',
+                                status: latestPrizeTransaction?.status,
+                                correlationId
+                            });
+                        }
+
+                        return res.status(409).json({
+                            success: false,
+                            msg: 'Prize transaction changed during transfer fallback.',
+                            correlationId
+                        });
+                    }
+
                     return res.status(202).json({
                         success: false,
                         msg: 'Prize transfer was broadcasted and requires manual review.',
