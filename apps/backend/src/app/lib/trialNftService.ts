@@ -1,4 +1,5 @@
 import prisma from '../db/prisma_client';
+import { Prisma } from '@prisma/client';
 import moment from 'moment';
 import getDiscoNFTEVM from './getDiscoNFTEVM';
 
@@ -22,6 +23,61 @@ import getDiscoNFTEVM from './getDiscoNFTEVM';
 // Default image should be an IPFS URL or full URL, not a local path
 const DEFAULT_TRIAL_NFT_IMAGE = process.env.TRIAL_NFT_IMAGE_URL || 'https://gateway.lighthouse.storage/ipfs/QmDefaultTrialNFT';
 const DEFAULT_TRIAL_NFT_DURATION_DAYS = 5;
+
+type TrialNftClaimResult = { success: boolean; data?: any; message: string };
+type TrialNftPrismaClient = typeof prisma | Prisma.TransactionClient;
+
+const findExistingTrialNftClaim = async (
+    client: TrialNftPrismaClient,
+    userId: number,
+    now: moment.Moment = moment.utc()
+) => {
+    const startOfMonth = now.clone().startOf('month').toDate();
+    const endOfMonth = now.clone().endOf('month').toDate();
+
+    const existingThisMonth = await client.trialNft.findFirst({
+        where: {
+            userId: userId,
+            receivedDate: {
+                gte: startOfMonth,
+                lte: endOfMonth
+            }
+        }
+    });
+
+    if (existingThisMonth) {
+        return {
+            reason: 'You have already claimed a Trial NFT this month',
+            existingNft: existingThisMonth
+        };
+    }
+
+    const activeTrialNFT = await client.trialNft.findFirst({
+        where: {
+            userId: userId,
+            isActive: true,
+            expiresAt: {
+                gt: now.toDate()
+            }
+        }
+    });
+
+    if (activeTrialNFT) {
+        return {
+            reason: 'You already have an active Trial NFT',
+            existingNft: activeTrialNFT
+        };
+    }
+
+    return null;
+};
+
+const isPrismaTransactionConflict = (error: unknown): boolean => (
+    typeof error === 'object' &&
+    error !== null &&
+    'code' in error &&
+    (error as { code?: string }).code === 'P2034'
+);
 
 /**
  * Get total NFT count for a user (real NFTs from blockchain + active trial NFTs)
@@ -64,48 +120,14 @@ export const getTotalNFTCount = async (walletAddress: string, userId: number): P
  */
 export const canClaimTrialNFT = async (userId: number): Promise<{ canClaim: boolean; reason: string; existingNft?: any }> => {
     try {
-        const now = moment.utc();
-        const startOfMonth = now.clone().startOf('month').toDate();
-        const endOfMonth = now.clone().endOf('month').toDate();
-
-        // Check if user already claimed a trial NFT this month
-        const existingThisMonth = await prisma.trialNft.findFirst({
-            where: {
-                userId: userId,
-                receivedDate: {
-                    gte: startOfMonth,
-                    lte: endOfMonth
-                }
-            }
-        });
-
-        if (existingThisMonth) {
+        const existingClaim = await findExistingTrialNftClaim(prisma, userId);
+        if (existingClaim) {
             return {
                 canClaim: false,
-                reason: 'You have already claimed a Trial NFT this month',
-                existingNft: existingThisMonth
+                reason: existingClaim.reason,
+                existingNft: existingClaim.existingNft
             };
         }
-
-        // Check if user has an active (non-expired) trial NFT
-        const activeTrialNFT = await prisma.trialNft.findFirst({
-            where: {
-                userId: userId,
-                isActive: true,
-                expiresAt: {
-                    gt: now.toDate()
-                }
-            }
-        });
-
-        if (activeTrialNFT) {
-            return {
-                canClaim: false,
-                reason: 'You already have an active Trial NFT',
-                existingNft: activeTrialNFT
-            };
-        }
-
         return { canClaim: true, reason: 'Eligible to claim' };
     } catch (error) {
         console.error(`Error checking trial NFT eligibility for user ${userId}:`, error);
@@ -121,93 +143,120 @@ export const canClaimTrialNFT = async (userId: number): Promise<{ canClaim: bool
  */
 export const claimTrialNFT = async (userId: number, templateId?: number): Promise<{ success: boolean; data?: any; message: string }> => {
     try {
-        // Check eligibility
-        const eligibility = await canClaimTrialNFT(userId);
-        if (!eligibility.canClaim) {
-            return { success: false, message: eligibility.reason, data: eligibility.existingNft };
-        }
+        return await prisma.$transaction(async (tx) => {
+            const now = moment.utc();
+            const existingClaim = await findExistingTrialNftClaim(tx, userId, now);
+            if (existingClaim) {
+                return {
+                    success: false,
+                    message: existingClaim.reason,
+                    data: existingClaim.existingNft
+                };
+            }
 
-        // Get template (specified or first available)
-        let template = null;
-        if (templateId) {
-            template = await prisma.trialNftTemplate.findFirst({
-                where: {
-                    id: templateId,
-                    isAvailable: true
+            // Get template (specified or first available)
+            let template = null;
+            if (templateId) {
+                template = await tx.trialNftTemplate.findFirst({
+                    where: {
+                        id: templateId,
+                        isAvailable: true
+                    }
+                });
+            } else {
+                // Get first available template
+                template = await tx.trialNftTemplate.findFirst({
+                    where: {
+                        isAvailable: true,
+                        OR: [
+                            { maxMints: 0 },
+                            { mintCount: { lt: prisma.trialNftTemplate.fields.maxMints } }
+                        ]
+                    },
+                    orderBy: { createdAt: 'desc' }
+                });
+            }
+
+            // Use template data or defaults
+            const name = template?.name || 'Monthly Free Trial NFT';
+            const description = template?.description || 'Free trial NFT that boosts FanPoints for 5 days. This is a simulated NFT experience.';
+            // Template image is now an IPFS URL, use it directly
+            const image = template?.image || DEFAULT_TRIAL_NFT_IMAGE;
+            const validDays = template?.validDays || DEFAULT_TRIAL_NFT_DURATION_DAYS;
+
+            // Check if template has reached max mints
+            if (template && template.maxMints > 0 && template.mintCount >= template.maxMints) {
+                return { success: false, message: 'This Trial NFT template has reached maximum mints' };
+            }
+
+            if (template) {
+                const templateMintReservation = await tx.trialNftTemplate.updateMany({
+                    where: {
+                        id: template.id,
+                        isAvailable: true,
+                        ...(template.maxMints > 0 ? { mintCount: { lt: template.maxMints } } : {})
+                    },
+                    data: { mintCount: { increment: 1 } }
+                });
+
+                if (templateMintReservation.count !== 1) {
+                    return { success: false, message: 'This Trial NFT template has reached maximum mints' };
+                }
+            }
+
+            const receivedDate = now.toDate();
+            const expiresAt = now.clone().add(validDays, 'days').toDate();
+
+            // Create new trial NFT
+            const trialNft = await tx.trialNft.create({
+                data: {
+                    userId: userId,
+                    templateId: template?.id || null,
+                    name: name,
+                    description: description,
+                    image: image,
+                    receivedDate: receivedDate,
+                    expiresAt: expiresAt,
+                    isActive: true,
+                    bonusApplied: 1 // Day 1 bonus already applied
                 }
             });
-        } else {
-            // Get first available template
-            template = await prisma.trialNftTemplate.findFirst({
-                where: {
-                    isAvailable: true,
-                    OR: [
-                        { maxMints: 0 },
-                        { mintCount: { lt: prisma.trialNftTemplate.fields.maxMints } }
-                    ]
-                },
-                orderBy: { createdAt: 'desc' }
+
+            // Give immediate 1 fan-point for Day 1 of Trial NFT
+            await tx.pointHistory.create({
+                data: {
+                    userId: userId,
+                    point: 1,
+                    reason: 5, // Trial NFT Bonus
+                    receivedDate: now.toDate()
+                }
             });
-        }
 
-        // Use template data or defaults
-        const name = template?.name || 'Monthly Free Trial NFT';
-        const description = template?.description || 'Free trial NFT that boosts FanPoints for 5 days. This is a simulated NFT experience.';
-        // Template image is now an IPFS URL, use it directly
-        const image = template?.image || DEFAULT_TRIAL_NFT_IMAGE;
-        const validDays = template?.validDays || DEFAULT_TRIAL_NFT_DURATION_DAYS;
-
-        // Check if template has reached max mints
-        if (template && template.maxMints > 0 && template.mintCount >= template.maxMints) {
-            return { success: false, message: 'This Trial NFT template has reached maximum mints' };
-        }
-
-        const receivedDate = moment.utc().toDate();
-        const expiresAt = moment.utc().add(validDays, 'days').toDate();
-
-        // Create new trial NFT
-        const trialNft = await prisma.trialNft.create({
-            data: {
-                userId: userId,
-                templateId: template?.id || null,
-                name: name,
-                description: description,
-                image: image,
-                receivedDate: receivedDate,
-                expiresAt: expiresAt,
-                isActive: true,
-                bonusApplied: 1 // Day 1 bonus already applied
-            }
-        });
-
-        // Update template mint count if using a template
-        if (template) {
-            await prisma.trialNftTemplate.update({
-                where: { id: template.id },
-                data: { mintCount: { increment: 1 } }
+            await tx.user.update({
+                where: { id: userId },
+                data: { fan_points: { increment: 1 } }
             });
-        }
 
-        // Give immediate 1 fan-point for Day 1 of Trial NFT
-        await prisma.pointHistory.create({
-            data: {
-                userId: userId,
-                point: 1,
-                reason: 5, // Trial NFT Bonus
-                receivedDate: moment.utc().toDate()
-            }
+            console.log(`Trial NFT claimed for user ${userId}, expires at ${expiresAt.toISOString()}`);
+            console.log(`User ${userId} received 1 fan-point immediately for Trial NFT mint (Day 1)`);
+            return { success: true, data: trialNft, message: 'Trial NFT claimed successfully! +1 Fan Point' };
+        }, {
+            isolationLevel: Prisma.TransactionIsolationLevel.Serializable
         });
-
-        await prisma.user.update({
-            where: { id: userId },
-            data: { fan_points: { increment: 1 } }
-        });
-
-        console.log(`✅ User ${userId} claimed trial NFT "${name}", expires at ${expiresAt.toISOString()}`);
-        console.log(`🎁 User ${userId} received 1 fan-point immediately for Trial NFT mint (Day 1)`);
-        return { success: true, data: trialNft, message: 'Trial NFT claimed successfully! +1 Fan Point' };
     } catch (error) {
-        console.error(`Error claiming trial NFT for user ${userId}:`, error);
+        if (isPrismaTransactionConflict(error)) {
+            const existingClaim = await findExistingTrialNftClaim(prisma, userId);
+            if (existingClaim) {
+                return {
+                    success: false,
+                    message: existingClaim.reason,
+                    data: existingClaim.existingNft
+                };
+            }
+        }
+
+        const errorName = error instanceof Error ? error.name : typeof error;
+        console.error('Error claiming trial NFT', { userId, errorName });
         return { success: false, message: 'Failed to claim trial NFT' };
     }
 };
