@@ -10,6 +10,7 @@ import { ethers } from 'ethers';
 import { getTransactionReceiptStatus, isPrizeTransferTokenAllowed, sendTokensToWallet } from '../utils/tokenHeplers';
 import getDiscoNFTEVM from '../lib/getDiscoNFTEVM';
 import { getTotalNFTCount } from '../lib/trialNftService';
+import { selectPrizeDrawWinner } from '../lib/prizeDrawRng';
 
 enum Status {
     READY = 'READY',
@@ -660,23 +661,7 @@ export class PrizeController {
                     return { status: 'NO_PRIZES' as const };
                 }
 
-                const bestPrizeCandidates = eligiblePrizes.reduce((best: EligiblePrizeCandidate[], current) => {
-                    if (
-                        best.length === 0 ||
-                        current.probability > best[0].probability ||
-                        (current.probability === best[0].probability && current.real_probability < best[0].real_probability)
-                    ) {
-                        return [current];
-                    } else if (
-                        current.probability === best[0].probability &&
-                        current.real_probability === best[0].real_probability
-                    ) {
-                        best.push(current);
-                    }
-                    return best;
-                }, []);
-
-                const winningPrize = bestPrizeCandidates[Math.floor(Math.random() * bestPrizeCandidates.length)];
+                const winningPrize = selectPrizeDrawWinner(eligiblePrizes);
                 if (!winningPrize) {
                     return { status: 'NO_WINNER' as const };
                 }
