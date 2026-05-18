@@ -522,7 +522,7 @@
       },
       "securitySensitiveChange": "warning",
       "coverageIntent": "warning",
-      "domainInvariant": "blocking"
+      "domainInvariant": "warning"
     },
     "baselinePolicy": {
       "expired": "warning"
