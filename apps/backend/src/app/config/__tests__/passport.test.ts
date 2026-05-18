@@ -70,13 +70,13 @@ describe('passport authentication logging', () => {
         errorSpy.mockRestore();
     });
 
-    it('does not log admin JWT or Authorization header during admin authentication', async () => {
+    it('authenticates admin routes with the adminAuth cookie without logging the JWT', async () => {
         const adminToken = jwt.sign({ id: 1, email: 'admin@example.com' }, process.env.JWT_SECRET as string);
         const req = {
-            cookies: {},
-            headers: {
-                authorization: `Bearer ${adminToken}`
-            }
+            cookies: {
+                adminAuth: adminToken
+            },
+            headers: {}
         } as unknown as Request;
         const res = createResponse();
         const next = jest.fn();
@@ -88,15 +88,36 @@ describe('passport authentication logging', () => {
         expect(next).toHaveBeenCalledTimes(1);
         const output = consoleOutput(logSpy, errorSpy);
         expect(output).not.toContain(adminToken);
-        expect(output).not.toContain(`Bearer ${adminToken}`);
     });
 
-    it('does not log or return raw admin token when verification fails', async () => {
-        const rawAdminToken = 'raw-admin-token-value';
+    it('does not accept an Authorization bearer token for admin authentication', async () => {
+        const adminToken = jwt.sign({ id: 1, email: 'admin@example.com' }, process.env.JWT_SECRET as string);
         const req = {
             cookies: {},
             headers: {
-                authorization: `Bearer ${rawAdminToken}`
+                authorization: `Bearer ${adminToken}`
+            }
+        } as unknown as Request;
+        const res = createResponse();
+        const next = jest.fn();
+
+        await AuthAdmin(req, res, next);
+
+        expect(next).not.toHaveBeenCalled();
+        expect(res.status).toHaveBeenCalledWith(401);
+        expect(mockPrisma.admin.findUnique).not.toHaveBeenCalled();
+
+        const output = consoleOutput(logSpy, errorSpy);
+        expect(output).not.toContain(adminToken);
+        expect(output).not.toContain(`Bearer ${adminToken}`);
+        expect(responseOutput(res)).not.toContain(adminToken);
+    });
+
+    it('does not log or return raw admin cookie token when verification fails', async () => {
+        const rawAdminToken = 'raw-admin-token-value';
+        const req = {
+            cookies: {
+                adminAuth: rawAdminToken
             }
         } as unknown as Request;
         const res = createResponse();
@@ -109,8 +130,44 @@ describe('passport authentication logging', () => {
 
         const output = consoleOutput(logSpy, errorSpy);
         expect(output).not.toContain(rawAdminToken);
-        expect(output).not.toContain(`Bearer ${rawAdminToken}`);
         expect(responseOutput(res)).not.toContain(rawAdminToken);
+    });
+
+    it('does not authorize a user JWT as an admin cookie', async () => {
+        const userToken = jwt.sign({ user_id: 9, address: '0x1234567890123456789012345678901234567890' }, process.env.JWT_SECRET as string);
+        const req = {
+            cookies: {
+                adminAuth: userToken
+            },
+            headers: {}
+        } as unknown as Request;
+        const res = createResponse();
+        const next = jest.fn();
+
+        await AuthAdmin(req, res, next);
+
+        expect(next).not.toHaveBeenCalled();
+        expect(res.status).toHaveBeenCalledWith(403);
+        expect(mockPrisma.admin.findUnique).not.toHaveBeenCalled();
+        expect(responseOutput(res)).not.toContain(userToken);
+    });
+
+    it('does not allow body adminKey without the adminAuth cookie', async () => {
+        const req = {
+            body: {
+                adminKey: 'legacy-admin-key'
+            },
+            cookies: {},
+            headers: {}
+        } as unknown as Request;
+        const res = createResponse();
+        const next = jest.fn();
+
+        await AuthAdmin(req, res, next);
+
+        expect(next).not.toHaveBeenCalled();
+        expect(res.status).toHaveBeenCalledWith(401);
+        expect(mockPrisma.admin.findUnique).not.toHaveBeenCalled();
     });
 
     it('does not log or return raw user cookie token when verification fails', async () => {
