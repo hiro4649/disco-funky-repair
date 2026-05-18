@@ -9,13 +9,26 @@ const loadTokenHelpers = (envOverrides: Record<string, string | undefined> = {})
 
   const transfer = jest.fn().mockResolvedValue({
     hash: '0xTransferTx',
-    wait: jest.fn().mockResolvedValue({ status: 1, hash: '0xReceiptTx' })
+    wait: jest.fn().mockResolvedValue({
+      status: 1,
+      hash: '0xReceiptTx',
+      blockNumber: 123,
+      from: '0x0000000000000000000000000000000000000004'
+    })
   });
   (transfer as any).estimateGas = jest.fn().mockResolvedValue(21000n);
 
   const provider = {
     getBalance: jest.fn().mockResolvedValue(1n),
-    getFeeData: jest.fn().mockResolvedValue({ gasPrice: 1n })
+    getFeeData: jest.fn().mockResolvedValue({ gasPrice: 1n }),
+    getNetwork: jest.fn().mockResolvedValue({ chainId: 97n }),
+    getBlock: jest.fn().mockResolvedValue({ timestamp: 1770000000 }),
+    getTransactionReceipt: jest.fn().mockResolvedValue({
+      status: 1,
+      hash: '0xExistingTx',
+      blockNumber: 456,
+      from: '0x0000000000000000000000000000000000000004'
+    })
   };
   const wallet = { address: '0x0000000000000000000000000000000000000004' };
   const contract = {
@@ -100,7 +113,7 @@ describe('sendTokensToWallet prize hot wallet separation', () => {
   it('continues the transfer flow for an allowlisted token', async () => {
     const { helpers, Contract, transfer } = loadTokenHelpers();
 
-    const txHash = await helpers.sendTokensToWallet(RECIPIENT, 10n, ALLOWED_TOKEN);
+    const result = await helpers.sendTokensToWallet(RECIPIENT, 10n, ALLOWED_TOKEN);
 
     expect(Contract).toHaveBeenCalledWith(
       ALLOWED_TOKEN,
@@ -111,6 +124,71 @@ describe('sendTokensToWallet prize hot wallet separation', () => {
       gasLimit: 21000n,
       gasPrice: 1n
     });
-    expect(txHash).toBe('0xReceiptTx');
+    expect(result).toEqual({
+      txHash: '0xReceiptTx',
+      evidence: {
+        txHash: '0xReceiptTx',
+        chainId: 97,
+        from: '0x0000000000000000000000000000000000000004',
+        to: RECIPIENT,
+        contractAddress: ALLOWED_TOKEN,
+        blockNumber: '123',
+        receiptStatus: 1,
+        receiptTimestamp: new Date(1770000000 * 1000),
+        publicAmount: '10'
+      }
+    });
+  });
+
+  it('returns receipt evidence for an existing broadcast tx', async () => {
+    const { helpers, provider } = loadTokenHelpers();
+
+    const result = await helpers.getPrizeTransferReceiptEvidence('0xExistingTx', {
+      recipientAddress: RECIPIENT,
+      tokenAddress: ALLOWED_TOKEN,
+      publicAmount: 10n
+    });
+
+    expect(provider.getTransactionReceipt).toHaveBeenCalledWith('0xExistingTx');
+    expect(result).toEqual({
+      status: 'RECEIVED',
+      evidence: {
+        txHash: '0xExistingTx',
+        chainId: 97,
+        from: '0x0000000000000000000000000000000000000004',
+        to: RECIPIENT,
+        contractAddress: ALLOWED_TOKEN,
+        blockNumber: '456',
+        receiptStatus: 1,
+        receiptTimestamp: new Date(1770000000 * 1000),
+        publicAmount: '10'
+      }
+    });
+  });
+
+  it('keeps non-secret broadcast evidence when receipt is not mined yet', async () => {
+    const { helpers, provider } = loadTokenHelpers();
+    provider.getTransactionReceipt.mockResolvedValueOnce(null);
+
+    const result = await helpers.getPrizeTransferReceiptEvidence('0xPendingTx', {
+      recipientAddress: RECIPIENT,
+      tokenAddress: ALLOWED_TOKEN,
+      publicAmount: 10n
+    });
+
+    expect(result).toEqual({
+      status: 'BROADCASTED',
+      evidence: {
+        txHash: '0xPendingTx',
+        chainId: 97,
+        from: null,
+        to: RECIPIENT,
+        contractAddress: ALLOWED_TOKEN,
+        blockNumber: null,
+        receiptStatus: null,
+        receiptTimestamp: null,
+        publicAmount: '10'
+      }
+    });
   });
 });
