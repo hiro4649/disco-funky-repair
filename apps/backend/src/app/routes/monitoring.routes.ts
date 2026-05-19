@@ -10,6 +10,7 @@ import { isSixHourUpdateRunning } from '../lib/trackingTokenBalanceEthereum';
 import { getEventListenerStatus } from '../lib/realtimeEventListener';
 import { checkingHoldingDateFromOnChain } from '../lib/optimizedHoldingDateChecker';
 import { AuthAdmin } from '../config/passport';
+import { safeLogError } from '../utils/safeLogger';
 
 const router = Router();
 
@@ -36,7 +37,7 @@ router.get('/realtime-status', AuthAdmin, (req: Request, res: Response) => {
             realtimeHealthy: (wsStatus?.connected ?? false) && health.quickNode.available
         });
     } catch (error) {
-        console.error('Error fetching realtime status:', error);
+        safeLogError('monitoring_realtime_status', error, { route: '/monitoring/realtime-status' });
         res.status(500).json({
             success: false,
             error: 'Failed to fetch realtime status'
@@ -63,10 +64,10 @@ router.post('/run-daily-batch', AuthAdmin, async (req: Request, res: Response) =
             timestamp: new Date().toISOString()
         });
     } catch (error) {
-        console.error('Error running daily batch:', error);
+        safeLogError('monitoring_run_daily_batch', error, { route: '/monitoring/run-daily-batch' });
         res.status(500).json({
             success: false,
-            error: error instanceof Error ? error.message : 'Failed to run daily batch'
+            error: 'Failed to run daily batch'
         });
     }
 });
@@ -131,7 +132,7 @@ router.get('/quicknode-status', AuthAdmin, async (req: Request, res: Response) =
             }
         });
     } catch (error) {
-        console.error('Error fetching QuickNode status:', error);
+        safeLogError('monitoring_quicknode_status', error, { route: '/monitoring/quicknode-status' });
         res.status(500).json({
             success: false,
             error: 'Failed to fetch service status'
@@ -176,7 +177,7 @@ router.get('/healthcheck', async (req: Request, res: Response) => {
             healthy: isHealthy
         });
     } catch (error) {
-        console.error('Healthcheck error:', error);
+        safeLogError('monitoring_healthcheck', error, { route: '/monitoring/healthcheck' });
         res.status(503).json({
             status: 'error',
             timestamp: new Date().toISOString(),

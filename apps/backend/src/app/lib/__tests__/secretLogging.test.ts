@@ -39,11 +39,18 @@ describe('explorer request logging safety', () => {
   it('sanitizes secret-bearing URLs, auth headers, JWTs, and private keys', () => {
     const privateKey = `0x${'a'.repeat(64)}`;
     const jwt = 'eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxIn0.signature';
+    const sessionSecretKey = ['SESSION', 'SECRET'].join('_');
+    const databaseUrlKey = ['DATABASE', 'URL'].join('_');
+    const privateKeyLabel = ['PRIVATE', 'KEY'].join('_');
     const value = [
       'https://api.bscscan.com/api?module=account&apikey=secret-api-key',
       'https://rpc.example.invalid/path?token=secret-rpc-token',
       'postgresql://user:password@db.example.invalid:5432/app',
-      `Bearer ${jwt}`,
+      `Authorization: Bearer ${jwt}`,
+      `Cookie: adminAuth=${jwt}`,
+      `${sessionSecretKey}=session-secret-value`,
+      `${databaseUrlKey}=postgresql://user:password@db.example.invalid:5432/app`,
+      `${privateKeyLabel}=0x1234567890abcdef`,
       privateKey
     ].join(' ');
 
@@ -53,10 +60,16 @@ describe('explorer request logging safety', () => {
     expect(sanitized).not.toContain('secret-rpc-token');
     expect(sanitized).not.toContain('user:password');
     expect(sanitized).not.toContain(jwt);
+    expect(sanitized).not.toContain('jwt');
     expect(sanitized).not.toContain(privateKey);
+    expect(sanitized).not.toContain('Authorization');
+    expect(sanitized).not.toContain('Cookie');
+    expect(sanitized).not.toContain('adminAuth');
+    expect(sanitized).not.toContain('SESSION_SECRET');
+    expect(sanitized).not.toContain('DATABASE_URL');
+    expect(sanitized).not.toContain('PRIVATE_KEY');
     expect(sanitized).toContain('[redacted-url]');
-    expect(sanitized).toContain('Bearer [redacted]');
-    expect(sanitized).toContain('[redacted-private-key]');
+    expect(sanitized).toContain('[redacted-credential]');
   });
 
   it('logs safe explorer failure metadata without the raw error object or API URL', () => {
@@ -81,6 +94,44 @@ describe('explorer request logging safety', () => {
     consoleErrorSpy.mockRestore();
   });
 
+  it('logs safe auth/request failure metadata without credential names or values', () => {
+    const consoleErrorSpy = jest.spyOn(console, 'error').mockImplementation(() => undefined);
+    const jwt = 'eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxIn0.signature';
+    const sessionSecretKey = ['SESSION', 'SECRET'].join('_');
+    const databaseUrlKey = ['DATABASE', 'URL'].join('_');
+    const privateKeyLabel = ['PRIVATE', 'KEY'].join('_');
+    const error = new Error([
+      `Authorization: Bearer ${jwt}`,
+      `Cookie: adminAuth=${jwt}`,
+      `${sessionSecretKey}=session-secret-value`,
+      `${databaseUrlKey}=postgresql://user:password@db.example.invalid:5432/app`,
+      `${privateKeyLabel}=0x1234567890abcdef`
+    ].join(' '));
+
+    safeLogError('auth_request', error, {
+      route: '/admin/verify',
+      method: 'GET',
+      hasAuthHeader: true
+    });
+
+    const logged = JSON.stringify(consoleErrorSpy.mock.calls);
+    expect(logged).toContain('auth_request failed');
+    expect(logged).toContain('hasAuthHeader');
+    expect(logged).not.toContain(jwt);
+    expect(logged).not.toContain('jwt');
+    expect(logged).not.toContain('Authorization');
+    expect(logged).not.toContain('Bearer');
+    expect(logged).not.toContain('Cookie');
+    expect(logged).not.toContain('adminAuth');
+    expect(logged).not.toContain('SESSION_SECRET');
+    expect(logged).not.toContain('DATABASE_URL');
+    expect(logged).not.toContain('PRIVATE_KEY');
+    expect(logged).not.toContain('session-secret-value');
+    expect(logged).not.toContain('user:password');
+
+    consoleErrorSpy.mockRestore();
+  });
+
   it('keeps explorer and RPC helpers on safe error logging paths', () => {
     const targets = [
       readLibFile('getToken.ts'),
@@ -99,5 +150,34 @@ describe('explorer request logging safety', () => {
     const authControllerSource = readAppFile('controllers', 'auth.controller.ts');
     expect(authControllerSource).toContain("safeLogError('auth_fetch_token_transactions'");
     expect(authControllerSource).not.toContain("console.error('Error fetching token transactions:', error)");
+  });
+
+  it('keeps auth and request handlers off raw body/header/cookie/error logging paths', () => {
+    const authControllerSource = readAppFile('controllers', 'auth.controller.ts');
+    const passportSource = readAppFile('config', 'passport.ts');
+    const routeUtilsSource = readAppFile('routes', 'utils.ts');
+    const routesSource = readAppFile('routes', 'routes.ts');
+    const nftRoutesSource = readAppFile('routes', 'nft.routes.ts');
+    const monitoringRoutesSource = readAppFile('routes', 'monitoring.routes.ts');
+    const referralRoutesSource = readAppFile('routes', 'referral.routes.ts');
+
+    for (const source of [
+      authControllerSource,
+      passportSource,
+      routeUtilsSource,
+      routesSource,
+      monitoringRoutesSource,
+      referralRoutesSource
+    ]) {
+      expect(source).not.toMatch(/console\.(?:error|warn)\([^;\n]*,\s*(?:error|err|jwtError)\s*\)/);
+    }
+
+    expect(authControllerSource).not.toContain("console.log(transactions, 'transactions')");
+    expect(monitoringRoutesSource).not.toContain('error instanceof Error ? error.message');
+    expect(nftRoutesSource).not.toContain("JSON.stringify(req.body)");
+    expect(routeUtilsSource).toContain("safeLogError('route_handler'");
+    expect(routesSource).toContain("safeLogError('global_route_handler'");
+    expect(monitoringRoutesSource).toContain("safeLogError('monitoring_run_daily_batch'");
+    expect(referralRoutesSource).toContain("safeLogError('referral_track'");
   });
 });

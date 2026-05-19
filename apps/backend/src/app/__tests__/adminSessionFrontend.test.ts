@@ -30,4 +30,20 @@ describe('frontend admin cookie-only session boundary', () => {
     expect(adminSources).not.toMatch(/headers\.common\[['"]Authorization['"]\]\s*=/);
     expect(fs.existsSync(path.join(frontendRoot, 'utils/setAuthToken.ts'))).toBe(false);
   });
+
+  it('does not raw-log frontend auth/admin axios errors or response objects', () => {
+    const requestLoggingSources = [
+      readFrontendFile('src/components/Auth/Signin/index.tsx'),
+      readFrontendFile('src/components/Layouts/AdminLayout.tsx'),
+      readFrontendFile('src/context/AuthContext.tsx'),
+      readFrontendFile('utils/apiClient.ts'),
+      readFrontendFile('src/utils/safeClientLogger.ts')
+    ].join('\n');
+
+    expect(requestLoggingSources).toContain('safeClientLogError');
+    expect(requestLoggingSources).toContain('getSafeClientErrorMetadata');
+    expect(requestLoggingSources).not.toMatch(/console\.(?:error|warn|log)\([^;\n]*,\s*(?:error|err|userInfoError)\s*\)/);
+    expect(requestLoggingSources).not.toMatch(/console\.(?:error|warn|log)\([^;\n]*(?:\.response|\.config|\.headers|\.request)[^;\n]*\)/);
+    expect(requestLoggingSources).not.toMatch(/console\.(?:error|warn|log)\([^;\n]*(?:Authorization|Bearer|adminAuth|SESSION_SECRET|PRIVATE_KEY|DATABASE_URL)[^;\n]*\)/);
+  });
 });

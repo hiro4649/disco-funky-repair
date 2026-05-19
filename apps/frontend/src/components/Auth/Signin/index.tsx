@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { useAppDispatch, useAppSelector } from '@/store/store';
 import { setAdminLoading, setAdminAuthState, setAdminId } from '@/store/slices/adminSlice';
 import apiClient from "../../../../utils/apiClient";
+import { safeClientLogError } from "@/utils/safeClientLogger";
 
 interface AdminData {
   admin_id: number;
@@ -37,7 +38,7 @@ export default function Signin() {
         dispatch(setAdminAuthState(false));
       }
     } catch (error) {
-      console.error('Error fetching user data:', error);
+      safeClientLogError('admin_verify', error);
       dispatch(setAdminAuthState(false));
     }
   }, [dispatch, router]);
@@ -63,8 +64,7 @@ export default function Signin() {
         console.error("Login failed: Invalid response format");
       }
     } catch (error: any) {
-      const errorMessage = error.response?.data?.message || "Login failed";
-      console.error("Login failed:", errorMessage);
+      safeClientLogError('admin_signin', error);
     } finally {
       dispatch(setAdminLoading(false));
     }

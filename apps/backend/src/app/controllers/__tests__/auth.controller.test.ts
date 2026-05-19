@@ -213,9 +213,16 @@ describe('AuthController wallet signature login', () => {
 });
 
 describe('AuthController admin cookie session', () => {
+  let errorSpy: jest.SpyInstance;
+
   beforeEach(() => {
     jest.clearAllMocks();
     process.env.JWT_SECRET = 'test-jwt-secret';
+    errorSpy = jest.spyOn(console, 'error').mockImplementation(() => undefined);
+  });
+
+  afterEach(() => {
+    errorSpy.mockRestore();
   });
 
   it('sets an httpOnly admin cookie without returning the JWT in the response body', async () => {
@@ -260,5 +267,36 @@ describe('AuthController admin cookie session', () => {
       sameSite: 'lax'
     }));
     expect(res.json).toHaveBeenCalledWith({ success: true, message: 'Logged out' });
+  });
+
+  it('does not log admin signin request body or credential values on backend errors', async () => {
+    const credential = 'not-a-real-password-value';
+    const databaseUrlKey = ['DATABASE', 'URL'].join('_');
+    const sessionSecretKey = ['SESSION', 'SECRET'].join('_');
+    mockPrisma.admin.findUnique.mockRejectedValue(
+      new Error(`${databaseUrlKey}=postgresql://user:${credential}@db.example.invalid:5432/app ${sessionSecretKey}=${credential}`)
+    );
+
+    const res = createResponse();
+    await AuthController.signin(
+      createRequest({
+        email: 'admin@example.com',
+        password: credential,
+        token: `Bearer eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxIn0.signature`
+      }),
+      res
+    );
+
+    const logged = JSON.stringify(errorSpy.mock.calls);
+    expect(logged).toContain('admin_signin failed');
+    expect(logged).toContain('emailPresent');
+    expect(logged).not.toContain(credential);
+    expect(logged).not.toContain('password');
+    expect(logged).not.toContain('Bearer');
+    expect(logged).not.toContain('DATABASE_URL');
+    expect(logged).not.toContain('SESSION_SECRET');
+    expect(logged).not.toContain('Authorization');
+    expect(logged).not.toContain('adminAuth');
+    expect(res.status).toHaveBeenCalledWith(500);
   });
 });
