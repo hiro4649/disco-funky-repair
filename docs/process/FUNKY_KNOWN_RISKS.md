@@ -29,6 +29,13 @@ UNKNOWN and BLOCKED are not PASS.
 | project is not production ready | P1, runtime dependent, tx dependent | Human release owner confirms all release gates and residual risks. |
 | recent admin auth/logging fixes are not staging-confirmed | UNKNOWN, runtime dependent | Staging admin auth and safe logging smoke passes without secret exposure. |
 | Prize tx evidence is not funded-tx-confirmed | UNKNOWN, tx dependent, tBNB dependent | Prize send receipt and no-double-send smoke passes with receipt evidence. |
+| ts-jest TypeScript version warning | P2 | Test owner confirms supported version or records accepted warning with expiry. |
+| frontend public env not configured warning | P2, runtime dependent | Frontend env owner confirms intended staging public env names and no secret-like public env. |
+| Prisma update notice | P2 | Dependency owner reviews major-version update separately. |
+| safe placeholder is not production DB proof | UNKNOWN, runtime dependent | Runtime owner confirms real non-secret runtime connectivity evidence. |
+
+Each known risk must include owner, expiresAt, severity, and reason when it is carried into a PR or release record.
+Expired known risks are BLOCKED until refreshed, removed with evidence, or reapproved by the owner.
 
 ## Risk Update Rules
 

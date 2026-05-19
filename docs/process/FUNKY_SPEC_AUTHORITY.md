@@ -51,6 +51,8 @@ Crash game is not installed.
 - owner-gate must use `req.user.user_id`.
 - Do not trust only body `walletAddress` or `userId`.
 - Asset, NFT, ticket, tier, wallet, admin, and contract routes require authentication, authorization, and owner checks.
+- Asset, wallet, transfer, chain, receipt, and role-safety checks are required before any state is treated as complete.
+- Role confirmation is required before admin, withdraw, tier, contract, NFT, or wallet operation.
 
 ## NFT Rules
 
@@ -58,6 +60,7 @@ Crash game is not installed.
 - Do not revive the disabled `PATCH /api/nft/:id` route.
 - Do not treat DB state alone as NFT owner success.
 - Mint success requires chainId, contract address, txHash, receipt, event log, and owner state evidence.
+- Withdraw, royalty, and owner-only contract operations require role evidence and receipt evidence.
 
 ## Prize And Trial NFT Rules
 
@@ -66,6 +69,11 @@ Crash game is not installed.
 - Prize sendToWallet requires no-double-send, receipt evidence, and retry safety.
 - Trial NFT claim requires idempotency.
 - Do not treat DB updates alone as success for transfer, mint, claim, or tier tx.
+- DB updates and on-chain completion are separate states.
+- A txHash alone is not success.
+- Receipt confirmation is required before completion.
+- chainId mismatch is forbidden.
+- Idempotency and double-execution prevention are required for asset-affecting operations.
 
 ## Public And Static Data
 
@@ -107,7 +115,7 @@ Codex must not declare production ready.
 Production readiness requires at least:
 
 - GitHub no-tx gate is PASS.
-- Harness v0.6.5 gate, secret scan, backend build/test, frontend env validation/build, contracts compile/test, and NFT compile/test are PASS.
+- Harness v0.6.6 gate, secret scan, backend build/test, frontend env validation/build, contracts compile/test, and NFT compile/test are PASS.
 - Staging domain, HTTPS, runtime env, CORS, SESSION_SECRET, and BSC testnet chainId `97` are confirmed.
 - After tBNB funding: no-tx smoke, secret log scan, funded tx smoke, NFT deploy/mint receipt, Prize send receipt/no-double-send, TierUpdater receipt, and governance/config receipt are confirmed.
 - Receipt evidence is stored with non-secret public data only.
