@@ -15,6 +15,7 @@ import apiClient from "../../../utils/apiClient";
 import { NextIntlClientProvider } from 'next-intl';
 import enMessages from '../../../locales/en.json';
 import jaMessages from '../../../locales/ja.json';
+import { safeClientLogError } from "@/utils/safeClientLogger";
 
 export default function AdminLayout({
   children,
@@ -71,7 +72,7 @@ export default function AdminLayout({
         }
       })
       .catch((err) => {
-        console.error("Admin logout failed", { status: err?.response?.status });
+        safeClientLogError('admin_logout', err);
       })
       .finally(() => {
         delete apiClient.defaults.headers.common["Authorization"];

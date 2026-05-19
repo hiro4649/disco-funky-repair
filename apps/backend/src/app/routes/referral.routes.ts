@@ -3,6 +3,7 @@ import { PrismaClient } from '@prisma/client';
 import moment from 'moment';
 import { generateRandomCode } from '../utils/ticketCodeGenerator';
 import { Authenticate, AuthAdmin } from '../config/passport';
+import { safeLogError } from '../utils/safeLogger';
 
 const router = Router();
 const prisma = new PrismaClient();
@@ -107,7 +108,7 @@ router.get('/referral-code/:walletAddress', Authenticate, async (req, res) => {
 
     return res.json({ referralCode: user.referral_code });
   } catch (error) {
-    console.error('Error getting referral code:', error);
+    safeLogError('referral_code_get', error, { route: '/referral/referral-code/:walletAddress' });
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -151,7 +152,7 @@ router.get('/referral-stats/:walletAddress', Authenticate, async (req, res) => {
       pendingRewards: verifiedReferrals - totalRewards
     });
   } catch (error) {
-    console.error('Error getting referral stats:', error);
+    safeLogError('referral_stats_get', error, { route: '/referral/referral-stats/:walletAddress' });
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -243,7 +244,7 @@ router.post('/track-referral', Authenticate, async (req, res) => {
 
     return res.status(result.status).json(result.body);
   } catch (error) {
-    console.error('Error tracking referral:', error);
+    safeLogError('referral_track', error, { route: '/referral/track-referral' });
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -274,7 +275,7 @@ router.get('/referral-rewards/:walletAddress', Authenticate, async (req, res) =>
 
     res.json(rewards);
   } catch (error) {
-    console.error('Error getting referral rewards:', error);
+    safeLogError('referral_rewards_get', error, { route: '/referral/referral-rewards/:walletAddress' });
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -325,7 +326,7 @@ router.get('/debug/referral-status/:walletAddress', AuthAdmin, async (req, res) 
       isReferrer: referralRewards.some(r => r.referrer_wallet === walletAddress.toLowerCase())
     });
   } catch (error) {
-    console.error('Error checking referral status:', error);
+    safeLogError('referral_status_debug', error, { route: '/referral/debug/referral-status/:walletAddress' });
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -367,7 +368,7 @@ router.post('/admin/run-snapshot', AuthAdmin, async (req, res) => {
       totalChecked: pendingReferrals.length 
     });
   } catch (error) {
-    console.error('Error running snapshot:', error);
+    safeLogError('referral_snapshot_run', error, { route: '/referral/admin/run-snapshot' });
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -437,7 +438,7 @@ router.post('/admin/distribute-rewards', AuthAdmin, async (req, res) => {
       distributedCount 
     });
   } catch (error) {
-    console.error('Error distributing rewards:', error);
+    safeLogError('referral_rewards_distribute', error, { route: '/referral/admin/distribute-rewards' });
     res.status(500).json({ error: 'Internal server error' });
   }
 });

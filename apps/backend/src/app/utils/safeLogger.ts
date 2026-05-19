@@ -2,19 +2,24 @@ type SafeLogValue = string | number | boolean | null | undefined;
 type SafeLogMetadata = Record<string, SafeLogValue>;
 
 const URL_PATTERN = /\b(?:https?|wss?|postgres(?:ql)?):\/\/[^\s"'<>]+/gi;
+const CREDENTIAL_ASSIGNMENT_PATTERN =
+  /\b(?:authorization|cookie|set-cookie|adminauth|userauth|jwt|token|access[_-]?token|api[_-]?key|apikey|secret|session[_-]?secret|private[_-]?key|database[_-]?url|db[_-]?url|password)\b\s*[:=]\s*[^\s"',}]+/gi;
 const SECRET_QUERY_PATTERN =
-  /([?&;\s](?:api[_-]?key|apikey|key|token|access[_-]?token|authorization|jwt|secret|private[_-]?key|password|signature)=)[^&;\s"']+/gi;
+  /([?&;\s](?:api[_-]?key|apikey|key|token|access[_-]?token|authorization|jwt|secret|session[_-]?secret|private[_-]?key|database[_-]?url|db[_-]?url|password|signature)=)[^&;\s"']+/gi;
 const BEARER_PATTERN = /\bBearer\s+[A-Za-z0-9._~+/=-]+/gi;
 const JWT_PATTERN = /\beyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\b/g;
 const PRIVATE_KEY_PATTERN = /\b0x[a-fA-F0-9]{64}\b/g;
+const CREDENTIAL_LABEL_PATTERN = /\b(?:jwt|adminAuth|userAuth|SESSION_SECRET|PRIVATE_KEY|DATABASE_URL)\b/gi;
 
 export const sanitizeLogText = (value: string): string =>
   value
+    .replace(CREDENTIAL_ASSIGNMENT_PATTERN, '[redacted-credential]')
     .replace(URL_PATTERN, '[redacted-url]')
     .replace(SECRET_QUERY_PATTERN, '$1[redacted]')
-    .replace(BEARER_PATTERN, 'Bearer [redacted]')
-    .replace(JWT_PATTERN, '[redacted-jwt]')
-    .replace(PRIVATE_KEY_PATTERN, '[redacted-private-key]');
+    .replace(BEARER_PATTERN, '[redacted-credential]')
+    .replace(JWT_PATTERN, '[redacted-credential]')
+    .replace(PRIVATE_KEY_PATTERN, '[redacted-credential]')
+    .replace(CREDENTIAL_LABEL_PATTERN, '[redacted-credential]');
 
 const sanitizeMetadata = (metadata?: SafeLogMetadata): SafeLogMetadata => {
   if (!metadata) {

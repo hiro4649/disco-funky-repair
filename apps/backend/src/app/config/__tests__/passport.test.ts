@@ -203,9 +203,33 @@ describe('passport authentication logging', () => {
 
         expect(next).not.toHaveBeenCalled();
         expect(res.status).toHaveBeenCalledWith(401);
-        expect(logSpy).toHaveBeenCalledWith('Admin authentication token missing', {
-            cookiePresent: false,
-            authorizationHeaderPresent: false
+        expect(logSpy).toHaveBeenCalledWith('Admin authentication missing', {
+            hasAdminSession: false,
+            hasAuthHeader: false
         });
+    });
+
+    it('does not log credential labels or values from auth failures', async () => {
+        const rawAdminToken = 'Bearer eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxIn0.signature';
+        const req = {
+            cookies: {
+                adminAuth: rawAdminToken
+            },
+            headers: {
+                authorization: rawAdminToken
+            }
+        } as unknown as Request;
+        const res = createResponse();
+        const next = jest.fn();
+
+        await AuthAdmin(req, res, next);
+
+        const output = consoleOutput(logSpy, errorSpy);
+        expect(output).not.toContain(rawAdminToken);
+        expect(output).not.toContain('Bearer');
+        expect(output).not.toContain('Authorization');
+        expect(output).not.toContain('adminAuth');
+        expect(output).not.toContain('JWT');
+        expect(output).not.toContain('jwt');
     });
 });
