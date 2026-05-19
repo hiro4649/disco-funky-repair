@@ -13,18 +13,30 @@ mainへ直接pushしてはいけません。
 
 FUNKY repoで作業する場合、Codexは作業前に以下を読んでください。
 
+AGENTS.md
 docs/process/FUNKY_SPEC_AUTHORITY.md
-docs/process/FUNKY_ASSET_OPERATION_RUNBOOK.md
 docs/process/FUNKY_RELEASE_GATE.md
+docs/process/FUNKY_ASSET_OPERATION_RUNBOOK.md
+docs/process/FUNKY_KNOWN_RISKS.md
+docs/process/CODEX_PR_REVIEW_PLAYBOOK.md
+docs/process/CODEX_POST_MERGE_CHECKLIST.md
+
+staging反映、runtime障害、secret漏洩、tx失敗、rollback判断が関係する場合は追加で以下を読んでください。
+
+docs/process/CODEX_INCIDENT_AND_ROLLBACK_RUNBOOK.md
 
 優先順位:
 
 1. docs/process/FUNKY_SPEC_AUTHORITY.md
 2. docs/process/FUNKY_RELEASE_GATE.md
 3. docs/process/FUNKY_ASSET_OPERATION_RUNBOOK.md
-4. AGENTS.md
-5. 個別タスク指示
-6. 既存docs/launch
+4. docs/process/FUNKY_KNOWN_RISKS.md
+5. docs/process/CODEX_PR_REVIEW_PLAYBOOK.md
+6. docs/process/CODEX_POST_MERGE_CHECKLIST.md
+7. docs/process/CODEX_INCIDENT_AND_ROLLBACK_RUNBOOK.md
+8. AGENTS.md
+9. 個別タスク指示
+10. 既存docs/launch
 
 矛盾がある場合は推測で進めないでください。
 古いdocsを正としないでください。
