@@ -98,20 +98,11 @@ export const Authenticate = async (req: Request, res: Response, next: NextFuncti
 
 export const AuthAdmin = async (req: Request, res: Response, next: NextFunction) => {
     try {
-        // Check for token in cookies first
-        let token = req.cookies.adminAuth;
-
-        // If no token in cookies, check Authorization header
-        if (!token && req.headers.authorization) {
-            const authHeader = req.headers.authorization;
-            if (authHeader.startsWith('Bearer ')) {
-                token = authHeader.substring(7);
-            }
-        }
+        const token = req.cookies?.adminAuth;
 
         if (!token) {
             safeAuthLog('Admin authentication token missing', {
-                cookiePresent: Boolean(req.cookies.adminAuth),
+                cookiePresent: Boolean(req.cookies?.adminAuth),
                 authorizationHeaderPresent: Boolean(req.headers.authorization)
             });
             return res.status(401).json({ success: false, message: 'Unauthenticated' });
@@ -119,6 +110,10 @@ export const AuthAdmin = async (req: Request, res: Response, next: NextFunction)
 
         try {
             const decoded = jwt.verify(token, key) as Admin;
+            const adminId = Number(decoded.id);
+            if (!Number.isInteger(adminId) || typeof decoded.email !== 'string' || decoded.email.trim() === '') {
+                return res.status(403).json({ success: false, message: 'Invalid token subject' });
+            }
             
             const admin = await prisma.admin.findUnique({
                 where: { email: decoded.email },

@@ -1,6 +1,4 @@
-import axios, { AxiosInstance, AxiosError, AxiosResponse } from 'axios';
-import Cookies from 'js-cookie';
-import { jwtDecode } from 'jwt-decode';
+import axios, { AxiosInstance } from 'axios';
 
 // Create an axios instance for direct backend API calls
 const apiClient: AxiosInstance = axios.create({
@@ -36,4 +34,4 @@ apiClient.interceptors.response.use(
   }
 );
 
-export default apiClient; 
+export default apiClient;

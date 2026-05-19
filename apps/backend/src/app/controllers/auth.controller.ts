@@ -540,11 +540,9 @@ export class AuthController {
                     sameSite: process.env.NODE_ENV === 'production' ? 'strict' : 'lax',
                     maxAge: 3600000 // 1 hour in milliseconds
                 });
-                // Respond with the signed token
                 return res.status(200).json({ 
                     message: "Signin successful",
-                    success: true,
-                    token: token
+                    success: true
                 });
             } else {
                 return res.status(404).json({ message: "Admin not found or password hash is undefined" });

@@ -9,6 +9,9 @@ const mockPrisma = {
     findUnique: jest.fn(),
     update: jest.fn(),
     create: jest.fn()
+  },
+  admin: {
+    findUnique: jest.fn()
   }
 };
 
@@ -23,7 +26,15 @@ jest.mock('../../utils/rateLimiter', () => ({
   }
 }));
 
+jest.mock('bcryptjs', () => ({
+  __esModule: true,
+  default: {
+    compare: jest.fn()
+  }
+}));
+
 import { Wallet } from 'ethers';
+import bcrypt from 'bcryptjs';
 import { AuthController } from '../auth.controller';
 
 const createResponse = () => {
@@ -31,6 +42,7 @@ const createResponse = () => {
   res.status = jest.fn().mockReturnValue(res);
   res.json = jest.fn().mockReturnValue(res);
   res.cookie = jest.fn().mockReturnValue(res);
+  res.clearCookie = jest.fn().mockReturnValue(res);
   return res;
 };
 
@@ -197,5 +209,56 @@ describe('AuthController wallet signature login', () => {
     expect(res.status).toHaveBeenCalledWith(401);
     expect(res.cookie).not.toHaveBeenCalled();
     expect(mockPrisma.user.findUnique).not.toHaveBeenCalled();
+  });
+});
+
+describe('AuthController admin cookie session', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    process.env.JWT_SECRET = 'test-jwt-secret';
+  });
+
+  it('sets an httpOnly admin cookie without returning the JWT in the response body', async () => {
+    mockPrisma.admin.findUnique.mockResolvedValue({
+      id: 7,
+      email: 'admin@example.com',
+      password_hash: 'hashed-password'
+    });
+    (bcrypt.compare as jest.Mock).mockResolvedValue(true);
+
+    const res = createResponse();
+    await AuthController.signin(
+      createRequest({
+        email: 'admin@example.com',
+        password: 'correct-password'
+      }),
+      res
+    );
+
+    expect(res.cookie).toHaveBeenCalledWith('adminAuth', expect.any(String), expect.objectContaining({
+      httpOnly: true,
+      secure: false,
+      sameSite: 'lax',
+      maxAge: 3600000
+    }));
+    expect(res.status).toHaveBeenCalledWith(200);
+    expect(res.json).toHaveBeenCalledWith(expect.objectContaining({
+      message: 'Signin successful',
+      success: true
+    }));
+    expect(res.json.mock.calls[0][0]).not.toHaveProperty('token');
+  });
+
+  it('clears the admin cookie on logout', async () => {
+    const res = createResponse();
+
+    await AuthController.logout(createRequest({}), res);
+
+    expect(res.clearCookie).toHaveBeenCalledWith('adminAuth', expect.objectContaining({
+      httpOnly: true,
+      secure: false,
+      sameSite: 'lax'
+    }));
+    expect(res.json).toHaveBeenCalledWith({ success: true, message: 'Logged out' });
   });
 });

@@ -5,7 +5,6 @@ interface Admin {
     loading: boolean,
     createLoading: boolean,
     adminAuthState: boolean,
-    adminToken: string | null,
     adminId: number | null
 }
 
@@ -13,7 +12,6 @@ const initialState: Admin = {
     loading: false,
     createLoading: false,
     adminAuthState: false,
-    adminToken: null,
     adminId: null
 }
 
@@ -30,12 +28,7 @@ export const adminSlice = createSlice({
         setCreateLoading: (state, action: PayloadAction<boolean>) => {
             state.createLoading = action.payload;
         },
-        setAdminToken: (state, action: PayloadAction<string | null>) => {
-            state.adminToken = action.payload;
-            state.adminAuthState = !!action.payload;
-        },
         clearAdminAuth: (state) => {
-            state.adminToken = null;
             state.adminAuthState = false;
             state.adminId = null;
         },
@@ -49,7 +42,6 @@ export const {
     setAdminLoading, 
     setCreateLoading, 
     setAdminAuthState, 
-    setAdminToken,
     clearAdminAuth,
     setAdminId
 } = adminSlice.actions;
