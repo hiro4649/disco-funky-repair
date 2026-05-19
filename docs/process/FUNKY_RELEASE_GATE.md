@@ -26,7 +26,7 @@ At PR time, confirm:
 
 Run these commands and record results in the PR body:
 
-- Harness v0.6.5 gate: `node scripts/codex-local-quality-gate.mjs`
+- Harness v0.6.6 gate: `node scripts/codex-local-quality-gate.mjs`
 - secret scan gate: `node scripts/codex-secret-safety-scan.mjs`
 - profile required checks: `CODEX_RUN_PROFILE_REQUIRED_CHECKS=1 node scripts/codex-local-quality-gate.mjs`
 - JSON report: `CODEX_QUALITY_REPORT=json node scripts/codex-local-quality-gate.mjs`
@@ -44,6 +44,8 @@ GO requires:
 - frontend env validation/build gate PASS.
 - contracts compile/test gate PASS.
 - NFT compile/test gate PASS.
+- JSON quality report has `mergeReady=true`.
+- Manual confirmation is recorded for current head when R3 or human review is required.
 
 Report failures, skipped checks, and environment blockers.
 Do not hide failed checks.
@@ -70,6 +72,7 @@ GO requires:
 - BSC testnet chainId `97` gate: staging runtime and wallets use chainId `97`.
 - tBNB funding gate: deployer, Prize hot wallet, and Tier relayer funding are confirmed.
 - no-tx smoke gate: startup, auth, admin protection, and public read pass without tx.
+- manual branch protection gate: if branch protection is unavailable, the PR must record remote check status, required human review, and merge order.
 
 Domain decision is the final staging gate.
 Do not deploy to real staging while the staging domain is undecided.
@@ -96,7 +99,10 @@ GO conditions:
 
 - GitHub no-tx gate, local harness gates, build/test gates, security/privacy gates, contract/staging gates, and funded tx smoke gates are PASS.
 - R3 human review is complete.
+- Asset-security reviewer confirms asset, wallet, transfer, chain, receipt, and role-safety evidence.
 - Rollback/stop conditions are documented.
+- Post-merge verify is planned and executed after merge where applicable.
+- No production operation is performed by Codex.
 - Residual risk is accepted by a human.
 
 NO-GO conditions:
@@ -129,3 +135,9 @@ UNKNOWN conditions:
 - Asset reviewer: wallet role, receipt evidence, and no-double-send.
 - Release owner: go/no-go/BLOCKED/UNKNOWN decision and final approval.
 - Domain owner: staging domain and HTTPS.
+
+## Stop Or Rollback
+
+Stop before merge or release if any required gate fails, any secret exposure is suspected, staging and production are mixed, receipt evidence is missing, or role ownership cannot be confirmed.
+Rollback config changes only through reviewed PRs.
+On-chain actions are treated as non-reversible and require human asset review.

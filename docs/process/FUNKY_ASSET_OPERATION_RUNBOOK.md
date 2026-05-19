@@ -18,6 +18,23 @@ Asset operation includes:
 Public addresses may be recorded.
 Private keys, seed phrases, API keys, and DB URLs must never be recorded.
 
+## Codex Permission Boundary
+
+Codex may:
+
+- inspect source, tests, docs, and non-secret configuration names;
+- run local no-tx checks, builds, tests, compile checks, secret scans, and quality gates;
+- summarize receipt, chainId, contract, role, and idempotency requirements without exposing private values.
+
+Codex must not:
+
+- run sendToWallet, mint, withdraw, contract verification, BSC testnet tx, BSC mainnet tx, or production DB operation;
+- operate deployer, Prize hot wallet, Tier relayer, admin wallet, or owner wallet;
+- expose production values, private keys, seed phrases, API keys, DB URLs, JWTs, cookies, Authorization headers, raw logs, or raw payloads.
+
+Safe placeholders are not production guarantees.
+Verification summaries must be safe summaries only.
+
 ## Forbidden Before tBNB Funding
 
 Before tBNB funding, the following are forbidden:
@@ -102,6 +119,7 @@ Stop operation and move to manual review if:
 - Track config/env changes in PR and release records so they can be restored.
 - Do not resend broadcast tx; confirm receipt or move to manual review.
 - After a mistaken deploy or config tx, stop, record evidence, and require human approval before any new tx.
+- Confirm receipt, chainId, contract address, role, and idempotency before changing any operational decision.
 
 ## Runtime Log Secret Scan
 
