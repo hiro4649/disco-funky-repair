@@ -1,5 +1,5 @@
 {
-  "marker": "CODEX_QUALITY_HARNESS_FILE v0.6.6",
+  "marker": "CODEX_QUALITY_HARNESS_FILE v0.6.7",
   "profile": "funky",
   "packageDirs": [
     "apps/backend",
@@ -165,7 +165,10 @@
       "requiresHumanReview": true,
       "allowPackageChanges": false,
       "allowLockfileChanges": false,
-      "allowImplementationChanges": false
+      "allowImplementationChanges": false,
+      "companionTestPaths": [],
+      "testFixtureCompanionPaths": [],
+      "highRiskPaths": []
     },
     "implementation": {
       "allowedPaths": [],
@@ -177,7 +180,10 @@
       "requiresHumanReview": true,
       "allowPackageChanges": true,
       "allowLockfileChanges": true,
-      "allowImplementationChanges": true
+      "allowImplementationChanges": true,
+      "companionTestPaths": [],
+      "testFixtureCompanionPaths": [],
+      "highRiskPaths": []
     },
     "docs-only": {
       "allowedPaths": [
@@ -198,7 +204,10 @@
       "requiresHumanReview": false,
       "allowPackageChanges": false,
       "allowLockfileChanges": false,
-      "allowImplementationChanges": false
+      "allowImplementationChanges": false,
+      "companionTestPaths": [],
+      "testFixtureCompanionPaths": [],
+      "highRiskPaths": []
     },
     "dependency": {
       "allowedPaths": [
@@ -221,7 +230,10 @@
       "requiresHumanReview": true,
       "allowPackageChanges": true,
       "allowLockfileChanges": true,
-      "allowImplementationChanges": false
+      "allowImplementationChanges": false,
+      "companionTestPaths": [],
+      "testFixtureCompanionPaths": [],
+      "highRiskPaths": []
     },
     "security": {
       "allowedPaths": [],
@@ -234,7 +246,10 @@
       "requiresHumanReview": true,
       "allowPackageChanges": true,
       "allowLockfileChanges": true,
-      "allowImplementationChanges": true
+      "allowImplementationChanges": true,
+      "companionTestPaths": [],
+      "testFixtureCompanionPaths": [],
+      "highRiskPaths": []
     },
     "test-only": {
       "allowedPaths": [
@@ -251,7 +266,10 @@
       "requiresHumanReview": false,
       "allowPackageChanges": false,
       "allowLockfileChanges": false,
-      "allowImplementationChanges": false
+      "allowImplementationChanges": false,
+      "companionTestPaths": [],
+      "testFixtureCompanionPaths": [],
+      "highRiskPaths": []
     },
     "contract": {
       "allowedPaths": [
@@ -268,7 +286,10 @@
       "requiresHumanReview": true,
       "allowPackageChanges": true,
       "allowLockfileChanges": true,
-      "allowImplementationChanges": true
+      "allowImplementationChanges": true,
+      "companionTestPaths": [],
+      "testFixtureCompanionPaths": [],
+      "highRiskPaths": []
     }
   },
   "reviewerSelection": {
@@ -742,5 +763,7 @@
       "implementationHarnessMixing",
       "profileRequiredFailure"
     ]
-  }
+  },
+  "implementationCompanionTestPaths": [],
+  "testFixtureCompanionPaths": []
 }
