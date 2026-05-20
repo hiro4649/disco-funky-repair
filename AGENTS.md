@@ -92,7 +92,7 @@ mainへの直接push
 関係ないP1/P2修正の混入
 
 <!-- CODEX_QUALITY_HARNESS_BEGIN -->
-<!-- CODEX_QUALITY_HARNESS_FILE v0.6.7 -->
+<!-- CODEX_QUALITY_HARNESS_FILE v0.6.8 -->
 ## Codex Quality Harness
 
 Use the repo-local harness files in `docs/process/` and `scripts/codex-*`.
