@@ -234,6 +234,24 @@ describe('validateEnvs staging BSC testnet mapping', () => {
     ).not.toThrow();
   });
 
+  it('uses NODE_ENV=staging as staging mode', () => {
+    const env = validStagingEnv();
+    delete env.BACKEND_APP_ENV;
+    env.NODE_ENV = 'staging';
+
+    expect(() => validateEnvs(env)).not.toThrow();
+    expect(() => validateEnvs({ ...env, CHAIN_ID: '56' })).toThrow(/CHAIN_ID must be 97/);
+  });
+
+  it('uses APP_ENV=staging as staging mode', () => {
+    const env = validStagingEnv();
+    delete env.BACKEND_APP_ENV;
+    env.APP_ENV = 'staging';
+
+    expect(() => validateEnvs(env)).not.toThrow();
+    expect(() => validateEnvs({ ...env, CHAIN_ID: '56' })).toThrow(/CHAIN_ID must be 97/);
+  });
+
   it('requires BSC testnet chainId 97 in staging', () => {
     expect(() =>
       validateEnvs({

@@ -7,6 +7,7 @@ const DEVELOPMENT_CORS_ORIGINS = [
 
 export const DEFAULT_REQUEST_BODY_LIMIT = '5mb';
 const STRICT_CORS_ENVIRONMENTS = new Set(['production', 'staging']);
+const normalizeRuntimeEnv = (value: string | undefined): string => value?.trim().toLowerCase() ?? '';
 
 const parseCsv = (value: string | undefined): string[] =>
   (value ?? '')
@@ -14,10 +15,10 @@ const parseCsv = (value: string | undefined): string[] =>
     .map((entry) => entry.trim())
     .filter(Boolean);
 
-const requiresStrictCors = (env: NodeJS.ProcessEnv): boolean =>
-  STRICT_CORS_ENVIRONMENTS.has(env.NODE_ENV ?? '') ||
-  env.APP_ENV === 'staging' ||
-  env.BACKEND_APP_ENV === 'staging';
+export const requiresStrictCors = (env: NodeJS.ProcessEnv): boolean =>
+  STRICT_CORS_ENVIRONMENTS.has(normalizeRuntimeEnv(env.NODE_ENV)) ||
+  normalizeRuntimeEnv(env.APP_ENV) === 'staging' ||
+  normalizeRuntimeEnv(env.BACKEND_APP_ENV) === 'staging';
 
 const validateStrictCorsOrigin = (origin: string): string | null => {
   try {

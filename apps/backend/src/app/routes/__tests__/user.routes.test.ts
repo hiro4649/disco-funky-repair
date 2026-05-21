@@ -2,6 +2,7 @@ import express from 'express';
 const request = require('supertest');
 
 const mockPrisma = {
+  $transaction: jest.fn(),
   pointHistory: {
     findMany: jest.fn(),
     findFirst: jest.fn(),
@@ -159,6 +160,7 @@ describe('admin and all-user read route authorization', () => {
 describe('user point routes authorization', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    mockPrisma.$transaction.mockImplementation((callback: any) => callback(mockPrisma));
     mockPrisma.pointHistory.findMany.mockResolvedValue([]);
     mockPrisma.pointHistory.findFirst.mockResolvedValue(null);
     mockPrisma.pointHistory.create.mockResolvedValue({ id: 1 });
@@ -206,7 +208,8 @@ describe('user point routes authorization', () => {
       data: expect.objectContaining({
         userId: 1,
         point: 1,
-        reason: 1
+        reason: 1,
+        dailyWindowKey: expect.stringMatching(/^\d{4}-\d{2}-\d{2}-(AM|PM)$/)
       })
     });
     expect(mockPrisma.user.update).toHaveBeenCalledWith({
@@ -219,6 +222,70 @@ describe('user point routes authorization', () => {
         }
       }
     });
+  });
+
+  it('returns already received without creating another daily point in the same window', async () => {
+    mockPrisma.pointHistory.findFirst.mockResolvedValue({
+      id: 10,
+      userId: 1,
+      reason: 1,
+      point: 1
+    });
+
+    const response = await request(createApp())
+      .post('/user/daily/point/1')
+      .set('Authorization', 'Bearer user-token')
+      .send({});
+
+    expect(response.status).toBe(202);
+    expect(response.body.dailyLogined).toBe(false);
+    expect(mockPrisma.pointHistory.create).not.toHaveBeenCalled();
+    expect(mockPrisma.user.update).not.toHaveBeenCalled();
+  });
+
+  it('allows only one successful daily point mutation across concurrent requests', async () => {
+    mockPrisma.pointHistory.findFirst.mockResolvedValue(null);
+    mockPrisma.$transaction
+      .mockImplementationOnce((callback: any) => callback(mockPrisma))
+      .mockRejectedValueOnce({ code: 'P2002' });
+
+    const responses = await Promise.all([
+      request(createApp())
+        .post('/user/daily/point/1')
+        .set('Authorization', 'Bearer user-token')
+        .send({}),
+      request(createApp())
+        .post('/user/daily/point/1')
+        .set('Authorization', 'Bearer user-token')
+        .send({})
+    ]);
+
+    expect(responses.map((response) => response.status).sort()).toEqual([200, 409]);
+    expect(mockPrisma.pointHistory.create).toHaveBeenCalledTimes(1);
+    expect(mockPrisma.user.update).toHaveBeenCalledTimes(1);
+  });
+
+  it('returns conflict instead of 404 when the daily point unique window is already claimed', async () => {
+    mockPrisma.$transaction.mockRejectedValueOnce({ code: 'P2002' });
+
+    const response = await request(createApp())
+      .post('/user/daily/point/1')
+      .set('Authorization', 'Bearer user-token')
+      .send({});
+
+    expect(response.status).toBe(409);
+    expect(response.body.code).toBe('DAILY_POINT_ALREADY_RECEIVED');
+  });
+
+  it('returns server error instead of 404 for unexpected daily point failures', async () => {
+    mockPrisma.$transaction.mockRejectedValueOnce(new Error('database unavailable'));
+
+    const response = await request(createApp())
+      .post('/user/daily/point/1')
+      .set('Authorization', 'Bearer user-token')
+      .send({});
+
+    expect(response.status).toBe(500);
   });
 
   it('does not read another user point history', async () => {

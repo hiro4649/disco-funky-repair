@@ -68,7 +68,7 @@ app.use(passport.initialize());
 // Multer may store non-image files under uploads; do not expose the root directory.
 const uploadsPath = path.resolve(process.cwd(), 'uploads');
 const imagesPath = path.resolve(uploadsPath, 'images');
-console.log('Static image files served from:', imagesPath);
+console.log('Static image files served from configured uploads directory');
 
 // Ensure upload directories exist
 if (!fs.existsSync(imagesPath)) {

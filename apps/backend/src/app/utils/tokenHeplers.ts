@@ -3,6 +3,7 @@ import getTokenBalance from "../lib/getToken";
 import getTokenPrice from "../lib/getTokenPrice";
 import {
     adminWalletAddress,
+    CHAIN_ID,
     PRIZE_HOT_WALLET_PRIVATE_KEY,
     PRIZE_TRANSFER_TOKEN_ALLOWLIST,
     QUICKNODE_HTTP_RPC_URL,
@@ -43,6 +44,26 @@ type PrizeTransferEvidenceContext = {
     tokenAddress?: string | null;
     publicAmount?: bigint | string | null;
 };
+
+type PrizeTransferReceiptLike = {
+    blockNumber?: number | null;
+    status?: number | null;
+    from?: string | null;
+    logs?: readonly {
+        address?: string | null;
+        topics?: readonly string[];
+        data?: string | null;
+    }[];
+};
+
+const ERC20_TRANSFER_EVENT_TOPIC = '0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef';
+
+export class PrizeChainIdMismatchError extends Error {
+    constructor(actualChainId: number, expectedChainId: number) {
+        super(`Provider chainId ${actualChainId} does not match expected CHAIN_ID ${expectedChainId}`);
+        this.name = 'PrizeChainIdMismatchError';
+    }
+}
 
 export const calculateTokenQuantity = async (ca: string, price: number): Promise<number> => {
     try {
@@ -106,6 +127,21 @@ const getProviderChainId = async (provider: ethers.JsonRpcProvider): Promise<num
     return Number(network.chainId);
 };
 
+const getExpectedChainId = (): number => {
+    const expectedChainId = Number(CHAIN_ID);
+    if (!Number.isInteger(expectedChainId) || expectedChainId <= 0) {
+        throw new Error('CHAIN_ID is not configured');
+    }
+    return expectedChainId;
+};
+
+const assertExpectedProviderChainId = (actualChainId: number): void => {
+    const expectedChainId = getExpectedChainId();
+    if (actualChainId !== expectedChainId) {
+        throw new PrizeChainIdMismatchError(actualChainId, expectedChainId);
+    }
+};
+
 const getReceiptTimestamp = async (
     provider: ethers.JsonRpcProvider,
     blockNumber: number
@@ -137,6 +173,97 @@ const buildPrizeTransferEvidence = (
     publicAmount: publicAmount.toString()
 });
 
+const normalizeAddress = (address?: string | null): string | null => {
+    if (!address || !ethers.isAddress(address)) {
+        return null;
+    }
+    return address.toLowerCase();
+};
+
+const addressesEqual = (left?: string | null, right?: string | null): boolean => {
+    const normalizedLeft = normalizeAddress(left);
+    const normalizedRight = normalizeAddress(right);
+    return Boolean(normalizedLeft && normalizedRight && normalizedLeft === normalizedRight);
+};
+
+const normalizePublicAmount = (amount?: bigint | string | null): bigint | null => {
+    if (amount === null || amount === undefined) {
+        return null;
+    }
+
+    if (typeof amount === 'bigint') {
+        return amount > 0n ? amount : null;
+    }
+
+    const normalizedAmount = amount.trim();
+    if (!/^\d+$/.test(normalizedAmount)) {
+        return null;
+    }
+
+    const amountValue = BigInt(normalizedAmount);
+    return amountValue > 0n ? amountValue : null;
+};
+
+const topicToAddress = (topic?: string): string | null => {
+    if (!topic || !/^0x[0-9a-fA-F]{64}$/.test(topic)) {
+        return null;
+    }
+    return `0x${topic.slice(-40).toLowerCase()}`;
+};
+
+const hasExpectedTransferLog = (
+    receipt: PrizeTransferReceiptLike,
+    tokenAddress: string,
+    recipientAddress?: string | null,
+    publicAmount?: bigint | string | null
+): boolean => {
+    const expectedTokenAddress = normalizeAddress(tokenAddress);
+    const expectedRecipientAddress = normalizeAddress(recipientAddress);
+    const expectedAmount = normalizePublicAmount(publicAmount);
+
+    if (!expectedTokenAddress || !expectedRecipientAddress || expectedAmount === null) {
+        return false;
+    }
+
+    return (receipt.logs ?? []).some((log) => {
+        if (!addressesEqual(log.address, expectedTokenAddress)) {
+            return false;
+        }
+        if (log.topics?.[0]?.toLowerCase() !== ERC20_TRANSFER_EVENT_TOPIC) {
+            return false;
+        }
+        if (topicToAddress(log.topics[2]) !== expectedRecipientAddress) {
+            return false;
+        }
+        if (!log.data || !/^0x[0-9a-fA-F]+$/.test(log.data)) {
+            return false;
+        }
+
+        try {
+            return BigInt(log.data) === expectedAmount;
+        } catch {
+            return false;
+        }
+    });
+};
+
+const prizeTransferEvidenceMatchesExpected = (
+    evidence: PrizeTransferEvidence,
+    context: PrizeTransferEvidenceContext,
+    expectedChainId: number
+): boolean => {
+    const expectedTokenAddress = context.tokenAddress || TOKEN_CONTRACT_ADDRESS || '';
+    const expectedAmount = normalizePublicAmount(context.publicAmount);
+
+    return (
+        evidence.chainId === expectedChainId &&
+        addressesEqual(evidence.contractAddress, expectedTokenAddress) &&
+        addressesEqual(evidence.to, context.recipientAddress ?? null) &&
+        expectedAmount !== null &&
+        evidence.publicAmount === expectedAmount.toString()
+    );
+};
+
 export const sendTokensToWallet = async (
     userWalletAddress: string,
     tokenAmount: bigint,
@@ -163,6 +290,7 @@ export const sendTokensToWallet = async (
     const provider = new ethers.JsonRpcProvider(QUICKNODE_HTTP_RPC_URL);
     const wallet = new ethers.Wallet(PRIZE_HOT_WALLET_PRIVATE_KEY, provider);
     const chainId = await getProviderChainId(provider);
+    assertExpectedProviderChainId(chainId);
     const erc20Abi = [
         'function transfer(address to, uint256 amount) returns (bool)',
         'function balanceOf(address account) view returns (uint256)'
@@ -192,6 +320,20 @@ export const sendTokensToWallet = async (
         const receipt = await tx.wait();
         if (!receipt || receipt.status !== 1) {
             const receiptError = new Error('Token transfer receipt was not successful') as PrizeTransferError;
+            receiptError.txHash = tx.hash;
+            receiptError.evidence = buildPrizeTransferEvidence(
+                tx.hash,
+                chainId,
+                wallet.address,
+                userWalletAddress,
+                erc20,
+                tokenAmount,
+                receipt
+            );
+            throw receiptError;
+        }
+        if (!hasExpectedTransferLog(receipt, erc20, userWalletAddress, tokenAmount)) {
+            const receiptError = new Error('Token transfer receipt evidence did not match expected transfer') as PrizeTransferError;
             receiptError.txHash = tx.hash;
             receiptError.evidence = buildPrizeTransferEvidence(
                 tx.hash,
@@ -258,39 +400,46 @@ export const getPrizeTransferReceiptEvidence = async (
     }
     const provider = new ethers.JsonRpcProvider(QUICKNODE_HTTP_RPC_URL);
     const chainId = await getProviderChainId(provider);
+    const expectedChainId = getExpectedChainId();
     const receipt = await provider.getTransactionReceipt(txHash);
     const tokenAddress = context.tokenAddress || TOKEN_CONTRACT_ADDRESS || '';
     const publicAmount = context.publicAmount ?? '';
 
     if (!receipt) {
+        const evidence = buildPrizeTransferEvidence(
+            txHash,
+            chainId,
+            null,
+            context.recipientAddress ?? null,
+            tokenAddress,
+            publicAmount
+        );
         return {
-            status: 'BROADCASTED',
-            evidence: buildPrizeTransferEvidence(
-                txHash,
-                chainId,
-                null,
-                context.recipientAddress ?? null,
-                tokenAddress,
-                publicAmount
-            )
+            status: chainId === expectedChainId ? 'BROADCASTED' : 'MANUAL_REVIEW',
+            evidence
         };
     }
 
     const receiptTimestamp = await getReceiptTimestamp(provider, receipt.blockNumber);
-    const status = receipt.status === 1 ? 'RECEIVED' : 'MANUAL_REVIEW';
+    const evidence = buildPrizeTransferEvidence(
+        txHash,
+        chainId,
+        receipt.from ?? null,
+        context.recipientAddress ?? null,
+        tokenAddress,
+        publicAmount,
+        receipt,
+        receiptTimestamp
+    );
+    const status = receipt.status === 1 &&
+        prizeTransferEvidenceMatchesExpected(evidence, context, expectedChainId) &&
+        hasExpectedTransferLog(receipt, tokenAddress, context.recipientAddress, publicAmount)
+        ? 'RECEIVED'
+        : 'MANUAL_REVIEW';
 
     return {
         status,
-        evidence: buildPrizeTransferEvidence(
-            txHash,
-            chainId,
-            receipt.from ?? null,
-            context.recipientAddress ?? null,
-            tokenAddress,
-            publicAmount,
-            receipt,
-            receiptTimestamp
-        )
+        evidence
     };
 };
 

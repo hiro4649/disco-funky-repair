@@ -22,6 +22,7 @@ export const ADMIN_PRIVATE_KEY = process.env.ADMIN_PRIVATE_KEY;
 export const PRIZE_HOT_WALLET_PRIVATE_KEY = process.env.PRIZE_HOT_WALLET_PRIVATE_KEY;
 export const PRIZE_TRANSFER_TOKEN_ALLOWLIST = process.env.PRIZE_TRANSFER_TOKEN_ALLOWLIST || '';
 export const TIER_RELAYER_PRIVATE_KEY = process.env.TIER_RELAYER_PRIVATE_KEY;
+export const CHAIN_ID = process.env.CHAIN_ID || '';
 export const TOKEN_CONTRACT_ADDRESS = requiredConfigValue(
   'TOKEN_CONTRACT_ADDRESS',
   process.env.TOKEN_CONTRACT_ADDRESS || devOnlyFallback('0xe078471F4D5425282567f704a6731D4D42d35233')

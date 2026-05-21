@@ -4,9 +4,12 @@ import xlsx from "xlsx";
 import fs from 'fs';
 import { promises as fsPromises } from 'fs';
 import path from 'path';
+import { randomUUID } from 'crypto';
 import lighthouse from '@lighthouse-web3/sdk'
 import { NFT_STORAGE_ENDPOINT, NFT_STORAGE_API_KEY } from '../config/env';
 import { safeLogError } from '../utils/safeLogger';
+import { findUploadedImageByOriginalName } from '../middlewares/imageUploadSecurity';
+import { isPublicImageAssetRequestPath } from '../middlewares/publicImageAssets';
 
 interface NFTData {
   Name: string;
@@ -28,12 +31,64 @@ type AuthenticatedNftUser = {
   user_id?: number;
 };
 
+type LocalImageValidationResult =
+  | { ok: true; filePath: string; filename: string }
+  | { ok: false; status: string; reason: string };
+
 const getAuthenticatedNftUserId = (req: Request): number | null => {
   const userId = Number((req.user as AuthenticatedNftUser | undefined)?.user_id);
   return Number.isInteger(userId) && userId > 0 ? userId : null;
 };
 
+const cleanupUploadedFiles = async (files: Express.Multer.File[] | undefined): Promise<void> => {
+  await Promise.all((files ?? []).map((file) => fsPromises.unlink(file.path).catch(() => undefined)));
+};
+
 export class NftController {
+  private static toAdminNftResponse(nft: Record<string, any>): Record<string, any> {
+    const { localImagePath, ...safeNft } = nft;
+    return {
+      ...safeNft,
+      hasLocalImagePath: Boolean(localImagePath)
+    };
+  }
+
+  private static isInsideUploadDirectory(filePath: string): boolean {
+    const relativePath = path.relative(path.resolve(UPLOAD_DIR), filePath);
+    return relativePath.length > 0 && !relativePath.startsWith('..') && !path.isAbsolute(relativePath);
+  }
+
+  private static validateLocalImageForIpfs(localImagePath: string): LocalImageValidationResult {
+    const resolvedPath = path.resolve(localImagePath);
+
+    if (!this.isInsideUploadDirectory(resolvedPath)) {
+      return { ok: false, status: 'error: unsafe local image path', reason: 'outside_upload_dir' };
+    }
+
+    if (!isPublicImageAssetRequestPath(resolvedPath)) {
+      return { ok: false, status: 'error: unsupported image extension', reason: 'unsupported_extension' };
+    }
+
+    try {
+      if (!fs.existsSync(resolvedPath)) {
+        return { ok: false, status: 'error: image file not found', reason: 'missing_file' };
+      }
+
+      const stats = fs.statSync(resolvedPath);
+      if (!stats.isFile()) {
+        return { ok: false, status: 'error: image file not found', reason: 'not_file' };
+      }
+    } catch {
+      return { ok: false, status: 'error: image file not found', reason: 'stat_failed' };
+    }
+
+    return {
+      ok: true,
+      filePath: resolvedPath,
+      filename: path.basename(resolvedPath)
+    };
+  }
+
   /**
    * Parse Excel file and return data
    */
@@ -49,6 +104,9 @@ export class NftController {
    */
   private static async findImageFile(imageName: string, uploadDir: string): Promise<string | null> {
     try {
+      const manifestMatch = await findUploadedImageByOriginalName(imageName, uploadDir);
+      if (manifestMatch) return manifestMatch;
+
       const files = await fsPromises.readdir(uploadDir);
       // Remove file extension from imageName if present
       const cleanImageName = imageName.replace(/\.[^/.]+$/, '');
@@ -59,7 +117,7 @@ export class NftController {
       });
       return matchedFile || null;
     } catch (error) {
-      console.error('Error finding image file:', error);
+      safeLogError('find_uploaded_nft_image', error);
       return null;
     }
   }
@@ -93,20 +151,17 @@ export class NftController {
    */
   private static async imageUpload(imagePath: string): Promise<string> {
     try {
-      console.log(`🔼 Lighthouse upload starting for: ${imagePath}`);
-      console.log('🔑 Lighthouse API key configured:', Boolean(NFT_STORAGE_API_KEY));
+      console.log('Lighthouse image upload starting');
       
       // Verify file exists before upload
       if (!fs.existsSync(imagePath)) {
-        throw new Error(`File does not exist: ${imagePath}`);
+        throw new Error('Image file does not exist');
       }
       
       const fileStats = fs.statSync(imagePath);
-      console.log(`📄 File size: ${fileStats.size} bytes`);
+      console.log('Lighthouse image upload file summary', { size: fileStats.size });
       
       const output = await lighthouse.upload(imagePath, NFT_STORAGE_API_KEY);
-      
-      console.log(`✅ Lighthouse upload response:`, JSON.stringify(output?.data, null, 2));
       
       if (!output?.data?.Hash) {
         throw new Error('Lighthouse response did not contain a Hash');
@@ -125,17 +180,19 @@ export class NftController {
    * Upload metadata JSON to IPFS via Lighthouse
    */
   private static async uploadMetadata(metadata: any): Promise<string> {
+    const tempFilePath = path.join(process.cwd(), 'uploads', `${randomUUID()}.json`);
     try {
-      const tempFilePath = path.join(__dirname, `../../../uploads/${metadata.name.replace("DISCO Genesis #", "")}.json`);
+      await fsPromises.mkdir(path.dirname(tempFilePath), { recursive: true });
       await fs.promises.writeFile(tempFilePath, JSON.stringify(metadata, null, 2));
       const output = await lighthouse.upload(tempFilePath, NFT_STORAGE_API_KEY);
-      await fs.promises.unlink(tempFilePath);
       return output.data.Hash;
     } catch (error) {
       safeLogError('lighthouse_upload_metadata', error, {
         metadataName: typeof metadata?.name === 'string' ? metadata.name : undefined
       });
       throw new Error('Failed to upload metadata');
+    } finally {
+      await fsPromises.unlink(tempFilePath).catch(() => undefined);
     }
   }
 
@@ -144,12 +201,14 @@ export class NftController {
    * This just saves the Excel data and checks for image matches
    */
   static async uploadExcel(req: Request, res: Response): Promise<Response> {
+    let uploadedFilePath: string | undefined;
     try {
       if (!req.file) {
         return res.status(400).json({ error: 'No file uploaded' });
       }
 
-      const filePath = req.file.path;
+      uploadedFilePath = req.file.path;
+      const filePath = uploadedFilePath;
 
       // Process Excel file
       const xlData = await this.processExcelFile(filePath);
@@ -208,13 +267,14 @@ export class NftController {
           });
         } catch (error) {
           const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-          console.error(`Failed to process NFT ${data.Name}:`, error);
+          safeLogError('process_nft_excel_row', error);
           results.push({ name: data.Name, status: `error: ${errorMessage}`, imageMatched: false });
         }
       }
 
       // Cleanup Excel file
       await fsPromises.unlink(filePath).catch(() => {});
+      uploadedFilePath = undefined;
 
       // Get all NFTs
       const nfts = await prisma.nft.findMany({
@@ -227,15 +287,17 @@ export class NftController {
         results,
         matchedCount: results.filter(r => r.imageMatched).length,
         unmatchedCount: results.filter(r => !r.imageMatched && r.status.includes('saved')).length,
-        data: nfts
+        data: nfts.map((nft) => this.toAdminNftResponse(nft))
       });
 
     } catch (error) {
-      console.error('Error in uploadExcel:', error);
+      if (uploadedFilePath) {
+        await fsPromises.unlink(uploadedFilePath).catch(() => undefined);
+      }
+      safeLogError('upload_nft_excel', error);
       return res.status(500).json({
         success: false,
-        error: 'Failed to process Excel file',
-        details: error instanceof Error ? error.message : 'Unknown error'
+        error: 'Failed to process Excel file'
       });
     }
   }
@@ -245,25 +307,24 @@ export class NftController {
    */
   static async uploadImages(req: Request, res: Response): Promise<Response> {
     try {
-      if (!req.files || (req.files as Express.Multer.File[]).length === 0) {
+      const requestFiles = Array.isArray(req.files) ? req.files as Express.Multer.File[] : [];
+      if (requestFiles.length === 0) {
         return res.status(400).json({ message: "No files uploaded!" });
       }
 
-      const uploadedFiles = (req.files as Express.Multer.File[]).map(file => ({
+      const uploadedFiles = requestFiles.map(file => ({
         filename: file.filename,
         originalname: file.originalname,
-        path: path.normalize(file.path), // Normalize path for cross-platform
+        filePath: path.normalize(file.path),
         size: file.size,
         mimetype: file.mimetype
       }));
 
-      console.log(`📤 Uploaded ${uploadedFiles.length} files`);
+      console.log('NFT image upload completed', { fileCount: uploadedFiles.length });
 
       // Auto-match uploaded images with unmatched NFT records
       let matchedCount = 0;
       for (const file of uploadedFiles) {
-        console.log(`🔍 Trying to match: ${file.originalname}`);
-        
         // Find NFTs that don't have a matched image yet
         const unmatchedNfts = await prisma.nft.findMany({
           where: { imageMatched: false, excelUploaded: true }
@@ -276,15 +337,12 @@ export class NftController {
           const cleanExcelName = nft.excelImageName.replace(/\.[^/.]+$/, '').replace(/\s+/g, '_').toLowerCase();
           const cleanUploadedName = file.originalname.replace(/\.[^/.]+$/, '').replace(/\s+/g, '_').toLowerCase();
 
-          console.log(`  Comparing: "${cleanExcelName}" vs "${cleanUploadedName}"`);
-
           if (cleanExcelName === cleanUploadedName) {
-            console.log(`  ✅ Match found for NFT: ${nft.name}`);
             await prisma.nft.update({
               where: { id: nft.id },
               data: {
                 imageMatched: true,
-                localImagePath: file.path
+                localImagePath: file.filePath
               }
             });
             matchedCount++;
@@ -293,20 +351,20 @@ export class NftController {
         }
       }
 
-      console.log(`📊 Total matched: ${matchedCount}`);
+      console.log('NFT image upload match summary', { matchedCount });
 
       return res.json({
         success: true,
         message: `Files uploaded successfully! ${matchedCount} NFT(s) matched.`,
-        files: uploadedFiles,
+        files: uploadedFiles.map(({ filePath, originalname, ...file }) => file),
         matchedCount
       });
     } catch (error) {
-      console.error('Error uploading files:', error);
+      await cleanupUploadedFiles(Array.isArray(req.files) ? req.files as Express.Multer.File[] : undefined);
+      safeLogError('upload_nft_images', error);
       return res.status(500).json({
         success: false,
-        message: "Server error while uploading files",
-        error: error instanceof Error ? error.message : 'Unknown error'
+        message: "Server error while uploading files"
       });
     }
   }
@@ -339,20 +397,32 @@ export class NftController {
           imageMatched: true,
           localImagePath: req.file.path,
           excelImageName: nft.excelImageName || req.file.originalname
+        },
+        select: {
+          id: true,
+          name: true,
+          excelImageName: true,
+          imageMatched: true,
+          updatedAt: true
         }
       });
 
       return res.json({
         success: true,
         message: 'Image uploaded and matched successfully',
-        data: updatedNft
+        data: {
+          ...updatedNft,
+          hasLocalImagePath: true
+        }
       });
     } catch (error) {
-      console.error('Error uploading single image:', error);
+      if (req.file) {
+        await cleanupUploadedFiles([req.file]);
+      }
+      safeLogError('upload_single_nft_image', error);
       return res.status(500).json({
         success: false,
-        message: 'Failed to upload image',
-        error: error instanceof Error ? error.message : 'Unknown error'
+        message: 'Failed to upload image'
       });
     }
   }
@@ -365,18 +435,18 @@ export class NftController {
     try {
       const { nftIds } = req.body;
 
-      console.log('📤 Upload to IPFS request received:', { nftIds });
+      console.log('Upload to IPFS request received', {
+        nftIdCount: Array.isArray(nftIds) ? nftIds.length : 0
+      });
 
       // Check if API key is configured
       if (!NFT_STORAGE_API_KEY) {
-        console.error('❌ NFT_STORAGE_API_KEY is not configured!');
+        console.error('IPFS storage API key is not configured');
         return res.status(500).json({
           success: false,
           message: 'IPFS storage API key is not configured. Please set NFT_STORAGE_API_KEY in .env file.'
         });
       }
-
-      console.log('✅ API Key configured, endpoint:', NFT_STORAGE_ENDPOINT);
 
       if (!nftIds || !Array.isArray(nftIds) || nftIds.length === 0) {
         return res.status(400).json({ 
@@ -389,63 +459,55 @@ export class NftController {
 
       for (const nftId of nftIds) {
         try {
-          console.log(`\n🔄 Processing NFT ID: ${nftId}`);
+          console.log('Processing NFT IPFS upload item', { nftId: Number(nftId) });
           
           const nft = await prisma.nft.findUnique({
             where: { id: Number(nftId) }
           });
 
           if (!nft) {
-            console.log(`❌ NFT not found: ${nftId}`);
+            console.log('NFT not found during IPFS upload', { nftId: Number(nftId) });
             results.push({ id: nftId, name: 'Unknown', status: 'error: NFT not found' });
             continue;
           }
 
-          console.log(`📋 NFT found: ${nft.name}, imageMatched: ${nft.imageMatched}, localImagePath: ${nft.localImagePath}`);
+          console.log('NFT IPFS upload record summary', {
+            nftId: nft.id,
+            imageMatched: nft.imageMatched,
+            hasLocalImagePath: Boolean(nft.localImagePath)
+          });
 
           if (nft.ipfsUploaded) {
-            console.log(`⏭️ Already uploaded to IPFS: ${nft.name}`);
+            console.log('NFT already uploaded to IPFS', { nftId: nft.id });
             results.push({ id: nftId, name: nft.name, status: 'skipped: already uploaded to IPFS' });
             continue;
           }
 
           if (!nft.imageMatched || !nft.localImagePath) {
-            console.log(`❌ No image matched for: ${nft.name}`);
+            console.log('No matched image for NFT IPFS upload', { nftId: nft.id });
             results.push({ id: nftId, name: nft.name, status: 'error: no image matched' });
             continue;
           }
 
-          // Normalize path for cross-platform compatibility
-          const normalizedPath = path.normalize(nft.localImagePath);
-          console.log(`📁 Checking file at: ${normalizedPath}`);
+          const localImage = this.validateLocalImageForIpfs(nft.localImagePath);
+          console.log('Checking local image file for IPFS upload', {
+            nftId: nft.id,
+            filename: path.basename(nft.localImagePath)
+          });
 
-          // Check if local image file exists
-          if (!fs.existsSync(normalizedPath)) {
-            console.log(`❌ File not found at: ${normalizedPath}`);
-            // Try alternative path (in case stored path is different)
-            const filename = path.basename(nft.localImagePath);
-            const altPath = path.join(UPLOAD_DIR, filename);
-            console.log(`🔍 Trying alternative path: ${altPath}`);
-            
-            if (fs.existsSync(altPath)) {
-              console.log(`✅ Found file at alternative path`);
-              // Update the path in database
-              await prisma.nft.update({
-                where: { id: nft.id },
-                data: { localImagePath: altPath }
-              });
-              nft.localImagePath = altPath;
-            } else {
-              results.push({ id: nftId, name: nft.name, status: `error: image file not found at ${normalizedPath}` });
-              continue;
-            }
+          if (!localImage.ok) {
+            console.log('Local image rejected for IPFS upload', {
+              nftId: nft.id,
+              reason: localImage.reason
+            });
+            results.push({ id: Number(nftId), name: nft.name, status: localImage.status });
+            continue;
           }
 
-          console.log(`📤 Uploading image to IPFS...`);
+          console.log('Uploading image to IPFS', { nftId: nft.id });
           
           // Upload image to IPFS
-          const imageCid = await this.imageUpload(nft.localImagePath);
-          console.log(`✅ Image uploaded, CID: ${imageCid}`);
+          const imageCid = await this.imageUpload(localImage.filePath);
           
           const imageUrl = `${NFT_STORAGE_ENDPOINT}${imageCid}`;
 
@@ -462,11 +524,10 @@ export class NftController {
             externalUrl: nft.externalUrl,
           };
 
-          console.log(`📤 Uploading metadata to IPFS...`);
+          console.log('Uploading metadata to IPFS', { nftId: nft.id });
           
           // Upload metadata to IPFS
           const metadataCid = await this.uploadMetadata(metadata);
-          console.log(`✅ Metadata uploaded, CID: ${metadataCid}`);
           
           const metadataUrl = `${NFT_STORAGE_ENDPOINT}${metadataCid}`;
 
@@ -483,15 +544,15 @@ export class NftController {
 
           // Delete local image file after successful IPFS upload
           try {
-            if (nft.localImagePath && fs.existsSync(nft.localImagePath)) {
-              await fsPromises.unlink(nft.localImagePath);
-              console.log(`🗑️ Deleted local file: ${nft.localImagePath}`);
+            if (fs.existsSync(localImage.filePath)) {
+              await fsPromises.unlink(localImage.filePath);
+              console.log('Deleted local NFT image file', { nftId: nft.id });
             }
           } catch (deleteError) {
             safeLogError('delete_uploaded_nft_local_file', deleteError, { nftId: nft.id });
           }
 
-          console.log(`✅ NFT ${nft.name} successfully uploaded to IPFS!`);
+          console.log('NFT successfully uploaded to IPFS', { nftId: nft.id });
           results.push({ id: nftId, name: nft.name, status: 'success: uploaded to IPFS' });
         } catch (error) {
           const errorMessage = error instanceof Error ? error.message : 'Unknown error';
@@ -502,11 +563,14 @@ export class NftController {
 
       const successCount = results.filter(r => r.status.includes('success')).length;
       const errorCount = results.filter(r => r.status.includes('error')).length;
+      const partialSuccess = successCount > 0 && errorCount > 0;
+      const responseStatus = partialSuccess ? 207 : errorCount > 0 ? 400 : 200;
 
-      console.log(`\n📊 Upload complete: ${successCount} succeeded, ${errorCount} failed`);
+      console.log('NFT IPFS upload complete', { successCount, errorCount });
 
-      return res.json({
-        success: true,
+      return res.status(responseStatus).json({
+        success: errorCount === 0,
+        partialSuccess,
         message: `IPFS upload completed. ${successCount} succeeded, ${errorCount} failed.`,
         results,
         successCount,
@@ -528,32 +592,29 @@ export class NftController {
    */
   static async refreshImageMatches(req: Request, res: Response): Promise<Response> {
     try {
-      console.log('🔄 Refreshing image matches...');
-      console.log(`📁 Scanning directory: ${UPLOAD_DIR}`);
+      console.log('Refreshing image matches');
 
       // Check if upload directory exists
       if (!fs.existsSync(UPLOAD_DIR)) {
-        console.log('📁 Creating upload directory...');
         fs.mkdirSync(UPLOAD_DIR, { recursive: true });
       }
 
       // List all files in directory
       const allFiles = await fsPromises.readdir(UPLOAD_DIR);
-      console.log(`📄 Found ${allFiles.length} files in upload directory`);
+      console.log('Uploaded image directory summary', { fileCount: allFiles.length });
 
       // Get all NFTs that haven't been uploaded to IPFS yet
       const nfts = await prisma.nft.findMany({
         where: { ipfsUploaded: false, excelUploaded: true }
       });
 
-      console.log(`📋 Found ${nfts.length} NFTs to check`);
+      console.log('NFT image refresh candidate summary', { nftCount: nfts.length });
 
       let matchedCount = 0;
       let unmatchedCount = 0;
 
       for (const nft of nfts) {
         if (!nft.excelImageName) {
-          console.log(`⏭️ NFT ${nft.name}: no excelImageName, skipping`);
           unmatchedCount++;
           continue;
         }
@@ -561,8 +622,6 @@ export class NftController {
         const imageFile = await this.findImageFile(nft.excelImageName, UPLOAD_DIR);
         const imageMatched = imageFile !== null;
         const localImagePath = imageFile ? path.normalize(path.join(UPLOAD_DIR, imageFile)) : null;
-
-        console.log(`🔍 NFT ${nft.name}: excelImageName="${nft.excelImageName}", matched=${imageMatched}, path=${localImagePath}`);
 
         await prisma.nft.update({
           where: { id: nft.id },
@@ -579,7 +638,7 @@ export class NftController {
         }
       }
 
-      console.log(`✅ Refresh complete: ${matchedCount} matched, ${unmatchedCount} unmatched`);
+      console.log('NFT image match refresh complete', { matchedCount, unmatchedCount });
 
       return res.json({
         success: true,
@@ -588,11 +647,10 @@ export class NftController {
         unmatchedCount
       });
     } catch (error) {
-      console.error('Error refreshing image matches:', error);
+      safeLogError('refresh_nft_image_matches', error);
       return res.status(500).json({
         success: false,
-        message: 'Failed to refresh image matches',
-        error: error instanceof Error ? error.message : 'Unknown error'
+        message: 'Failed to refresh image matches'
       });
     }
   }
@@ -606,12 +664,12 @@ export class NftController {
         return res.json({ success: true, images: [] });
       }
 
-      const files = await fsPromises.readdir(UPLOAD_DIR);
+      const files = (await fsPromises.readdir(UPLOAD_DIR)).filter((file) =>
+        isPublicImageAssetRequestPath(file)
+      );
       const images = files.map(file => ({
         filename: file,
-        originalName: file.split('----').pop() || file,
-        path: `/api/icons/images/${file}`, // URL to access the image
-        fullPath: path.join(UPLOAD_DIR, file)
+        path: `/api/icons/images/${file}` // URL to access the image
       }));
 
       return res.json({
@@ -620,11 +678,10 @@ export class NftController {
         count: images.length
       });
     } catch (error) {
-      console.error('Error getting uploaded images:', error);
+      safeLogError('get_uploaded_nft_images', error);
       return res.status(500).json({
         success: false,
-        message: 'Failed to get uploaded images',
-        error: error instanceof Error ? error.message : 'Unknown error'
+        message: 'Failed to get uploaded images'
       });
     }
   }
@@ -662,7 +719,7 @@ export class NftController {
 
       return res.status(200).json({
         success: true,
-        data: nfts
+        data: nfts.map((nft) => this.toAdminNftResponse(nft))
       });
     } catch (error) {
       console.error('Error fetching NFTs:', error);

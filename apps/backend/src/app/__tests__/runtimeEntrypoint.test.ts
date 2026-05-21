@@ -3,6 +3,7 @@ import path from 'path';
 import {
   isPublicImageAssetRequestPath,
   PUBLIC_IMAGE_ASSET_EXTENSIONS,
+  rejectNonImageStaticAsset,
 } from '../middlewares/publicImageAssets';
 
 const readSource = (relativePath: string): string =>
@@ -31,6 +32,10 @@ describe('backend runtime entrypoint hardening', () => {
     expect(securitySource).not.toContain('supersecret_session_key_should_be_in_env');
   });
 
+  it('does not keep the legacy Suiet CSP allowlist in FUNKY security middleware', () => {
+    expect(securitySource).not.toContain('suiet.app');
+  });
+
   it('does not expose the uploads root as a static directory', () => {
     expect(appIndexSource).not.toMatch(/express\.static\(\s*uploadsPath\s*\)/);
 
@@ -49,9 +54,9 @@ describe('backend runtime entrypoint hardening', () => {
   });
 
   it('allows only image filename extensions for public static assets', () => {
-    expect(PUBLIC_IMAGE_ASSET_EXTENSIONS).toEqual(['.png', '.jpg', '.jpeg', '.gif', '.webp', '.svg']);
+    expect(PUBLIC_IMAGE_ASSET_EXTENSIONS).toEqual(['.png', '.jpg', '.jpeg', '.gif', '.webp']);
 
-    for (const requestPath of ['/token.png', '/token.JPG', '/nft.jpeg', '/badge.gif', '/card.webp', '/icon.svg']) {
+    for (const requestPath of ['/token.png', '/token.JPG', '/nft.jpeg', '/badge.gif', '/card.webp']) {
       expect(isPublicImageAssetRequestPath(requestPath)).toBe(true);
     }
 
@@ -65,10 +70,23 @@ describe('backend runtime entrypoint hardening', () => {
       '/server.log',
       '/notes.txt',
       '/temp.tmp',
+      '/icon.svg',
       '/no-extension',
       '/archive.tar.gz',
     ]) {
       expect(isPublicImageAssetRequestPath(requestPath)).toBe(false);
     }
+  });
+
+  it('returns 404 before static serving for non-image public asset paths', () => {
+    const end = jest.fn();
+    const status = jest.fn(() => ({ end }));
+    const next = jest.fn();
+
+    rejectNonImageStaticAsset({ path: '/metadata.json' } as any, { status } as any, next);
+
+    expect(status).toHaveBeenCalledWith(404);
+    expect(end).toHaveBeenCalledTimes(1);
+    expect(next).not.toHaveBeenCalled();
   });
 });
