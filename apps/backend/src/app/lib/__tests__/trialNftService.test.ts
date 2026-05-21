@@ -1,3 +1,6 @@
+import * as fs from 'fs';
+import * as path from 'path';
+
 const mockPrisma = {
   trialNft: {
     findFirst: jest.fn(),
@@ -29,9 +32,13 @@ jest.mock('../../db/prisma_client', () => ({
 }));
 
 jest.mock('../getDiscoNFTEVM', () => jest.fn());
+jest.mock('../../utils/safeLogger', () => ({
+  safeLogError: jest.fn()
+}));
 
 import { Prisma } from '@prisma/client';
 import { claimTrialNFT } from '../trialNftService';
+import { safeLogError } from '../../utils/safeLogger';
 
 const template = {
   id: 2,
@@ -188,5 +195,33 @@ describe('trialNftService.claimTrialNFT claim safety', () => {
       data: existingNft
     });
     expect(mockPrisma.trialNft.create).not.toHaveBeenCalled();
+  });
+
+  it('returns a generic failure and safe logs metadata when claim fails', async () => {
+    const rawMessage = 'RAW_TRIAL_NFT_TRANSACTION_FAILURE';
+    mockPrisma.$transaction.mockRejectedValueOnce(new Error(rawMessage));
+
+    const result = await claimTrialNFT(1, 2);
+
+    expect(result).toEqual({
+      success: false,
+      message: 'Failed to claim trial NFT'
+    });
+    expect(JSON.stringify(result)).not.toContain(rawMessage);
+    expect(safeLogError).toHaveBeenCalledWith('trial_nft_claim', expect.any(Error), {
+      userId: 1,
+      templateId: 2
+    });
+  });
+
+  it('does not leave console.error calls in Trial NFT controller or service files', () => {
+    const files = [
+      path.resolve(__dirname, '../../controllers/trialNft.controller.ts'),
+      path.resolve(__dirname, '../trialNftService.ts')
+    ];
+
+    for (const file of files) {
+      expect(fs.readFileSync(file, 'utf8')).not.toContain('console.error');
+    }
   });
 });

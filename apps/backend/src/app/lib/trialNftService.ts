@@ -2,6 +2,7 @@ import prisma from '../db/prisma_client';
 import { Prisma } from '@prisma/client';
 import moment from 'moment';
 import getDiscoNFTEVM from './getDiscoNFTEVM';
+import { safeLogError } from '../utils/safeLogger';
 
 /**
  * Trial NFT Service
@@ -106,7 +107,7 @@ export const getTotalNFTCount = async (walletAddress: string, userId: number): P
 
         return totalCount;
     } catch (error) {
-        console.error(`Error getting total NFT count for user ${userId}:`, error);
+        safeLogError('trial_nft_get_total_count', error, { userId });
         // Fallback to real NFTs only
         return await getDiscoNFTEVM(walletAddress);
     }
@@ -130,7 +131,7 @@ export const canClaimTrialNFT = async (userId: number): Promise<{ canClaim: bool
         }
         return { canClaim: true, reason: 'Eligible to claim' };
     } catch (error) {
-        console.error(`Error checking trial NFT eligibility for user ${userId}:`, error);
+        safeLogError('trial_nft_check_claim_eligibility', error, { userId });
         return { canClaim: false, reason: 'Error checking eligibility' };
     }
 };
@@ -255,8 +256,7 @@ export const claimTrialNFT = async (userId: number, templateId?: number): Promis
             }
         }
 
-        const errorName = error instanceof Error ? error.name : typeof error;
-        console.error('Error claiming trial NFT', { userId, errorName });
+        safeLogError('trial_nft_claim', error, { userId, templateId });
         return { success: false, message: 'Failed to claim trial NFT' };
     }
 };
@@ -300,7 +300,7 @@ export const expireOldTrialNFTs = async () => {
         console.log(`🗑️ Expired ${result.count} trial NFT(s)`);
         return result.count;
     } catch (error) {
-        console.error('Error expiring trial NFTs:', error);
+        safeLogError('trial_nft_expire_old', error);
         return 0;
     }
 };
@@ -327,7 +327,7 @@ export const getActiveTrialNFTs = async (userId: number) => {
 
         return activeTrialNFTs;
     } catch (error) {
-        console.error(`Error getting active trial NFTs for user ${userId}:`, error);
+        safeLogError('trial_nft_get_active_for_user', error, { userId });
         return [];
     }
 };
@@ -352,7 +352,7 @@ export const getActiveTrialNFTCount = async (userId: number): Promise<number> =>
 
         return count;
     } catch (error) {
-        console.error(`Error checking trial NFT eligibility for user ${userId}:`, error);
+        safeLogError('trial_nft_get_active_count', error, { userId });
         return 0;
     }
 };
@@ -417,7 +417,7 @@ export const getTrialNFTBonusPoints = async (userId: number, isForDailyCron: boo
             trialNftId: activeTrialNFT.id 
         };
     } catch (error) {
-        console.error(`Error calculating trial NFT bonus for user ${userId}:`, error);
+        safeLogError('trial_nft_calculate_bonus', error, { userId });
         return { points: 0, dayOfHolding: 0, trialNftId: null };
     }
 };
@@ -449,7 +449,7 @@ export const applyTrialNFTBonus = async (userId: number, isForDailyCron: boolean
         console.log(`✅ Applied ${points} trial NFT bonus points to user ${userId} (Day ${dayOfHolding})`);
         return points;
     } catch (error) {
-        console.error(`Error applying trial NFT bonus for user ${userId}:`, error);
+        safeLogError('trial_nft_apply_bonus', error, { userId });
         return 0;
     }
 };
@@ -578,7 +578,7 @@ export const processDailyNFTHolderBonus = async (): Promise<{
                 }
 
             } catch (userError) {
-                console.error(`  ✗ Error processing user ${user.id}:`, userError);
+                safeLogError('trial_nft_daily_bonus_user', userError, { userId: user.id });
                 errors++;
             }
         }
@@ -597,7 +597,7 @@ export const processDailyNFTHolderBonus = async (): Promise<{
         };
 
     } catch (error) {
-        console.error('❌ Error in daily NFT holder bonus processing:', error);
+        safeLogError('trial_nft_daily_bonus_processing', error);
         throw error;
     }
 };
