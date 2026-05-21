@@ -413,6 +413,25 @@ describe('PrizeController.sendToWallet', () => {
     expect(res.status).toHaveBeenCalledWith(409);
   });
 
+  it('prevents double send when another request already reserved the READY row', async () => {
+    mockPrisma.prizeTransactions.updateMany.mockResolvedValueOnce({ count: 0 });
+    const res = createResponse();
+
+    await PrizeController.sendToWallet(createRequest(), res);
+
+    expect(mockPrisma.prizeTransactions.updateMany).toHaveBeenCalledWith({
+      where: {
+        id: 7,
+        userId: 1,
+        status: 'READY',
+        tx_hash: null
+      },
+      data: { status: 'SENDING' }
+    });
+    expect(sendTokensToWallet).not.toHaveBeenCalled();
+    expect(res.status).toHaveBeenCalledWith(409);
+  });
+
   it('does not recalculate transfer amount from changed Prize settings', async () => {
     mockPrisma.prizeTransactions.findFirst.mockResolvedValue({
       ...readyPrizeTransaction(),
@@ -1017,6 +1036,47 @@ describe('PrizeController.sendToWallet', () => {
     expect(res.json).toHaveBeenCalledWith(expect.objectContaining({
       success: false,
       msg: 'Prize transfer could not be started.',
+      correlationId: expect.any(String)
+    }));
+  });
+
+  it('moves provider chainId mismatch to MANUAL_REVIEW without marking RECEIVED', async () => {
+    (sendTokensToWallet as jest.Mock).mockRejectedValue(
+      Object.assign(new Error('Provider chainId mismatch'), {
+        name: 'PrizeChainIdMismatchError'
+      })
+    );
+    const res = createResponse();
+
+    await PrizeController.sendToWallet(createRequest(), res);
+
+    expect(mockPrisma.prizeTransactions.updateMany).toHaveBeenNthCalledWith(1, {
+      where: {
+        id: 7,
+        userId: 1,
+        status: 'READY',
+        tx_hash: null
+      },
+      data: { status: 'SENDING' }
+    });
+    expect(mockPrisma.prizeTransactions.updateMany).toHaveBeenNthCalledWith(2, {
+      where: {
+        id: 7,
+        userId: 1,
+        status: 'SENDING',
+        tx_hash: null
+      },
+      data: { status: 'MANUAL_REVIEW' }
+    });
+    expect(mockPrisma.prizeTransactions.update).not.toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({
+        status: 'RECEIVED'
+      })
+    }));
+    expect(res.status).toHaveBeenCalledWith(202);
+    expect(res.json).toHaveBeenCalledWith(expect.objectContaining({
+      success: false,
+      msg: 'Prize transfer chain mismatch requires manual review.',
       correlationId: expect.any(String)
     }));
   });

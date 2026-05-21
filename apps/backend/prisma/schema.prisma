@@ -160,6 +160,10 @@ model PointHistory {
   userId       Int
   point        Int      @default(0)
   receivedDate DateTime @db.Timestamp(6)
+  dailyWindowKey String? @db.VarChar(16)
+
+  @@unique([userId, reason, dailyWindowKey])
+  @@index([userId, reason, receivedDate])
 }
 
 model AirdropTokens {

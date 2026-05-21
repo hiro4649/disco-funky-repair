@@ -1,7 +1,9 @@
 const mockPrisma = {
   nft: {
     findMany: jest.fn(),
-    findFirst: jest.fn()
+    findFirst: jest.fn(),
+    findUnique: jest.fn(),
+    update: jest.fn()
   }
 };
 
@@ -12,7 +14,7 @@ jest.mock('../../db/prisma_client', () => ({
 
 jest.mock('../../config/env', () => ({
   NFT_STORAGE_ENDPOINT: '',
-  NFT_STORAGE_API_KEY: ''
+  NFT_STORAGE_API_KEY: 'unit-test-lighthouse-key'
 }));
 
 jest.mock('@lighthouse-web3/sdk', () => ({
@@ -22,7 +24,18 @@ jest.mock('@lighthouse-web3/sdk', () => ({
   }
 }));
 
+jest.mock('../../utils/safeLogger', () => ({
+  safeLogError: jest.fn()
+}));
+
+import fs from 'fs';
+import path from 'path';
+import lighthouse from '@lighthouse-web3/sdk';
 import { NftController } from '../nft.controller';
+
+const lighthouseUploadMock = lighthouse.upload as jest.Mock;
+const uploadDir = path.resolve(process.cwd(), 'uploads/images');
+const createdTestFiles = new Set<string>();
 
 const createResponse = () => {
   const res: any = {};
@@ -36,9 +49,45 @@ const createRequest = (params: any, user: any = { user_id: 1 }) => ({
   ...(user ? { user } : {})
 } as any);
 
+const createUploadRequest = (body: any) => ({ body } as any);
+
+const createNftRecord = (overrides: Record<string, any> = {}) => ({
+  id: 1,
+  name: 'DISCO Genesis #1',
+  description: 'Public description',
+  imageMatched: true,
+  localImagePath: null,
+  ipfsUploaded: false,
+  creator: 'creator',
+  owner: 'owner',
+  royalty: 0,
+  attributes: [],
+  collectionId: 'collection',
+  externalUrl: null,
+  ...overrides
+});
+
+const createLocalUploadFile = async (filename: string): Promise<string> => {
+  await fs.promises.mkdir(uploadDir, { recursive: true });
+  const filePath = path.join(uploadDir, filename);
+  await fs.promises.writeFile(filePath, Buffer.from('test image'));
+  createdTestFiles.add(filePath);
+  return filePath;
+};
+
 describe('NftController public catalog and owner reads', () => {
   beforeEach(() => {
-    jest.clearAllMocks();
+    jest.resetAllMocks();
+  });
+
+  afterEach(async () => {
+    await Promise.all(
+      Array.from(createdTestFiles).map((filePath) =>
+        fs.promises.unlink(filePath).catch(() => undefined)
+      )
+    );
+    createdTestFiles.clear();
+    jest.restoreAllMocks();
   });
 
   it('does not read holder NFT collection without an authenticated user', async () => {
@@ -189,5 +238,220 @@ describe('NftController public catalog and owner reads', () => {
     expect(responseBody.data).not.toHaveProperty('creator');
     expect(responseBody.data).not.toHaveProperty('royalty');
     expect(responseBody.data).not.toHaveProperty('collectionId');
+  });
+
+  it('does not expose local upload paths in successful image upload responses', async () => {
+    mockPrisma.nft.findMany.mockResolvedValue([]);
+    const res = createResponse();
+
+    await NftController.uploadImages({
+      files: [{
+        filename: '11111111-1111-4111-8111-111111111111.png',
+        originalname: 'Token.png',
+        path: 'C:\\uploads\\images\\11111111-1111-4111-8111-111111111111.png',
+        size: 9,
+        mimetype: 'image/png'
+      }]
+    } as any, res);
+
+    const responseBody = res.json.mock.calls[0][0];
+    expect(responseBody.files[0]).not.toHaveProperty('path');
+    expect(responseBody.files[0]).not.toHaveProperty('filePath');
+  });
+
+  it('removes uploaded image files when image matching fails after local save', async () => {
+    const unlinkSpy = jest.spyOn(fs.promises, 'unlink').mockResolvedValue(undefined as any);
+    mockPrisma.nft.findMany.mockRejectedValue(new Error('database unavailable'));
+    const uploadedPath = 'C:\\uploads\\images\\11111111-1111-4111-8111-111111111111.png';
+    const res = createResponse();
+
+    await NftController.uploadImages({
+      files: [{
+        filename: '11111111-1111-4111-8111-111111111111.png',
+        originalname: 'Token.png',
+        path: uploadedPath,
+        size: 9,
+        mimetype: 'image/png'
+      }]
+    } as any, res);
+
+    expect(unlinkSpy).toHaveBeenCalledWith(uploadedPath);
+    expect(res.status).toHaveBeenCalledWith(500);
+  });
+
+  it('removes uploaded single image files when the target NFT is missing', async () => {
+    const unlinkSpy = jest.spyOn(fs.promises, 'unlink').mockResolvedValue(undefined as any);
+    mockPrisma.nft.findUnique.mockResolvedValue(null);
+    const uploadedPath = 'C:\\uploads\\images\\22222222-2222-4222-8222-222222222222.png';
+    const res = createResponse();
+
+    await NftController.uploadSingleImage({
+      params: { nftId: '123' },
+      file: {
+        filename: '22222222-2222-4222-8222-222222222222.png',
+        originalname: 'Token.png',
+        path: uploadedPath
+      }
+    } as any, res);
+
+    expect(unlinkSpy).toHaveBeenCalledWith(uploadedPath);
+    expect(res.status).toHaveBeenCalledWith(404);
+  });
+
+  it('does not expose local paths in successful single image upload responses', async () => {
+    const uploadedPath = 'C:\\uploads\\images\\22222222-2222-4222-8222-222222222222.png';
+    mockPrisma.nft.findUnique.mockResolvedValue({
+      id: 123,
+      excelImageName: null
+    });
+    mockPrisma.nft.update.mockResolvedValue({
+      id: 123,
+      name: 'DISCO Genesis #123',
+      excelImageName: 'Token.png',
+      imageMatched: true,
+      updatedAt: new Date('2026-05-21T00:00:00.000Z')
+    });
+    const res = createResponse();
+
+    await NftController.uploadSingleImage({
+      params: { nftId: '123' },
+      file: {
+        filename: '22222222-2222-4222-8222-222222222222.png',
+        originalname: 'Token.png',
+        path: uploadedPath
+      }
+    } as any, res);
+
+    const responseBody = res.json.mock.calls[0][0];
+    expect(mockPrisma.nft.update).toHaveBeenCalledWith(expect.objectContaining({
+      select: {
+        id: true,
+        name: true,
+        excelImageName: true,
+        imageMatched: true,
+        updatedAt: true
+      }
+    }));
+    expect(responseBody.data).toEqual(expect.objectContaining({
+      id: 123,
+      name: 'DISCO Genesis #123',
+      hasLocalImagePath: true
+    }));
+    expect(responseBody.data).not.toHaveProperty('localImagePath');
+    expect(JSON.stringify(responseBody)).not.toContain(uploadedPath);
+  });
+
+  it('returns a clear full-success response for IPFS uploads', async () => {
+    const localImagePath = await createLocalUploadFile('44444444-4444-4444-8444-444444444444.png');
+    mockPrisma.nft.findUnique.mockResolvedValue(createNftRecord({ localImagePath }));
+    mockPrisma.nft.update.mockResolvedValue({});
+    lighthouseUploadMock
+      .mockResolvedValueOnce({ data: { Hash: 'image-cid' } })
+      .mockResolvedValueOnce({ data: { Hash: 'metadata-cid' } });
+    const res = createResponse();
+
+    await NftController.uploadToIPFS(createUploadRequest({ nftIds: [1] }), res);
+
+    const responseBody = res.json.mock.calls[0][0];
+    expect(res.status).toHaveBeenCalledWith(200);
+    expect(responseBody).toEqual(expect.objectContaining({
+      success: true,
+      partialSuccess: false,
+      successCount: 1,
+      errorCount: 0
+    }));
+    expect(lighthouseUploadMock).toHaveBeenCalledWith(localImagePath, expect.any(String));
+    expect(JSON.stringify(responseBody)).not.toContain(localImagePath);
+  });
+
+  it('rejects IPFS uploads when localImagePath resolves outside UPLOAD_DIR', async () => {
+    const outsidePath = path.resolve(process.cwd(), 'private-nft-image.png');
+    const logSpy = jest.spyOn(console, 'log').mockImplementation(() => undefined);
+    mockPrisma.nft.findUnique.mockResolvedValue(createNftRecord({ localImagePath: outsidePath }));
+    const res = createResponse();
+
+    await NftController.uploadToIPFS(createUploadRequest({ nftIds: [1] }), res);
+
+    const responseBody = res.json.mock.calls[0][0];
+    expect(res.status).toHaveBeenCalledWith(400);
+    expect(responseBody).toEqual(expect.objectContaining({
+      success: false,
+      partialSuccess: false,
+      successCount: 0,
+      errorCount: 1
+    }));
+    expect(responseBody.results[0]).toEqual(expect.objectContaining({
+      status: 'error: unsafe local image path'
+    }));
+    expect(lighthouseUploadMock).not.toHaveBeenCalled();
+    expect(JSON.stringify(responseBody)).not.toContain(outsidePath);
+    expect(JSON.stringify(logSpy.mock.calls)).not.toContain(outsidePath);
+  });
+
+  it('rejects SVG and unsupported extensions before IPFS upload', async () => {
+    const svgPath = path.join(uploadDir, '55555555-5555-4555-8555-555555555555.svg');
+    mockPrisma.nft.findUnique.mockResolvedValue(createNftRecord({ localImagePath: svgPath }));
+    const res = createResponse();
+
+    await NftController.uploadToIPFS(createUploadRequest({ nftIds: [1] }), res);
+
+    const responseBody = res.json.mock.calls[0][0];
+    expect(res.status).toHaveBeenCalledWith(400);
+    expect(responseBody).toEqual(expect.objectContaining({
+      success: false,
+      partialSuccess: false,
+      successCount: 0,
+      errorCount: 1
+    }));
+    expect(responseBody.results[0]).toEqual(expect.objectContaining({
+      status: 'error: unsupported image extension'
+    }));
+    expect(lighthouseUploadMock).not.toHaveBeenCalled();
+  });
+
+  it('marks mixed IPFS upload results as partial success without success:true', async () => {
+    const localImagePath = await createLocalUploadFile('66666666-6666-4666-8666-666666666666.png');
+    const outsidePath = path.resolve(process.cwd(), 'outside-partial-image.png');
+    mockPrisma.nft.findUnique.mockImplementation(({ where }: any) =>
+      Promise.resolve(where.id === 1
+        ? createNftRecord({ id: 1, localImagePath })
+        : createNftRecord({ id: 2, name: 'DISCO Genesis #2', localImagePath: outsidePath }))
+    );
+    mockPrisma.nft.update.mockResolvedValue({});
+    lighthouseUploadMock
+      .mockResolvedValueOnce({ data: { Hash: 'image-cid' } })
+      .mockResolvedValueOnce({ data: { Hash: 'metadata-cid' } });
+    const res = createResponse();
+
+    await NftController.uploadToIPFS(createUploadRequest({ nftIds: [1, 2] }), res);
+
+    const responseBody = res.json.mock.calls[0][0];
+    expect(res.status).toHaveBeenCalledWith(207);
+    expect(responseBody).toEqual(expect.objectContaining({
+      success: false,
+      partialSuccess: true,
+      successCount: 1,
+      errorCount: 1
+    }));
+    expect(responseBody.results).toEqual([
+      expect.objectContaining({ id: 1, status: 'success: uploaded to IPFS' }),
+      expect.objectContaining({ id: 2, status: 'error: unsafe local image path' })
+    ]);
+    expect(JSON.stringify(responseBody)).not.toContain(outsidePath);
+  });
+
+  it('removes uploaded Excel files when parsing fails', async () => {
+    const unlinkSpy = jest.spyOn(fs.promises, 'unlink').mockResolvedValue(undefined as any);
+    const uploadedPath = 'C:\\uploads\\excel\\33333333-3333-4333-8333-333333333333.xlsx';
+    const res = createResponse();
+
+    await NftController.uploadExcel({
+      file: {
+        path: uploadedPath
+      }
+    } as any, res);
+
+    expect(unlinkSpy).toHaveBeenCalledWith(uploadedPath);
+    expect(res.status).toHaveBeenCalledWith(500);
   });
 });

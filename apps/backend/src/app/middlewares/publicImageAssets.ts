@@ -6,8 +6,7 @@ export const PUBLIC_IMAGE_ASSET_EXTENSIONS = [
     '.jpg',
     '.jpeg',
     '.gif',
-    '.webp',
-    '.svg'
+    '.webp'
 ] as const;
 
 const publicImageAssetExtensions = new Set<string>(

@@ -1,6 +1,7 @@
 import { Request, Response } from 'express';
 import prisma from '../db/prisma_client';
 import moment from 'moment';
+import { Prisma } from '@prisma/client';
 // import jwt, { JwtPayload } from 'jsonwebtoken';
 // import { jwtDecode } from 'jwt-decode'
 // import { number } from 'zod';
@@ -8,6 +9,29 @@ import moment from 'moment';
 type AuthenticatedUser = {
     user_id?: number;
 };
+
+const DAILY_FAN_POINT_REASON = 1;
+const DAILY_FAN_POINT_AMOUNT = 1;
+
+const getDailyFanPointWindow = (now = moment.utc()) => {
+    const isAMWindow = now.hour() < 12;
+    const windowName = isAMWindow ? 'AM' : 'PM';
+    const startOfDay = now.clone().startOf('day');
+
+    return {
+        isAMWindow,
+        dailyWindowKey: `${now.format('YYYY-MM-DD')}-${windowName}`,
+        startOfWindow: isAMWindow
+            ? startOfDay.toDate()
+            : startOfDay.clone().add(12, 'hours').toDate(),
+        endOfWindow: isAMWindow
+            ? startOfDay.clone().add(12, 'hours').toDate()
+            : startOfDay.clone().add(1, 'day').toDate()
+    };
+};
+
+const isPrismaUniqueConstraintError = (error: unknown): boolean =>
+    Boolean(error && typeof error === 'object' && (error as { code?: string }).code === 'P2002');
 
 const getAuthenticatedUserId = (req: Request): number | null => {
     const userId = Number((req.user as AuthenticatedUser | undefined)?.user_id);
@@ -337,77 +361,77 @@ export class UserController {
         }
 
         try {
-            // Use moment with UTC timezone
             const now = moment.utc();
-            
-            // Determine current time window (AM: 00:00-12:00 or PM: 12:01-23:59)
-            const hour = now.hour();
-            const isAMWindow = hour < 12;
-            const startOfWindow = isAMWindow ? 
-                now.clone().startOf('day').toDate() : 
-                now.clone().startOf('day').add(12, 'hours').toDate();
-            const endOfWindow = isAMWindow ? 
-                now.clone().startOf('day').add(12, 'hours').toDate() : 
-                now.clone().endOf('day').toDate();
-    
-            // Find if user already received a fan-point in current time window
-            const receivedInWindow = await prisma.pointHistory.findFirst({
-                where: {
-                    userId: user_id,
-                    reason: 1, // Daily Bonus
-                    receivedDate: {
-                        gte: startOfWindow,
-                        lte: endOfWindow
+            const { isAMWindow, dailyWindowKey, startOfWindow, endOfWindow } = getDailyFanPointWindow(now);
+
+            const result = await prisma.$transaction(async (tx) => {
+                const receivedInWindow = await tx.pointHistory.findFirst({
+                    where: {
+                        userId: user_id,
+                        reason: DAILY_FAN_POINT_REASON,
+                        receivedDate: {
+                            gte: startOfWindow,
+                            lt: endOfWindow
+                        }
+                    },
+                    orderBy: {
+                        receivedDate: 'desc'
                     }
-                },
-                orderBy: {
-                    receivedDate: 'desc'
+                });
+
+                if (receivedInWindow) {
+                    return 'already-received' as const;
                 }
+
+                await tx.pointHistory.create({
+                    data: {
+                        userId: user_id,
+                        point: DAILY_FAN_POINT_AMOUNT,
+                        reason: DAILY_FAN_POINT_REASON,
+                        receivedDate: now.toDate(),
+                        dailyWindowKey
+                    }
+                });
+
+                await tx.user.update({
+                    where: {
+                        id: user_id
+                    },
+                    data: {
+                        fan_points: {
+                            increment: DAILY_FAN_POINT_AMOUNT
+                        }
+                    }
+                });
+
+                return 'created' as const;
+            }, {
+                isolationLevel: Prisma.TransactionIsolationLevel.Serializable
             });
-    
-            let dailyLogined = false;
-    
-            // Check if the user has already received a fan-point in this time window
-            if (receivedInWindow) {
-                // User already received a fan-point in this time window
-                res.status(202).json({
-                    msg: `You can only receive a fan-point once in the ${isAMWindow ? 'morning (00:00-12:00)' : 'afternoon (12:01-23:59)'} window.`,
+
+            if (result === 'already-received') {
+                return res.status(202).json({
+                    success: true,
+                    msg: `You can only receive a fan-point once in the ${isAMWindow ? 'morning (00:00-12:00)' : 'afternoon (12:00-23:59)'} window.`,
                     dailyLogined: false
                 });
-                return;
             }
-    
-            // User can receive a fan-point in the current time window
-            const data = await prisma.pointHistory.create({
-                data: {
-                    userId: user_id,
-                    point: 1,
-                    reason: 1,
-                    receivedDate: now.toDate()
-                }
-            });
-    
-            // Update user fan_points
-            await prisma.user.update({
-                where: {
-                    id: user_id
-                },
-                data: {
-                    fan_points: {
-                        increment: 1
-                    }
-                }
-            });
-    
-            if (data) {
-                dailyLogined = false;
-            } else {
-                dailyLogined = true;
+
+            return res.status(200).json({ success: true, dailyLogined: false });
+        } catch (error) {
+            if (isPrismaUniqueConstraintError(error)) {
+                return res.status(409).json({
+                    success: false,
+                    code: 'DAILY_POINT_ALREADY_RECEIVED',
+                    msg: 'Daily FanPoint already received for this window',
+                    dailyLogined: false
+                });
             }
-    
-            res.status(200).json({ success: true, dailyLogined: dailyLogined });
-        } catch (e) {
-            return res.status(404).json({ msg: 'Not found' });
+
+            return res.status(500).json({
+                success: false,
+                msg: 'Failed to apply daily FanPoint'
+            });
         }
     }
     
@@ -424,21 +448,14 @@ export class UserController {
 
         try {
             const now = moment.utc();
-            const hour = now.hour();
-            const isAMWindow = hour < 12;
-            const startOfWindow = isAMWindow ? 
-                now.clone().startOf('day').toDate() : 
-                now.clone().startOf('day').add(12, 'hours').toDate();
-            const endOfWindow = isAMWindow ? 
-                now.clone().startOf('day').add(12, 'hours').toDate() : 
-                now.clone().endOf('day').toDate();
+            const { startOfWindow, endOfWindow } = getDailyFanPointWindow(now);
             const result = await prisma.pointHistory.findMany({
                 where: {
                     userId: user_id,
-                    reason: 1, // Daily Bonus
+                    reason: DAILY_FAN_POINT_REASON,
                     receivedDate: {
                         gte: startOfWindow,
-                        lte: endOfWindow
+                        lt: endOfWindow
                     }
                 }
             });
@@ -448,9 +465,11 @@ export class UserController {
                 dailyLogined = true;
             }
             res.status(200).json({ success: true, dailyLogined: dailyLogined });
-        } catch (e) {
-            console.log(e);
-            return res.status(404).json({ msg: 'Not found' });
+        } catch (error) {
+            return res.status(500).json({
+                success: false,
+                msg: 'Failed to read daily FanPoint state'
+            });
         }
     }
 

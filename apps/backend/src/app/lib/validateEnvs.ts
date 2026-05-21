@@ -93,9 +93,12 @@ const looksPlaceholder = (value: string): boolean => {
 };
 
 const getValidationMode = (env: EnvMap): ValidationMode => {
-  const appEnv = env.BACKEND_APP_ENV?.trim().toLowerCase();
-  if (appEnv === 'staging') return 'staging';
-  if (appEnv === 'production' || env.NODE_ENV === 'production') return 'production';
+  const backendAppEnv = env.BACKEND_APP_ENV?.trim().toLowerCase();
+  const appEnv = env.APP_ENV?.trim().toLowerCase();
+  const nodeEnv = env.NODE_ENV?.trim().toLowerCase();
+
+  if (backendAppEnv === 'staging' || appEnv === 'staging' || nodeEnv === 'staging') return 'staging';
+  if (backendAppEnv === 'production' || nodeEnv === 'production') return 'production';
   return 'development';
 };
 

@@ -60,6 +60,10 @@ const logPrizeTransferError = (
     });
 };
 
+const isPrizeChainIdMismatchError = (err: unknown): boolean => (
+    err instanceof Error && err.name === 'PrizeChainIdMismatchError'
+);
+
 const decimalNumberToParts = (value: number): { units: bigint; scale: number } => {
     if (!Number.isFinite(value) || value <= 0) {
         throw new Error('Invalid positive decimal number');
@@ -1424,6 +1428,32 @@ export class PrizeController {
                     return res.status(202).json({
                         success: false,
                         msg: 'Prize transfer was broadcasted and requires manual review.',
+                        correlationId
+                    });
+                }
+
+                if (isPrizeChainIdMismatchError(transferErr)) {
+                    const manualReviewUpdate = await prisma.prizeTransactions.updateMany({
+                        where: {
+                            id: prizeId,
+                            userId: user.id,
+                            status: Status.SENDING,
+                            tx_hash: null
+                        },
+                        data: { status: Status.MANUAL_REVIEW },
+                    });
+
+                    if (manualReviewUpdate.count !== 1) {
+                        return res.status(409).json({
+                            success: false,
+                            msg: 'Prize transaction changed during transfer safety check.',
+                            correlationId
+                        });
+                    }
+
+                    return res.status(202).json({
+                        success: false,
+                        msg: 'Prize transfer chain mismatch requires manual review.',
                         correlationId
                     });
                 }

@@ -1,14 +1,17 @@
 import helmet from 'helmet';
 import session from 'express-session';
 import { Express } from 'express';
+import { requiresStrictCors } from '../config/runtime';
 
 /**
  * Configure security middleware for the application
  * @param app Express application
  */
 export const configureSecurityMiddleware = (app: Express) => {
+  const strictRuntime = requiresStrictCors(process.env);
+
   // Set security HTTP headers - less restrictive in development
-  if (process.env.NODE_ENV === 'production') {
+  if (strictRuntime) {
     app.use(helmet());
   } else {
     app.use(
@@ -22,7 +25,7 @@ export const configureSecurityMiddleware = (app: Express) => {
   }
   
   // Content Security Policy - more relaxed in development
-  if (process.env.NODE_ENV === 'production') {
+  if (strictRuntime) {
     app.use(
       helmet.contentSecurityPolicy({
         directives: {
@@ -30,7 +33,7 @@ export const configureSecurityMiddleware = (app: Express) => {
           scriptSrc: ["'self'", "'unsafe-inline'"],
           styleSrc: ["'self'", "'unsafe-inline'"],
           imgSrc: ["'self'", "data:", "blob:"],
-          connectSrc: ["'self'", "https://*.suiet.app"],
+          connectSrc: ["'self'"],
           fontSrc: ["'self'"],
           objectSrc: ["'none'"],
           mediaSrc: ["'self'"],
@@ -47,7 +50,7 @@ export const configureSecurityMiddleware = (app: Express) => {
           scriptSrc: ["'self'", "'unsafe-inline'", "'unsafe-eval'"],
           styleSrc: ["'self'", "'unsafe-inline'", "http://localhost:*"],
           imgSrc: ["'self'", "data:", "blob:", "http://localhost:*"],
-          connectSrc: ["'self'", "http://localhost:*", "http://127.0.0.1:*", "https://*.suiet.app", "ws://localhost:*"],
+          connectSrc: ["'self'", "http://localhost:*", "http://127.0.0.1:*", "ws://localhost:*"],
           fontSrc: ["'self'", "data:"],
           objectSrc: ["'none'"],
           mediaSrc: ["'self'"],
@@ -71,10 +74,10 @@ export const configureSecurityMiddleware = (app: Express) => {
       saveUninitialized: false,
       cookie: {
         httpOnly: true,
-        secure: process.env.NODE_ENV === 'production',
-        sameSite: process.env.NODE_ENV === 'production' ? 'strict' : 'lax',
+        secure: strictRuntime,
+        sameSite: strictRuntime ? 'strict' : 'lax',
         maxAge: 24 * 60 * 60 * 1000, // 24 hours
-        domain: process.env.NODE_ENV === 'production' ? cookieDomain || undefined : undefined
+        domain: strictRuntime ? cookieDomain || undefined : undefined
       }
     })
   );
