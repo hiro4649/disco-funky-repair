@@ -115,7 +115,7 @@ Codex must not declare production ready.
 Production readiness requires at least:
 
 - GitHub no-tx gate is PASS.
-- Harness v0.6.6 gate, secret scan, backend build/test, frontend env validation/build, contracts compile/test, and NFT compile/test are PASS.
+- Harness v0.6.8 gate, secret scan, backend build/test, frontend env validation/build, contracts compile/test, and NFT compile/test are PASS.
 - Staging domain, HTTPS, runtime env, CORS, SESSION_SECRET, and BSC testnet chainId `97` are confirmed.
 - After tBNB funding: no-tx smoke, secret log scan, funded tx smoke, NFT deploy/mint receipt, Prize send receipt/no-double-send, TierUpdater receipt, and governance/config receipt are confirmed.
 - Receipt evidence is stored with non-secret public data only.
