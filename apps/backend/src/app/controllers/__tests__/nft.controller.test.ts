@@ -3,7 +3,9 @@ const mockPrisma = {
     findMany: jest.fn(),
     findFirst: jest.fn(),
     findUnique: jest.fn(),
-    update: jest.fn()
+    update: jest.fn(),
+    updateMany: jest.fn(),
+    delete: jest.fn()
   }
 };
 
@@ -25,13 +27,15 @@ jest.mock('@lighthouse-web3/sdk', () => ({
 }));
 
 jest.mock('../../utils/safeLogger', () => ({
-  safeLogError: jest.fn()
+  safeLogError: jest.fn(),
+  safeLogWarn: jest.fn()
 }));
 
 import fs from 'fs';
 import path from 'path';
 import lighthouse from '@lighthouse-web3/sdk';
 import { NftController } from '../nft.controller';
+import { safeLogError } from '../../utils/safeLogger';
 
 const lighthouseUploadMock = lighthouse.upload as jest.Mock;
 const uploadDir = path.resolve(process.cwd(), 'uploads/images');
@@ -66,6 +70,12 @@ const createNftRecord = (overrides: Record<string, any> = {}) => ({
   externalUrl: null,
   ...overrides
 });
+
+const expectResponseDoesNotExposeRawError = (res: any, rawMessage: string) => {
+  const responseBody = res.json.mock.calls[0][0];
+  expect(JSON.stringify(responseBody)).not.toContain(rawMessage);
+  expect(responseBody).not.toHaveProperty('error');
+};
 
 const createLocalUploadFile = async (filename: string): Promise<string> => {
   await fs.promises.mkdir(uploadDir, { recursive: true });
@@ -238,6 +248,124 @@ describe('NftController public catalog and owner reads', () => {
     expect(responseBody.data).not.toHaveProperty('creator');
     expect(responseBody.data).not.toHaveProperty('royalty');
     expect(responseBody.data).not.toHaveProperty('collectionId');
+  });
+
+  it('does not expose local paths in admin NFT list responses', async () => {
+    const localImagePath = 'C:\\uploads\\images\\77777777-7777-4777-8777-777777777777.png';
+    mockPrisma.nft.findMany.mockResolvedValue([
+      createNftRecord({
+        localImagePath,
+        createdAt: new Date('2026-01-01T00:00:00.000Z'),
+        updatedAt: new Date('2026-01-01T00:00:00.000Z')
+      })
+    ]);
+    const res = createResponse();
+
+    await NftController.getAllNfts({} as any, res);
+
+    const responseBody = res.json.mock.calls[0][0];
+    expect(responseBody.data[0]).not.toHaveProperty('localImagePath');
+    expect(responseBody.data[0]).toHaveProperty('hasLocalImagePath', true);
+    expect(JSON.stringify(responseBody)).not.toContain(localImagePath);
+  });
+
+  it('does not expose raw errors when admin NFT list fails', async () => {
+    const rawMessage = 'raw admin list database failure';
+    mockPrisma.nft.findMany.mockRejectedValue(new Error(rawMessage));
+    const res = createResponse();
+
+    await NftController.getAllNfts({} as any, res);
+
+    expect(res.status).toHaveBeenCalledWith(500);
+    expect(res.json).toHaveBeenCalledWith({
+      success: false,
+      message: 'Failed to fetch NFTs'
+    });
+    expectResponseDoesNotExposeRawError(res, rawMessage);
+    expect(safeLogError).toHaveBeenCalledWith('get_all_nfts', expect.any(Error));
+  });
+
+  it('does not expose raw errors when holder NFT collection read fails', async () => {
+    const rawMessage = 'raw holder collection failure';
+    mockPrisma.nft.findMany.mockRejectedValue(new Error(rawMessage));
+    const res = createResponse();
+
+    await NftController.getNFTsByHolderId(createRequest({ holderId: '1' }), res);
+
+    expect(res.status).toHaveBeenCalledWith(500);
+    expect(res.json).toHaveBeenCalledWith({
+      success: false,
+      message: 'Failed to fetch NFTs'
+    });
+    expectResponseDoesNotExposeRawError(res, rawMessage);
+    expect(safeLogError).toHaveBeenCalledWith('get_holder_nfts', expect.any(Error), { holderId: 1 });
+  });
+
+  it('does not expose raw errors when mintable NFT catalog read fails', async () => {
+    const rawMessage = 'raw mintable catalog failure';
+    mockPrisma.nft.findMany.mockRejectedValue(new Error(rawMessage));
+    const res = createResponse();
+
+    await NftController.getMintableNfts(createRequest({}), res);
+
+    expect(res.status).toHaveBeenCalledWith(500);
+    expect(res.json).toHaveBeenCalledWith({
+      success: false,
+      message: 'Failed to fetch mintable NFTs'
+    });
+    expectResponseDoesNotExposeRawError(res, rawMessage);
+    expect(safeLogError).toHaveBeenCalledWith('get_mintable_nfts', expect.any(Error));
+  });
+
+  it('does not expose raw errors when public NFT detail read fails', async () => {
+    const rawMessage = 'raw public detail failure';
+    mockPrisma.nft.findFirst.mockRejectedValue(new Error(rawMessage));
+    const res = createResponse();
+
+    await NftController.getNFTById(createRequest({ id: '1' }), res);
+
+    expect(res.json).toHaveBeenCalledWith({
+      success: false,
+      message: 'Failed to fetch NFT'
+    });
+    expectResponseDoesNotExposeRawError(res, rawMessage);
+    expect(safeLogError).toHaveBeenCalledWith('get_nft_by_token_id', expect.any(Error), { tokenId: 1 });
+  });
+
+  it('does not expose raw errors when disabled NFT update logic fails if called directly', async () => {
+    const rawMessage = 'raw update failure';
+    mockPrisma.nft.updateMany.mockRejectedValue(new Error(rawMessage));
+    const res = createResponse();
+
+    await NftController.updateNFT({
+      params: { id: '1' },
+      body: { holderId: 1, mintStatus: true }
+    } as any, res);
+
+    expect(res.status).toHaveBeenCalledWith(500);
+    expect(res.json).toHaveBeenCalledWith({
+      success: false,
+      message: 'Failed to update NFT'
+    });
+    expectResponseDoesNotExposeRawError(res, rawMessage);
+    expect(safeLogError).toHaveBeenCalledWith('update_nft', expect.any(Error), { tokenId: 1 });
+  });
+
+  it('does not expose raw errors when admin NFT delete fails', async () => {
+    const rawMessage = 'raw delete failure';
+    mockPrisma.nft.findUnique.mockResolvedValue(createNftRecord({ mintStatus: false }));
+    mockPrisma.nft.delete.mockRejectedValue(new Error(rawMessage));
+    const res = createResponse();
+
+    await NftController.deleteNFT(createRequest({ id: '1' }), res);
+
+    expect(res.status).toHaveBeenCalledWith(500);
+    expect(res.json).toHaveBeenCalledWith({
+      success: false,
+      message: 'Failed to delete NFT'
+    });
+    expectResponseDoesNotExposeRawError(res, rawMessage);
+    expect(safeLogError).toHaveBeenCalledWith('delete_nft', expect.any(Error), { nftId: 1 });
   });
 
   it('does not expose local upload paths in successful image upload responses', async () => {

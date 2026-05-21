@@ -7,7 +7,7 @@ import path from 'path';
 import { randomUUID } from 'crypto';
 import lighthouse from '@lighthouse-web3/sdk'
 import { NFT_STORAGE_ENDPOINT, NFT_STORAGE_API_KEY } from '../config/env';
-import { safeLogError } from '../utils/safeLogger';
+import { safeLogError, safeLogWarn } from '../utils/safeLogger';
 import { findUploadedImageByOriginalName } from '../middlewares/imageUploadSecurity';
 import { isPublicImageAssetRequestPath } from '../middlewares/publicImageAssets';
 
@@ -141,7 +141,7 @@ export class NftController {
       // Fallback: try to parse as JSON if it's already valid
       return JSON.parse(attributesStr);
     } catch (error) {
-      console.warn('Failed to parse attributes, using empty array:', error);
+      safeLogWarn('parse_nft_attributes', error);
       return [];
     }
   }
@@ -266,9 +266,8 @@ export class NftController {
             imageMatched 
           });
         } catch (error) {
-          const errorMessage = error instanceof Error ? error.message : 'Unknown error';
           safeLogError('process_nft_excel_row', error);
-          results.push({ name: data.Name, status: `error: ${errorMessage}`, imageMatched: false });
+          results.push({ name: data.Name, status: 'error: failed to save NFT metadata', imageMatched: false });
         }
       }
 
@@ -441,10 +440,10 @@ export class NftController {
 
       // Check if API key is configured
       if (!NFT_STORAGE_API_KEY) {
-        console.error('IPFS storage API key is not configured');
+        safeLogError('upload_to_ipfs_missing_configuration', new Error('IPFS storage is not configured'));
         return res.status(500).json({
           success: false,
-          message: 'IPFS storage API key is not configured. Please set NFT_STORAGE_API_KEY in .env file.'
+          message: 'IPFS storage is not configured'
         });
       }
 
@@ -555,9 +554,8 @@ export class NftController {
           console.log('NFT successfully uploaded to IPFS', { nftId: nft.id });
           results.push({ id: nftId, name: nft.name, status: 'success: uploaded to IPFS' });
         } catch (error) {
-          const errorMessage = error instanceof Error ? error.message : 'Unknown error';
           safeLogError('upload_nft_to_ipfs', error, { nftId: Number(nftId) });
-          results.push({ id: nftId, name: 'Unknown', status: `error: ${errorMessage}` });
+          results.push({ id: nftId, name: 'Unknown', status: 'error: failed to upload NFT to IPFS' });
         }
       }
 
@@ -722,11 +720,10 @@ export class NftController {
         data: nfts.map((nft) => this.toAdminNftResponse(nft))
       });
     } catch (error) {
-      console.error('Error fetching NFTs:', error);
+      safeLogError('get_all_nfts', error);
       return res.status(500).json({
         success: false,
-        message: 'Failed to fetch NFTs',
-        error: error instanceof Error ? error.message : 'Unknown error'
+        message: 'Failed to fetch NFTs'
       });
     }
   }
@@ -784,11 +781,12 @@ export class NftController {
         data: nfts
       });
     } catch (error) {
-      console.error('Error fetching NFTs by holderId:', error);
+      safeLogError('get_holder_nfts', error, {
+        holderId: Number(req.params.holderId)
+      });
       return res.status(500).json({
         success: false,
-        message: 'Failed to fetch NFTs',
-        error: error instanceof Error ? error.message : 'Unknown error'
+        message: 'Failed to fetch NFTs'
       });
     }
   }
@@ -818,11 +816,10 @@ export class NftController {
         count: nfts.length
       });
     } catch (error) {
-      console.error('Error fetching mintable NFTs:', error);
+      safeLogError('get_mintable_nfts', error);
       return res.status(500).json({
         success: false,
-        message: 'Failed to fetch mintable NFTs',
-        error: error instanceof Error ? error.message : 'Unknown error'
+        message: 'Failed to fetch mintable NFTs'
       });
     }
   }
@@ -890,11 +887,12 @@ export class NftController {
         }
       });
     } catch (error) {
-      console.error('Error fetching NFT by ID:', error);
+      safeLogError('get_nft_by_token_id', error, {
+        tokenId: Number(req.params.id)
+      });
       return res.json({
         success: false,
-        message: 'Failed to fetch NFT',
-        error: error instanceof Error ? error.message : 'Unknown error'
+        message: 'Failed to fetch NFT'
       });
     }
   }
@@ -955,7 +953,10 @@ export class NftController {
 
           console.log(`🎁 User ${holderId} received 1 fan-point immediately for Real NFT mint (${updatedNFT?.name})`);
         } catch (pointError) {
-          console.error('Error giving immediate NFT mint bonus:', pointError);
+          safeLogError('give_immediate_nft_mint_bonus', pointError, {
+            holderId: Number(holderId),
+            tokenId: Number(id)
+          });
           // Don't fail the whole request if point reward fails
         }
       }
@@ -966,11 +967,12 @@ export class NftController {
         data: updatedNFT
       });
     } catch (error) {
-      console.error('Error updating NFT:', error);
+      safeLogError('update_nft', error, {
+        tokenId: Number(req.params.id)
+      });
       return res.status(500).json({
         success: false,
-        message: 'Failed to update NFT',
-        error: error instanceof Error ? error.message : 'Unknown error'
+        message: 'Failed to update NFT'
       });
     }
   }
@@ -1017,11 +1019,12 @@ export class NftController {
         message: 'NFT deleted successfully'
       });
     } catch (error) {
-      console.error('Error deleting NFT:', error);
+      safeLogError('delete_nft', error, {
+        nftId: Number(req.params.id)
+      });
       return res.status(500).json({
         success: false,
-        message: 'Failed to delete NFT',
-        error: error instanceof Error ? error.message : 'Unknown error'
+        message: 'Failed to delete NFT'
       });
     }
   }
