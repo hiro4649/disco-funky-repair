@@ -26,7 +26,7 @@ At PR time, confirm:
 
 Run these commands and record results in the PR body:
 
-- Harness v0.6.6 gate: `node scripts/codex-local-quality-gate.mjs`
+- Harness v0.6.8 gate: `node scripts/codex-local-quality-gate.mjs`
 - secret scan gate: `node scripts/codex-secret-safety-scan.mjs`
 - profile required checks: `CODEX_RUN_PROFILE_REQUIRED_CHECKS=1 node scripts/codex-local-quality-gate.mjs`
 - JSON report: `CODEX_QUALITY_REPORT=json node scripts/codex-local-quality-gate.mjs`
