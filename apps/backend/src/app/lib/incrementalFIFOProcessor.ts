@@ -23,9 +23,9 @@ import {
     FIFOImpact,
     TransactionClassifierConfig
 } from './transactionClassifier';
+import { TOKEN_CONTRACT_ADDRESS } from '../config/env';
 
 const prisma = new PrismaClient();
-const TOKEN_CONTRACT_ADDRESS = process.env.TOKEN_CONTRACT_ADDRESS || '';
 const DECIMALS = 18;
 const DECIMALS_FACTOR = BigInt(10) ** BigInt(DECIMALS);
 

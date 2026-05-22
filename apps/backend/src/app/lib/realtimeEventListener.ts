@@ -16,12 +16,9 @@ import { ethers } from 'ethers';
 import { PrismaClient } from '@prisma/client';
 import { processUserRealtime } from './realtimeHoldingDateUpdater';
 import { alertWebSocketDisconnected, alertWebSocketReconnected } from './discordAlerts';
-import { CHAIN_NAME } from '../config/env';
+import { CHAIN_NAME, QUICKNODE_WS_RPC_URL, TOKEN_CONTRACT_ADDRESS } from '../config/env';
 
 const prisma = new PrismaClient();
-
-const TOKEN_CONTRACT_ADDRESS = process.env.TOKEN_CONTRACT_ADDRESS || '';
-const QUICKNODE_WS_RPC_URL = process.env.QUICKNODE_WS_RPC_URL || '';
 
 // Minimal ERC20 ABI for Transfer event
 const TOKEN_ABI = [
@@ -59,7 +56,13 @@ class RealtimeEventListener {
         try {
             console.log('🔌 Connecting to QuickNode WebSocket RPC...');
 
-            this.provider = new ethers.WebSocketProvider(QUICKNODE_WS_RPC_URL);
+            const wsRpcUrl = QUICKNODE_WS_RPC_URL;
+            if (!wsRpcUrl) {
+                console.error('QUICKNODE_WS_RPC_URL is not configured');
+                return;
+            }
+
+            this.provider = new ethers.WebSocketProvider(wsRpcUrl);
             this.contract = new ethers.Contract(TOKEN_CONTRACT_ADDRESS, TOKEN_ABI, this.provider);
 
             // Set up event listener
@@ -203,7 +206,7 @@ class RealtimeEventListener {
         }
 
         // Determine provider name from URL
-        const providerName = QUICKNODE_WS_RPC_URL.includes('quicknode') ? 'QuickNode' : 'Unknown';
+        const providerName = QUICKNODE_WS_RPC_URL?.includes('quicknode') ? 'QuickNode' : 'Unknown';
         const chainName = CHAIN_NAME;
 
         // Send Discord alert about disconnection with diagnostic info

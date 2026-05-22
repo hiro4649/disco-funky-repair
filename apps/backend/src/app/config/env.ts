@@ -12,7 +12,7 @@ const requiredConfigValue = (name: string, value: string | undefined): string =>
   return value || '';
 };
 
-export const jwt_secret = process.env.JWT_SECRET;
+export const jwtSecretValue = process.env.JWT_SECRET;
 
 export const adminWalletAddress = process.env.ADMIN_WALLET_ADDRESS;
 
