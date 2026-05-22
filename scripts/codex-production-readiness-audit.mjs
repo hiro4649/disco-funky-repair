@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 import { execSync } from 'node:child_process';
 import { existsSync } from 'node:fs';
+import { isIP } from 'node:net';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
@@ -161,6 +162,48 @@ const validateUrlValue = (name, value, labels) => {
   }
 };
 
+const validateCorsOriginsValue = (value, labels) => {
+  const origins = value
+    .split(',')
+    .map((origin) => origin.trim())
+    .filter(Boolean);
+
+  if (origins.length === 0) {
+    labels.push('cors_origin_invalid');
+    return;
+  }
+
+  for (const origin of origins) {
+    if (looksPlaceholder(origin)) {
+      labels.push('placeholder_detected');
+      continue;
+    }
+
+    try {
+      const parsed = new URL(origin);
+      const hostname = parsed.hostname.toLowerCase();
+      const normalizedOrigin = origin.endsWith('/') ? origin.slice(0, -1) : origin;
+      const normalizedHostname = hostname.replace(/^\[/, '').replace(/\]$/, '');
+
+      if (parsed.protocol !== 'https:') labels.push('cors_origin_not_https');
+      if (parsed.origin !== normalizedOrigin || parsed.pathname !== '/' || parsed.search || parsed.hash) {
+        labels.push('cors_origin_has_path_query_or_hash');
+      }
+      if (
+        ['localhost', '127.0.0.1', '0.0.0.0', '::1', '[::1]'].includes(hostname) ||
+        isIP(normalizedHostname) !== 0
+      ) {
+        labels.push('cors_origin_localhost_or_ip');
+      }
+      if (hostname === 'example.com' || hostname.endsWith('.example.com') || hostname.endsWith('.invalid')) {
+        labels.push('cors_origin_example_or_invalid');
+      }
+    } catch {
+      labels.push('cors_origin_invalid');
+    }
+  }
+};
+
 const validateAddressValue = (value, labels) => {
   if (!evmAddressPattern.test(value)) labels.push('invalid_evm_address');
   if (zeroAddressPattern.test(value)) labels.push('zero_address_detected');
@@ -195,6 +238,7 @@ const auditBackendEnv = (env) => {
     if (isBlank(value)) continue;
     const trimmed = String(value).trim();
     if (looksPlaceholder(trimmed)) labels.push('placeholder_detected');
+    if (name === 'BACKEND_CORS_ORIGINS') validateCorsOriginsValue(trimmed, labels);
     if (urlEnv.has(name)) validateUrlValue(name, trimmed, labels);
     if (addressEnv.has(name)) validateAddressValue(trimmed, labels);
     if (privateKeyEnv.has(name)) validatePrivateKeyValue(trimmed, labels);
@@ -350,6 +394,7 @@ const main = async () => {
     codeMainSha,
     valuesPrinted: false,
     backendProductionEnvValidation: backend.status,
+    backendFailureLabels: backend.labels,
     frontendProductionEnvValidation: frontend.status,
     frontendMissingEnvNames: frontend.missing,
     forbiddenPlaceholderCheck,

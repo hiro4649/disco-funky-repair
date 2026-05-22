@@ -42,6 +42,23 @@ Optional public names are validated if present:
 
 Do not set public secret-like names such as `NEXT_PUBLIC_*SECRET`, `NEXT_PUBLIC_*PRIVATE_KEY`, `NEXT_PUBLIC_*JWT`, `NEXT_PUBLIC_*HOT_WALLET`, `NEXT_PUBLIC_*RELAYER_KEY`, `NEXT_PUBLIC_*OWNER_KEY`, or `NEXT_PUBLIC_*ADMIN_KEY`.
 
+## Backend CORS Origin Labels
+
+The auditor validates `BACKEND_CORS_ORIGINS` as production CORS origins.
+Entries are comma-separated origins and must be HTTPS origins only.
+
+The auditor fails unsafe CORS origin shapes:
+
+- localhost or loopback hosts
+- raw IP hosts
+- example or invalid hosts
+- path, query, or hash components
+- malformed URL origins
+
+The auditor does not print CORS values.
+It reports safe labels only, such as `cors_origin_invalid`, `cors_origin_not_https`, `cors_origin_localhost_or_ip`, `cors_origin_example_or_invalid`, or `cors_origin_has_path_query_or_hash`.
+The audit does not prove the production value itself; it only returns `PASS`, `FAIL`, or `PENDING` when run inside the deployment environment.
+
 ## Runtime Evidence Labels
 
 The script does not perform network calls. Runtime evidence is `NOT_RUN` unless the deployment environment supplies a label:
