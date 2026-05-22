@@ -88,6 +88,7 @@ const createFinalizeRequest = () => ({
 const fakeEvmAddress = (seed: string) => `0x${seed.padStart(40, '0')}`;
 const VALID_ASSET_CONTRACT = fakeEvmAddress('1');
 const BLOCKED_ASSET_CONTRACT = fakeEvmAddress('2');
+const SECOND_ELIGIBLE_ASSET_CONTRACT = fakeEvmAddress('2');
 const INVALID_ASSET_CONTRACT = ['not', 'a', 'token', 'address'].join('-');
 const FIXED_TRANSFER_AMOUNT = '50000000000000000000';
 const FIXED_TRANSFER_AMOUNT_2 = '25000000000000000000';
@@ -279,7 +280,7 @@ const winningPrize = () => ({
 
 const smallerEligiblePrize = () => ({
   id: 4,
-  ca: VALID_ASSET_CONTRACT,
+  ca: SECOND_ELIGIBLE_ASSET_CONTRACT,
   quantity: 50,
   price: 2,
   decimals: 18,
