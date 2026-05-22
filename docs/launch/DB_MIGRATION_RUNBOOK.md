@@ -20,6 +20,8 @@ Baseline migration:
 
 It was generated from the current `apps/backend/prisma/schema.prisma` using Prisma migrate diff from an empty PostgreSQL database.
 
+Migration SQL files must be committed as UTF-8 without BOM. PostgreSQL can fail Prisma `migrate deploy` with `P3018` and a syntax error at position 0 when a migration starts with a UTF-8 BOM. Before merging migration changes, confirm each `migration.sql` starts with SQL text bytes, not `EF BB BF`.
+
 This baseline includes the P0 schema fields and statuses needed by the current code, including:
 
 - `Prize.balance_amount`

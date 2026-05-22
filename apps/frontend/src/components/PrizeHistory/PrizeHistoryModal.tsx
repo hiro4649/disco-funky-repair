@@ -18,7 +18,7 @@ const PrizeHistoryModal = (props: {
   const [rotation, setRotation] = useState(90);
   const [isCopied, setIsCopied] = useState(false);
 
-  const shortenSuiAddress = (address: string) => {
+  const shortenWalletAddress = (address: string) => {
     const start = address.substring(0, 10);
     const end = address.substring(address.length - 10);
     return `${start}...${end}`;
@@ -159,7 +159,7 @@ const PrizeHistoryModal = (props: {
                     >
                       {data.prize.ca.length <= 13
                         ? data.prize.ca
-                        : shortenSuiAddress(data.prize.ca)}
+                        : shortenWalletAddress(data.prize.ca)}
                     </p>
                   </div>
                 </div>

@@ -1,5 +1,23 @@
 # Disabled Features for BSC Launch MVP
 
+## P1-03 Crash Game Not Installed Update
+
+Crash gameplay is intentionally not installed for staging or production MVP. A fixed disabled API stub remains for no-tx smoke evidence.
+
+This P1-03 section supersedes older P0-01 disabled-route wording for Crash game only.
+
+Current expected behavior:
+
+- `GET /api/crash/games` returns `410 FEATURE_DISABLED`.
+- `/crashx` is not registered by backend startup code.
+- the old Crash gameplay controller source is removed.
+- `initCrashServer(io)` is absent from backend source.
+- frontend `/fan-games` returns `notFound()` and the old `components/CrashGame` source is removed.
+- Sidebar and normal frontend navigation do not expose Fan Games / Crash.
+- Crash DB updates, balance updates, ticket updates, FanPoint updates, socket events, and on-chain processing are unreachable from runtime routes.
+
+`POST /api/crash/games` returning `404` is a method mismatch and must not be treated as protection evidence. `/crash/games` returning `404` is acceptable only as old non-API path absence evidence. Other MVP-disabled routes such as `PATCH /api/nft/:id`, `POST /api/user/illustration`, and `/api/user-manage/*` remain expected to return `410 FEATURE_DISABLED`; admin protected routes remain expected to return `401` or `403` depending on credentials.
+
 ## P0-02 Disabled NFT Mint Status Update
 
 `PATCH /api/nft/:id` is disabled for the BSC launch MVP and returns `410 FEATURE_DISABLED`.

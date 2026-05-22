@@ -6,7 +6,7 @@ import { setAuthstate, setUserId, setConnectBonus } from "@/store/slices/userSli
 import apiClient from "../../../utils/apiClient";
 import { useEffect, useCallback, useState } from "react";
 import moment from "moment";
-// Removed Suiet wallet-kit in favor of Reown AppKit
+// Removed legacy wallet-kit in favor of Reown AppKit
 import { useLocale, useTranslations } from 'next-intl';
 import Link from "next/link";
 import Image from "next/image";

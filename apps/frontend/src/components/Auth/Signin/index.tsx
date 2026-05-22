@@ -3,12 +3,13 @@ import React, { useState, useCallback, useEffect } from "react";
 import SigninWithPassword from "../SigninWithPassword";
 import { useRouter } from 'next/navigation';
 import { useAppDispatch, useAppSelector } from '@/store/store';
-import { setAdminLoading, setAdminToken, setAdminAuthState, setAdminId } from '@/store/slices/adminSlice';
+import { setAdminLoading, setAdminAuthState, setAdminId } from '@/store/slices/adminSlice';
 import apiClient from "../../../../utils/apiClient";
+import { safeClientLogError } from "@/utils/safeClientLogger";
 
 interface AdminData {
-  adminId: number;
-  address: string;
+  admin_id: number;
+  email: string;
 }
 
 interface AdminResponse {
@@ -24,27 +25,23 @@ export default function Signin() {
   const router = useRouter();
   const { loading } = useAppSelector((state) => state.admin);
   const dispatch = useAppDispatch();
-  const [adminData, setAdminData] = useState<AdminData | null>(null);
 
   const fetchAdminData = useCallback(async () => {
     try {
       const response = await apiClient.get<AdminResponse>('/admin/verify');
       if (response.status === 200 && response.data.success) {
         const adminData = response.data.admin;
-        setAdminData(adminData);
-        dispatch(setAdminId(adminData.adminId));
+        dispatch(setAdminId(adminData.admin_id));
         dispatch(setAdminAuthState(true));
         router.push('/admin/user-manage');
       } else {
         dispatch(setAdminAuthState(false));
-        setAdminData(null);
       }
     } catch (error) {
-      console.error('Error fetching user data:', error);
+      safeClientLogError('admin_verify', error);
       dispatch(setAdminAuthState(false));
-      setAdminData(null);
     }
-  }, [dispatch]);
+  }, [dispatch, router]);
 
   useEffect(() => {
     fetchAdminData();
@@ -57,12 +54,8 @@ export default function Signin() {
     try {
       const res = await apiClient.post("/admin/signin", data);
       if (res.status === 200) {
-        const { success, token } = res.data;
-        if (success && token) {
-          // Store the JWT token in Redux store
-          dispatch(setAdminToken(token));
-          // Set the Authorization header for future requests
-          apiClient.defaults.headers.common['Authorization'] = `Bearer ${token}`;
+        const { success } = res.data;
+        if (success) {
           await fetchAdminData();
         } else {
           console.error("Login failed: Invalid response format");
@@ -70,10 +63,9 @@ export default function Signin() {
       } else {
         console.error("Login failed: Invalid response format");
       }
-      dispatch(setAdminLoading(false));
     } catch (error: any) {
-      const errorMessage = error.response?.data?.message || "Login failed";
-      console.error("Login failed:", errorMessage);
+      safeClientLogError('admin_signin', error);
+    } finally {
       dispatch(setAdminLoading(false));
     }
   };

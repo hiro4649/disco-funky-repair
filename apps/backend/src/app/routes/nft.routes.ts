@@ -3,7 +3,7 @@ import { NftController } from '../controllers/nft.controller';
 import uploadExcel from '../middlewares/excelMulter';
 import uploadNftImages from '../middlewares/imagesMulter';
 import uploadSingleImage from '../middlewares/singleImageMulter';
-import { AuthAdmin } from '../config/passport';
+import { Authenticate, AuthAdmin } from '../config/passport';
 import { asyncHandler } from './utils';
 
 const router = express.Router();
@@ -31,7 +31,9 @@ router.post('/admin/nft/:nftId/upload-image', AuthAdmin, uploadSingleImage, asyn
 // Step 2: Upload selected NFTs to IPFS (after admin verification)
 router.post('/admin/nft/upload-to-ipfs', AuthAdmin, (req, res, next) => {
   console.log('📩 Received POST /admin/nft/upload-to-ipfs');
-  console.log('   Body:', JSON.stringify(req.body));
+  console.log('Upload-to-IPFS request summary', {
+    nftIdCount: Array.isArray(req.body?.nftIds) ? req.body.nftIds.length : 0
+  });
   next();
 }, asyncHandler(NftController.uploadToIPFS.bind(NftController)));
 
@@ -58,7 +60,7 @@ router.get('/nfts/mintable', asyncHandler(NftController.getMintableNfts.bind(Nft
 router.get('/nft/:id', asyncHandler(NftController.getNFTById.bind(NftController)));
 
 // Get NFTs by holder ID (for user's collection)
-router.get('/nfts/holder/:holderId', asyncHandler(NftController.getNFTsByHolderId.bind(NftController)));
+router.get('/nfts/holder/:holderId', Authenticate, asyncHandler(NftController.getNFTsByHolderId.bind(NftController)));
 
 // Direct mint status updates require on-chain receipt verification before re-enabling.
 router.patch('/nft/:id', nftMintStatusUpdateDisabled);

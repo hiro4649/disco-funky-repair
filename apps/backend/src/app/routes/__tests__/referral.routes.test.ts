@@ -206,6 +206,87 @@ describe('referral user routes authorization', () => {
     expect(mockPrisma.user.update).not.toHaveBeenCalled();
     expect(mockPrisma.referralRewards.create).not.toHaveBeenCalled();
   });
+
+  it('does not read referral stats without authentication', async () => {
+    const response = await request(createApp())
+      .get('/referral-stats/0xuser')
+      .send({ adminKey: 'legacy-admin-key' });
+
+    expect(response.status).toBe(401);
+    expect(mockPrisma.referralRewards.count).not.toHaveBeenCalled();
+  });
+
+  it('does not read referral stats for another wallet', async () => {
+    const response = await request(createApp())
+      .get('/referral-stats/0xvictim')
+      .set('Authorization', 'Bearer user-token');
+
+    expect(response.status).toBe(403);
+    expect(mockPrisma.user.findUnique).not.toHaveBeenCalled();
+    expect(mockPrisma.referralRewards.count).not.toHaveBeenCalled();
+  });
+
+  it('reads referral stats only for the authenticated wallet', async () => {
+    mockPrisma.user.findUnique.mockResolvedValue({
+      id: 1,
+      wallet_address: '0xuser'
+    });
+    mockPrisma.referralRewards.count
+      .mockResolvedValueOnce(3)
+      .mockResolvedValueOnce(2)
+      .mockResolvedValueOnce(1);
+
+    const response = await request(createApp())
+      .get('/referral-stats/0xuser')
+      .set('Authorization', 'Bearer user-token');
+
+    expect(response.status).toBe(200);
+    expect(response.body).toEqual({
+      totalReferrals: 3,
+      verifiedReferrals: 2,
+      totalRewards: 1,
+      pendingRewards: 1
+    });
+    expect(mockPrisma.referralRewards.count).toHaveBeenCalledTimes(3);
+  });
+
+  it('does not read referral rewards without authentication', async () => {
+    const response = await request(createApp())
+      .get('/referral-rewards/0xuser')
+      .send({ adminKey: 'legacy-admin-key' });
+
+    expect(response.status).toBe(401);
+    expect(mockPrisma.referralRewards.findMany).not.toHaveBeenCalled();
+  });
+
+  it('does not read referral rewards for another wallet', async () => {
+    const response = await request(createApp())
+      .get('/referral-rewards/0xvictim')
+      .set('Authorization', 'Bearer user-token');
+
+    expect(response.status).toBe(403);
+    expect(mockPrisma.user.findUnique).not.toHaveBeenCalled();
+    expect(mockPrisma.referralRewards.findMany).not.toHaveBeenCalled();
+  });
+
+  it('reads referral rewards only for the authenticated wallet', async () => {
+    mockPrisma.user.findUnique.mockResolvedValue({
+      id: 1,
+      wallet_address: '0xuser'
+    });
+    mockPrisma.referralRewards.findMany.mockResolvedValue([]);
+
+    const response = await request(createApp())
+      .get('/referral-rewards/0xuser')
+      .set('Authorization', 'Bearer user-token');
+
+    expect(response.status).toBe(200);
+    expect(mockPrisma.referralRewards.findMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: {
+        referrer_wallet: '0xuser'
+      }
+    }));
+  });
 });
 
 describe('referral admin routes authorization', () => {
@@ -363,5 +444,44 @@ describe('referral admin routes authorization', () => {
       where: { id: 201 },
       data: { rewarded: true }
     });
+  });
+
+  it('rejects debug referral status without admin authentication', async () => {
+    const response = await request(createApp())
+      .get('/debug/referral-status/0xuser');
+
+    expect(response.status).toBe(401);
+    expect(mockPrisma.user.findUnique).not.toHaveBeenCalled();
+    expect(mockPrisma.referralRewards.findMany).not.toHaveBeenCalled();
+  });
+
+  it('rejects debug referral status with a normal user token', async () => {
+    const response = await request(createApp())
+      .get('/debug/referral-status/0xuser')
+      .set('Authorization', 'Bearer user-token');
+
+    expect(response.status).toBe(403);
+    expect(mockPrisma.user.findUnique).not.toHaveBeenCalled();
+    expect(mockPrisma.referralRewards.findMany).not.toHaveBeenCalled();
+  });
+
+  it('allows only admin authentication to read debug referral status', async () => {
+    mockPrisma.user.findUnique.mockResolvedValue({
+      wallet_address: '0xuser',
+      referred_by: 'ABC123',
+      createdAt: new Date('2026-01-01T00:00:00.000Z')
+    });
+    mockPrisma.referralRewards.findMany.mockResolvedValue([]);
+
+    const response = await request(createApp())
+      .get('/debug/referral-status/0xuser')
+      .set('Authorization', 'Bearer admin-token');
+
+    expect(response.status).toBe(200);
+    expect(mockPrisma.user.findUnique).toHaveBeenCalledWith(expect.objectContaining({
+      where: {
+        wallet_address: '0xuser'
+      }
+    }));
   });
 });

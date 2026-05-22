@@ -1,6 +1,11 @@
 const mockPrisma = {
   user: {
     findUnique: jest.fn()
+  },
+  trialNft: {
+    count: jest.fn(),
+    groupBy: jest.fn(),
+    findMany: jest.fn()
   }
 };
 
@@ -20,8 +25,19 @@ jest.mock('../../lib/trialNftService', () => ({
 }));
 
 jest.mock('../../lib/getDiscoNFTEVM', () => jest.fn());
+jest.mock('../../utils/safeLogger', () => ({
+  safeLogError: jest.fn()
+}));
 
 import { TrialNftController } from '../trialNft.controller';
+import getDiscoNFTEVM from '../../lib/getDiscoNFTEVM';
+import { safeLogError } from '../../utils/safeLogger';
+import {
+  expireOldTrialNFTs,
+  canClaimTrialNFT,
+  getActiveTrialNFTs,
+  getActiveTrialNFTCount
+} from '../../lib/trialNftService';
 
 const createResponse = () => {
   const res: any = {};
@@ -33,8 +49,15 @@ const createResponse = () => {
 const createRequest = (params: any, body: any = {}, user: any = { user_id: 1 }) => ({
   params,
   body,
+  query: {},
   ...(user ? { user } : {})
 } as any);
+
+const expectResponseDoesNotExposeRawError = (res: any, rawMessage: string) => {
+  const payload = res.json.mock.calls[0][0];
+  expect(JSON.stringify(payload)).not.toContain(rawMessage);
+  expect(payload).not.toHaveProperty('error');
+};
 
 describe('TrialNftController.claimTrialNFT authorization', () => {
   beforeEach(() => {
@@ -75,5 +98,194 @@ describe('TrialNftController.claimTrialNFT authorization', () => {
     expect(mockPrisma.user.findUnique).toHaveBeenCalledWith({ where: { id: 1 } });
     expect(mockClaimTrialNFT).toHaveBeenCalledWith(1, 2);
     expect(res.status).toHaveBeenCalledWith(200);
+  });
+});
+
+describe('TrialNftController user-specific reads authorization', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    mockPrisma.user.findUnique.mockResolvedValue({ id: 1, wallet_address: '0xuser' });
+    mockPrisma.trialNft.count.mockResolvedValue(0);
+    mockPrisma.trialNft.groupBy.mockResolvedValue([]);
+    mockPrisma.trialNft.findMany.mockResolvedValue([]);
+    (canClaimTrialNFT as jest.Mock).mockResolvedValue({
+      canClaim: true,
+      reason: 'Eligible'
+    });
+    (getActiveTrialNFTs as jest.Mock).mockResolvedValue([{ id: 11, name: 'Trial NFT' }]);
+    (getActiveTrialNFTCount as jest.Mock).mockResolvedValue(2);
+    (getDiscoNFTEVM as jest.Mock).mockResolvedValue(3);
+  });
+
+  it('does not check claim status without an authenticated user', async () => {
+    const res = createResponse();
+
+    await TrialNftController.checkCanClaim(createRequest({ userId: '1' }, {}, null), res);
+
+    expect(res.status).toHaveBeenCalledWith(401);
+    expect(canClaimTrialNFT).not.toHaveBeenCalled();
+  });
+
+  it('does not check another user claim status or read DB/service data', async () => {
+    const res = createResponse();
+
+    await TrialNftController.checkCanClaim(createRequest({ userId: '2' }), res);
+
+    expect(res.status).toHaveBeenCalledWith(403);
+    expect(canClaimTrialNFT).not.toHaveBeenCalled();
+  });
+
+  it('checks claim status only for the authenticated user id', async () => {
+    const res = createResponse();
+
+    await TrialNftController.checkCanClaim(createRequest({ userId: '1' }), res);
+
+    expect(canClaimTrialNFT).toHaveBeenCalledWith(1);
+    expect(res.status).toHaveBeenCalledWith(200);
+  });
+
+  it('does not read another user trial NFT list', async () => {
+    const res = createResponse();
+
+    await TrialNftController.getUserTrialNFTs(createRequest({ userId: '2' }), res);
+
+    expect(res.status).toHaveBeenCalledWith(403);
+    expect(getActiveTrialNFTs).not.toHaveBeenCalled();
+  });
+
+  it('reads trial NFT list only for the authenticated user id', async () => {
+    const res = createResponse();
+
+    await TrialNftController.getUserTrialNFTs(createRequest({ userId: '1' }), res);
+
+    expect(getActiveTrialNFTs).toHaveBeenCalledWith(1);
+    expect(res.status).toHaveBeenCalledWith(200);
+  });
+
+  it('does not count another user NFTs or read wallet data', async () => {
+    const res = createResponse();
+
+    await TrialNftController.getTotalNFTCount(createRequest({ userId: '2' }), res);
+
+    expect(res.status).toHaveBeenCalledWith(403);
+    expect(mockPrisma.user.findUnique).not.toHaveBeenCalled();
+    expect(getDiscoNFTEVM).not.toHaveBeenCalled();
+    expect(getActiveTrialNFTCount).not.toHaveBeenCalled();
+  });
+
+  it('counts NFTs only for the authenticated user id', async () => {
+    const res = createResponse();
+
+    await TrialNftController.getTotalNFTCount(createRequest({ userId: '1' }), res);
+
+    expect(mockPrisma.user.findUnique).toHaveBeenCalledWith({
+      where: { id: 1 },
+      select: { wallet_address: true }
+    });
+    expect(getDiscoNFTEVM).toHaveBeenCalledWith('0xuser');
+    expect(getActiveTrialNFTCount).toHaveBeenCalledWith(1);
+    expect(res.status).toHaveBeenCalledWith(200);
+  });
+});
+
+describe('TrialNftController safe error responses', () => {
+  const rawMessage = 'RAW_INTERNAL_TRIAL_NFT_FAILURE';
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    mockPrisma.user.findUnique.mockResolvedValue({ id: 1, wallet_address: '0xuser' });
+    mockPrisma.trialNft.count.mockResolvedValue(0);
+    mockPrisma.trialNft.groupBy.mockResolvedValue([]);
+    mockPrisma.trialNft.findMany.mockResolvedValue([]);
+    mockClaimTrialNFT.mockResolvedValue({
+      success: true,
+      message: 'Trial NFT claimed successfully',
+      data: { id: 10 }
+    });
+    (canClaimTrialNFT as jest.Mock).mockResolvedValue({ canClaim: true, reason: 'Eligible' });
+    (getActiveTrialNFTs as jest.Mock).mockResolvedValue([{ id: 11, name: 'Trial NFT' }]);
+    (getActiveTrialNFTCount as jest.Mock).mockResolvedValue(2);
+    (expireOldTrialNFTs as jest.Mock).mockResolvedValue(1);
+    (getDiscoNFTEVM as jest.Mock).mockResolvedValue(3);
+  });
+
+  it('does not expose raw errors when checking claim eligibility fails', async () => {
+    (canClaimTrialNFT as jest.Mock).mockRejectedValueOnce(new Error(rawMessage));
+    const res = createResponse();
+
+    await TrialNftController.checkCanClaim(createRequest({ userId: '1' }), res);
+
+    expect(res.status).toHaveBeenCalledWith(500);
+    expectResponseDoesNotExposeRawError(res, rawMessage);
+    expect(safeLogError).toHaveBeenCalledWith('check_trial_nft_claim_eligibility', expect.any(Error), { userId: 1 });
+  });
+
+  it('does not expose raw errors when claiming a Trial NFT fails', async () => {
+    mockClaimTrialNFT.mockRejectedValueOnce(new Error(rawMessage));
+    const res = createResponse();
+
+    await TrialNftController.claimTrialNFT(createRequest({ userId: '1' }, { templateId: 2 }), res);
+
+    expect(res.status).toHaveBeenCalledWith(500);
+    expectResponseDoesNotExposeRawError(res, rawMessage);
+    expect(safeLogError).toHaveBeenCalledWith('claim_trial_nft_controller', expect.any(Error), {
+      userId: 1,
+      templateId: 2
+    });
+  });
+
+  it('does not expose raw errors when fetching user Trial NFTs fails', async () => {
+    (getActiveTrialNFTs as jest.Mock).mockRejectedValueOnce(new Error(rawMessage));
+    const res = createResponse();
+
+    await TrialNftController.getUserTrialNFTs(createRequest({ userId: '1' }), res);
+
+    expect(res.status).toHaveBeenCalledWith(500);
+    expectResponseDoesNotExposeRawError(res, rawMessage);
+    expect(safeLogError).toHaveBeenCalledWith('get_user_trial_nfts', expect.any(Error), { userId: 1 });
+  });
+
+  it('does not expose raw errors when fetching total NFT count fails', async () => {
+    mockPrisma.user.findUnique.mockRejectedValueOnce(new Error(rawMessage));
+    const res = createResponse();
+
+    await TrialNftController.getTotalNFTCount(createRequest({ userId: '1' }), res);
+
+    expect(res.status).toHaveBeenCalledWith(500);
+    expectResponseDoesNotExposeRawError(res, rawMessage);
+    expect(safeLogError).toHaveBeenCalledWith('get_total_nft_count_controller', expect.any(Error), { userId: 1 });
+  });
+
+  it('does not expose raw errors when fetching admin Trial NFT stats fails', async () => {
+    mockPrisma.trialNft.count.mockRejectedValueOnce(new Error(rawMessage));
+    const res = createResponse();
+
+    await TrialNftController.getStats(createRequest({}), res);
+
+    expect(res.status).toHaveBeenCalledWith(500);
+    expectResponseDoesNotExposeRawError(res, rawMessage);
+    expect(safeLogError).toHaveBeenCalledWith('get_trial_nft_stats', expect.any(Error));
+  });
+
+  it('does not expose raw errors when expiring old Trial NFTs fails', async () => {
+    (expireOldTrialNFTs as jest.Mock).mockRejectedValueOnce(new Error(rawMessage));
+    const res = createResponse();
+
+    await TrialNftController.expireOldNFTs(createRequest({}), res);
+
+    expect(res.status).toHaveBeenCalledWith(500);
+    expectResponseDoesNotExposeRawError(res, rawMessage);
+    expect(safeLogError).toHaveBeenCalledWith('expire_old_trial_nfts_controller', expect.any(Error));
+  });
+
+  it('does not expose raw errors when fetching all Trial NFTs fails', async () => {
+    mockPrisma.trialNft.findMany.mockRejectedValueOnce(new Error(rawMessage));
+    const res = createResponse();
+
+    await TrialNftController.getAllTrialNFTs(createRequest({}, {}, { admin_id: 1 }), res);
+
+    expect(res.status).toHaveBeenCalledWith(500);
+    expectResponseDoesNotExposeRawError(res, rawMessage);
+    expect(safeLogError).toHaveBeenCalledWith('get_all_trial_nfts', expect.any(Error));
   });
 });

@@ -1,5 +1,101 @@
 # P0 Closure Report
 
+## P0-FINAL-2 Production No-Go Re-Audit
+
+Date: 2026-05-15 JST
+
+Checked commit: `54a76e59b1e11646108b89d43bafa32fbe53b628` (`54a76e5 P0-13C BSC production env safety (#34)`)
+
+Scope: static re-audit of the BSC production No-Go items after P0-11, P0-12B through P0-12K, P0-13A, P0-13B, and P0-13C. This section is the latest status and supersedes older historical status tables below. It does not claim staging, testnet, or production secret-manager verification has been completed.
+
+### Closed No-Go
+
+| No-Go | Status | Evidence |
+| --- | --- | --- |
+| Wallet signature login | CLOSED at code level | `apps/backend/src/app/controllers/auth.controller.ts` issues wallet login nonce records, builds a signable message containing wallet, nonce, issuedAt, expiresAt, domain, and chainId, verifies `ethers.verifyMessage`, consumes nonce once with `walletLoginNonce.updateMany({ used_at: null, expires_at: { gt: now } })`, then issues JWT. `apps/frontend/src/context/AuthContext.tsx` performs nonce request, wallet `signMessage`, and backend verification. |
+| API authorization shortage | CLOSED at code level / staging verification pending | `docs/launch/API_AUTHORIZATION_AUDIT.md` P0-FINAL-2 section records no remaining P0 authorization route in static audit. User-owned mutations require `Authenticate`; admin mutations require `AuthAdmin`; disabled MVP routes remain `410 FEATURE_DISABLED` or unreachable. |
+| AuthAdmin / Authenticate token logging | CLOSED at code level | `apps/backend/src/app/config/passport.ts` logs only safe metadata such as token/header presence and error names. It does not log raw Authorization header, admin token, JWT, or cookie values. |
+| Frontend `NEXT_PUBLIC_ADMIN_PRIVATE_KEY` and browser admin signing | CLOSED at code level | Search found no production frontend reference to `NEXT_PUBLIC_ADMIN_PRIVATE_KEY`, no frontend private-key `Wallet` creation, and no browser admin/governance signing path. Remaining `NEXT_PUBLIC_ADMIN_PRIVATE_KEY` strings are validation tests and forbidden-env rules. |
+| BSC production env required settings and fallback gaps | CLOSED at code level / production secret-manager verification pending | `apps/backend/src/app/lib/validateEnvs.ts`, `apps/backend/src/app/config/env.ts`, `apps/frontend/env.validation.mjs`, and `docs/launch/ENVIRONMENT_RUNBOOK.md` require or safely disable critical production env. Production rejects localhost/example/dummy/testnet, non-BSC chain ID, zero addresses, known test keys, unsafe explorer URLs, and `NEXT_PUBLIC_*` secret names. |
+| Explorer/BSCScan API-key URL raw logging | CLOSED for targeted P0 raw URL logs | `apps/backend/src/app/lib/realtimeHoldingDateUpdater.ts` and `apps/backend/src/app/lib/getToken.ts` no longer raw-log request URLs with query strings or API keys. `apps/backend/src/app/lib/__tests__/secretLogging.test.ts` checks the targeted raw URL log regressions. |
+| `.env` or real secret material committed | No evidence found in tracked files | `git ls-files` check found no tracked `.env`, private key file, DB dump, or secret file. Test files contain placeholder values only. |
+
+### Remaining Production No-Go
+
+No code-level production No-Go was found in this static re-audit for the requested categories.
+
+Production launch is still No-Go until the human checks below are completed on real staging/testnet/production infrastructure. This audit does not verify real secret-manager values, PM2/nginx deploy targets, wallet balances, BSC testnet receipts, multisig ownership, or production logs.
+
+### P1-Downgraded Residual Risks
+
+| Risk | Classification | Reason |
+| --- | --- | --- |
+| `apps/backend/src/app/lib/walletBalanceMonitor.ts` reads `ADMIN_PRIVATE_KEY` | P1 code debt; production config No-Go if a real admin private key is injected | The remaining use derives a wallet address/balance for monitoring and does not send prize, tier, governance, fee, DEX, or pair transactions. P0-10A/B/C removed production asset/governance signing from `ADMIN_PRIVATE_KEY`. Production should avoid setting `ADMIN_PRIVATE_KEY`; replace this monitor with a public address based balance check. |
+| `apps/backend/src/app/controllers/nft.controller.ts` logs a prefix of `NFT_STORAGE_API_KEY` | P1 log-hardening debt | It is not an explorer/API-key-bearing URL raw log and does not print the full key, but production logs should not print any secret prefix. Remove before broad production logging. |
+| Read/privacy routes remain broader than ideal | P1 privacy debt | `docs/launch/API_AUTHORIZATION_AUDIT.md` lists read-only wallet/admin/user/monitoring routes that do not mutate DB or assets but may expose operational or user data. |
+| In-memory wallet login nonces | P1 scaling debt if multiple backend processes are used | Login nonce records are persisted in DB, but deployment should still confirm process count/session behavior and replay protection under load. |
+
+### Staging Verification Pending
+
+- Wallet login E2E: nonce issuance, wallet signature, one-time nonce reuse rejection, expired nonce rejection, wrong wallet rejection, JWT cookie issuance, user verification.
+- API authorization smoke test: unauthenticated, normal user JWT, and admin JWT against Prize, NFT, Trial NFT, ticket distribution, referral admin, illustration, daily point, lottery, ticket claim, and disabled MVP routes.
+- Upload middleware order: unauthenticated and normal user requests must not save files or mutate DB before `AuthAdmin`.
+- Disabled features: `/fan-games`, `/crash/games`, `/user-manage/*`, `/crashx`, `PATCH /nft/:id`, and `POST /user/illustration` must stay disabled.
+- Logging smoke: auth failures, explorer fallback failures, and upload failures must not print raw tokens, Authorization headers, API keys, RPC URLs with query strings, DB URLs, or private keys.
+
+### Testnet Verification Pending
+
+- NFT contract: mint disabled/enabled behavior, `MAX_SUPPLY`, base URI, owner-to-multisig transfer, and no arbitrary metadata minting.
+- Tier contract: valid tier set, `REGULAR_SYNC` downgrade rejection, reason-coded reset/downgrade, tier updater relayer permissions.
+- Prize flow: draw, ticket decrement, fixed transfer amount, inventory reservation, send receipt retry, reservation release for expired/cancelled/failed unpaid prizes.
+- Hot wallet separation: prize hot wallet and tier relayer are separate accounts with minimum roles/funds.
+- Governance operations: fee, pair, DEX, factory, fee recipient, and tier updater registration are performed only through the runbook/multisig/timelock path.
+
+### Production Secret Manager Verification Pending
+
+- No committed or copied `.env`; secrets are injected only by the deployment secret manager.
+- No `NEXT_PUBLIC_ADMIN_PRIVATE_KEY`, `NEXT_PUBLIC_*PRIVATE_KEY`, `NEXT_PUBLIC_*SECRET`, `NEXT_PUBLIC_*ADMIN_KEY`, `NEXT_PUBLIC_*OWNER_KEY`, `NEXT_PUBLIC_*RELAYER_KEY`, `NEXT_PUBLIC_*HOT_WALLET`, or `NEXT_PUBLIC_*JWT`.
+- Backend production env contains BSC mainnet `CHAIN_ID=56`, BSC RPC URL, BSC explorer URL/API key, JWT secret, `DATABASE_URL`, token/NFT/tier updater contract addresses, prize hot wallet key, prize token allowlist, tier relayer key, and admin auth settings.
+- `ADMIN_PRIVATE_KEY` is not configured for production unless the team explicitly accepts the P1 monitoring-only residual risk and documents it.
+- PM2/Docker/nginx/deploy source points to GitHub `apps/backend` and `apps/frontend`, not `var-www`, `Rave_bk`, or older Sui/DISCO copies.
+- Contract owner/admin roles are transferred to multisig/timelock before production mint/governance operations.
+
+### Production No-Go Conditions Before Launch
+
+Launch remains No-Go if any of the following is true:
+
+1. Any wallet-address-only JWT issuance path exists or is reachable.
+2. Any asset/admin/user-owned mutation route is reachable without `Authenticate`, `AuthAdmin`, or owner checks as appropriate.
+3. Frontend bundle or hosting env contains any private key or frontend browser admin/governance signer.
+4. Backend or frontend starts in production with localhost, dummy, example, wrong-chain, zero address, known test key, missing BSC env, or unsafe fallback values.
+5. Logs contain raw Authorization headers, JWTs, cookies, private keys, DB URLs, RPC URLs with query strings, or explorer/API-key-bearing URLs.
+6. Production deploy target is not the latest GitHub `apps/backend` / `apps/frontend` / `contracts` source.
+7. Production secret manager contains `ADMIN_PRIVATE_KEY` without a documented exception for the current monitoring-only P1 debt.
+8. Staging authorization smoke tests, BSC testnet on-chain checks, and production secret-manager checks are not completed.
+
+### Next PR Candidates
+
+1. `P1-01 Remove remaining secret-prefix upload logs`
+   - Remove `NFT_STORAGE_API_KEY` prefix logging and sanitize upload/IPFS logs.
+2. `P1-02 Replace ADMIN_PRIVATE_KEY wallet balance monitor`
+   - Replace private-key-derived monitoring with configured public monitor addresses.
+3. `STAGING-01 Production No-Go smoke tests`
+   - Add/run staging smoke tests for wallet login, role authorization, disabled MVP routes, env validation, and log redaction.
+
+### Commands Executed For This Section
+
+| Command | Result |
+| --- | --- |
+| `cd apps/backend && npm run build` | PASS. Prisma Client generated and TypeScript build completed. |
+| `cd apps/backend && npm test -- --runInBand` | PASS. 24 test suites / 196 tests passed. |
+| `cd apps/frontend && npm run build` | PASS. Next.js production build completed. |
+| `cd apps/frontend && node env.validation.test.mjs` | PASS. Frontend env validation tests passed. The script also reported production public env is incomplete in the local shell, so API/on-chain features remain disabled until deployment env is configured. |
+| `cd contracts && npx hardhat compile` | PASS. Nothing to compile. |
+| `cd contracts && npx hardhat test` | PASS. 34 passing / 16 pending. |
+| `cd contracts && npm run compile:nft` | PASS. Nothing to compile. |
+| `cd contracts && npm run test:nft` | PASS. 16 passing. |
+| `git diff --check` | PASS. No whitespace errors; Git emitted LF-to-CRLF working-copy warnings for the two edited docs files only. |
+
 ## 確認日
 
 2026-05-15
@@ -145,13 +241,15 @@ P0-13B closes the frontend `NEXT_PUBLIC_ADMIN_PRIVATE_KEY` / browser admin signe
 
 ## P0-13C update
 
-P0-13C closes the BSC production env fallback No-Go at code level.
+P0-13C closes the BSC production env fallback and API-key URL logging No-Go at code level.
 
-- `apps/backend/src/app/lib/validateEnvs.ts` now requires BSC production env for backend API URL, frontend URL, JWT, database, RPC, chain ID, FUNKY token, NFT contract, prize hot wallet, prize token allowlist, tier relayer, tier updater, and admin auth settings.
-- Production backend startup now rejects missing values, localhost/example URLs, placeholder values, zero addresses, known test private keys, non-BSC `CHAIN_ID`, and `NEXT_PUBLIC_*` secret exposure.
+- `apps/backend/src/app/lib/validateEnvs.ts` now requires BSC production env for backend API URL, frontend URL, JWT, database, RPC, explorer URL/key, chain ID, FUNKY token, NFT contract, prize hot wallet, prize token allowlist, tier relayer, tier updater, and admin auth settings.
+- Explorer API key validation and runtime request builders now share the same key priority: `ETHERSCAN_API_KEY`, `BSCSCAN_API_KEY`, `ETHERSCAN_API_KEY1`, `ETHERSCAN_API_KEY2`, `BSCSCAN_API_KEY1`, `BSCSCAN_API_KEY2`.
+- Production backend startup now rejects missing values, localhost/example URLs, placeholder values, zero addresses, known test private keys, non-BSC `CHAIN_ID`, Ethereum mainnet explorer fallback, testnet explorer endpoints, and `NEXT_PUBLIC_*` secret exposure.
 - `apps/backend/src/app/config/env.ts` no longer provides a production fallback token contract address.
-- `apps/frontend/env.validation.mjs` rejects frontend public secret env and unsafe production public values. Missing production public env leaves frontend API/on-chain dependent features disabled instead of falling back to localhost.
+- `apps/backend/src/app/lib/incrementalHoldingDateProcessor.ts` no longer falls back to `https://api.etherscan.io/api?` in production.
+- `apps/backend/src/app/lib/realtimeHoldingDateUpdater.ts` and `apps/backend/src/app/lib/getToken.ts` no longer raw-log explorer URLs containing query strings or API keys.
+- `apps/frontend/env.validation.mjs` rejects frontend public secret env and unsafe production public values. Missing production public env leaves API/on-chain dependent features disabled instead of falling back to localhost.
 - `NEXT_PUBLIC_ALCHEMY_RPC_URL` is optional, but if configured it is validated as a BSC mainnet public RPC and is used before `NEXT_PUBLIC_RPC_URL`; if unset, `NEXT_PUBLIC_RPC_URL` remains required.
-- `ETHERSCAN_API_URL` is required in production and must not fall back to the Ethereum mainnet `https://api.etherscan.io/api?` endpoint.
-- `docs/launch/ENVIRONMENT_RUNBOOK.md` records required backend/frontend env and forbidden `NEXT_PUBLIC_*` secret patterns.
+- `docs/launch/ENVIRONMENT_RUNBOOK.md` records required backend/frontend env, forbidden `NEXT_PUBLIC_*` secret patterns, and the raw explorer URL logging ban.
 - Human deployment check remains required: verify secret manager values on staging/production without printing or committing secrets.

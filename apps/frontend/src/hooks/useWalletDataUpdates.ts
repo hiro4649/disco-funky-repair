@@ -105,7 +105,7 @@ export function useWalletDataUpdates(options?: UseWalletDataUpdatesOptions) {
         clearTimeout(updateTimeoutRef.current);
       }
 
-      // Set timeout to auto-hide loading after 120 seconds (Etherscan fallback worst case)
+      // Set timeout to auto-hide loading after 120 seconds (explorer fallback worst case)
       // This prevents infinite loading if the completion event is missed due to WebSocket disconnect
       updateTimeoutRef.current = setTimeout(() => {
         console.warn('⚠️ Holding date update timeout reached (120s) - auto-hiding loading indicator');

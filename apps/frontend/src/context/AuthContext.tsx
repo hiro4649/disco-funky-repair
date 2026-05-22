@@ -6,6 +6,7 @@ import { BrowserProvider, Contract, Eip1193Provider, formatUnits, JsonRpcProvide
 import { NFT_ABI } from "@/utils/constant";
 import { useAppKitAccount, useAppKitProvider } from '@reown/appkit/react';
 import { usePathname, useRouter } from 'next/navigation';
+import { safeClientLogError } from '@/utils/safeClientLogger';
 
 interface UserData {
   user_id: number;
@@ -57,7 +58,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       const price: bigint = await contract.getPrice();
       setEthPrice(Number(formatUnits(price, 8)));
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to fetch ETH price');
+      setError(err instanceof Error ? err.message : 'Failed to fetch BNB price');
       if (retries < 3) {
         console.log('Backend is updating, waiting 5 seconds before retry...');
         setTimeout(() => getETHPrice(retries + 1), 3000);
@@ -118,7 +119,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
         // Fetch additional user info after successful verification with retry logic
         try {
-          console.log('📊 Fetching user balance data...');
+          console.log('Fetching user balance data...');
 
           const userInfoResponse = await retryWithBackoff(
             () => apiClient.post('/user/info', { user_id: userData.user_id }),
@@ -136,18 +137,20 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
             dispatch(setSixHourTokenBalance(data.sixHourTokenBalance || 0));
             dispatch(setTallyTokenBalance(data.tallyTokenBalance || 0));
 
-            console.log('✅ User balance data loaded successfully:', {
+            console.log('User balance data loaded successfully:', {
               tickets: data.tickets || 0,
               claimTickets: data.claimTickets || 0,
               fan_points: data.fan_points || 0
             });
           } else {
-            console.error('❌ User info API returned unsuccessful response:', userInfoResponse.data);
+            console.error('User info API returned unsuccessful response', {
+              status: userInfoResponse.status,
+              success: Boolean(userInfoResponse.data?.success)
+            });
           }
         } catch (userInfoError: any) {
-          console.error('❌ Error fetching user info after retries:', userInfoError);
+          safeClientLogError('user_info_fetch', userInfoError);
           console.error('   User will appear logged in but balance data may be incomplete');
-          console.error('   Response:', userInfoError.response?.data);
 
           // Still set default values so Redux is in consistent state
           dispatch(setLotteryTicket(0));
@@ -164,7 +167,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         return false;
       }
     } catch (error) {
-      console.error('Error fetching user data:', error);
+      safeClientLogError('user_verify', error);
       dispatch(setAuthstate(false));
       setUserData(null);
       return false;
@@ -177,7 +180,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       try {
         await fetchUserData();
       } catch (err) {
-        console.error('Auth initialization error:', err);
+        safeClientLogError('auth_initialization', err);
         dispatch(setAuthstate(false));
       } finally {
         setLoading(false);
@@ -243,7 +246,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       dispatch(resetUser());
       setUserData(null);
     } catch (err) {
-      console.error('Logout error:', err);
+      safeClientLogError('user_logout', err);
     }
   };
 
@@ -252,7 +255,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     try {
       return await fetchUserData();
     } catch (err) {
-      console.error('Failed to refresh token:', err);
+      safeClientLogError('user_session_refresh', err);
       return false;
     }
   };

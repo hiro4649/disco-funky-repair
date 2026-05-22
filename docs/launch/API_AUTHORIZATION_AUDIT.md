@@ -1,5 +1,81 @@
 # API Authorization Audit
 
+## P0-FINAL-2 API Authorization Re-Audit
+
+Date: 2026-05-15 JST
+
+Checked commit: `54a76e59b1e11646108b89d43bafa32fbe53b628` (`54a76e5 P0-13C BSC production env safety (#34)`)
+
+Scope: static re-audit after P0-12B through P0-12K and P0-13A. This section is the latest status and supersedes older historical sections below. No backend/frontend/contracts code was changed for this audit.
+
+### Closed API Authorization P0
+
+| Area | Status | Evidence |
+| --- | --- | --- |
+| Wallet login | CLOSED | `apps/backend/src/app/routes/auth.routes.ts` exposes `/user/auth/nonce` and `/user/signup`; `apps/backend/src/app/controllers/auth.controller.ts` requires signed nonce message before JWT issuance. |
+| Referral normal API | CLOSED | `apps/backend/src/app/routes/referral.routes.ts` requires `Authenticate` for `/referral-code/:walletAddress` and `/track-referral`; controller logic uses authenticated user context before DB update. |
+| Referral admin | CLOSED | Snapshot and reward distribution routes require `AuthAdmin`; body `ADMIN_KEY` is not a standalone admin path. |
+| Prize user mutations | CLOSED | `apps/backend/src/app/routes/prize.routes.ts` requires `Authenticate` for draw, transaction history, send, and withdraw routes; controller paths use `req.user.user_id` and owner conditions for user-owned transactions. |
+| Prize admin mutations | CLOSED | Prize create/update/delete/cancel/fail/admin listing routes require `AuthAdmin`. |
+| Illustration and daily point mutations | CLOSED | Draw and daily point mutation routes require `Authenticate`; disabled direct assignment remains `410 FEATURE_DISABLED`; controllers compare route/body user IDs to `req.user.user_id`. |
+| Ticket code and lottery user routes | CLOSED | Ticket claim and lottery claim/check routes require `Authenticate`; all-user ticket distribution requires `AuthAdmin`. |
+| Ticket distribution admin | CLOSED | Ticket distribution create/list/detail/update/delete routes require `AuthAdmin`. |
+| NFT admin and Trial NFT admin/template | CLOSED | NFT upload/delete/admin read routes and Trial NFT admin/template routes require `AuthAdmin`; upload middleware is after `AuthAdmin`. `PATCH /nft/:id` remains disabled. |
+| Governance / fee / DEX / pair writes | CLOSED | Backend write routes return disabled/manual-review responses and do not execute on-chain governance transactions. |
+| Crash game / user-manage MVP-excluded routes | CLOSED | Crash game, `/crashx`, `/fan-games`, and user-manage public flows remain disabled or unreachable. |
+| Auth token logging | CLOSED | `apps/backend/src/app/config/passport.ts` logs token/header presence and safe error names only; raw JWT, Authorization header, and cookie values are not logged or returned. |
+
+### Remaining API Authorization P0
+
+No remaining API authorization P0 was found in this static re-audit.
+
+This is not a production-ready assertion. Staging must still verify real cookies, headers, CORS/reverse proxy behavior, deploy source, and role-specific UI/API access.
+
+### Staging Verification Pending
+
+- Unauthenticated requests must be rejected for all user/admin mutation routes.
+- Normal user JWT must be rejected for admin mutation routes.
+- Admin JWT must be required for Prize admin, NFT admin, Trial NFT admin/template, ticket distribution, referral admin, and monitoring batch routes.
+- User JWT owner checks must reject other users' `userId`, `wallet_address`, `holderId`, and `prize_id` where relevant.
+- Upload routes must reject before file persistence or DB mutation for unauthenticated and normal user JWT requests.
+- Disabled routes must still return `410 FEATURE_DISABLED` or stay unreachable.
+
+### P1 Read/Privacy Residuals
+
+| Route group | Classification | Reason |
+| --- | --- | --- |
+| Admin read routes such as `/admin/user/all`, `/admin/user/transaction/:wallet_address`, `/admin/seting/tokenbalance`, `/admin/illustration`, `/admin/news` | P1 | These are read/privacy or operational visibility concerns; no P0 asset mutation path was found in this audit. |
+| User/wallet read routes such as `/user/all`, `/user/info`, holding history, referral stats/rewards, transaction history, FIFO/holding explain, Trial NFT user read, NFT holder read | P1 | Some reads remain broader than ideal or rely on wallet/user parameters. They should be narrowed, but were not classified as P0 because the audited paths do not mutate assets, tickets, NFT ownership, points, prize state, or admin settings. |
+| Monitoring read routes | P1 | Operational metadata should be reduced or admin-gated where appropriate. Mutation/batch routes remain admin-gated. |
+
+### Production No-Go Conditions
+
+API authorization becomes production No-Go again if any of the following is true:
+
+1. Any unauthenticated route can mutate DB state, asset balances, tickets, FanPoint, NFT ownership/status, prize transactions, referral rewards, tier state, or admin/governance configuration.
+2. Any normal user JWT can reach admin mutation, upload, distribution, snapshot, reward distribution, or governance-equivalent routes.
+3. Any route trusts URL/body `userId`, `user_id`, `wallet_address`, `holderId`, or `prize_id` without checking `req.user.user_id` or `AuthAdmin` as appropriate.
+4. Any route accepts body `adminKey` as a substitute for `AuthAdmin`.
+5. Upload middleware runs before `AuthAdmin` on admin upload routes.
+6. Disabled MVP routes are re-enabled without a separate P0 review.
+
+### Next PR Candidates
+
+No further P0 API authorization PR is proposed from this static audit.
+
+P1 candidates:
+
+1. `P1-01 Protect read/privacy routes`
+   - Add `AuthAdmin` or owner checks to read-only admin/user/wallet routes.
+2. `STAGING-01 API authorization smoke test`
+   - Run staging E2E checks for unauthenticated, normal user, and admin JWT access.
+3. `P1-02 Monitoring read exposure reduction`
+   - Gate or reduce operational read endpoints that expose internal status.
+
+### Commands Executed For This Section
+
+Results are recorded in `docs/launch/P0_CLOSURE_REPORT.md`.
+
 ## 確認日
 
 2026-05-15 JST

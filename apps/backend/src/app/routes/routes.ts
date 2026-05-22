@@ -16,6 +16,7 @@ import { transactionHistoryRoutes } from './transactionHistory.routes';
 import monitoringRoutes from './monitoring.routes';
 import trialNftRoutes from './trialNft.routes';
 import trialNftTemplateRoutes from './trialNftTemplate.routes';
+import { safeLogError } from '../utils/safeLogger';
 
 const Router = express.Router();
 
@@ -46,7 +47,11 @@ Router.use('/admin/trial-nft-templates', trialNftTemplateRoutes);
 
 // Error handling middleware
 Router.use((err: Error, req: Request, res: Response, next: NextFunction) => {
-    console.error('Global error handler:', err);
+    safeLogError('global_route_handler', err, {
+        route: req.path,
+        method: req.method,
+        hasUser: Boolean(req.user)
+    });
     res.status(500).json({
         success: false,
         message: 'Internal server error',

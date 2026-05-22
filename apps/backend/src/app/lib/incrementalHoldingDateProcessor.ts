@@ -17,12 +17,12 @@
 
 import { PrismaClient } from '@prisma/client';
 import moment from 'moment';
-import { ETHERSCAN_API_URL as CONFIGURED_ETHERSCAN_API_URL, TOKEN_CONTRACT_ADDRESS } from '../config/env';
+import { ETHERSCAN_API_KEY, ETHERSCAN_API_URL as CONFIGURED_ETHERSCAN_API_URL, TOKEN_CONTRACT_ADDRESS } from '../config/env';
+import { safeLogError } from '../utils/safeLogger';
 
 const prisma = new PrismaClient();
 
 const ETHERSCAN_API_URL = CONFIGURED_ETHERSCAN_API_URL || (process.env.NODE_ENV === 'production' ? '' : 'https://api.bscscan.com/api?');
-const ETHERSCAN_API_KEY = process.env.ETHERSCAN_API_KEY;
 
 // Rate limiter for Etherscan API
 class RateLimiter {
@@ -71,6 +71,13 @@ export const fetchIncrementalTransactions = async (
             console.warn('ETHERSCAN_API_URL is not configured; incremental transaction fetch disabled.');
             return [];
         }
+        if (!ETHERSCAN_API_KEY) {
+            if (process.env.NODE_ENV === 'production') {
+                throw new Error('Explorer API key is not configured');
+            }
+            console.warn('Explorer API key is not configured; incremental transaction fetch disabled.');
+            return [];
+        }
 
         while (hasMore) {
             await etherscanRateLimiter.waitForRateLimit();
@@ -92,7 +99,12 @@ export const fetchIncrementalTransactions = async (
             }
         }
     } catch (error) {
-        console.error(`Error fetching incremental transactions for ${walletAddress}:`, error);
+        safeLogError('fetch_incremental_transactions', error, {
+            walletAddressPrefix: walletAddress.slice(0, 10),
+            tokenAddressPrefix: tokenAddress.slice(0, 10),
+            startBlock,
+            page
+        });
     }
 
     return transactions;

@@ -18,7 +18,8 @@ Do not paste private keys, API keys, RPC URLs, or production wallet secrets into
 2. Prepare the official metadata base URI outside git.
 3. Confirm the BSC network, Chainlink BNB/USD price feed address, royalty recipient, and royalty basis points.
 4. Confirm the production multisig address and signer quorum.
-5. Run local verification:
+5. Complete the no-secret deploy role handoff checklist in `docs/launch/NFT_DEPLOY_ROLE_HANDOFF_CHECKLIST.md`.
+6. Run local verification:
 
 ```powershell
 cd contracts
@@ -95,6 +96,14 @@ await nft.setMintEnabled(false);
 - `batchMint(address,uint256)` is owner-only and does not accept token URI input.
 - Minting is blocked while `mintEnabled` is false.
 - Minting is blocked when `nextTokenId() + quantity` would exceed `MAX_SUPPLY`.
+
+## Frontend Mint Integration
+
+- Frontend public mint must use `FunkyNFT.mint()` with only the payable value override.
+- Frontend public mint must not call `mint(address,string)`, must not send a user-supplied token URI, and must not choose a recipient address for public mint.
+- Browser-side mint must not re-enable `PATCH /api/nft/:id` or send body fields such as `holderId`, `mintStatus`, or `txHash` to update backend mint state.
+- Backend receipt/state updates remain blocked until funded BSC testnet verification can prove the receipt, token ID, contract address, chain ID, owner, and authenticated user mapping.
+- Store receipt evidence outside git as non-secret data only: tx hash, block number, receipt status, token ID, public contract address, chain ID, and testnet explorer link without API keys.
 
 ## Rollback / Incident Response
 

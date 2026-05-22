@@ -17,11 +17,25 @@ import apiClient from "../../../utils/apiClient";
 import StaticDisplay from "./StaticDisplay";
 import { getImageUrl } from '../../../utils/imageUtils';
 
+type NftContractState = {
+  nextTokenId: number;
+  maxSupply: number;
+  mintEnabled: boolean;
+  baseURI: string;
+  mintFeeInBnb: number;
+  unavailableReason: string;
+};
+
+const getFrontendErrorMetadata = (error: any) => ({
+  name: error?.name || typeof error,
+  code: typeof error?.code === "string" || typeof error?.code === "number" ? error.code : undefined,
+});
+
 const OfficalDiscoNft = () => {
-  const { user_id } = useAppSelector((state) => state.user);
+  const { authState, user_id } = useAppSelector((state) => state.user);
   const [connectWalletModal, setConnectWalletModal] = useState(false);
   const [nftCount, setNftCount] = useState<number>(1);
-  const [mintFee, setMintFee] = useState(0.001); // Set default mint fee in ETH
+  const [mintFee, setMintFee] = useState(0.001); // Set default mint fee in BNB
   const [isMinting, setIsMinting] = useState(false);
   const t = useTranslations('MembershipNFT');
   const { isConnected, address } = useAppKitAccount();
@@ -29,6 +43,10 @@ const OfficalDiscoNft = () => {
   const { fetchBalance } = useAppKitBalance();
   const [balance, setBalance] = useState<number | null>(null);
   const [nextTokenId, setNextTokenId] = useState<number>(0);
+  const [maxSupply, setMaxSupply] = useState<number | null>(null);
+  const [, setMintEnabled] = useState(false);
+  const [, setBaseURI] = useState("");
+  const [mintUnavailableReason, setMintUnavailableReason] = useState("Checking NFT mint status...");
 
   // Trial NFT state
   const [canClaimTrial, setCanClaimTrial] = useState(false);
@@ -39,34 +57,114 @@ const OfficalDiscoNft = () => {
 
   // ERC-721 Contract Configuration
   const NFT_CONTRACT_ADDRESS = process.env.NEXT_PUBLIC_NFT_ADDRESS || "";
+  const NFT_RPC_URL = process.env.NEXT_PUBLIC_RPC_URL || "";
 
-  const fetchNftPrice = async () => {
+  const getNftContractConfigError = () => {
+    if (!NFT_CONTRACT_ADDRESS) {
+      return "NFT contract is not configured.";
+    }
+    if (!NFT_RPC_URL) {
+      return "NFT RPC is not configured.";
+    }
+    return "";
+  };
+
+  const readNftContractState = async (contract: Contract): Promise<NftContractState> => {
+    const [
+      bnbUsdPrice,
+      mintPrice,
+      nextTokenIdBig,
+      maxSupplyBig,
+      mintEnabledValue,
+      baseURIValue,
+    ] = await Promise.all([
+      contract.getPrice(),
+      contract.mintUsdPrice(),
+      contract.nextTokenId(),
+      contract.MAX_SUPPLY(),
+      contract.mintEnabled(),
+      contract.baseURI(),
+    ]);
+
+    if (Number(bnbUsdPrice) <= 0) {
+      throw new Error("INVALID_PRICE_ORACLE");
+    }
+
+    const normalizedBaseURI = typeof baseURIValue === "string" ? baseURIValue.trim() : "";
+    let unavailableReason = "";
+
+    if (!mintEnabledValue) {
+      unavailableReason = "NFT mint is currently disabled.";
+    } else if (!normalizedBaseURI) {
+      unavailableReason = "NFT metadata is not ready.";
+    } else if (nextTokenIdBig >= maxSupplyBig) {
+      unavailableReason = "Maximum number of NFTs minted.";
+    }
+
+    return {
+      nextTokenId: Number(nextTokenIdBig),
+      maxSupply: Number(maxSupplyBig),
+      mintEnabled: Boolean(mintEnabledValue),
+      baseURI: normalizedBaseURI,
+      mintFeeInBnb: Number((Number(mintPrice) / Number(bnbUsdPrice)).toFixed(4)),
+      unavailableReason,
+    };
+  };
+
+  const applyNftContractState = (state: NftContractState) => {
+    setMintFee(state.mintFeeInBnb);
+    setNextTokenId(state.nextTokenId);
+    setMaxSupply(state.maxSupply);
+    setMintEnabled(state.mintEnabled);
+    setBaseURI(state.baseURI);
+    setMintUnavailableReason(state.unavailableReason);
+  };
+
+  const fetchNftContractState = async () => {
+    const configError = getNftContractConfigError();
+    if (configError) {
+      setMintUnavailableReason(configError);
+      setMintEnabled(false);
+      setBaseURI("");
+      setMaxSupply(null);
+      return null;
+    }
+
     try {
-      const rpcUrl = process.env.NEXT_PUBLIC_RPC_URL;
-      if (!rpcUrl || !NFT_CONTRACT_ADDRESS) {
-        return;
-      }
-
-      const provider = new ethers.JsonRpcProvider(rpcUrl);
+      const provider = new ethers.JsonRpcProvider(NFT_RPC_URL);
       const contract = new Contract(NFT_CONTRACT_ADDRESS, NFT_ABI, provider);
-      const ethPrice: bigint = await contract.getPrice();
-      const mintPrice: bigint = await contract.mintUsdPrice();
-      setMintFee(Number((Number(mintPrice) / Number(ethPrice)).toFixed(4)));
-      const nextTokenIdBig = await contract.nextTokenId();
-      setNextTokenId(Number(nextTokenIdBig));
+      const state = await readNftContractState(contract);
+      applyNftContractState(state);
+      return state;
     } catch (error) {
-      console.error('Error fetching NFT price:', error);
+      console.warn('NFT contract state read failed', getFrontendErrorMetadata(error));
+      setMintUnavailableReason("NFT mint status is unavailable.");
+      setMintEnabled(false);
+      setBaseURI("");
+      setMaxSupply(null);
+      return null;
     }
   }
 
   // Check if user can claim trial NFT and fetch available templates
   const checkTrialNftEligibility = async () => {
-    if (!user_id) return;
     try {
-      // Check eligibility and fetch available templates in parallel
+      const templatesRequest = apiClient.get('/trial-nft-templates/available');
+
+      if (!authState || !user_id || !isConnected) {
+        const templatesRes = await templatesRequest;
+        if (templatesRes.data.success && templatesRes.data.data.length > 0) {
+          setAvailableTemplate(templatesRes.data.data[0]);
+        }
+        setCanClaimTrial(false);
+        setTrialClaimReason('');
+        return;
+      }
+
+      // Check user-specific eligibility only after wallet signature login is complete.
       const [eligibilityRes, templatesRes] = await Promise.all([
         apiClient.get(`/trial-nfts/can-claim/${user_id}`),
-        apiClient.get('/trial-nft-templates/available')
+        templatesRequest
       ]);
       
       if (eligibilityRes.data.success) {
@@ -89,7 +187,7 @@ const OfficalDiscoNft = () => {
       return;
     }
 
-    if (!user_id) {
+    if (!authState || !user_id) {
       toast('Please log in to claim Trial NFT', {
         style: {
           borderRadius: '10px',
@@ -158,19 +256,17 @@ const OfficalDiscoNft = () => {
       });
     }
     
-    fetchNftPrice();
+    fetchNftContractState();
   }, [isConnected, address]);
 
   // Check trial NFT eligibility when user_id changes
   useEffect(() => {
-    if (user_id) {
-      checkTrialNftEligibility();
-    }
-  }, [user_id]);
+    checkTrialNftEligibility();
+  }, [authState, user_id, isConnected]);
 
   const decrement = () => {
     setNftCount((prev) => {
-      if (prev > 0) {
+      if (prev > 1) {
         const updatedCount = prev - 1;
         // conditionMintStatus();
         return updatedCount; // Convert back to string
@@ -178,13 +274,12 @@ const OfficalDiscoNft = () => {
       return prev; // Return the previous value if condition isn't met
     });
   };
-  // Remove Sui-specific fee fetching - using fixed ETH fee
+  // Public mint fee is read from the BSC FunkyNFT contract.
 
   const increment = () => {
     setNftCount((prev) => {
-      const updatedCount = prev + 1;
-      // conditionMintStatus();
-      return updatedCount;
+      // Public FunkyNFT.mint() mints exactly one NFT per transaction.
+      return prev;
     });
   };
 
@@ -204,8 +299,9 @@ const OfficalDiscoNft = () => {
       return;
     }
 
-    if (nextTokenId >= 5000) {
-      toast("Maximum number of NFTs minted", {
+    const configError = getNftContractConfigError();
+    if (configError) {
+      toast(configError, {
         style: {
           borderRadius: '10px',
           background: 'var(--color-secondary)',
@@ -218,13 +314,37 @@ const OfficalDiscoNft = () => {
     setIsMinting(true);
 
     try {
+      if (!walletProvider) {
+        toast("Wallet provider is unavailable.", {
+          style: {
+            borderRadius: '10px',
+            background: 'var(--color-secondary)',
+            color: '#fff',
+          },
+        });
+        return;
+      }
+
       const ethersProvider = new BrowserProvider(walletProvider as Eip1193Provider);
       const signer = await ethersProvider.getSigner();
       const contract = new Contract(NFT_CONTRACT_ADDRESS, NFT_ABI, signer);
-      const ethPrice: bigint = await contract.getPrice();
-      const mintPrice: bigint = await contract.mintUsdPrice();
+      const latestContractState = await readNftContractState(contract);
+      applyNftContractState(latestContractState);
 
-      if ((Number(mintPrice) / Number(ethPrice)) > (Number(balance) || 0)) {
+      if (latestContractState.unavailableReason) {
+        toast(latestContractState.unavailableReason, {
+          style: {
+            borderRadius: '10px',
+            background: 'var(--color-secondary)',
+            color: '#fff',
+          },
+        });
+        return;
+      }
+
+      const mintPriceInBnb = latestContractState.mintFeeInBnb;
+
+      if (mintPriceInBnb > (Number(balance) || 0)) {
         toast(`Insufficient balance`, {
           style: {
             borderRadius: '10px',
@@ -235,36 +355,30 @@ const OfficalDiscoNft = () => {
         return;
       }
 
-      // Mint NFTs one by one
-      // Get metadata URI from database
-      const nftResponse = await apiClient.get(`/nft/${nextTokenId}`);
-      if (!nftResponse.data.success) {
-        throw new Error(nftResponse.data.message);
+      let nftName = `NFT #${latestContractState.nextTokenId}`;
+      try {
+        const nftResponse = await apiClient.get(`/nft/${latestContractState.nextTokenId}`);
+        if (nftResponse.data.success && nftResponse.data.data?.name) {
+          nftName = nftResponse.data.data.name;
+        }
+      } catch (metadataError) {
+        console.warn('NFT display metadata lookup failed before mint', getFrontendErrorMetadata(metadataError));
       }
 
-      const nftData = nftResponse.data.data;
-      const metadataUri = nftData.ipfsCid;
+      console.log('Minting FunkyNFT', { tokenId: latestContractState.nextTokenId });
 
-      if (!metadataUri) {
-        throw new Error(`No metadata URI found for NFT ${nextTokenId}`);
-      }
-
-      console.log(`Minting NFT ${nextTokenId} with metadata: ${metadataUri}`);
-
-      const tx = await contract.mint(address, metadataUri, {
-        value: ethers.parseEther((Number(mintPrice) / Number(ethPrice) + 0.0001).toFixed(8))
+      const tx = await contract.mint({
+        value: ethers.parseEther((mintPriceInBnb + 0.0001).toFixed(8))
       });
 
-      console.log(`Transaction hash for NFT ${nextTokenId}:`, tx.hash);
+      console.log('FunkyNFT mint transaction submitted', { tokenId: latestContractState.nextTokenId, txHash: tx.hash });
 
       // Wait for transaction confirmation
       const receipt = await tx.wait();
-      console.log(`NFT ${nextTokenId} minted successfully!`);
-      console.log('Transaction receipt:', receipt);
 
       // Get the actual token ID from the Transfer event in the receipt
-      let mintedTokenId = nextTokenId;
-      if (receipt.logs && receipt.logs.length > 0) {
+      let mintedTokenId = latestContractState.nextTokenId;
+      if (receipt?.logs && receipt.logs.length > 0) {
         // Try to parse the Transfer event to get the actual token ID
         try {
           const transferEvent = receipt.logs.find((log: any) => log.topics && log.topics.length >= 4);
@@ -273,31 +387,16 @@ const OfficalDiscoNft = () => {
             console.log('Actual minted token ID:', mintedTokenId);
           }
         } catch (e) {
-          console.log('Could not parse token ID from event, using nextTokenId');
+          console.warn('Could not parse token ID from mint event', getFrontendErrorMetadata(e));
         }
       }
+      console.log('FunkyNFT mint confirmed', { tokenId: mintedTokenId, txHash: tx.hash });
 
-      // Update NFT record in database
-      const updateResponse = await fetch(`/api/nft/${nextTokenId}`, {
-        method: 'PATCH',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          holderId: user_id, // Use the authenticated user's ID
-          mintStatus: true,
-          txHash: receipt.hash
-        })
-      });
-
-      if (!updateResponse.ok) {
-        console.warn(`Failed to update NFT ${nextTokenId} in database`);
-      } else {
-        console.log(`NFT ${nextTokenId} updated in database`);
-      }
+      // PATCH /nft/:id is intentionally disabled for browser users.
+      // Backend ownership updates must not be driven by frontend body fields.
 
       // Show success toast with real NFT name
-      toast(`Successfully minted ${nftData.name}!`, {
+      toast(`Successfully minted ${nftName}!`, {
         style: {
           borderRadius: '10px',
           background: 'var(--color-secondary)',
@@ -306,11 +405,11 @@ const OfficalDiscoNft = () => {
       });
 
       // Refresh the nextTokenId
-      fetchNftPrice();
+      fetchNftContractState();
 
     } catch (error: any) {
-      console.error("Minting error:", error);
-      let message = "Failed to mint NFT: ";
+      console.warn("NFT mint failed", getFrontendErrorMetadata(error));
+      let message = "Failed to mint NFT. Please try again.";
 
       if (error.message?.includes("User rejected") || error.code === 4001) {
         message = "Transaction was rejected by the user.";
@@ -329,11 +428,9 @@ const OfficalDiscoNft = () => {
       } else if (error.message?.includes("underpriced") || error.message?.includes("replacement fee too low")) {
         message = "Gas price too low. Try increasing gas fees.";
       } else if (error.message?.includes("invalid argument")) {
-        message = "Invalid input parameters sent to contract. Check NFT metadata or wallet address.";
+        message = "Invalid mint transaction parameters. Check wallet and contract configuration.";
       } else if (error.message?.includes("CALL_EXCEPTION")) {
         message = "Smart contract call failed — please contact support or check the contract.";
-      } else {
-        message += error.message || "Unknown error occurred.";
       }
 
       toast(message, {
@@ -403,6 +500,13 @@ const OfficalDiscoNft = () => {
     }
   }, []);
   //end animation nft image fade in
+
+  const mintedPercent = maxSupply && maxSupply > 0
+    ? Math.min(100, (nextTokenId / maxSupply) * 100)
+    : 0;
+  const mintedPercentLabel = `${mintedPercent.toFixed(2)}%`;
+  const displayedMaxSupply = maxSupply ?? "-";
+  const isPublicMintDisabled = isMinting || Boolean(mintUnavailableReason);
 
   return (
     <div className="background overflow-hidden">
@@ -553,13 +657,13 @@ const OfficalDiscoNft = () => {
                 <div className="flex items-center gap-x-2 text-white">
                   <div className="pulsing-dot flex"></div>
                   <p>{t('TotalMinted')}</p>
-                  <p className="text-main">{nextTokenId / 5000 * 100}%</p>
-                  <p className="text-[#838584]">( {nextTokenId} / 5000 )</p>
+                  <p className="text-main">{mintedPercentLabel}</p>
+                  <p className="text-[#838584]">( {nextTokenId} / {displayedMaxSupply} )</p>
                 </div>
                 <div className="mt-2.5 rounded-[10px] bg-[#333333]">
-                  <div className={`relative h-[16px] rounded-[10px] border-y-[0.5px] border-white bg-main`} style={{ width: `${nextTokenId / 5000 * 100}%` }}>
+                  <div className={`relative h-[16px] rounded-[10px] border-y-[0.5px] border-white bg-main`} style={{ width: mintedPercentLabel }}>
                     <p className="absolute right-1.5 text-[10px] leading-[12.1px] text-black">
-                      {nextTokenId / 5000 * 100}%
+                      {mintedPercentLabel}
                     </p>
                   </div>
                 </div>
@@ -608,9 +712,9 @@ const OfficalDiscoNft = () => {
                 <ButtonDefault
                   label={isMinting ? "MINTING..." : t("MINT NOW")}
                   onClick={handleNftMint}
-                  customClasses={`text-black w-full py-[.3rem] rounded-full text-mm font-semibold shadow-2 relative ${!isMinting ? 'gradient-bg-main' : 'bg-[#666666]'
+                  customClasses={`text-black w-full py-[.3rem] rounded-full text-mm font-semibold shadow-2 relative ${!isPublicMintDisabled ? 'gradient-bg-main' : 'bg-[#666666]'
                     }`}
-                  disabled={isMinting}
+                  disabled={isPublicMintDisabled}
                 >
                   {!isMinting && (
                     <SendHorizontal
@@ -620,6 +724,9 @@ const OfficalDiscoNft = () => {
                     />
                   )}
                 </ButtonDefault>
+                {mintUnavailableReason && (
+                  <p className="mt-2 text-center text-[12px] text-white/50">{mintUnavailableReason}</p>
+                )}
               </div>
             </div>
             <AutoScrollCarousel imageURL="/images/new_nfts/funky_nft_sample_20251023_04_s/" useRealNfts={true} />

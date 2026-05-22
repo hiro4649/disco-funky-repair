@@ -1,6 +1,5 @@
-import axios, { AxiosInstance, AxiosError, AxiosResponse } from 'axios';
-import Cookies from 'js-cookie';
-import { jwtDecode } from 'jwt-decode';
+import axios, { AxiosInstance } from 'axios';
+import { safeClientLogError } from '@/utils/safeClientLogger';
 
 // Create an axios instance for direct backend API calls
 const apiClient: AxiosInstance = axios.create({
@@ -29,11 +28,11 @@ apiClient.interceptors.response.use(
   async (error) => {
     // Handle server errors
     if (error.response?.status === 500) {
-      console.error('Server error occurred');
+      safeClientLogError('api_server_error', error);
     }
     
     return Promise.reject(error);
   }
 );
 
-export default apiClient; 
+export default apiClient;

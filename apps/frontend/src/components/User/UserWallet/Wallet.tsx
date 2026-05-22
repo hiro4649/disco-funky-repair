@@ -1,6 +1,6 @@
 "use client";
 import React, { useCallback, useEffect, useRef, useState } from "react";
-// Removed Suiet wallet-kit in favor of Reown AppKit
+// Removed legacy wallet-kit in favor of Reown AppKit
 import getTokenBalance from "../../../../utils/getTokens";
 import Image from "next/image";
 import toast from "react-hot-toast";

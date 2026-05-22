@@ -7,9 +7,15 @@ import moment from 'moment';
 import { calculateTokenQuantity, fetchTokenBalance } from '../utils/tokenHeplers';
 import { randomUUID } from 'crypto';
 import { ethers } from 'ethers';
-import { getTransactionReceiptStatus, isPrizeTransferTokenAllowed, sendTokensToWallet } from '../utils/tokenHeplers';
+import {
+    getPrizeTransferReceiptEvidence,
+    isPrizeTransferTokenAllowed,
+    PrizeTransferEvidence,
+    sendTokensToWallet
+} from '../utils/tokenHeplers';
 import getDiscoNFTEVM from '../lib/getDiscoNFTEVM';
 import { getTotalNFTCount } from '../lib/trialNftService';
+import { selectPrizeDrawWinner } from '../lib/prizeDrawRng';
 
 enum Status {
     READY = 'READY',
@@ -21,6 +27,20 @@ enum Status {
     CANCELLED = 'CANCELLED',
     FAILED = 'FAILED'
 }
+
+const PRIZE_TRANSFER_FINAL_STATUSES = new Set<string>([
+    Status.RECEIVED,
+    Status.CANCELLED,
+    Status.EXPIRED,
+    Status.FAILED
+]);
+
+const PRIZE_TRANSFER_MANUAL_REVIEW_ELIGIBLE_STATUSES = [
+    Status.READY,
+    Status.SENDING,
+    Status.BROADCASTED,
+    Status.MANUAL_REVIEW
+];
 
 const prisma = new PrismaClient();
 
@@ -39,6 +59,10 @@ const logPrizeTransferError = (
         hasTxHash: Boolean(txHash)
     });
 };
+
+const isPrizeChainIdMismatchError = (err: unknown): boolean => (
+    err instanceof Error && err.name === 'PrizeChainIdMismatchError'
+);
 
 const decimalNumberToParts = (value: number): { units: bigint; scale: number } => {
     if (!Number.isFinite(value) || value <= 0) {
@@ -181,6 +205,31 @@ class PrizeReservationReleaseError extends Error {
         super('Prize reserved inventory is lower than the release amount');
     }
 }
+
+const prizeTransferEvidenceUpdate = (
+    evidence?: PrizeTransferEvidence | null
+): Record<string, unknown> => {
+    if (!evidence) {
+        return {};
+    }
+
+    return {
+        tx_hash: evidence.txHash,
+        tx_chain_id: evidence.chainId,
+        tx_from: evidence.from,
+        tx_to: evidence.to,
+        tx_contract_address: evidence.contractAddress,
+        tx_block_number: evidence.blockNumber ? BigInt(evidence.blockNumber) : null,
+        tx_receipt_status: evidence.receiptStatus,
+        tx_receipt_timestamp: evidence.receiptTimestamp,
+        tx_public_amount: evidence.publicAmount,
+        tx_evidence_updated_at: moment.utc().toDate()
+    };
+};
+
+const isPrizeTransferFinalStatus = (status?: string | null): boolean => (
+    Boolean(status && PRIZE_TRANSFER_FINAL_STATUSES.has(status))
+);
 
 const releasePrizeReservation = async (
     tx: Prisma.TransactionClient,
@@ -403,6 +452,23 @@ export class PrizeController {
                 where: {
                     flag: true
                 },
+                select: {
+                    id: true,
+                    ranking: true,
+                    token_name: true,
+                    symbol: true,
+                    quantity: true,
+                    price: true,
+                    probability: true,
+                    fake_probability: true,
+                    ca: true,
+                    telegram: true,
+                    twitter: true,
+                    discord: true,
+                    icon: true,
+                    default_image: true,
+                    listed_DEX: true
+                },
                 orderBy: [
                     {
                         ranking: 'asc'
@@ -414,11 +480,47 @@ export class PrizeController {
                     const tokenDetail = await prisma.tokenDetail.findUnique({
                         where: {
                             ca: prize.ca,
+                        },
+                        select: {
+                            token_symbol: true,
+                            price: true,
+                            fdv: true,
+                            market_cap: true,
+                            scarcityScore: true,
+                            volume_24h: true,
+                            liquidity: true,
+                            txns_24h: true
                         }
                     });
+                    const publicTokenDetail = tokenDetail
+                        ? {
+                            token_symbol: tokenDetail.token_symbol,
+                            price: tokenDetail.price,
+                            fdv: tokenDetail.fdv,
+                            market_cap: tokenDetail.market_cap,
+                            scarcityScore: tokenDetail.scarcityScore,
+                            volume_24h: tokenDetail.volume_24h,
+                            liquidity: tokenDetail.liquidity,
+                            txns_24h: tokenDetail.txns_24h
+                        }
+                        : null;
                     return {
-                        ...prize,
-                        tokenDetail: tokenDetail,
+                        id: prize.id,
+                        ranking: prize.ranking,
+                        token_name: prize.token_name,
+                        symbol: prize.symbol,
+                        quantity: prize.quantity,
+                        price: prize.price,
+                        probability: prize.probability,
+                        fake_probability: prize.fake_probability,
+                        ca: prize.ca,
+                        telegram: prize.telegram,
+                        twitter: prize.twitter,
+                        discord: prize.discord,
+                        icon: prize.icon,
+                        default_image: prize.default_image,
+                        listed_DEX: prize.listed_DEX,
+                        tokenDetail: publicTokenDetail,
                     }
                 })
             )
@@ -607,23 +709,7 @@ export class PrizeController {
                     return { status: 'NO_PRIZES' as const };
                 }
 
-                const bestPrizeCandidates = eligiblePrizes.reduce((best: EligiblePrizeCandidate[], current) => {
-                    if (
-                        best.length === 0 ||
-                        current.probability > best[0].probability ||
-                        (current.probability === best[0].probability && current.real_probability < best[0].real_probability)
-                    ) {
-                        return [current];
-                    } else if (
-                        current.probability === best[0].probability &&
-                        current.real_probability === best[0].real_probability
-                    ) {
-                        best.push(current);
-                    }
-                    return best;
-                }, []);
-
-                const winningPrize = bestPrizeCandidates[Math.floor(Math.random() * bestPrizeCandidates.length)];
+                const winningPrize = selectPrizeDrawWinner(eligiblePrizes);
                 if (!winningPrize) {
                     return { status: 'NO_WINNER' as const };
                 }
@@ -952,7 +1038,16 @@ export class PrizeController {
 
             if (prizeTransaction.tx_hash) {
                 try {
-                    const receiptStatus = await getTransactionReceiptStatus(prizeTransaction.tx_hash);
+                    const receiptResult = await getPrizeTransferReceiptEvidence(
+                        prizeTransaction.tx_hash,
+                        {
+                            recipientAddress: user.wallet_address,
+                            tokenAddress: prizeTransaction.transfer_token_address || prizeTransaction.prize?.ca,
+                            publicAmount: prizeTransaction.transfer_amount
+                        }
+                    );
+                    const receiptStatus = receiptResult.status;
+                    const evidenceUpdate = prizeTransferEvidenceUpdate(receiptResult.evidence);
 
                     if (receiptStatus === Status.RECEIVED) {
                         const storedTransferAmount = parseStoredTransferAmount(prizeTransaction.transfer_amount);
@@ -968,14 +1063,14 @@ export class PrizeController {
                                 }
                                 await tx.prizeTransactions.update({
                                     where: { id: prizeId },
-                                    data: { status: receiptStatus },
+                                    data: { status: receiptStatus, ...evidenceUpdate },
                                 });
                             });
                         } catch (releaseErr) {
                             if (releaseErr instanceof PrizeInventoryDepletionError) {
                                 await prisma.prizeTransactions.update({
                                     where: { id: prizeId },
-                                    data: { status: Status.MANUAL_REVIEW },
+                                    data: { status: Status.MANUAL_REVIEW, ...evidenceUpdate },
                                 });
                                 return res.status(202).json({
                                     success: false,
@@ -990,7 +1085,7 @@ export class PrizeController {
 
                     await prisma.prizeTransactions.update({
                         where: { id: prizeId },
-                        data: { status: receiptStatus },
+                        data: { status: receiptStatus, ...evidenceUpdate },
                     });
 
                     return res.status(202).json({
@@ -1006,10 +1101,80 @@ export class PrizeController {
                         receiptErr,
                         prizeTransaction.tx_hash
                     );
-                    await prisma.prizeTransactions.update({
-                        where: { id: prizeId },
+
+                    const currentPrizeTransaction = await prisma.prizeTransactions.findFirst({
+                        where: { id: prizeId, userId: user.id },
+                        select: {
+                            status: true,
+                            tx_hash: true
+                        }
+                    });
+
+                    if (!currentPrizeTransaction) {
+                        return res.status(404).json({
+                            success: false,
+                            msg: 'Prize transaction not found',
+                            correlationId
+                        });
+                    }
+
+                    if (isPrizeTransferFinalStatus(currentPrizeTransaction.status)) {
+                        if (currentPrizeTransaction.status === Status.RECEIVED) {
+                            return res.status(200).json({
+                                success: true,
+                                txHash: currentPrizeTransaction.tx_hash || prizeTransaction.tx_hash
+                            });
+                        }
+
+                        return res.status(409).json({
+                            success: false,
+                            msg: 'Prize transaction is already finalized.',
+                            status: currentPrizeTransaction.status,
+                            correlationId
+                        });
+                    }
+
+                    const manualReviewUpdate = await prisma.prizeTransactions.updateMany({
+                        where: {
+                            id: prizeId,
+                            userId: user.id,
+                            status: { in: PRIZE_TRANSFER_MANUAL_REVIEW_ELIGIBLE_STATUSES as any }
+                        },
                         data: { status: Status.MANUAL_REVIEW },
                     });
+
+                    if (manualReviewUpdate.count !== 1) {
+                        const latestPrizeTransaction = await prisma.prizeTransactions.findFirst({
+                            where: { id: prizeId, userId: user.id },
+                            select: {
+                                status: true,
+                                tx_hash: true
+                            }
+                        });
+
+                        if (isPrizeTransferFinalStatus(latestPrizeTransaction?.status)) {
+                            if (latestPrizeTransaction?.status === Status.RECEIVED) {
+                                return res.status(200).json({
+                                    success: true,
+                                    txHash: latestPrizeTransaction.tx_hash || prizeTransaction.tx_hash
+                                });
+                            }
+
+                            return res.status(409).json({
+                                success: false,
+                                msg: 'Prize transaction is already finalized.',
+                                status: latestPrizeTransaction?.status,
+                                correlationId
+                            });
+                        }
+
+                        return res.status(409).json({
+                            success: false,
+                            msg: 'Prize transaction changed during receipt fallback.',
+                            correlationId
+                        });
+                    }
+
                     return res.status(202).json({
                         success: false,
                         msg: 'Prize transfer requires manual review.',
@@ -1110,10 +1275,13 @@ export class PrizeController {
             }
 
             let txHash: string | null = null;
+            let txEvidence: PrizeTransferEvidence | null = null;
 
             // Send tokens to the user's wallet using EVM with balance check and detailed errors
             try {
-                txHash = await sendTokensToWallet(user.wallet_address, tokenAmountInSmallestUnit, coinType);
+                const transferResult = await sendTokensToWallet(user.wallet_address, tokenAmountInSmallestUnit, coinType);
+                txHash = transferResult.txHash;
+                txEvidence = transferResult.evidence;
                 if (!txHash || typeof txHash !== 'string') {
                     await prisma.prizeTransactions.update({
                         where: { id: prizeId },
@@ -1135,7 +1303,10 @@ export class PrizeController {
                         );
                         await tx.prizeTransactions.update({
                             where: { id: prizeId },
-                            data: { status: Status.RECEIVED, tx_hash: txHash },
+                            data: {
+                                status: Status.RECEIVED,
+                                ...prizeTransferEvidenceUpdate(txEvidence)
+                            },
                         });
                     });
                 } catch (releaseErr) {
@@ -1144,7 +1315,7 @@ export class PrizeController {
                             where: { id: prizeId },
                             data: {
                                 status: Status.MANUAL_REVIEW,
-                                tx_hash: txHash
+                                ...prizeTransferEvidenceUpdate(txEvidence)
                             },
                         });
                         return res.status(202).json({
@@ -1160,6 +1331,7 @@ export class PrizeController {
                 return res.status(200).json({ success: true, txHash });
             } catch (transferErr: any) {
                 const broadcastTxHash = txHash || (typeof transferErr?.txHash === 'string' ? transferErr.txHash : null);
+                const broadcastEvidence = txEvidence || transferErr?.evidence || null;
                 logPrizeTransferError(
                     'Prize transfer failed',
                     correlationId,
@@ -1168,16 +1340,120 @@ export class PrizeController {
                 );
 
                 if (broadcastTxHash) {
-                    await prisma.prizeTransactions.update({
-                        where: { id: prizeId },
-                        data: {
-                            status: Status.MANUAL_REVIEW,
-                            tx_hash: broadcastTxHash
-                        },
+                    const currentPrizeTransaction = await prisma.prizeTransactions.findFirst({
+                        where: { id: prizeId, userId: user.id },
+                        select: {
+                            status: true,
+                            tx_hash: true
+                        }
                     });
+
+                    if (!currentPrizeTransaction) {
+                        return res.status(404).json({
+                            success: false,
+                            msg: 'Prize transaction not found',
+                            correlationId
+                        });
+                    }
+
+                    if (isPrizeTransferFinalStatus(currentPrizeTransaction.status)) {
+                        if (currentPrizeTransaction.status === Status.RECEIVED) {
+                            return res.status(200).json({
+                                success: true,
+                                txHash: currentPrizeTransaction.tx_hash || broadcastTxHash
+                            });
+                        }
+
+                        return res.status(409).json({
+                            success: false,
+                            msg: 'Prize transaction is already finalized.',
+                            status: currentPrizeTransaction.status,
+                            correlationId
+                        });
+                    }
+
+                    const fallbackUpdate: Record<string, unknown> = {
+                        status: Status.MANUAL_REVIEW
+                    };
+
+                    if (!currentPrizeTransaction.tx_hash) {
+                        Object.assign(
+                            fallbackUpdate,
+                            prizeTransferEvidenceUpdate(broadcastEvidence),
+                            { tx_hash: broadcastTxHash }
+                        );
+                    }
+
+                    const manualReviewUpdate = await prisma.prizeTransactions.updateMany({
+                        where: {
+                            id: prizeId,
+                            userId: user.id,
+                            status: { in: PRIZE_TRANSFER_MANUAL_REVIEW_ELIGIBLE_STATUSES as any }
+                        },
+                        data: fallbackUpdate as any,
+                    });
+
+                    if (manualReviewUpdate.count !== 1) {
+                        const latestPrizeTransaction = await prisma.prizeTransactions.findFirst({
+                            where: { id: prizeId, userId: user.id },
+                            select: {
+                                status: true,
+                                tx_hash: true
+                            }
+                        });
+
+                        if (isPrizeTransferFinalStatus(latestPrizeTransaction?.status)) {
+                            if (latestPrizeTransaction?.status === Status.RECEIVED) {
+                                return res.status(200).json({
+                                    success: true,
+                                    txHash: latestPrizeTransaction.tx_hash || broadcastTxHash
+                                });
+                            }
+
+                            return res.status(409).json({
+                                success: false,
+                                msg: 'Prize transaction is already finalized.',
+                                status: latestPrizeTransaction?.status,
+                                correlationId
+                            });
+                        }
+
+                        return res.status(409).json({
+                            success: false,
+                            msg: 'Prize transaction changed during transfer fallback.',
+                            correlationId
+                        });
+                    }
+
                     return res.status(202).json({
                         success: false,
                         msg: 'Prize transfer was broadcasted and requires manual review.',
+                        correlationId
+                    });
+                }
+
+                if (isPrizeChainIdMismatchError(transferErr)) {
+                    const manualReviewUpdate = await prisma.prizeTransactions.updateMany({
+                        where: {
+                            id: prizeId,
+                            userId: user.id,
+                            status: Status.SENDING,
+                            tx_hash: null
+                        },
+                        data: { status: Status.MANUAL_REVIEW },
+                    });
+
+                    if (manualReviewUpdate.count !== 1) {
+                        return res.status(409).json({
+                            success: false,
+                            msg: 'Prize transaction changed during transfer safety check.',
+                            correlationId
+                        });
+                    }
+
+                    return res.status(202).json({
+                        success: false,
+                        msg: 'Prize transfer chain mismatch requires manual review.',
                         correlationId
                     });
                 }

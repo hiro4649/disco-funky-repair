@@ -312,7 +312,7 @@ const UserSearch = ({ onSearch }: { onSearch: (params: any) => void }) => {
             <div className="flex flex-col sm:flex-row sm:items-center gap-2">
               <InputGroup
                 label=""
-                placeholder="0x... or ETH address"
+                placeholder="0x... or BSC wallet address"
                 type="text"
                 required={true}
                 name="walletAddress"

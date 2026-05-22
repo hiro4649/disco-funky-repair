@@ -8,6 +8,7 @@ import jwt from "jsonwebtoken";
 import bcrypt from 'bcryptjs';
 import { ETHERSCAN_API_URL, ETHERSCAN_API_KEY, TOKEN_CONTRACT_ADDRESS } from "../config/env";
 import { etherscanRateLimiter } from "../utils/rateLimiter";
+import { safeLogError } from "../utils/safeLogger";
 import { createHash, randomBytes } from "crypto";
 import { verifyMessage } from "ethers";
 
@@ -76,7 +77,10 @@ const getTokenTransactions = async (walletAddress: string, tokenAddress: string)
 
         return [];
     } catch (error) {
-        console.error('Error fetching token transactions:', error);
+        safeLogError('auth_fetch_token_transactions', error, {
+            walletAddressPrefix: walletAddress.slice(0, 10),
+            tokenAddressPrefix: tokenAddress.slice(0, 10)
+        });
         return [];
     }
 };
@@ -146,7 +150,7 @@ export class AuthController {
             });
 
             if (!referrer) {
-                console.log('Invalid referral code:', referralCode);
+                console.log('Invalid referral code', { hasReferralCode: Boolean(referralCode) });
                 return;
             }
 
@@ -176,7 +180,10 @@ export class AuthController {
                 }
             });
         } catch (error) {
-            console.error('Error processing referral:', error);
+            safeLogError('auth_process_referral', error, {
+                hasReferralCode: Boolean(referralCode),
+                walletAddressPrefix: walletAddress.slice(0, 10)
+            });
         }
     }
     
@@ -298,7 +305,9 @@ export class AuthController {
 
                 // Fetch ALL token transactions for FIFO calculation
                 const transactions = await getTokenTransactions(wallet_address, TOKEN_CONTRACT_ADDRESS);
-                console.log(transactions, 'transactions');
+                console.log('Token transaction history fetched', {
+                    transactionCount: Array.isArray(transactions) ? transactions.length : 0
+                });
 
                 if (transactions && Array.isArray(transactions) && transactions.length > 0) {
                     const userId = user.id;
@@ -451,7 +460,10 @@ export class AuthController {
                                 });
                             } catch (error: any) {
                                 if (error.code !== 'P2002') {
-                                    console.error('Error creating hold date history record:', error);
+                                    safeLogError('auth_hold_date_history_upsert', error, {
+                                        userId,
+                                        hasTxHash: Boolean(record.tx_hash)
+                                    });
                                 }
                             }
                         }
@@ -536,17 +548,15 @@ export class AuthController {
                     sameSite: process.env.NODE_ENV === 'production' ? 'strict' : 'lax',
                     maxAge: 3600000 // 1 hour in milliseconds
                 });
-                // Respond with the signed token
                 return res.status(200).json({ 
                     message: "Signin successful",
-                    success: true,
-                    token: token
+                    success: true
                 });
             } else {
                 return res.status(404).json({ message: "Admin not found or password hash is undefined" });
             }
         } catch (error) {
-            console.error("Error creating admin:", error);
+            safeLogError('admin_signin', error, { emailPresent: Boolean(email) });
             res.status(500).json({ message: "An error occurred while creating admin" });
         }
     }

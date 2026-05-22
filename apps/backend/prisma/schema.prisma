@@ -116,6 +116,15 @@ model PrizeTransactions {
   prize            Prize     @relation(fields: [prizeId], references: [id], onDelete: Cascade)
   prizeId          Int
   tx_hash          String?   @db.VarChar(255)
+  tx_chain_id      Int?
+  tx_from          String?   @db.VarChar(255)
+  tx_to            String?   @db.VarChar(255)
+  tx_contract_address String? @db.VarChar(255)
+  tx_block_number  BigInt?
+  tx_receipt_status Int?
+  tx_receipt_timestamp DateTime? @db.Timestamp(6)
+  tx_public_amount String?   @db.VarChar(255)
+  tx_evidence_updated_at DateTime? @db.Timestamp(6)
   transfer_token_address String? @db.VarChar(255)
   transfer_amount  String?   @db.VarChar(255)
   reservation_released_at DateTime?
@@ -151,6 +160,10 @@ model PointHistory {
   userId       Int
   point        Int      @default(0)
   receivedDate DateTime @db.Timestamp(6)
+  dailyWindowKey String? @db.VarChar(16)
+
+  @@unique([userId, reason, dailyWindowKey])
+  @@index([userId, reason, receivedDate])
 }
 
 model AirdropTokens {

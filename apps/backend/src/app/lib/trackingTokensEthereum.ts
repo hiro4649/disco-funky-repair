@@ -10,6 +10,7 @@ import {
 import prisma from '../db/prisma_client';
 import getTokenPrice, { getTokenMarketData, calculateScarcityScore } from '../lib/getTokenPrice';
 import { coinIcons } from '../config/coin-icons';
+import { safeLogError } from '../utils/safeLogger';
 
 // ERC20 ABI for basic token operations
 const erc20Abi = [
@@ -114,14 +115,16 @@ export const registerAllEthereumTokens = async () => {
                     await sleep(2000);
 
                 } catch (error) {
-                    console.error(`Error processing token ${tokenAddress}:`, error);
+                    safeLogError('register_ethereum_token', error, {
+                        tokenAddressPrefix: tokenAddress.slice(0, 10)
+                    });
                 }
             }
         } else {
             console.log("Error fetching data:", data.message);
         }
     } catch (error) {
-        console.error('Error in registerAllEthereumTokens:', error);
+        safeLogError('register_all_ethereum_tokens', error);
     }
 };
 
@@ -207,7 +210,9 @@ const fetchEthereumTokenData = async (tokenAddress: string, provider: ethers.Jso
             balanceAmount: balance.toString()
         };
     } catch (error) {
-        console.error(`Error fetching Ethereum token data for ${tokenAddress}:`, error);
+        safeLogError('fetch_ethereum_token_data', error, {
+            tokenAddressPrefix: tokenAddress.slice(0, 10)
+        });
         return null;
     }
 };
@@ -263,7 +268,9 @@ const getTokenTransactionCount24h = async (tokenAddress: string): Promise<number
         
         return 0;
     } catch (error) {
-        console.error('Error fetching token transaction count from Etherscan:', error);
+        safeLogError('fetch_token_transaction_count_24h', error, {
+            tokenAddressPrefix: tokenAddress.slice(0, 10)
+        });
         return 0;
     }
 };

@@ -9,6 +9,7 @@ import {
     canClaimTrialNFT
 } from '../lib/trialNftService';
 import getDiscoNFTEVM from '../lib/getDiscoNFTEVM';
+import { safeLogError } from '../utils/safeLogger';
 
 const prisma = new PrismaClient();
 
@@ -21,6 +22,41 @@ const getAuthenticatedTrialNftUserId = (req: Request): number | null => {
     return Number.isInteger(userId) && userId > 0 ? userId : null;
 };
 
+const getSafePositiveInteger = (value: unknown): number | undefined => {
+    const parsed = Number(value);
+    return Number.isInteger(parsed) && parsed > 0 ? parsed : undefined;
+};
+
+const getOwnedTrialNftRouteUserId = (req: Request, res: Response): number | null => {
+    const authenticatedUserId = getAuthenticatedTrialNftUserId(req);
+    if (!authenticatedUserId) {
+        res.status(401).json({
+            success: false,
+            message: 'Unauthenticated'
+        });
+        return null;
+    }
+
+    const routeUserId = parseInt(req.params.userId);
+    if (isNaN(routeUserId)) {
+        res.status(400).json({
+            success: false,
+            message: 'Invalid user ID'
+        });
+        return null;
+    }
+
+    if (routeUserId !== authenticatedUserId) {
+        res.status(403).json({
+            success: false,
+            message: 'Forbidden'
+        });
+        return null;
+    }
+
+    return authenticatedUserId;
+};
+
 export class TrialNftController {
     /**
      * Check if user can claim trial NFT this month
@@ -28,14 +64,8 @@ export class TrialNftController {
      */
     static async checkCanClaim(req: Request, res: Response) {
         try {
-            const userId = parseInt(req.params.userId);
-
-            if (isNaN(userId)) {
-                return res.status(400).json({
-                    success: false,
-                    message: 'Invalid user ID'
-                });
-            }
+            const userId = getOwnedTrialNftRouteUserId(req, res);
+            if (!userId) return res;
 
             const result = await canClaimTrialNFT(userId);
 
@@ -46,11 +76,12 @@ export class TrialNftController {
                 existingNft: result.existingNft
             });
         } catch (error) {
-            console.error('Error checking claim eligibility:', error);
+            safeLogError('check_trial_nft_claim_eligibility', error, {
+                userId: getSafePositiveInteger(req.params.userId)
+            });
             return res.status(500).json({
                 success: false,
-                message: 'Error checking eligibility',
-                error: error instanceof Error ? error.message : 'Unknown error'
+                message: 'Failed to check Trial NFT eligibility'
             });
         }
     }
@@ -62,32 +93,9 @@ export class TrialNftController {
      */
     static async claimTrialNFT(req: Request, res: Response) {
         try {
-            const authenticatedUserId = getAuthenticatedTrialNftUserId(req);
-            if (!authenticatedUserId) {
-                return res.status(401).json({
-                    success: false,
-                    message: 'Unauthenticated'
-                });
-            }
-
-            const routeUserId = parseInt(req.params.userId);
+            const userId = getOwnedTrialNftRouteUserId(req, res);
+            if (!userId) return res;
             const { templateId } = req.body;
-
-            if (isNaN(routeUserId)) {
-                return res.status(400).json({
-                    success: false,
-                    message: 'Invalid user ID'
-                });
-            }
-
-            if (routeUserId !== authenticatedUserId) {
-                return res.status(403).json({
-                    success: false,
-                    message: 'Forbidden'
-                });
-            }
-
-            const userId = authenticatedUserId;
 
             const user = await prisma.user.findUnique({
                 where: { id: userId }
@@ -117,11 +125,13 @@ export class TrialNftController {
                 data: result.data
             });
         } catch (error) {
-            console.error('Error claiming trial NFT:', error);
+            safeLogError('claim_trial_nft_controller', error, {
+                userId: getSafePositiveInteger(req.params.userId),
+                templateId: getSafePositiveInteger(req.body?.templateId)
+            });
             return res.status(500).json({
                 success: false,
-                message: 'Error claiming trial NFT',
-                error: error instanceof Error ? error.message : 'Unknown error'
+                message: 'Failed to claim Trial NFT'
             });
         }
     }
@@ -132,14 +142,8 @@ export class TrialNftController {
      */
     static async getUserTrialNFTs(req: Request, res: Response) {
         try {
-            const userId = parseInt(req.params.userId);
-
-            if (isNaN(userId)) {
-                return res.status(400).json({
-                    success: false,
-                    message: 'Invalid user ID'
-                });
-            }
+            const userId = getOwnedTrialNftRouteUserId(req, res);
+            if (!userId) return res;
 
             const trialNFTs = await getActiveTrialNFTs(userId);
 
@@ -149,11 +153,12 @@ export class TrialNftController {
                 count: trialNFTs.length
             });
         } catch (error) {
-            console.error('Error getting user trial NFTs:', error);
+            safeLogError('get_user_trial_nfts', error, {
+                userId: getSafePositiveInteger(req.params.userId)
+            });
             return res.status(500).json({
                 success: false,
-                message: 'Error fetching trial NFTs',
-                error: error instanceof Error ? error.message : 'Unknown error'
+                message: 'Failed to fetch Trial NFTs'
             });
         }
     }
@@ -164,14 +169,8 @@ export class TrialNftController {
      */
     static async getTotalNFTCount(req: Request, res: Response) {
         try {
-            const userId = parseInt(req.params.userId);
-
-            if (isNaN(userId)) {
-                return res.status(400).json({
-                    success: false,
-                    message: 'Invalid user ID'
-                });
-            }
+            const userId = getOwnedTrialNftRouteUserId(req, res);
+            if (!userId) return res;
 
             const user = await prisma.user.findUnique({
                 where: { id: userId },
@@ -198,11 +197,12 @@ export class TrialNftController {
                 }
             });
         } catch (error) {
-            console.error('Error getting total NFT count:', error);
+            safeLogError('get_total_nft_count_controller', error, {
+                userId: getSafePositiveInteger(req.params.userId)
+            });
             return res.status(500).json({
                 success: false,
-                message: 'Error fetching NFT count',
-                error: error instanceof Error ? error.message : 'Unknown error'
+                message: 'Failed to fetch NFT count'
             });
         }
     }
@@ -245,11 +245,10 @@ export class TrialNftController {
                 }
             });
         } catch (error) {
-            console.error('Error getting trial NFT stats:', error);
+            safeLogError('get_trial_nft_stats', error);
             return res.status(500).json({
                 success: false,
-                message: 'Error getting statistics',
-                error: error instanceof Error ? error.message : 'Unknown error'
+                message: 'Failed to get Trial NFT statistics'
             });
         }
     }
@@ -268,11 +267,10 @@ export class TrialNftController {
                 expiredCount
             });
         } catch (error) {
-            console.error('Error expiring trial NFTs:', error);
+            safeLogError('expire_old_trial_nfts_controller', error);
             return res.status(500).json({
                 success: false,
-                message: 'Error expiring trial NFTs',
-                error: error instanceof Error ? error.message : 'Unknown error'
+                message: 'Failed to expire Trial NFTs'
             });
         }
     }
@@ -322,11 +320,10 @@ export class TrialNftController {
                 }
             });
         } catch (error) {
-            console.error('Error getting all trial NFTs:', error);
+            safeLogError('get_all_trial_nfts', error);
             return res.status(500).json({
                 success: false,
-                message: 'Error fetching trial NFTs',
-                error: error instanceof Error ? error.message : 'Unknown error'
+                message: 'Failed to fetch Trial NFTs'
             });
         }
     }

@@ -1,13 +1,17 @@
 import dotenv from 'dotenv';
+import { isIP } from 'net';
+import { EXPLORER_API_KEY_ENV_ORDER, getExplorerApiKeys } from '../config/explorerApiKeys';
 
 dotenv.config();
 
 export const PRODUCTION_REQUIRED_ENV_VARS = [
   'JWT_SECRET',
+  'SESSION_SECRET',
   'DATABASE_URL',
   'ADMIN_WALLET_ADDRESS',
   'ADMIN_EMAIL',
   'ADMIN_PASSWORD',
+  'BACKEND_CORS_ORIGINS',
   'BACKEND_API_URL',
   'FRONTEND_APP_URL',
   'QUICKNODE_HTTP_RPC_URL',
@@ -18,6 +22,18 @@ export const PRODUCTION_REQUIRED_ENV_VARS = [
   'NFT_CONTRACT_ADDRESS',
   'PRIZE_HOT_WALLET_PRIVATE_KEY',
   'PRIZE_TRANSFER_TOKEN_ALLOWLIST',
+  'TIER_RELAYER_PRIVATE_KEY',
+  'TIER_UPDATER_CONTRACT_ADDRESS'
+] as const;
+
+export const STAGING_REQUIRED_ENV_VARS = [
+  'QUICKNODE_HTTP_RPC_URL',
+  'QUICKNODE_WS_RPC_URL',
+  'ETHERSCAN_API_URL',
+  'CHAIN_ID',
+  'TOKEN_CONTRACT_ADDRESS',
+  'NFT_CONTRACT_ADDRESS',
+  'PRIZE_HOT_WALLET_PRIVATE_KEY',
   'TIER_RELAYER_PRIVATE_KEY',
   'TIER_UPDATER_CONTRACT_ADDRESS'
 ] as const;
@@ -43,8 +59,12 @@ const URL_ENV_VARS = new Set([
   'ETHERSCAN_API_URL'
 ]);
 
+const CORS_ORIGIN_ENV_VARS = new Set(['BACKEND_CORS_ORIGINS']);
+const REQUEST_BODY_LIMIT_ENV = 'REQUEST_BODY_LIMIT';
+const MAX_REQUEST_BODY_LIMIT_BYTES = 5 * 1024 * 1024;
 const PLACEHOLDER_PATTERN = /^(dummy|example|placeholder|changeme|change-me|todo|undefined|null)$/i;
-const FORBIDDEN_PUBLIC_SECRET_PATTERN = /^NEXT_PUBLIC_.*(PRIVATE_KEY|SECRET|ADMIN_KEY|OWNER_KEY|RELAYER_KEY|HOT_WALLET|JWT)/i;
+const FORBIDDEN_PUBLIC_SECRET_PATTERN =
+  /^NEXT_PUBLIC_.*(PRIVATE_KEY|SECRET|ADMIN_KEY|OWNER_KEY|RELAYER_KEY|HOT_WALLET|JWT)/i;
 const ZERO_ADDRESS = /^0x0{40}$/i;
 const ETH_ADDRESS = /^0x[a-fA-F0-9]{40}$/;
 const PRIVATE_KEY = /^0x[a-fA-F0-9]{64}$/;
@@ -54,15 +74,14 @@ const TEST_PRIVATE_KEYS = new Set([
 ]);
 
 type EnvMap = NodeJS.ProcessEnv;
+type ValidationMode = 'development' | 'production' | 'staging';
 
 const isBlank = (value: string | undefined): boolean => !value || value.trim() === '';
 
-const isPlaceholderValue = (value: string): boolean => {
-  const trimmed = value.trim();
-  const normalized = trimmed.toLowerCase();
-
+const looksPlaceholder = (value: string): boolean => {
+  const normalized = value.trim().toLowerCase();
   return (
-    PLACEHOLDER_PATTERN.test(trimmed) ||
+    PLACEHOLDER_PATTERN.test(normalized) ||
     normalized.startsWith('your_') ||
     normalized.startsWith('your-') ||
     normalized.includes('<set') ||
@@ -73,7 +92,52 @@ const isPlaceholderValue = (value: string): boolean => {
   );
 };
 
-const validateUrl = (name: string, value: string): string | null => {
+const getValidationMode = (env: EnvMap): ValidationMode => {
+  const backendAppEnv = env.BACKEND_APP_ENV?.trim().toLowerCase();
+  const appEnv = env.APP_ENV?.trim().toLowerCase();
+  const nodeEnv = env.NODE_ENV?.trim().toLowerCase();
+
+  if (backendAppEnv === 'staging' || appEnv === 'staging' || nodeEnv === 'staging') return 'staging';
+  if (backendAppEnv === 'production' || nodeEnv === 'production') return 'production';
+  return 'development';
+};
+
+const looksLikeBscTestnetRpc = (hostname: string, normalized: string): boolean => {
+  const bscTestnetMarkers = [
+    'prebsc',
+    'bsc-testnet',
+    'testnet-bsc',
+    'bsc/testnet',
+    'testnet/bsc',
+    'bnb-testnet',
+    'testnet-bnb',
+    'bnb/testnet',
+    'testnet/bnb'
+  ];
+
+  if (hostname === 'testnet.bscscan.com' || hostname === 'api-testnet.bscscan.com') {
+    return false;
+  }
+
+  return bscTestnetMarkers.some((marker) => normalized.includes(marker));
+};
+
+const looksLikeBscTestnetExplorer = (hostname: string, parsed: URL): boolean => {
+  return (
+    hostname === 'api-testnet.bscscan.com' ||
+    hostname === 'testnet.bscscan.com' ||
+    (hostname === 'api.etherscan.io' &&
+      parsed.pathname.includes('/v2/api') &&
+      parsed.searchParams.get('chainid') === '97')
+  );
+};
+
+const looksLikeEthereumMainnetRpc = (normalized: string): boolean => {
+  return ['eth.llamarpc.com', 'ethereum', 'eth-mainnet', 'mainnet.infura.io', 'mainnet.infura']
+    .some((marker) => normalized.includes(marker));
+};
+
+const validateUrl = (name: string, value: string, mode: Exclude<ValidationMode, 'development'>): string | null => {
   try {
     const parsed = new URL(value);
     const hostname = parsed.hostname.toLowerCase();
@@ -84,12 +148,31 @@ const validateUrl = (name: string, value: string): string | null => {
       return `${name} has an unsupported protocol`;
     }
     if (['localhost', '127.0.0.1', '0.0.0.0', '::1'].includes(hostname)) {
-      return `${name} must not point to localhost in production`;
+      return `${name} must not point to localhost in ${mode}`;
     }
     if (hostname === 'example.com' || hostname.endsWith('.example.com') || hostname.endsWith('.invalid')) {
-      return `${name} must not use example or invalid hosts in production`;
+      return `${name} must not use example or invalid hosts in ${mode}`;
     }
-    if (normalized.includes('testnet') || normalized.includes('sepolia') || normalized.includes('goerli')) {
+
+    if (mode === 'staging') {
+      if (normalized.includes('sepolia') || normalized.includes('goerli') || looksLikeEthereumMainnetRpc(normalized)) {
+        return `${name} must point to BSC testnet, not Ethereum endpoints`;
+      }
+      if ((name === 'QUICKNODE_HTTP_RPC_URL' || name === 'QUICKNODE_WS_RPC_URL') && !looksLikeBscTestnetRpc(hostname, normalized)) {
+        return `${name} must point to a BSC testnet RPC in staging`;
+      }
+      if (name === 'ETHERSCAN_API_URL' && !looksLikeBscTestnetExplorer(hostname, parsed)) {
+        return `${name} must point to a BSC testnet explorer in staging`;
+      }
+      return null;
+    }
+
+    if (
+      normalized.includes('testnet') ||
+      normalized.includes('sepolia') ||
+      normalized.includes('goerli') ||
+      looksLikeBscTestnetRpc(hostname, normalized)
+    ) {
       return `${name} must point to BSC mainnet, not a testnet endpoint`;
     }
     if (name === 'ETHERSCAN_API_URL') {
@@ -98,7 +181,7 @@ const validateUrl = (name: string, value: string): string | null => {
         if (!hasBscChainId) {
           return 'ETHERSCAN_API_URL must use Etherscan V2 with chainid=56 or a BSC explorer endpoint';
         }
-      } else if (!hostname.endsWith('bscscan.com')) {
+      } else if (hostname !== 'bscscan.com' && !hostname.endsWith('.bscscan.com')) {
         return 'ETHERSCAN_API_URL must use a BSC explorer endpoint';
       }
     }
@@ -134,6 +217,13 @@ const validatePrivateKey = (name: string, value: string): string | null => {
   return null;
 };
 
+const validatePrivateKeyFormat = (name: string, value: string): string | null => {
+  if (!PRIVATE_KEY.test(value)) {
+    return `${name} must be a 0x-prefixed 32-byte private key`;
+  }
+  return null;
+};
+
 const validateAllowlist = (value: string): string | null => {
   const addresses = value
     .split(',')
@@ -148,15 +238,81 @@ const validateAllowlist = (value: string): string | null => {
   return invalid ? 'PRIZE_TRANSFER_TOKEN_ALLOWLIST contains an invalid token address' : null;
 };
 
+const validateCorsOrigins = (name: string, value: string): string | null => {
+  const origins = value
+    .split(',')
+    .map((origin) => origin.trim())
+    .filter(Boolean);
+
+  if (origins.length === 0) {
+    return `${name} must contain at least one origin`;
+  }
+
+  for (const origin of origins) {
+    if (looksPlaceholder(origin)) {
+      return `${name} contains a placeholder origin`;
+    }
+
+    try {
+      const parsed = new URL(origin);
+      const hostname = parsed.hostname.toLowerCase();
+      const normalizedOrigin = origin.endsWith('/') ? origin.slice(0, -1) : origin;
+
+      if (parsed.protocol !== 'https:') {
+        return `${name} must use https origins in production`;
+      }
+      if (parsed.origin !== normalizedOrigin || parsed.pathname !== '/' || parsed.search || parsed.hash) {
+        return `${name} entries must be origins without path, query, or hash`;
+      }
+      if (['localhost', '127.0.0.1', '0.0.0.0', '::1', '[::1]'].includes(hostname) || isIP(hostname) !== 0) {
+        return `${name} must not contain localhost or raw IP origins in production`;
+      }
+      if (hostname === 'example.com' || hostname.endsWith('.example.com') || hostname.endsWith('.invalid')) {
+        return `${name} must not contain example or invalid hosts in production`;
+      }
+    } catch {
+      return `${name} must contain valid URL origins`;
+    }
+  }
+
+  return null;
+};
+
+const parseRequestBodyLimitBytes = (value: string): number | null => {
+  const match = value.trim().toLowerCase().match(/^(\d+)(b|kb|mb)$/);
+  if (!match) return null;
+
+  const amount = Number(match[1]);
+  if (!Number.isSafeInteger(amount) || amount <= 0) return null;
+
+  const unit = match[2];
+  if (unit === 'b') return amount;
+  if (unit === 'kb') return amount * 1024;
+  return amount * 1024 * 1024;
+};
+
+const validateRequestBodyLimit = (value: string): string | null => {
+  const bytes = parseRequestBodyLimitBytes(value);
+  if (!bytes) {
+    return `${REQUEST_BODY_LIMIT_ENV} must use a positive b/kb/mb value`;
+  }
+  if (bytes > MAX_REQUEST_BODY_LIMIT_BYTES) {
+    return `${REQUEST_BODY_LIMIT_ENV} must be 5mb or smaller`;
+  }
+  return null;
+};
+
 export const validateEnvs = (env: EnvMap = process.env): void => {
-  if (env.NODE_ENV !== 'production') {
+  const mode = getValidationMode(env);
+  if (mode === 'development') {
     return;
   }
 
   const missing: string[] = [];
   const invalid: string[] = [];
+  const requiredEnvVars = mode === 'production' ? PRODUCTION_REQUIRED_ENV_VARS : STAGING_REQUIRED_ENV_VARS;
 
-  for (const name of PRODUCTION_REQUIRED_ENV_VARS) {
+  for (const name of requiredEnvVars) {
     const value = env[name];
     if (isBlank(value)) {
       missing.push(name);
@@ -164,34 +320,58 @@ export const validateEnvs = (env: EnvMap = process.env): void => {
     }
 
     const trimmed = value!.trim();
-    if (isPlaceholderValue(trimmed)) {
+    if (looksPlaceholder(trimmed)) {
       invalid.push(`${name} uses a placeholder value`);
       continue;
     }
 
     if (URL_ENV_VARS.has(name)) {
-      const error = validateUrl(name, trimmed);
+      const error = validateUrl(name, trimmed, mode);
       if (error) invalid.push(error);
     }
 
-    if (ADDRESS_ENV_VARS.has(name)) {
+    if (mode === 'production' && CORS_ORIGIN_ENV_VARS.has(name)) {
+      const error = validateCorsOrigins(name, trimmed);
+      if (error) invalid.push(error);
+    }
+
+    if (mode === 'production' && ADDRESS_ENV_VARS.has(name)) {
       const error = validateAddress(name, trimmed);
       if (error) invalid.push(error);
     }
 
     if (PRIVATE_KEY_ENV_VARS.has(name)) {
-      const error = validatePrivateKey(name, trimmed);
+      const error = mode === 'production'
+        ? validatePrivateKey(name, trimmed)
+        : validatePrivateKeyFormat(name, trimmed);
       if (error) invalid.push(error);
     }
   }
 
-  if (env.CHAIN_ID && env.CHAIN_ID.trim() !== '56') {
-    invalid.push('CHAIN_ID must be 56 for BSC production');
+  const expectedChainId = mode === 'production' ? '56' : '97';
+  if (env.CHAIN_ID && env.CHAIN_ID.trim() !== expectedChainId) {
+    invalid.push(`CHAIN_ID must be ${expectedChainId} for BSC ${mode}`);
   }
 
-  if (env.PRIZE_TRANSFER_TOKEN_ALLOWLIST) {
+  if (mode === 'production' && env.PRIZE_TRANSFER_TOKEN_ALLOWLIST) {
     const error = validateAllowlist(env.PRIZE_TRANSFER_TOKEN_ALLOWLIST);
     if (error) invalid.push(error);
+  }
+
+  if (env[REQUEST_BODY_LIMIT_ENV]) {
+    const error = validateRequestBodyLimit(env[REQUEST_BODY_LIMIT_ENV]!);
+    if (error) invalid.push(error);
+  }
+
+  if (mode === 'production' && getExplorerApiKeys(env).length === 0) {
+    missing.push('ETHERSCAN_API_KEY or BSCSCAN_API_KEY');
+  } else if (mode === 'production') {
+    for (const name of EXPLORER_API_KEY_ENV_ORDER) {
+      const value = env[name];
+      if (value && looksPlaceholder(value)) {
+        invalid.push(`${name} uses a placeholder value`);
+      }
+    }
   }
 
   for (const [name, value] of Object.entries(env)) {
@@ -206,7 +386,7 @@ export const validateEnvs = (env: EnvMap = process.env): void => {
       invalid.length > 0 ? `Invalid production environment variables: ${invalid.join('; ')}` : ''
     ].filter(Boolean);
 
-    throw new Error(`Invalid production environment. ${messages.join('. ')}`);
+    throw new Error(`Invalid ${mode} environment. ${messages.join('. ')}`);
   }
 };
 

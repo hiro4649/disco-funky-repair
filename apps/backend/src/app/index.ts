@@ -9,21 +9,16 @@ import passport from 'passport';
 import * as http from 'http';
 import { Server as SocketIOServer } from 'socket.io';
 import { configureSecurityMiddleware } from './middlewares/security';
+import { rejectNonImageStaticAsset } from './middlewares/publicImageAssets';
+import { getCorsOrigins, getRequestBodyLimit } from './config/runtime';
 import './lib/validateEnvs';
 import './services/trackingService';
-import { startTrialNFTSchedulers } from './lib/trialNftScheduler';
 
-const app = express();
-const PORT = process.env.PORT || 5000;
-const server = http.createServer(app);
+export const app = express();
+export const server = http.createServer(app);
 
-const allowedOrigins = [
-    'http://localhost:3000',
-    'http://127.0.0.1:3000',
-    'https://funky.fan',
-    'https://www.funky.fan',
-    'http://153.127.192.241:3000'
-];
+const allowedOrigins = getCorsOrigins();
+const requestBodyLimit = getRequestBodyLimit();
 
 // Initialize Socket.IO
 export const io = new SocketIOServer(server, {
@@ -45,10 +40,6 @@ io.on('connection', (socket) => {
     });
 });
 
-io.of('/crashx').use((_socket, next) => {
-    next(new Error('FEATURE_DISABLED'));
-});
-
 // Cookie parser should come first to ensure cookies are parsed before any middleware uses them
 app.use(cookieParser());
 
@@ -67,17 +58,17 @@ app.use(
 configureSecurityMiddleware(app);
 
 // Body parsers and cookie handling
-app.use(express.json({ limit: "1gb" }));
-app.use(bodyParser.urlencoded({ limit: "1gb", extended: true }));
+app.use(express.json({ limit: requestBodyLimit }));
+app.use(bodyParser.urlencoded({ limit: requestBodyLimit, extended: true }));
 
 // Initialize passport
 app.use(passport.initialize());
 
-// Static file serving - use project root, not dist folder
-// This ensures files are served from the same location where multer saves them
+// Static file serving is limited to public image assets.
+// Multer may store non-image files under uploads; do not expose the root directory.
 const uploadsPath = path.resolve(process.cwd(), 'uploads');
 const imagesPath = path.resolve(uploadsPath, 'images');
-console.log('📂 Static files served from:', uploadsPath);
+console.log('Static image files served from configured uploads directory');
 
 // Ensure upload directories exist
 if (!fs.existsSync(imagesPath)) {
@@ -85,8 +76,9 @@ if (!fs.existsSync(imagesPath)) {
     console.log('📁 Created uploads/images directory');
 }
 
-app.use(express.static(uploadsPath));
-app.use('/api/icons', express.static(uploadsPath));
+app.use('/uploads/images', rejectNonImageStaticAsset, express.static(imagesPath));
+app.use('/api/icons/images', rejectNonImageStaticAsset, express.static(imagesPath));
+app.use('/api/icons', rejectNonImageStaticAsset, express.static(imagesPath));
 
 // API routes
 app.use('/api', Router);
@@ -99,14 +91,6 @@ app.use((err: Error, req: express.Request, res: express.Response, next: express.
         message: 'Internal server error',
         error: process.env.NODE_ENV === 'development' ? err.message : undefined
     });
-});
-
-// Start the server
-server.listen(PORT, () => {
-    console.log(`Server is running on port: ${PORT}`);
-
-    // Start trial NFT schedulers
-    startTrialNFTSchedulers();
 });
 
 export default app;

@@ -1,5 +1,6 @@
 import { ethers } from 'ethers';
 import { QUICKNODE_HTTP_RPC_URL, NFT_CONTRACT_ADDRESS } from '../config/env';
+import { safeLogError } from '../utils/safeLogger';
 
 // ERC721 ABI for NFT operations
 const erc721Abi = [
@@ -31,7 +32,9 @@ async function getDiscoNFTEVM(walletAddress: string): Promise<number> {
         const balance = await contract.balanceOf(walletAddress);
         return Number(balance);
     } catch (error) {
-        console.error('Error fetching Disco NFT balance:', error);
+        safeLogError('fetch_disco_nft_balance', error, {
+            walletAddressPrefix: walletAddress.slice(0, 10)
+        });
         return 0;
     }
 }

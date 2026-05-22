@@ -3,6 +3,7 @@ import { PrismaClient } from '@prisma/client';
 import moment from 'moment';
 import { generateRandomCode } from '../utils/ticketCodeGenerator';
 import { Authenticate, AuthAdmin } from '../config/passport';
+import { safeLogError } from '../utils/safeLogger';
 
 const router = Router();
 const prisma = new PrismaClient();
@@ -12,6 +13,10 @@ type AuthenticatedUser = {
   address?: string;
 };
 
+type ReferralWalletAuthResult =
+  | { ok: true; user: { id: number; wallet_address: string } }
+  | { ok: false; status: number; body: { error: string } };
+
 const getAuthenticatedUserId = (req: any) => {
   const userId = Number((req.user as AuthenticatedUser | undefined)?.user_id);
   return Number.isInteger(userId) && userId > 0 ? userId : null;
@@ -19,6 +24,36 @@ const getAuthenticatedUserId = (req: any) => {
 
 const normalizeWalletAddress = (value: unknown) => {
   return typeof value === 'string' && value.trim() ? value.trim().toLowerCase() : null;
+};
+
+const loadAuthenticatedUserForWallet = async (req: any, requestedWalletAddress: string | null): Promise<ReferralWalletAuthResult> => {
+  const authenticatedUserId = getAuthenticatedUserId(req);
+  if (!authenticatedUserId) {
+    return { ok: false, status: 403, body: { error: 'Invalid authenticated user' } };
+  }
+
+  if (!requestedWalletAddress) {
+    return { ok: false, status: 400, body: { error: 'Wallet address is required' } };
+  }
+
+  const authenticatedWalletAddress = normalizeWalletAddress((req.user as AuthenticatedUser | undefined)?.address);
+  if (authenticatedWalletAddress && authenticatedWalletAddress !== requestedWalletAddress) {
+    return { ok: false, status: 403, body: { error: 'Forbidden' } };
+  }
+
+  const user = await prisma.user.findUnique({
+    where: { id: authenticatedUserId }
+  });
+
+  if (!user) {
+    return { ok: false, status: 404, body: { error: 'User not found' } };
+  }
+
+  if (user.wallet_address.toLowerCase() !== requestedWalletAddress) {
+    return { ok: false, status: 403, body: { error: 'Forbidden' } };
+  }
+
+  return { ok: true, user };
 };
 
 const generateUniqueCode = async () => {
@@ -73,25 +108,31 @@ router.get('/referral-code/:walletAddress', Authenticate, async (req, res) => {
 
     return res.json({ referralCode: user.referral_code });
   } catch (error) {
-    console.error('Error getting referral code:', error);
+    safeLogError('referral_code_get', error, { route: '/referral/referral-code/:walletAddress' });
     res.status(500).json({ error: 'Internal server error' });
   }
 });
 
 // Get referral statistics for a user
-router.get('/referral-stats/:walletAddress', async (req, res) => {
+router.get('/referral-stats/:walletAddress', Authenticate, async (req, res) => {
   try {
-    const { walletAddress } = req.params;
+    const requestedWalletAddress = normalizeWalletAddress(req.params.walletAddress);
+    const authenticatedUser = await loadAuthenticatedUserForWallet(req, requestedWalletAddress);
+    if (!authenticatedUser.ok) {
+      return res.status(authenticatedUser.status).json(authenticatedUser.body);
+    }
+
+    const walletAddress = authenticatedUser.user.wallet_address.toLowerCase();
 
     // Get total referrals
     const totalReferrals = await prisma.referralRewards.count({
-      where: { referrer_wallet: walletAddress.toLowerCase() }
+      where: { referrer_wallet: walletAddress }
     });
 
     // Get verified referrals (those who met the 10k token requirement)
     const verifiedReferrals = await prisma.referralRewards.count({
       where: { 
-        referrer_wallet: walletAddress.toLowerCase(),
+        referrer_wallet: walletAddress,
         snapshot_verified: true 
       }
     });
@@ -99,7 +140,7 @@ router.get('/referral-stats/:walletAddress', async (req, res) => {
     // Get total rewards earned
     const totalRewards = await prisma.referralRewards.count({
       where: { 
-        referrer_wallet: walletAddress.toLowerCase(),
+        referrer_wallet: walletAddress,
         rewarded: true 
       }
     });
@@ -111,7 +152,7 @@ router.get('/referral-stats/:walletAddress', async (req, res) => {
       pendingRewards: verifiedReferrals - totalRewards
     });
   } catch (error) {
-    console.error('Error getting referral stats:', error);
+    safeLogError('referral_stats_get', error, { route: '/referral/referral-stats/:walletAddress' });
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -203,18 +244,24 @@ router.post('/track-referral', Authenticate, async (req, res) => {
 
     return res.status(result.status).json(result.body);
   } catch (error) {
-    console.error('Error tracking referral:', error);
+    safeLogError('referral_track', error, { route: '/referral/track-referral' });
     res.status(500).json({ error: 'Internal server error' });
   }
 });
 
 // Get referral rewards for a user
-router.get('/referral-rewards/:walletAddress', async (req, res) => {
+router.get('/referral-rewards/:walletAddress', Authenticate, async (req, res) => {
   try {
-    const { walletAddress } = req.params;
+    const requestedWalletAddress = normalizeWalletAddress(req.params.walletAddress);
+    const authenticatedUser = await loadAuthenticatedUserForWallet(req, requestedWalletAddress);
+    if (!authenticatedUser.ok) {
+      return res.status(authenticatedUser.status).json(authenticatedUser.body);
+    }
+
+    const walletAddress = authenticatedUser.user.wallet_address.toLowerCase();
 
     const rewards = await prisma.referralRewards.findMany({
-      where: { referrer_wallet: walletAddress.toLowerCase() },
+      where: { referrer_wallet: walletAddress },
       include: {
         referred: {
           select: {
@@ -228,13 +275,13 @@ router.get('/referral-rewards/:walletAddress', async (req, res) => {
 
     res.json(rewards);
   } catch (error) {
-    console.error('Error getting referral rewards:', error);
+    safeLogError('referral_rewards_get', error, { route: '/referral/referral-rewards/:walletAddress' });
     res.status(500).json({ error: 'Internal server error' });
   }
 });
 
 // Debug endpoint to check if a user was referred
-router.get('/debug/referral-status/:walletAddress', async (req, res) => {
+router.get('/debug/referral-status/:walletAddress', AuthAdmin, async (req, res) => {
   try {
     const { walletAddress } = req.params;
 
@@ -279,7 +326,7 @@ router.get('/debug/referral-status/:walletAddress', async (req, res) => {
       isReferrer: referralRewards.some(r => r.referrer_wallet === walletAddress.toLowerCase())
     });
   } catch (error) {
-    console.error('Error checking referral status:', error);
+    safeLogError('referral_status_debug', error, { route: '/referral/debug/referral-status/:walletAddress' });
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -321,7 +368,7 @@ router.post('/admin/run-snapshot', AuthAdmin, async (req, res) => {
       totalChecked: pendingReferrals.length 
     });
   } catch (error) {
-    console.error('Error running snapshot:', error);
+    safeLogError('referral_snapshot_run', error, { route: '/referral/admin/run-snapshot' });
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -391,7 +438,7 @@ router.post('/admin/distribute-rewards', AuthAdmin, async (req, res) => {
       distributedCount 
     });
   } catch (error) {
-    console.error('Error distributing rewards:', error);
+    safeLogError('referral_rewards_distribute', error, { route: '/referral/admin/distribute-rewards' });
     res.status(500).json({ error: 'Internal server error' });
   }
 });

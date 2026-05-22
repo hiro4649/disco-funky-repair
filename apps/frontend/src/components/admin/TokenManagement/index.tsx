@@ -8,7 +8,11 @@ import apiClient from "../../../../utils/apiClient";
 import { TOKEN_ABI } from "../../../utils/constant";
 import { useTranslations } from 'next-intl';
 
-const TOKEN_ADDRESS = process.env.NEXT_PUBLIC_TOKEN_ADDRESS as string; // Sepolia contract address
+const TOKEN_ADDRESS = process.env.NEXT_PUBLIC_TOKEN_ADDRESS as string;
+const EXPLORER_BASE_URL = (process.env.NEXT_PUBLIC_ETHERSCAN_EXPLORER || "https://bscscan.com").replace(/\/$/, "");
+const NETWORK_LABEL = process.env.NEXT_PUBLIC_APP_ENV === "staging" || EXPLORER_BASE_URL.includes("testnet.bscscan.com")
+  ? "BSC Testnet"
+  : "BNB Smart Chain";
 const MANUAL_REVIEW_MESSAGE = "MANUAL_REVIEW_REQUIRED: use the governance runbook and multisig/timelock workflow.";
 
 interface TokenInfo {
@@ -126,8 +130,8 @@ export default function TokenManagement() {
   const initializeProvider = async () => {
     try {
       const rpcUrl = process.env.NEXT_PUBLIC_ALCHEMY_RPC_URL || process.env.NEXT_PUBLIC_RPC_URL;
-      if (!rpcUrl) {
-        toast.error("RPC URL not configured");
+      if (!rpcUrl || !TOKEN_ADDRESS) {
+        toast.error("Token RPC or contract address not configured");
         return;
       }
 
@@ -538,7 +542,7 @@ export default function TokenManagement() {
                       {dex.txHash ? (
                         <div className="flex items-center gap-2">
                           <a
-                            href={`https://sepolia.etherscan.io/tx/${dex.txHash}`}
+                            href={`${EXPLORER_BASE_URL}/tx/${dex.txHash}`}
                             target="_blank"
                             rel="noopener noreferrer"
                             className="text-blue-600 hover:text-blue-800 text-sm"
@@ -666,7 +670,7 @@ export default function TokenManagement() {
                       {record.txHash ? (
                         <div className="flex items-center gap-2">
                           <a
-                            href={`https://sepolia.etherscan.io/tx/${record.txHash}`}
+                            href={`${EXPLORER_BASE_URL}/tx/${record.txHash}`}
                             target="_blank"
                             rel="noopener noreferrer"
                             className="text-blue-600 hover:text-blue-800 text-sm"
@@ -711,17 +715,17 @@ export default function TokenManagement() {
             </div>
             <div>
               <label className="text-sm font-medium text-gray-500">{t('Network')}</label>
-              <p className="text-sm">Sepolia Testnet</p>
+              <p className="text-sm">{NETWORK_LABEL}</p>
             </div>
             <div>
-              <label className="text-sm font-medium text-gray-500">{t('Etherscan')} </label>
+              <label className="text-sm font-medium text-gray-500">{t('Explorer')} </label>
               <a
-                href={`https://sepolia.etherscan.io/address/${TOKEN_ADDRESS}`}
+                href={`${EXPLORER_BASE_URL}/address/${TOKEN_ADDRESS}`}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="text-sm text-blue-600 hover:text-blue-800"
               >
-                {t('View on Etherscan')}
+                {t('View on BscScan')}
               </a>
             </div>
           </div>

@@ -6,6 +6,14 @@ const mockUploadNftImages = jest.fn((_req: any, _res: any, next: any) => next())
 const mockUploadSingleImage = jest.fn((_req: any, _res: any, next: any) => next());
 
 jest.mock('../../config/passport', () => ({
+  Authenticate: (req: any, res: any, next: any) => {
+    if (req.headers.authorization === 'Bearer user-token') {
+      req.user = { user_id: 1, address: '0xuser' };
+      return next();
+    }
+
+    return res.status(401).json({ success: false, message: 'Unauthenticated' });
+  },
   AuthAdmin: (req: any, res: any, next: any) => {
     if (req.headers.authorization === 'Bearer admin-token') {
       req.user = { admin_id: 1, email: 'admin@example.com' };
@@ -98,6 +106,35 @@ describe('nft routes', () => {
 
     expect(response.status).toBe(403);
     expect(NftController.deleteNFT).not.toHaveBeenCalled();
+  });
+
+  it('keeps public NFT catalog routes available without authentication', async () => {
+    const app = createApp();
+
+    const mintableResponse = await request(app).get('/nfts/mintable');
+    const detailResponse = await request(app).get('/nft/1');
+
+    expect(mintableResponse.status).toBe(200);
+    expect(detailResponse.status).toBe(200);
+    expect(NftController.getMintableNfts).toHaveBeenCalledTimes(1);
+    expect(NftController.getNFTById).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not reach holder NFT collection without authentication', async () => {
+    const response = await request(createApp())
+      .get('/nfts/holder/1');
+
+    expect(response.status).toBe(401);
+    expect(NftController.getNFTsByHolderId).not.toHaveBeenCalled();
+  });
+
+  it('allows authenticated users to reach holder NFT collection route', async () => {
+    const response = await request(createApp())
+      .get('/nfts/holder/1')
+      .set('Authorization', 'Bearer user-token');
+
+    expect(response.status).toBe(200);
+    expect(NftController.getNFTsByHolderId).toHaveBeenCalledTimes(1);
   });
 
   it.each([

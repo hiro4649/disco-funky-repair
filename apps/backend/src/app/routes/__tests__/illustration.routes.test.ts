@@ -9,7 +9,8 @@ const mockPrisma = {
     update: jest.fn()
   },
   illustration: {
-    findMany: jest.fn()
+    findMany: jest.fn(),
+    findUnique: jest.fn()
   },
   pointHistory: {
     create: jest.fn()
@@ -42,7 +43,21 @@ jest.mock('../../config/passport', () => ({
 
     return res.status(401).json({ success: false, message: 'Unauthenticated' });
   },
-  AuthAdmin: (_req: any, _res: any, next: any) => next()
+  AuthAdmin: (req: any, res: any, next: any) => {
+    if (req.headers.authorization === 'Bearer admin-token') {
+      req.user = {
+        user_id: 99,
+        role: 'admin'
+      };
+      return next();
+    }
+
+    if (req.headers.authorization === 'Bearer user-token') {
+      return res.status(403).json({ success: false, message: 'Forbidden' });
+    }
+
+    return res.status(401).json({ success: false, message: 'Unauthenticated' });
+  }
 }));
 
 jest.mock('../../middlewares/rateLimiter', () => ({
@@ -81,6 +96,12 @@ describe('illustration draw route', () => {
     mockPrisma.illustration.findMany.mockResolvedValue([
       { id: 7, image_url: 'image.png', earned_pts: 3, probability: 1 }
     ]);
+    mockPrisma.illustration.findUnique.mockResolvedValue({
+      id: 7,
+      image_url: 'image.png',
+      earned_pts: 3,
+      rarity: 2
+    });
     mockPrisma.pointHistory.create.mockResolvedValue({});
     mockPrisma.user.update.mockResolvedValue({});
     mockPrisma.illustrationHistory.findMany.mockResolvedValue([]);
@@ -179,6 +200,98 @@ describe('illustration draw route', () => {
     expect(mockPrisma.pointHistory.create).not.toHaveBeenCalled();
     expect(mockPrisma.user.update).not.toHaveBeenCalled();
     expect(mockPrisma.illustrationHistory.create).not.toHaveBeenCalled();
+  });
+
+  it('blocks unauthenticated admin illustration reads before controller access', async () => {
+    const response = await request(createApp())
+      .get('/admin/illustration');
+
+    expect(response.status).toBe(401);
+    expect(mockPrisma.illustration.findMany).not.toHaveBeenCalled();
+  });
+
+  it('blocks general users from admin illustration reads before controller access', async () => {
+    const response = await request(createApp())
+      .get('/admin/illustration')
+      .set('Authorization', 'Bearer user-token');
+
+    expect(response.status).toBe(403);
+    expect(mockPrisma.illustration.findMany).not.toHaveBeenCalled();
+  });
+
+  it('does not allow body adminKey to access admin illustration reads', async () => {
+    const response = await request(createApp())
+      .get('/admin/illustration')
+      .send({ adminKey: 'body-only' });
+
+    expect(response.status).toBe(401);
+    expect(mockPrisma.illustration.findMany).not.toHaveBeenCalled();
+  });
+
+  it('allows admin users to read admin illustration catalog', async () => {
+    const response = await request(createApp())
+      .get('/admin/illustration')
+      .set('Authorization', 'Bearer admin-token');
+
+    expect(response.status).toBe(200);
+    expect(mockPrisma.illustration.findMany).toHaveBeenCalledWith({
+      orderBy: {
+        createdAt: 'desc'
+      }
+    });
+  });
+
+  it('returns public illustration detail with only safe display fields', async () => {
+    const response = await request(createApp())
+      .get('/illustration/7');
+
+    expect(response.status).toBe(200);
+    expect(mockPrisma.illustration.findUnique).toHaveBeenCalledWith({
+      where: { id: 7 },
+      select: {
+        id: true,
+        image_url: true,
+        earned_pts: true,
+        rarity: true
+      }
+    });
+    expect(response.body.data).toEqual({
+      id: 7,
+      image_url: 'image.png',
+      earned_pts: 3,
+      rarity: 2
+    });
+    expect(response.body.data).not.toHaveProperty('probability');
+    expect(response.body.data).not.toHaveProperty('createdAt');
+    expect(response.body.data).not.toHaveProperty('updatedAt');
+  });
+
+  it('returns public rarity illustration list without probability or audit fields', async () => {
+    mockPrisma.illustration.findMany.mockResolvedValueOnce([
+      { id: 7, image_url: 'image.png', earned_pts: 3, rarity: 2 }
+    ]);
+
+    const response = await request(createApp())
+      .get('/illustration/rarity/2');
+
+    expect(response.status).toBe(200);
+    expect(mockPrisma.illustration.findMany).toHaveBeenCalledWith({
+      where: {
+        rarity: 2
+      },
+      select: {
+        id: true,
+        image_url: true,
+        earned_pts: true,
+        rarity: true
+      },
+      orderBy: {
+        probability: 'desc'
+      }
+    });
+    expect(response.body.data[0]).not.toHaveProperty('probability');
+    expect(response.body.data[0]).not.toHaveProperty('createdAt');
+    expect(response.body.data[0]).not.toHaveProperty('updatedAt');
   });
 
   it('does not reach illustration draw when unauthenticated', async () => {

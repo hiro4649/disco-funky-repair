@@ -6,6 +6,7 @@ import fs from 'fs';
 import { promises as fsPromises } from 'fs';
 import lighthouse from '@lighthouse-web3/sdk';
 import { NFT_STORAGE_ENDPOINT, NFT_STORAGE_API_KEY } from '../config/env';
+import { safeLogError } from '../utils/safeLogger';
 
 const prisma = new PrismaClient();
 
@@ -69,14 +70,14 @@ export class TrialNftTemplateController {
                     await fsPromises.unlink(file.path);
                     console.log(`🗑️ Deleted local file: ${file.path}`);
                 } catch (deleteError) {
-                    console.warn(`⚠️ Could not delete local file ${file.path}:`, deleteError);
+                    safeLogError('delete_trial_nft_template_upload_file', deleteError);
                 }
             } catch (ipfsError) {
-                console.error('❌ Error uploading Trial NFT template image to IPFS:', ipfsError);
+                safeLogError('upload_trial_nft_template_image', ipfsError);
                 return res.status(500).json({
                     success: false,
                     message: 'Failed to upload image to IPFS',
-                    error: ipfsError instanceof Error ? ipfsError.message : 'Unknown error'
+                    error: 'IPFS upload failed'
                 });
             }
 
@@ -172,13 +173,28 @@ export class TrialNftTemplateController {
                         { mintCount: { lt: prisma.trialNftTemplate.fields.maxMints } }
                     ]
                 },
+                select: {
+                    id: true,
+                    name: true,
+                    description: true,
+                    image: true,
+                    validDays: true,
+                    maxMints: true,
+                    mintCount: true
+                },
                 orderBy: { createdAt: 'desc' }
             });
 
             // Filter templates that haven't reached max mints
-            const availableTemplates = templates.filter(t => 
-                t.maxMints === 0 || t.mintCount < t.maxMints
-            );
+            const availableTemplates = templates
+                .filter(t => t.maxMints === 0 || t.mintCount < t.maxMints)
+                .map(({ id, name, description, image, validDays }) => ({
+                    id,
+                    name,
+                    description,
+                    image,
+                    validDays
+                }));
 
             return res.status(200).json({
                 success: true,
@@ -247,17 +263,17 @@ export class TrialNftTemplateController {
                         await fsPromises.unlink(req.file.path);
                         console.log(`🗑️ Deleted local file: ${req.file.path}`);
                     } catch (deleteError) {
-                        console.warn(`⚠️ Could not delete local file ${req.file.path}:`, deleteError);
+                        safeLogError('delete_trial_nft_template_updated_file', deleteError);
                     }
 
                     // Save IPFS URL
                     updateData.image = imageUrl;
                 } catch (ipfsError) {
-                    console.error('❌ Error uploading updated Trial NFT template image to IPFS:', ipfsError);
+                    safeLogError('upload_trial_nft_template_updated_image', ipfsError);
                     return res.status(500).json({
                         success: false,
                         message: 'Failed to upload image to IPFS',
-                        error: ipfsError instanceof Error ? ipfsError.message : 'Unknown error'
+                        error: 'IPFS upload failed'
                     });
                 }
             }

@@ -21,6 +21,17 @@ const PUBLIC_URL_ENV = new Set([
   "NEXT_PUBLIC_ETHERSCAN_EXPLORER",
 ]);
 
+const STAGING_TESTNET_URL_ENV = new Set([
+  "NEXT_PUBLIC_RPC_URL",
+  "NEXT_PUBLIC_ALCHEMY_RPC_URL",
+  "NEXT_PUBLIC_ETHERSCAN_EXPLORER",
+]);
+
+const STAGING_RPC_URL_ENV = new Set([
+  "NEXT_PUBLIC_RPC_URL",
+  "NEXT_PUBLIC_ALCHEMY_RPC_URL",
+]);
+
 const FORBIDDEN_PUBLIC_SECRET_PATTERN =
   /^NEXT_PUBLIC_.*(PRIVATE_KEY|SECRET|ADMIN_KEY|OWNER_KEY|RELAYER_KEY|HOT_WALLET|JWT)/i;
 const ETH_ADDRESS = /^0x[a-fA-F0-9]{40}$/;
@@ -42,20 +53,92 @@ const looksPlaceholder = (value) => {
   );
 };
 
-const validatePublicUrl = (name, value) => {
+const getValidationMode = (env) => {
+  if (env.NODE_ENV !== "production") {
+    return "development";
+  }
+
+  const appEnv = env.NEXT_PUBLIC_APP_ENV?.trim().toLowerCase();
+  if (!appEnv || appEnv === "production") {
+    return "production";
+  }
+  if (appEnv === "staging") {
+    return "staging";
+  }
+  return "invalid";
+};
+
+const looksLikeBscTestnetRpc = (hostname, normalized) => {
+  const bscTestnetMarkers = [
+    "prebsc",
+    "bsc-testnet",
+    "testnet-bsc",
+    "bsc/testnet",
+    "testnet/bsc",
+    "bnb-testnet",
+    "testnet-bnb",
+    "bnb/testnet",
+    "testnet/bnb",
+  ];
+
+  if (hostname === "testnet.bscscan.com") {
+    return false;
+  }
+
+  return bscTestnetMarkers.some((marker) => normalized.includes(marker));
+};
+
+const looksLikeEthereumMainnetRpc = (hostname, normalized) => {
+  const ethereumMainnetMarkers = [
+    "eth.llamarpc.com",
+    "ethereum",
+    "eth-mainnet",
+    "mainnet.infura.io",
+    "mainnet.infura",
+  ];
+
+  return ethereumMainnetMarkers.some((marker) => normalized.includes(marker));
+};
+
+const validatePublicUrl = (name, value, mode) => {
   try {
     const parsed = new URL(value);
     const hostname = parsed.hostname.toLowerCase();
     const normalized = value.toLowerCase();
 
     if (["localhost", "127.0.0.1", "0.0.0.0", "::1"].includes(hostname)) {
-      return `${name} must not point to localhost in production`;
+      return `${name} must not point to localhost in ${mode}`;
     }
     if (hostname === "example.com" || hostname.endsWith(".example.com") || hostname.endsWith(".invalid")) {
-      return `${name} must not use example or invalid hosts in production`;
+      return `${name} must not use example or invalid hosts in ${mode}`;
     }
-    if (normalized.includes("testnet") || normalized.includes("sepolia") || normalized.includes("goerli")) {
+
+    if (
+      mode === "production" &&
+      (
+        normalized.includes("testnet") ||
+        normalized.includes("sepolia") ||
+        normalized.includes("goerli") ||
+        looksLikeBscTestnetRpc(hostname, normalized) ||
+        looksLikeEthereumMainnetRpc(hostname, normalized)
+      )
+    ) {
       return `${name} must point to BSC mainnet, not a testnet RPC`;
+    }
+
+    if (mode === "staging") {
+      if (normalized.includes("sepolia") || normalized.includes("goerli")) {
+        return `${name} must point to BSC testnet, not Ethereum testnets`;
+      }
+      if (STAGING_RPC_URL_ENV.has(name) && !looksLikeBscTestnetRpc(hostname, normalized)) {
+        return `${name} must point to a BSC testnet RPC in staging`;
+      }
+      if (normalized.includes("testnet") && !STAGING_TESTNET_URL_ENV.has(name)) {
+        return `${name} must not point to testnet in staging unless it is a public RPC or explorer URL`;
+      }
+      if (name === "NEXT_PUBLIC_ETHERSCAN_EXPLORER" && (parsed.protocol !== "https:" || hostname !== "testnet.bscscan.com")) {
+        return `${name} must be https://testnet.bscscan.com in staging`;
+      }
     }
 
     return null;
@@ -77,14 +160,19 @@ const validatePublicAddress = (name, value) => {
 export const validateFrontendEnv = (env = process.env) => {
   const missing = [];
   const invalid = [];
+  const mode = getValidationMode(env);
 
   for (const [name, value] of Object.entries(env)) {
-    if (value && FORBIDDEN_PUBLIC_SECRET_PATTERN.test(name)) {
+    if (value !== undefined && FORBIDDEN_PUBLIC_SECRET_PATTERN.test(name)) {
       invalid.push(`${name} must not be exposed with NEXT_PUBLIC_`);
     }
   }
 
-  if (env.NODE_ENV !== "production") {
+  if (mode === "invalid") {
+    invalid.push("NEXT_PUBLIC_APP_ENV must be production or staging when NODE_ENV=production");
+  }
+
+  if (mode === "development") {
     if (invalid.length > 0) {
       throw new Error(`Invalid frontend environment. ${invalid.join("; ")}`);
     }
@@ -105,7 +193,7 @@ export const validateFrontendEnv = (env = process.env) => {
     }
 
     if (PUBLIC_URL_ENV.has(name)) {
-      const error = validatePublicUrl(name, trimmed);
+      const error = validatePublicUrl(name, trimmed, mode);
       if (error) invalid.push(error);
     }
 
@@ -131,7 +219,7 @@ export const validateFrontendEnv = (env = process.env) => {
       continue;
     }
 
-    const error = validatePublicUrl(name, trimmed);
+    const error = validatePublicUrl(name, trimmed, mode);
     if (error && !invalid.includes(error)) invalid.push(error);
   }
 

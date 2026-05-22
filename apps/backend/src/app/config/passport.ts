@@ -3,6 +3,7 @@ import dotenv from 'dotenv';
 import prisma from '../db/prisma_client';
 import jwt from 'jsonwebtoken';
 import { JwtPayload } from 'jsonwebtoken';
+import { safeLogError } from '../utils/safeLogger';
 
 dotenv.config({ path: '.env' });
 
@@ -34,8 +35,7 @@ const safeAuthLog = (message: string, metadata?: SafeAuthLogMetadata) => {
 };
 
 const safeAuthError = (message: string, error: unknown, metadata?: SafeAuthLogMetadata) => {
-    const errorName = error instanceof Error ? error.name : typeof error;
-    console.error(message, { ...(metadata || {}), errorName });
+    safeLogError(message, error, metadata);
 };
 
 export const Authenticate = async (req: Request, res: Response, next: NextFunction) => {
@@ -52,9 +52,9 @@ export const Authenticate = async (req: Request, res: Response, next: NextFuncti
         }
 
         if (!token) {
-            safeAuthLog('User authentication token missing', {
-                cookiePresent: Boolean(req.cookies.userAuth),
-                authorizationHeaderPresent: Boolean(req.headers.authorization)
+            safeAuthLog('User authentication missing', {
+                hasUserSession: Boolean(req.cookies.userAuth),
+                hasAuthHeader: Boolean(req.headers.authorization)
             });
             return res.status(401).json({ success: false, message: 'Unauthenticated' });
         }
@@ -87,38 +87,33 @@ export const Authenticate = async (req: Request, res: Response, next: NextFuncti
             };
             next();
         } catch (jwtError) {
-            safeAuthError('User JWT verification failed', jwtError);
+            safeAuthError('user_auth_verify', jwtError);
             return res.status(403).json({ success: false, message: 'Invalid token' });
         }
     } catch (err) {
-        safeAuthError('User authentication failed', err);
+        safeAuthError('user_authenticate', err);
         return res.status(403).json({ success: false, message: 'Authentication failed' });
     }
 };
 
 export const AuthAdmin = async (req: Request, res: Response, next: NextFunction) => {
     try {
-        // Check for token in cookies first
-        let token = req.cookies.adminAuth;
-
-        // If no token in cookies, check Authorization header
-        if (!token && req.headers.authorization) {
-            const authHeader = req.headers.authorization;
-            if (authHeader.startsWith('Bearer ')) {
-                token = authHeader.substring(7);
-            }
-        }
+        const token = req.cookies?.adminAuth;
 
         if (!token) {
-            safeAuthLog('Admin authentication token missing', {
-                cookiePresent: Boolean(req.cookies.adminAuth),
-                authorizationHeaderPresent: Boolean(req.headers.authorization)
+            safeAuthLog('Admin authentication missing', {
+                hasAdminSession: Boolean(req.cookies?.adminAuth),
+                hasAuthHeader: Boolean(req.headers.authorization)
             });
             return res.status(401).json({ success: false, message: 'Unauthenticated' });
         }
 
         try {
             const decoded = jwt.verify(token, key) as Admin;
+            const adminId = Number(decoded.id);
+            if (!Number.isInteger(adminId) || typeof decoded.email !== 'string' || decoded.email.trim() === '') {
+                return res.status(403).json({ success: false, message: 'Invalid token subject' });
+            }
             
             const admin = await prisma.admin.findUnique({
                 where: { email: decoded.email },
@@ -135,11 +130,11 @@ export const AuthAdmin = async (req: Request, res: Response, next: NextFunction)
             req.user = decoded;
             next();
         } catch (jwtError) {
-            safeAuthError('Admin JWT verification failed', jwtError);
+            safeAuthError('admin_auth_verify', jwtError);
             return res.status(403).json({ success: false, message: 'Invalid token' });
         }
     } catch (err) {
-        safeAuthError('Admin authentication failed', err);
+        safeAuthError('admin_authenticate', err);
         return res.status(403).json({ success: false, message: 'Authentication failed' });
     }
 };

@@ -19,8 +19,8 @@ import {
   Input,
   Textarea,
 } from "@heroui/react";
-import axios from "axios";
 import { useTranslations } from 'next-intl';
+import apiClient from "../../../../utils/apiClient";
 
 interface News {
   id: number;
@@ -44,7 +44,7 @@ export default function NewsPage() {
 
   const fetchNews = async () => {
     try {
-      const response = await axios.get("/api/admin/news");
+      const response = await apiClient.get("/admin/news");
       if (response.data.success) {
         setNews(response.data.data);
       }
@@ -59,7 +59,7 @@ export default function NewsPage() {
 
   const handleCreate = async () => {
     try {
-      const response = await axios.post("/api/admin/news", formData);
+      const response = await apiClient.post("/admin/news", formData);
       if (response.data.success) {
         fetchNews();
         onClose();
@@ -73,8 +73,8 @@ export default function NewsPage() {
   const handleUpdate = async () => {
     if (!selectedNews) return;
     try {
-      const response = await axios.put(
-        `/api/admin/news/${selectedNews.id}`,
+      const response = await apiClient.patch(
+        `/admin/news/${selectedNews.id}`,
         formData
       );
       if (response.data.success) {
@@ -90,7 +90,7 @@ export default function NewsPage() {
 
   const handleDelete = async (id: number) => {
     try {
-      const response = await axios.delete(`/api/admin/news/${id}`);
+      const response = await apiClient.delete(`/admin/news/${id}`);
       if (response.data.success) {
         fetchNews();
       }
@@ -212,4 +212,4 @@ export default function NewsPage() {
       </Modal>
     </div>
   );
-} 
+}

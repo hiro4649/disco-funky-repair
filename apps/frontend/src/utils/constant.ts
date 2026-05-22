@@ -1,11 +1,15 @@
 export const NFT_ABI = [
-    "function mint(address owner, string memory uri) public returns (uint256)",
+    "function mint() public payable returns (uint256)",
     "function totalSupply() public view returns (uint256)",
-    "function getPrice() public view returns (uint256)",
+    "function getPrice() public view returns (int256)",
     "function nextTokenId() external view returns (uint256)",
+    "function MAX_SUPPLY() public view returns (uint256)",
+    "function mintEnabled() public view returns (bool)",
+    "function baseURI() external view returns (string memory)",
     "function ownerOf(uint256 tokenId) public view returns (address)",
     "function tokenURI(uint256 tokenId) public view returns (string memory)",
-    "function mintUsdPrice() public view returns (uint256)"
+    "function mintUsdPrice() public view returns (uint256)",
+    "event Transfer(address indexed from, address indexed to, uint256 indexed tokenId)"
 ];
 
 export const TOKEN_ABI = [

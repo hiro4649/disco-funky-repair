@@ -1,11 +1,12 @@
-import React, { useState, useEffect } from "react";
+import React from "react";
 import { Modal, ModalContent, ModalHeader, ModalBody } from "@nextui-org/modal";
 import { prizelist } from "@/types/prizelist";
 import Image from "next/image";
 import ButtonDefault from "../Buttons/ButtonDefault";
 import { useRouter } from "next/navigation";
-import axios from "axios";
 import { useTranslations } from 'next-intl';
+
+const TICKET_TOKEN_THRESHOLD = 10000;
 
 const NotEnoughTicketsModal = (props: {
     isOpen: boolean;
@@ -13,25 +14,8 @@ const NotEnoughTicketsModal = (props: {
     onClose: () => void;
 }) => {
     const router = useRouter();
-    const [tokenBalance, setTokenBalance] = useState<Number>(10000);
+    const tokenBalance = TICKET_TOKEN_THRESHOLD;
     const t = useTranslations('ModalTiket');
-    
-    useEffect(() => {
-        const getDiscoTokenBalance = async () => {
-          try {
-            const res = await axios.get(`${process.env.NEXT_PUBLIC_API_URL}/admin/seting/tokenbalance`);
-            if (res.status == 200) {
-              if (res.data.success) {
-                const data = res.data.data
-                setTokenBalance(data.balance)
-              }
-            }
-          } catch (e) {
-            console.log(e);
-          }
-        }
-        getDiscoTokenBalance();
-      }, [])
       
     return (
         <>

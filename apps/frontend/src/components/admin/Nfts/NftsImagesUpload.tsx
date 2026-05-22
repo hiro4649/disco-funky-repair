@@ -1,6 +1,6 @@
 import { useState, useRef, useCallback } from "react";
 import { addToast, Button, Image } from "@heroui/react";
-import axios from "axios";
+import apiClient from "../../../../utils/apiClient";
 
 interface NftsImagesUploadProps {
   onUploadComplete?: () => void;
@@ -89,8 +89,8 @@ export default function NftsUpload({ onUploadComplete }: NftsImagesUploadProps) 
       }
 
       try {
-        await axios.post(
-          `${process.env.NEXT_PUBLIC_API_URL}/admin/nft/upload/images`,
+        await apiClient.post(
+          "/admin/nft/upload/images",
           formData,
           {
             headers: { "Content-Type": "multipart/form-data" },

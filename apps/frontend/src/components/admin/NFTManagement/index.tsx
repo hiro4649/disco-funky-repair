@@ -76,8 +76,8 @@ export default function NFTManagement() {
 
   const initializeProvider = async () => {
     try {
-      if (!RPC_URL) {
-        toast.error("RPC URL not configured");
+      if (!RPC_URL || !NFT_CONTRACT_ADDRESS) {
+        toast.error("NFT RPC or contract address not configured");
         return;
       }
 
@@ -142,7 +142,7 @@ export default function NFTManagement() {
     return `$${price.toFixed(2)}`;
   };
 
-  const formatEthPrice = (priceWei: string) => {
+  const formatBnbPrice = (priceWei: string) => {
     const price = Number(priceWei) / Math.pow(10, 8);
     return `$${Number(price.toFixed(2))}`;
   };
@@ -196,8 +196,8 @@ export default function NFTManagement() {
                 <p className="text-lg font-semibold">{formatUsdPrice(nftInfo.mintUsdPrice)}</p>
               </div>
               <div>
-                <label className="text-sm font-medium text-gray-500">{t('Current ETH Price')}</label>
-                <p className="text-lg font-semibold">{formatEthPrice(nftInfo.currentPrice)}</p>
+                <label className="text-sm font-medium text-gray-500">{t('Current BNB Price')}</label>
+                <p className="text-lg font-semibold">{formatBnbPrice(nftInfo.currentPrice)}</p>
               </div>
             </div>
           ) : (
@@ -281,7 +281,7 @@ export default function NFTManagement() {
         <CardBody>
           <div className="space-y-4">
             <p className="text-sm text-gray-600">
-              {t('Withdraw all collected ETH from the contract to the owner address.')}
+              {t('Withdraw all collected BNB from the contract to the owner address.')}
             </p>
             <Button
               color="warning"

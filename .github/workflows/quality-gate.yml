@@ -1,0 +1,165 @@
+# CODEX_QUALITY_HARNESS_FILE v0.6.9
+name: quality-gate
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pull-requests: read
+  issues: read
+
+jobs:
+  quality-gate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Install policy package dependencies if present
+        shell: bash
+        run: |
+          set -euo pipefail
+          node - <<'NODE' > "$RUNNER_TEMP/codex-package-dirs.txt"
+          const fs = require('fs');
+          const path = require('path');
+          const policyPath = path.join('docs', 'process', 'CODEX_QUALITY_GATE_POLICY.json');
+          let dirs = ['.'];
+          if (fs.existsSync(policyPath)) {
+            const raw = fs.readFileSync(policyPath, 'utf8').replace(/^\uFEFF/, '');
+            const policy = JSON.parse(raw);
+            if (Array.isArray(policy.packageDirs) && policy.packageDirs.length) dirs = policy.packageDirs;
+          }
+          for (const dir of [...new Set(dirs)]) {
+            if (fs.existsSync(path.join(dir || '.', 'package.json'))) console.log(dir || '.');
+          }
+          NODE
+          while IFS= read -r dir; do
+            [ -n "$dir" ] || continue
+            (cd "$dir" && npm install --no-package-lock)
+          done < "$RUNNER_TEMP/codex-package-dirs.txt"
+      - name: Run local quality gate
+        shell: bash
+        env:
+          CODEX_REQUIRE_NPM: "1"
+          CODEX_RUN_PROFILE_REQUIRED_CHECKS: "1"
+          CODEX_QUALITY_REPORT: "json"
+          CODEX_PR_NUMBER: ${{ github.event.pull_request.number || '' }}
+          CODEX_PR_HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+          CODEX_PR_BASE_SHA: ${{ github.event.pull_request.base.sha || '' }}
+          CODEX_EVENT_NAME: ${{ github.event_name }}
+          CODEX_REPOSITORY: ${{ github.repository }}
+          CODEX_GITHUB_API_AVAILABLE: "1"
+          CODEX_GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          set +e
+          node scripts/codex-local-quality-gate.mjs > "$RUNNER_TEMP/codex-quality-gate.json"
+          gate_exit=$?
+          set -e
+          node - "$RUNNER_TEMP/codex-quality-gate.json" "$gate_exit" <<'NODE'
+          const fs = require('fs');
+          const file = process.argv[2];
+          const gateExit = Number(process.argv[3] || 0);
+          const raw = fs.readFileSync(file, 'utf8');
+          const report = JSON.parse(raw);
+
+          const requiredPass = [
+            'secretScan',
+            'prSeparationStatus',
+            'versionConsistency',
+            'policySchema',
+            'agentMemoryPolicyStatus',
+            'skillLifecyclePolicyStatus',
+            'curatorSuggestionStatus',
+            'selfEvolutionPolicyStatus',
+            'safeArtifactValidation',
+            'outputShapeStatus',
+          ];
+
+          const failures = [];
+          for (const key of requiredPass) {
+            const status = report[key]?.status || 'missing';
+            console.log(`${key}: ${status}`);
+            if (status !== 'pass') failures.push(`${key}=${status}`);
+          }
+
+          const profileStatus = report.profileRequiredChecks?.status || 'missing';
+          console.log(`profileRequiredChecks: ${profileStatus}`);
+          if (profileStatus !== 'pass') {
+            failures.push(`profileRequiredChecks=${profileStatus}`);
+          }
+
+          const localChecks = report.localGate?.checksRun || [];
+          const localCheckEntries = Array.isArray(localChecks)
+            ? localChecks.map((check, index) => [
+                check?.name || String(index),
+                check?.status || 'missing',
+              ])
+            : Object.entries(localChecks).map(([name, value]) => [
+                name,
+                typeof value === 'string' ? value : value?.status || 'missing',
+              ]);
+          for (const [name, status] of localCheckEntries) {
+            console.log(`localGate.${name}: ${status}`);
+            if (status !== 'pass' && status !== 'skipped') failures.push(`localGate.${name}=${status}`);
+          }
+
+          const manualStatus = report.manualConfirmationStatus?.status || 'missing';
+          const manualCannotOverride = Array.isArray(report.manualConfirmationStatus?.cannotOverrideFailures)
+            ? report.manualConfirmationStatus.cannotOverrideFailures
+            : [];
+          const mergePolicyCannotOverride = Array.isArray(report.manualMergePolicy?.cannotOverrideFailures)
+            ? report.manualMergePolicy.cannotOverrideFailures
+            : [];
+          const cannotOverride = [...new Set([...manualCannotOverride, ...mergePolicyCannotOverride])];
+          const manualAllowed = gateExit !== 0
+            && manualStatus === 'manual_confirmation_required'
+            && cannotOverride.length === 0;
+
+          console.log(`report.status: ${report.status}`);
+          console.log(`mergeReady: ${report.mergeReady}`);
+          console.log(`manualConfirmationStatus: ${manualStatus}`);
+          console.log(`cannotOverrideFailures: ${cannotOverride.length}`);
+
+          if (cannotOverride.length) failures.push('cannotOverrideFailures present');
+          if (report.status === 'fail' && !manualAllowed) {
+            failures.push(`report.status=${report.status}`);
+          }
+          if (report.status === 'fail' && gateExit === 0) {
+            failures.push('gate exit/status mismatch');
+          }
+          if (gateExit !== 0 && !manualAllowed) {
+            failures.push(`gate_exit=${gateExit}`);
+          }
+
+          const unsafe = [
+            /rawDiff/i,
+            /rawLogs/i,
+            /secretValue/i,
+            /endpointValue/i,
+            /privatePath/i,
+            /"payload"\s*:/i,
+            /productionData/i,
+            /personalData/i,
+            /(?:https?|postgres(?:ql)?|mysql|mongodb):\/\/\S+/i,
+            /\b(?:gh[pousr]_|sk-|AKIA|glpat-|npm_|xox[baprs]-)[A-Za-z0-9_-]{8,}\b/,
+            /-----BEGIN [^-]+PRIVATE KEY-----/i,
+          ];
+          if (unsafe.some((pattern) => pattern.test(raw))) {
+            failures.push('unsafe output pattern detected');
+          }
+
+          if (failures.length) {
+            console.error('Quality gate verification failed:');
+            for (const item of failures) console.error(`- ${item}`);
+            process.exit(1);
+          }
+          NODE

@@ -4,10 +4,43 @@
 
 このリポジトリは暗号資産サービス DISCO.fan / FUNKY.fan の修繕用リポジトリです。
 
-.env、秘密鍵、seed phrase、API key、DB接続情報、JWT secret、本番ログ、本番DB dumpを表示、作成、保存、コミットしてはいけません。
+.env、秘密鍵、シードフレーズ、API key、DB接続情報、JWT secret、本番ログ、本番DB dumpを表示、作成、保存、コミットしてはいけません。
 
 mainへ直接pushしてはいけません。
 すべての修正は小さいPRで行ってください。
+
+## FUNKY Authority Docs
+
+FUNKY repoで作業する場合、Codexは作業前に以下を読んでください。
+
+AGENTS.md
+docs/process/FUNKY_SPEC_AUTHORITY.md
+docs/process/FUNKY_RELEASE_GATE.md
+docs/process/FUNKY_ASSET_OPERATION_RUNBOOK.md
+docs/process/FUNKY_KNOWN_RISKS.md
+docs/process/CODEX_PR_REVIEW_PLAYBOOK.md
+docs/process/CODEX_POST_MERGE_CHECKLIST.md
+
+staging反映、runtime障害、secret漏洩、tx失敗、rollback判断が関係する場合は追加で以下を読んでください。
+
+docs/process/CODEX_INCIDENT_AND_ROLLBACK_RUNBOOK.md
+
+優先順位:
+
+1. docs/process/FUNKY_SPEC_AUTHORITY.md
+2. docs/process/FUNKY_RELEASE_GATE.md
+3. docs/process/FUNKY_ASSET_OPERATION_RUNBOOK.md
+4. docs/process/FUNKY_KNOWN_RISKS.md
+5. docs/process/CODEX_PR_REVIEW_PLAYBOOK.md
+6. docs/process/CODEX_POST_MERGE_CHECKLIST.md
+7. docs/process/CODEX_INCIDENT_AND_ROLLBACK_RUNBOOK.md
+8. AGENTS.md
+9. 個別タスク指示
+10. 既存docs/launch
+
+矛盾がある場合は推測で進めないでください。
+古いdocsを正としないでください。
+authority docsに従い、必要ならdocs更新PRを提案してください。
 
 ## 現在のフェーズ
 
@@ -57,3 +90,20 @@ mainへの直接push
 本番値の仮定
 テストなしのproduction ready宣言
 関係ないP1/P2修正の混入
+
+<!-- CODEX_QUALITY_HARNESS_BEGIN -->
+<!-- CODEX_QUALITY_HARNESS_FILE v0.6.9 -->
+## Codex Quality Harness
+
+Use the repo-local harness files in `docs/process/` and `scripts/codex-*`.
+Run the secret scan and local quality gate before reporting merge readiness.
+R3 or human-review-required changes need manual confirmation for the current head.
+Manual confirmation cannot override secret scan failures, blocked paths, high-confidence secrets, implementation/harness mixing, or profile-required failures.
+
+## Funky Asset Safety Rule
+
+資産、NFT、FanPoint、ticket、tier、送金、wallet、admin権限、contract、staging envに触れる変更はR3扱いにする。
+R3変更では、認証、認可、所有者確認、chainId、contract address、txHash、receipt、event log、idempotency、二重実行防止、rollbackを必ず確認する。
+DB更新だけでon-chain成功扱いにしない。
+tBNB未入金、staging未反映、receipt未確認の状態をproduction readyと書かない。
+<!-- CODEX_QUALITY_HARNESS_END -->

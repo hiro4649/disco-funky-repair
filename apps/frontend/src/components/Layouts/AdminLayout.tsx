@@ -4,18 +4,18 @@ import React, {
   useEffect,
   useLayoutEffect,
 } from "react";
-import { HeroUIProvider } from "@heroui/react";
+import { HeroUIProvider, ToastProvider } from "@heroui/react";
 import { useRouter, usePathname } from "next/navigation";
 import { useAppSelector, useAppDispatch } from "@/store/store";
 import { clearAdminAuth } from "@/store/slices/adminSlice";
 import Header from "../admin/Header";
 import Sidebar from "../admin/Sidebar";
-import { ToastProvider } from "@heroui/toast";
 import { Toaster } from "react-hot-toast";
 import apiClient from "../../../utils/apiClient";
 import { NextIntlClientProvider } from 'next-intl';
 import enMessages from '../../../locales/en.json';
 import jaMessages from '../../../locales/ja.json';
+import { safeClientLogError } from "@/utils/safeClientLogger";
 
 export default function AdminLayout({
   children,
@@ -24,7 +24,7 @@ export default function AdminLayout({
 }) {
   const router = useRouter();
   const pathName = usePathname();
-  const { adminAuthState, adminToken } = useAppSelector((state) => state.admin);
+  const { adminAuthState } = useAppSelector((state) => state.admin);
   const dispatch = useAppDispatch();
   const [isLoading, setIsLoading] = useState(true);
   const [isSidebarOpenOnMobile, setIsSidebarOpenOnMobile] = useState(false);
@@ -38,17 +38,14 @@ export default function AdminLayout({
 
   useEffect(() => {
     setIsClient(true);
-    if (adminToken) {
-      // Set auth header for future requests
-      apiClient.defaults.headers.common["Authorization"] = `Bearer ${adminToken}`;
-    }
+    delete apiClient.defaults.headers.common["Authorization"];
     // Load saved admin locale from localStorage
     const savedLocale = localStorage.getItem('adminLocale') as 'en' | 'ja' | null;
     if (savedLocale) {
       setAdminLocale(savedLocale);
     }
     setIsLoading(false);
-  }, [adminToken]);
+  }, []);
 
   // Function to change admin locale
   const changeAdminLocale = (newLocale: 'en' | 'ja') => {
@@ -71,14 +68,15 @@ export default function AdminLayout({
       .get(`/admin/logout`)
       .then((res) => {
         if (res.status === 200) {
-          // Clear the Authorization header
-          delete apiClient.defaults.headers.common["Authorization"];
-          dispatch(clearAdminAuth());
           router.push("/admin");
         }
       })
       .catch((err) => {
-        console.log(err);
+        safeClientLogError('admin_logout', err);
+      })
+      .finally(() => {
+        delete apiClient.defaults.headers.common["Authorization"];
+        dispatch(clearAdminAuth());
       });
   };
 
