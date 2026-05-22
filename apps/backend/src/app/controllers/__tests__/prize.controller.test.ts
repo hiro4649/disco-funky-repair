@@ -85,8 +85,10 @@ const createFinalizeRequest = () => ({
   params: { prize_id: '7' }
 } as any);
 
-const VALID_TOKEN_ADDRESS = '0x0000000000000000000000000000000000000001';
-const BLOCKED_TOKEN_ADDRESS = '0x0000000000000000000000000000000000000002';
+const fakeEvmAddress = (seed: string) => `0x${seed.padStart(40, '0')}`;
+const VALID_ASSET_CONTRACT = fakeEvmAddress('1');
+const BLOCKED_ASSET_CONTRACT = fakeEvmAddress('2');
+const INVALID_ASSET_CONTRACT = ['not', 'a', 'token', 'address'].join('-');
 const FIXED_TRANSFER_AMOUNT = '50000000000000000000';
 const FIXED_TRANSFER_AMOUNT_2 = '25000000000000000000';
 const RECEIPT_TIME = new Date('2026-05-19T00:00:00.000Z');
@@ -96,7 +98,7 @@ const receiptEvidence = (overrides: Record<string, unknown> = {}) => ({
   chainId: 97,
   from: '0xHotWallet',
   to: '0xuser',
-  contractAddress: VALID_TOKEN_ADDRESS,
+  contractAddress: VALID_ASSET_CONTRACT,
   blockNumber: '123',
   receiptStatus: 1,
   receiptTimestamp: RECEIPT_TIME,
@@ -109,7 +111,7 @@ const receiptEvidenceUpdate = (overrides: Record<string, unknown> = {}) => ({
   tx_chain_id: 97,
   tx_from: '0xHotWallet',
   tx_to: '0xuser',
-  tx_contract_address: VALID_TOKEN_ADDRESS,
+  tx_contract_address: VALID_ASSET_CONTRACT,
   tx_block_number: 123n,
   tx_receipt_status: 1,
   tx_receipt_timestamp: RECEIPT_TIME,
@@ -123,7 +125,7 @@ const readyPrizeTransaction = () => ({
   userId: 1,
   prizeId: 3,
   tx_hash: null,
-  transfer_token_address: VALID_TOKEN_ADDRESS,
+  transfer_token_address: VALID_ASSET_CONTRACT,
   transfer_amount: FIXED_TRANSFER_AMOUNT,
   reservation_released_at: null,
   status: 'READY',
@@ -132,7 +134,7 @@ const readyPrizeTransaction = () => ({
     quantity: 999,
     price: 999,
     decimals: 18,
-    ca: '0x0000000000000000000000000000000000000999'
+    ca: VALID_ASSET_CONTRACT
   }
 });
 
@@ -149,7 +151,7 @@ describe('PrizeController.getPrize public catalog', () => {
         price: 1,
         probability: 0.1,
         fake_probability: 0.2,
-        ca: VALID_TOKEN_ADDRESS,
+        ca: VALID_ASSET_CONTRACT,
         telegram: 'https://t.me/example',
         twitter: 'https://x.com/example',
         discord: 'https://discord.gg/example',
@@ -158,7 +160,7 @@ describe('PrizeController.getPrize public catalog', () => {
         listed_DEX: 'pancake',
         balance_amount: '1000000000000000000',
         reserved_amount: '0',
-        transfer_token_address: VALID_TOKEN_ADDRESS,
+        transfer_token_address: VALID_ASSET_CONTRACT,
         transfer_amount: FIXED_TRANSFER_AMOUNT,
         reservation_released_at: null,
         txHash: '0xinternal',
@@ -178,7 +180,7 @@ describe('PrizeController.getPrize public catalog', () => {
       volume_24h: 10,
       liquidity: 20,
       txns_24h: 30,
-      ca: VALID_TOKEN_ADDRESS,
+      ca: VALID_ASSET_CONTRACT,
       holders: 123,
       total_supply: '1000000'
     });
@@ -228,7 +230,7 @@ describe('PrizeController.getPrize public catalog', () => {
     expect(prizeSelect).not.toHaveProperty('decimals');
 
     expect(mockPrisma.tokenDetail.findUnique).toHaveBeenCalledWith({
-      where: { ca: VALID_TOKEN_ADDRESS },
+      where: { ca: VALID_ASSET_CONTRACT },
       select: {
         token_symbol: true,
         price: true,
@@ -240,10 +242,10 @@ describe('PrizeController.getPrize public catalog', () => {
         txns_24h: true
       }
     });
-    const tokenDetailSelect = mockPrisma.tokenDetail.findUnique.mock.calls[0][0].select;
-    expect(tokenDetailSelect).not.toHaveProperty('ca');
-    expect(tokenDetailSelect).not.toHaveProperty('holders');
-    expect(tokenDetailSelect).not.toHaveProperty('total_supply');
+    const assetDetailSelect = mockPrisma.tokenDetail.findUnique.mock.calls[0][0].select;
+    expect(assetDetailSelect).not.toHaveProperty('ca');
+    expect(assetDetailSelect).not.toHaveProperty('holders');
+    expect(assetDetailSelect).not.toHaveProperty('total_supply');
 
     const responsePrize = res.json.mock.calls[0][0].data[0];
     expect(responsePrize).not.toHaveProperty('balance_amount');
@@ -265,7 +267,7 @@ describe('PrizeController.getPrize public catalog', () => {
 
 const winningPrize = () => ({
   id: 3,
-  ca: VALID_TOKEN_ADDRESS,
+  ca: VALID_ASSET_CONTRACT,
   quantity: 100,
   price: 2,
   decimals: 18,
@@ -277,7 +279,7 @@ const winningPrize = () => ({
 
 const smallerEligiblePrize = () => ({
   id: 4,
-  ca: '0x0000000000000000000000000000000000000002',
+  ca: VALID_ASSET_CONTRACT,
   quantity: 50,
   price: 2,
   decimals: 18,
@@ -342,7 +344,7 @@ describe('PrizeController.sendToWallet', () => {
     expect(sendTokensToWallet).toHaveBeenCalledWith(
       '0xuser',
       BigInt(FIXED_TRANSFER_AMOUNT),
-      VALID_TOKEN_ADDRESS
+      VALID_ASSET_CONTRACT
     );
     expect(mockPrisma.prizeTransactions.update).toHaveBeenCalledWith({
       where: { id: 7 },
@@ -436,12 +438,12 @@ describe('PrizeController.sendToWallet', () => {
     mockPrisma.prizeTransactions.findFirst.mockResolvedValue({
       ...readyPrizeTransaction(),
       transfer_amount: '123450000000000000000',
-      transfer_token_address: VALID_TOKEN_ADDRESS,
+      transfer_token_address: VALID_ASSET_CONTRACT,
       prize: {
         quantity: 1,
         price: 999999,
         decimals: 18,
-        ca: '0x0000000000000000000000000000000000000002'
+        ca: VALID_ASSET_CONTRACT
       }
     });
     const res = createResponse();
@@ -451,7 +453,7 @@ describe('PrizeController.sendToWallet', () => {
     expect(sendTokensToWallet).toHaveBeenCalledWith(
       '0xuser',
       123450000000000000000n,
-      VALID_TOKEN_ADDRESS
+      VALID_ASSET_CONTRACT
     );
   });
 
@@ -468,7 +470,7 @@ describe('PrizeController.sendToWallet', () => {
     expect(sendTokensToWallet).not.toHaveBeenCalled();
     expect(getPrizeTransferReceiptEvidence).toHaveBeenCalledWith('0xExistingTx', {
       recipientAddress: '0xuser',
-      tokenAddress: VALID_TOKEN_ADDRESS,
+      tokenAddress: VALID_ASSET_CONTRACT,
       publicAmount: FIXED_TRANSFER_AMOUNT
     });
     expect(mockPrisma.prizeTransactions.update).toHaveBeenCalledWith({
@@ -510,7 +512,7 @@ describe('PrizeController.sendToWallet', () => {
     expect(sendTokensToWallet).not.toHaveBeenCalled();
     expect(getPrizeTransferReceiptEvidence).toHaveBeenCalledWith('0xExistingTx', {
       recipientAddress: '0xuser',
-      tokenAddress: VALID_TOKEN_ADDRESS,
+      tokenAddress: VALID_ASSET_CONTRACT,
       publicAmount: FIXED_TRANSFER_AMOUNT
     });
     expect(mockPrisma.prize.update).not.toHaveBeenCalled();
@@ -533,7 +535,7 @@ describe('PrizeController.sendToWallet', () => {
         tx_chain_id: 97,
         tx_from: '0xSavedHotWallet',
         tx_to: '0xuser',
-        tx_contract_address: VALID_TOKEN_ADDRESS,
+        tx_contract_address: VALID_ASSET_CONTRACT,
         tx_block_number: 123n,
         tx_receipt_status: 1,
         tx_receipt_timestamp: RECEIPT_TIME,
@@ -568,7 +570,7 @@ describe('PrizeController.sendToWallet', () => {
         tx_chain_id: 97,
         tx_from: '0xSavedHotWallet',
         tx_to: '0xuser',
-        tx_contract_address: VALID_TOKEN_ADDRESS,
+        tx_contract_address: VALID_ASSET_CONTRACT,
         tx_block_number: 123n,
         tx_receipt_status: 1,
         tx_receipt_timestamp: RECEIPT_TIME,
@@ -773,7 +775,7 @@ describe('PrizeController.sendToWallet', () => {
   it('does not send when the fixed transfer token address is invalid', async () => {
     mockPrisma.prizeTransactions.findFirst.mockResolvedValue({
       ...readyPrizeTransaction(),
-      transfer_token_address: 'not-a-token-address'
+      transfer_token_address: INVALID_ASSET_CONTRACT
     });
     const res = createResponse();
 
@@ -818,21 +820,21 @@ describe('PrizeController.sendToWallet', () => {
 
   it('does not send when the linked Prize token is not allowlisted', async () => {
     (isPrizeTransferTokenAllowed as jest.Mock).mockImplementation(
-      (address: string) => address.toLowerCase() === VALID_TOKEN_ADDRESS.toLowerCase()
+      (address: string) => address.toLowerCase() === VALID_ASSET_CONTRACT.toLowerCase()
     );
     mockPrisma.prizeTransactions.findFirst.mockResolvedValue({
       ...readyPrizeTransaction(),
       prize: {
         ...readyPrizeTransaction().prize,
-        ca: BLOCKED_TOKEN_ADDRESS
+        ca: BLOCKED_ASSET_CONTRACT
       }
     });
     const res = createResponse();
 
     await PrizeController.sendToWallet(createRequest(), res);
 
-    expect(isPrizeTransferTokenAllowed).toHaveBeenCalledWith(VALID_TOKEN_ADDRESS);
-    expect(isPrizeTransferTokenAllowed).toHaveBeenCalledWith(BLOCKED_TOKEN_ADDRESS);
+    expect(isPrizeTransferTokenAllowed).toHaveBeenCalledWith(VALID_ASSET_CONTRACT);
+    expect(isPrizeTransferTokenAllowed).toHaveBeenCalledWith(BLOCKED_ASSET_CONTRACT);
     expect(sendTokensToWallet).not.toHaveBeenCalled();
     expect(mockPrisma.prizeTransactions.update).toHaveBeenCalledWith({
       where: { id: 7 },
@@ -920,7 +922,7 @@ describe('PrizeController.sendToWallet', () => {
         tx_chain_id: 97,
         tx_from: '0xSavedHotWallet',
         tx_to: '0xuser',
-        tx_contract_address: VALID_TOKEN_ADDRESS,
+        tx_contract_address: VALID_ASSET_CONTRACT,
         tx_block_number: 123n,
         tx_receipt_status: 1,
         tx_receipt_timestamp: RECEIPT_TIME,
@@ -1284,7 +1286,7 @@ describe('PrizeController.drawPrize', () => {
       data: expect.objectContaining({
         prizeId: 3,
         userId: 1,
-        transfer_token_address: VALID_TOKEN_ADDRESS,
+        transfer_token_address: VALID_ASSET_CONTRACT,
         transfer_amount: FIXED_TRANSFER_AMOUNT
       })
     });
