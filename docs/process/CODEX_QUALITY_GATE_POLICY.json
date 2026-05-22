@@ -1,5 +1,5 @@
 {
-  "marker": "CODEX_QUALITY_HARNESS_FILE v0.6.8",
+  "marker": "CODEX_QUALITY_HARNESS_FILE v0.6.9",
   "profile": "funky",
   "packageDirs": [
     "apps/backend",
@@ -79,7 +79,7 @@
       "script": "prisma:validate",
       "profileRequired": true,
       "env": {
-        "DATABASE_URL": "postgresql://codex_harness:codex_harness@127.0.0.1:5432/codex_harness?schema=public"
+        "DATABASE_URL": "postgresql:\/\/codex_harness:codex_harness@127.0.0.1:5432\/codex_harness?schema=public"
       }
     },
     {
@@ -89,7 +89,7 @@
       "script": "build",
       "profileRequired": true,
       "env": {
-        "DATABASE_URL": "postgresql://codex_harness:codex_harness@127.0.0.1:5432/codex_harness?schema=public"
+        "DATABASE_URL": "postgresql:\/\/codex_harness:codex_harness@127.0.0.1:5432\/codex_harness?schema=public"
       }
     },
     {
@@ -99,7 +99,7 @@
       "script": "test",
       "profileRequired": true,
       "env": {
-        "DATABASE_URL": "postgresql://codex_harness:codex_harness@127.0.0.1:5432/codex_harness?schema=public"
+        "DATABASE_URL": "postgresql:\/\/codex_harness:codex_harness@127.0.0.1:5432\/codex_harness?schema=public"
       }
     },
     {
