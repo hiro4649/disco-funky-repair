@@ -97,8 +97,17 @@ jobs:
             failures.push(`profileRequiredChecks=${profileStatus}`);
           }
 
-          const localChecks = report.localGate?.checksRun || {};
-          for (const [name, status] of Object.entries(localChecks)) {
+          const localChecks = report.localGate?.checksRun || [];
+          const localCheckEntries = Array.isArray(localChecks)
+            ? localChecks.map((check, index) => [
+                check?.name || String(index),
+                check?.status || 'missing',
+              ])
+            : Object.entries(localChecks).map(([name, value]) => [
+                name,
+                typeof value === 'string' ? value : value?.status || 'missing',
+              ]);
+          for (const [name, status] of localCheckEntries) {
             console.log(`localGate.${name}: ${status}`);
             if (status !== 'pass' && status !== 'skipped') failures.push(`localGate.${name}=${status}`);
           }
