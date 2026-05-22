@@ -4,7 +4,7 @@
 
 このリポジトリは暗号資産サービス DISCO.fan / FUNKY.fan の修繕用リポジトリです。
 
-.env、秘密鍵、seed phrase、API key、DB接続情報、JWT secret、本番ログ、本番DB dumpを表示、作成、保存、コミットしてはいけません。
+.env、秘密鍵、シードフレーズ、API key、DB接続情報、JWT secret、本番ログ、本番DB dumpを表示、作成、保存、コミットしてはいけません。
 
 mainへ直接pushしてはいけません。
 すべての修正は小さいPRで行ってください。
@@ -92,7 +92,7 @@ mainへの直接push
 関係ないP1/P2修正の混入
 
 <!-- CODEX_QUALITY_HARNESS_BEGIN -->
-<!-- CODEX_QUALITY_HARNESS_FILE v0.6.8 -->
+<!-- CODEX_QUALITY_HARNESS_FILE v0.6.9 -->
 ## Codex Quality Harness
 
 Use the repo-local harness files in `docs/process/` and `scripts/codex-*`.
@@ -102,8 +102,8 @@ Manual confirmation cannot override secret scan failures, blocked paths, high-co
 
 ## Funky Asset Safety Rule
 
-資産、NFT、FanPoint、ticket、tier、wallet、admin権限、contract、staging envに触れる変更はR3として扱ってください。
-R3変更では、認証、認可、所有者確認、chainId、contract address、txHash、receipt、event log、idempotency、二重実行防止、rollback確認が必要です。
-DB更新だけでon-chain成功扱いにしてはいけません。
-tBNB未funded、staging未反映、receipt未確認の状態をproduction readyと書いてはいけません。
+資産、NFT、FanPoint、ticket、tier、送金、wallet、admin権限、contract、staging envに触れる変更はR3扱いにする。
+R3変更では、認証、認可、所有者確認、chainId、contract address、txHash、receipt、event log、idempotency、二重実行防止、rollbackを必ず確認する。
+DB更新だけでon-chain成功扱いにしない。
+tBNB未入金、staging未反映、receipt未確認の状態をproduction readyと書かない。
 <!-- CODEX_QUALITY_HARNESS_END -->
