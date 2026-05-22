@@ -111,11 +111,6 @@ const looksPlaceholder = (value) => {
 };
 
 const getCodeMainSha = () => {
-  for (const candidate of ['GITHUB_SHA', 'VERCEL_GIT_COMMIT_SHA', 'DEPLOYED_SOURCE_SHA']) {
-    const value = process.env[candidate]?.trim();
-    if (/^[a-f0-9]{40}$/i.test(value || '')) return value;
-  }
-
   try {
     return execSync('git rev-parse HEAD', {
       cwd: repoRoot,
@@ -287,8 +282,12 @@ const auditBscChainContractAllowlist = (env) => {
   return labels.length === 0 ? STATUS.PASS : STATUS.FAIL;
 };
 
-const auditDeploymentSource = (env, codeMainSha) => {
-  const shaNames = [
+const auditDeploymentSource = (env) => {
+  const expectedShaNames = ['CODEX_EXPECTED_SOURCE_SHA', 'EXPECTED_DEPLOYED_SOURCE_SHA'];
+  const expected = expectedShaNames
+    .map((name) => env[name]?.trim())
+    .find((value) => /^[a-f0-9]{40}$/i.test(value || ''));
+  const observedShaNames = [
     'DEPLOYED_SOURCE_SHA',
     'GITHUB_SHA',
     'VERCEL_GIT_COMMIT_SHA',
@@ -297,11 +296,23 @@ const auditDeploymentSource = (env, codeMainSha) => {
     'SOURCE_VERSION',
     'COMMIT_SHA'
   ];
-  const observed = shaNames
+  const observed = observedShaNames
     .map((name) => env[name]?.trim())
     .find((value) => /^[a-f0-9]{40}$/i.test(value || ''));
-  if (!observed) return STATUS.PENDING;
-  return observed.toLowerCase() === String(codeMainSha).toLowerCase() ? STATUS.PASS : STATUS.FAIL;
+
+  const labels = [];
+  if (!expected) labels.push('expected_source_sha_missing');
+  if (!observed) labels.push('observed_source_sha_missing');
+
+  if (!expected || !observed) {
+    return { status: STATUS.PENDING, labels };
+  }
+
+  if (observed.toLowerCase() === expected.toLowerCase()) {
+    return { status: STATUS.PASS, labels: ['deployed_source_sha_matched'] };
+  }
+
+  return { status: STATUS.FAIL, labels: ['deployed_source_sha_mismatch'] };
 };
 
 const addBlocker = (blockers, status, label) => {
@@ -314,7 +325,7 @@ const main = async () => {
   const frontend = await auditFrontendEnv(process.env);
   const forbiddenPlaceholderCheck = auditForbiddenPlaceholders(process.env);
   const bscChainContractAllowlistCheck = auditBscChainContractAllowlist(process.env);
-  const deploymentSourceCheck = auditDeploymentSource(process.env, codeMainSha);
+  const deploymentSource = auditDeploymentSource(process.env);
   const rollbackPlanCheck = normalizeStatus(
     process.env.CODEX_ROLLBACK_PLAN_STATUS || process.env.ROLLBACK_PLAN_STATUS,
     [STATUS.PASS, STATUS.FAIL, STATUS.PENDING],
@@ -331,7 +342,7 @@ const main = async () => {
   addBlocker(remainingBlockers, frontend.status, 'frontend_production_env_validation');
   addBlocker(remainingBlockers, forbiddenPlaceholderCheck, 'forbidden_placeholder_check');
   addBlocker(remainingBlockers, bscChainContractAllowlistCheck, 'bsc_chain_contract_allowlist_check');
-  addBlocker(remainingBlockers, deploymentSourceCheck, 'deployment_source_check');
+  addBlocker(remainingBlockers, deploymentSource.status, 'deployment_source_check');
   addBlocker(remainingBlockers, rollbackPlanCheck, 'rollback_plan_check');
   addBlocker(remainingBlockers, runtimeEvidence, 'runtime_evidence');
 
@@ -343,7 +354,8 @@ const main = async () => {
     frontendMissingEnvNames: frontend.missing,
     forbiddenPlaceholderCheck,
     bscChainContractAllowlistCheck,
-    deploymentSourceCheck,
+    deploymentSourceCheck: deploymentSource.status,
+    deploymentSourceLabels: safeSet(deploymentSource.labels),
     rollbackPlanCheck,
     runtimeEvidence,
     productionReadyClaim: 'NO',

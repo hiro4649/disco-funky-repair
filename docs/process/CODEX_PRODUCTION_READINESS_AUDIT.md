@@ -56,8 +56,30 @@ Rollback plan evidence is `PENDING` unless the deployment environment supplies:
 - `CODEX_ROLLBACK_PLAN_STATUS=FAIL`
 - `CODEX_ROLLBACK_PLAN_STATUS=PENDING`
 
-Deployment source is checked from safe commit SHA variables such as `DEPLOYED_SOURCE_SHA`, `GITHUB_SHA`, or provider commit SHA variables.
-Only the status is reported.
+## Deployment Source Labels
+
+Deployment source is checked by comparing an expected source SHA with an observed deployed SHA.
+The expected SHA must be supplied with one of:
+
+- `CODEX_EXPECTED_SOURCE_SHA`
+- `EXPECTED_DEPLOYED_SOURCE_SHA`
+
+The expected SHA is a commit SHA only and is not a secret, but the auditor still does not print it.
+Observed deployed SHA values are also never printed.
+
+Deployment source status rules:
+
+- expected SHA missing: `deploymentSourceCheck` is `PENDING`
+- observed SHA missing: `deploymentSourceCheck` is `PENDING`
+- expected and observed SHA match: `deploymentSourceCheck` is `PASS`
+- expected and observed SHA mismatch: `deploymentSourceCheck` is `FAIL`
+
+The auditor may emit only safe deployment source labels:
+
+- `expected_source_sha_missing`
+- `observed_source_sha_missing`
+- `deployed_source_sha_matched`
+- `deployed_source_sha_mismatch`
 
 ## Strict Mode
 
