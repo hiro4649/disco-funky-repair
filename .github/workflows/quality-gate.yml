@@ -93,7 +93,7 @@ jobs:
 
           const profileStatus = report.profileRequiredChecks?.status || 'missing';
           console.log(`profileRequiredChecks: ${profileStatus}`);
-          if (!['pass', 'not_run', 'skipped'].includes(profileStatus)) {
+          if (profileStatus !== 'pass') {
             failures.push(`profileRequiredChecks=${profileStatus}`);
           }
 
@@ -113,9 +113,16 @@ jobs:
           }
 
           const manualStatus = report.manualConfirmationStatus?.status || 'missing';
-          const cannotOverride = Array.isArray(report.manualMergePolicy?.cannotOverrideFailures)
+          const manualCannotOverride = Array.isArray(report.manualConfirmationStatus?.cannotOverrideFailures)
+            ? report.manualConfirmationStatus.cannotOverrideFailures
+            : [];
+          const mergePolicyCannotOverride = Array.isArray(report.manualMergePolicy?.cannotOverrideFailures)
             ? report.manualMergePolicy.cannotOverrideFailures
             : [];
+          const cannotOverride = [...new Set([...manualCannotOverride, ...mergePolicyCannotOverride])];
+          const manualAllowed = gateExit !== 0
+            && manualStatus === 'manual_confirmation_required'
+            && cannotOverride.length === 0;
 
           console.log(`report.status: ${report.status}`);
           console.log(`mergeReady: ${report.mergeReady}`);
@@ -123,13 +130,13 @@ jobs:
           console.log(`cannotOverrideFailures: ${cannotOverride.length}`);
 
           if (cannotOverride.length) failures.push('cannotOverrideFailures present');
-          if (report.status === 'fail' && manualStatus !== 'manual_confirmation_required') {
+          if (report.status === 'fail' && !manualAllowed) {
             failures.push(`report.status=${report.status}`);
           }
           if (report.status === 'fail' && gateExit === 0) {
             failures.push('gate exit/status mismatch');
           }
-          if (gateExit !== 0 && manualStatus !== 'manual_confirmation_required') {
+          if (gateExit !== 0 && !manualAllowed) {
             failures.push(`gate_exit=${gateExit}`);
           }
 
