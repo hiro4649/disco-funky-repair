@@ -1,5 +1,6 @@
 import { Request, Response } from 'express';
 import prisma from '../db/prisma_client';
+import { safeLogError } from '../utils/safeLogger';
 
 const GOVERNANCE_MANUAL_REVIEW_RESPONSE = {
   success: false,
@@ -35,8 +36,7 @@ export class DexFeeController {
       });
 
     } catch (error) {
-      const errorName = error instanceof Error ? error.name : typeof error;
-      console.error('Error fetching DEX addresses:', { errorName });
+      safeLogError('dex_fee_get_dex_addresses', error);
       return res.status(500).json({
         success: false,
         message: 'Failed to fetch DEX addresses'
@@ -101,8 +101,7 @@ export class DexFeeController {
       });
 
     } catch (error) {
-      const errorName = error instanceof Error ? error.name : typeof error;
-      console.error('Error fetching fee change history:', { errorName });
+      safeLogError('dex_fee_get_fee_change_history', error);
       return res.status(500).json({
         success: false,
         message: 'Failed to fetch fee change history'
@@ -154,8 +153,7 @@ export class DexFeeController {
       });
 
     } catch (error) {
-      const errorName = error instanceof Error ? error.name : typeof error;
-      console.error('Error fetching current fee settings:', { errorName });
+      safeLogError('dex_fee_get_current_settings', error);
       return res.status(500).json({
         success: false,
         message: 'Failed to fetch current fee settings'

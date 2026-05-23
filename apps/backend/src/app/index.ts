@@ -11,6 +11,7 @@ import { Server as SocketIOServer } from 'socket.io';
 import { configureSecurityMiddleware } from './middlewares/security';
 import { rejectNonImageStaticAsset } from './middlewares/publicImageAssets';
 import { getCorsOrigins, getRequestBodyLimit } from './config/runtime';
+import { safeLogError } from './utils/safeLogger';
 import './lib/validateEnvs';
 import './services/trackingService';
 
@@ -31,12 +32,8 @@ export const io = new SocketIOServer(server, {
 
 // WebSocket connection logging for wallet data updates
 io.on('connection', (socket) => {
-    console.log(`🔌 Client connected to WebSocket: ${socket.id}`);
-    console.log(`   Total connected clients: ${io.engine.clientsCount}`);
-
     socket.on('disconnect', () => {
-        console.log(`🔌 Client disconnected: ${socket.id}`);
-        console.log(`   Total connected clients: ${io.engine.clientsCount}`);
+        // Connection lifecycle is intentionally not logged to avoid client id exposure.
     });
 });
 
@@ -68,12 +65,10 @@ app.use(passport.initialize());
 // Multer may store non-image files under uploads; do not expose the root directory.
 const uploadsPath = path.resolve(process.cwd(), 'uploads');
 const imagesPath = path.resolve(uploadsPath, 'images');
-console.log('Static image files served from configured uploads directory');
 
 // Ensure upload directories exist
 if (!fs.existsSync(imagesPath)) {
     fs.mkdirSync(imagesPath, { recursive: true });
-    console.log('📁 Created uploads/images directory');
 }
 
 app.use('/uploads/images', rejectNonImageStaticAsset, express.static(imagesPath));
@@ -85,11 +80,13 @@ app.use('/api', Router);
 
 // Error handling middleware
 app.use((err: Error, req: express.Request, res: express.Response, next: express.NextFunction) => {
-    console.error('Global error handler:', err);
+    safeLogError('express_global_error_handler', err, {
+        method: req.method,
+        route: req.route?.path ? String(req.route.path) : undefined
+    });
     res.status(500).json({
         success: false,
-        message: 'Internal server error',
-        error: process.env.NODE_ENV === 'development' ? err.message : undefined
+        message: 'Internal server error'
     });
 });
 

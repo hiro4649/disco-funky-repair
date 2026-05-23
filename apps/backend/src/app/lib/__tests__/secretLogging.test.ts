@@ -51,6 +51,8 @@ describe('explorer request logging safety', () => {
       `${sessionSecretKey}=session-secret-value`,
       `${databaseUrlKey}=postgresql://user:password@db.example.invalid:5432/app`,
       `${privateKeyLabel}=0x1234567890abcdef`,
+      'C:\\Users\\HIRO-001\\Documents\\CodexProjects\\FUNKY\\uploads\\image.png',
+      '/home/funky/app/uploads/image.png',
       privateKey
     ].join(' ');
 
@@ -68,8 +70,11 @@ describe('explorer request logging safety', () => {
     expect(sanitized).not.toContain('SESSION_SECRET');
     expect(sanitized).not.toContain('DATABASE_URL');
     expect(sanitized).not.toContain('PRIVATE_KEY');
+    expect(sanitized).not.toContain('HIRO-001');
+    expect(sanitized).not.toContain('/home/funky/app');
     expect(sanitized).toContain('[redacted-url]');
     expect(sanitized).toContain('[redacted-credential]');
+    expect(sanitized).toContain('[redacted-path]');
   });
 
   it('logs safe explorer failure metadata without the raw error object or API URL', () => {
@@ -166,6 +171,7 @@ describe('explorer request logging safety', () => {
       passportSource,
       routeUtilsSource,
       routesSource,
+      nftRoutesSource,
       monitoringRoutesSource,
       referralRoutesSource
     ]) {
@@ -179,5 +185,32 @@ describe('explorer request logging safety', () => {
     expect(routesSource).toContain("safeLogError('global_route_handler'");
     expect(monitoringRoutesSource).toContain("safeLogError('monitoring_run_daily_batch'");
     expect(referralRoutesSource).toContain("safeLogError('referral_track'");
+  });
+
+  it('keeps remaining high-risk backend handlers off direct console and raw internal error responses', () => {
+    const sources = [
+      readAppFile('index.ts'),
+      readAppFile('config', 'passport.ts'),
+      readAppFile('controllers', 'auth.controller.ts'),
+      readAppFile('controllers', 'dexFeeController.ts'),
+      readAppFile('controllers', 'illustration.controller.ts'),
+      readAppFile('controllers', 'lotter.controller.ts'),
+      readAppFile('controllers', 'news.controller.ts'),
+      readAppFile('controllers', 'nft.controller.ts'),
+      readAppFile('controllers', 'setTicketDistribute.controller.ts'),
+      readAppFile('controllers', 'ticketCodeController.ts'),
+      readAppFile('controllers', 'transactionHistoryController.ts'),
+      readAppFile('controllers', 'trialNftTemplate.controller.ts'),
+      readAppFile('controllers', 'userManage.controller.ts')
+    ];
+
+    for (const source of sources) {
+      expect(source).not.toMatch(/console\.(?:error|log|warn)/);
+      expect(source).not.toContain('console.log(req.body)');
+      expect(source).not.toContain('error: error instanceof Error ? error.message');
+      expect(source).not.toMatch(/error\s*:\s*error\.(?:message|stack)/);
+      expect(source).not.toContain('Internal server error: JWT secret is not set.');
+      expect(source).not.toContain('JWT_SECRET environment variable not set');
+    }
   });
 });

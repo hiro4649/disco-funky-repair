@@ -3,6 +3,7 @@ import { PrismaClient } from '@prisma/client';
 import getDiscoNFTEVM from '../lib/getDiscoNFTEVM';
 import moment from 'moment';
 import { isSixHourUpdateRunning } from '../lib/trackingTokenBalanceEthereum';
+import { safeLogError, safeLogWarn } from '../utils/safeLogger';
 
 const prisma = new PrismaClient();
 
@@ -53,7 +54,7 @@ export class LotteryController {
                 waitToken: data.sixHourTokenBalance
             });
         } catch (err) {
-            console.error(err);
+            safeLogError('lottery_check_disco_balance', err, { userId });
             return res.status(500).json({
                 success: false,
                 message: 'Error checking token balance'
@@ -121,10 +122,7 @@ export class LotteryController {
                 weeklyBalance: ownedToken.weeklyTokenBalance
             });
         } catch (error) {
-            console.error(
-                `Error fetching lottery ticket for user ${userId}:`,
-                error
-            );
+            safeLogError('lottery_check_ticket', error, { userId });
             return res.status(500).json({
                 success: false,
                 message: 'An error occurred while fetching data'
@@ -198,7 +196,7 @@ export class LotteryController {
             })
             return res.status(200).json({ success: true, message: 'Saved!' });
         } catch (error) {
-            console.error('Error in testTicket:', error);
+            safeLogError('lottery_add_ticket', error);
             return res.status(500).json({
                 success: false,
                 message: 'An error occurred while updating lottery tickets'
@@ -231,7 +229,13 @@ export class LotteryController {
                     .json({ success: false, msg: 'Not found' });
 
             return res.status(200).json({ success: true, data: data });
-        } catch (e) { }
+        } catch (e) {
+            safeLogError('lottery_get_ticket_date', e, { userId: id });
+            return res.status(500).json({
+                success: false,
+                message: 'An error occurred while fetching data'
+            });
+        }
     }
 
     static async checkAndUpdateLotteryTicket(req: Request, res: Response) {
@@ -265,10 +269,7 @@ export class LotteryController {
             // });
             return res.status(200).json({ ticket: totalTickets.tickets })
         } catch (e) {
-            console.error(
-                `Error fetching lottery ticket for user ${userId}:`,
-                e
-            );
+            safeLogError('lottery_check_update_ticket', e, { userId });
             return res.status(500).json({
                 success: false,
                 message: 'An error occurred while fetching data'
@@ -342,14 +343,14 @@ export class LotteryController {
                             });
                         }
                     } catch (e) {
-                        console.error(`Error processing user ${id}:`, e);
+                        safeLogWarn('lottery_distribute_ticket_user', e, { userId: id });
                     }
                 })
             );
 
             res.status(200).json({ success: true, message: 'Tickets distributed successfully.' });
         } catch (e) {
-            console.error('Error fetching users or processing tickets:', e);
+            safeLogError('lottery_distribute_tickets', e);
             res.status(500).json({ success: false, message: 'Failed to distribute tickets.' });
         }
     }
@@ -362,7 +363,7 @@ export class LotteryController {
                 isUpdating: isUpdating
             });
         } catch (error) {
-            console.error('Error checking update status:', error);
+            safeLogError('lottery_check_update_status', error);
             return res.status(500).json({
                 success: false,
                 message: 'Error checking update status'
@@ -420,7 +421,9 @@ export class LotteryController {
                 }
             });
         } catch (error) {
-            console.error('Error claiming tickets:', error);
+            safeLogError('lottery_claim_tickets', error, {
+                userId: getAuthenticatedLotteryUserId(req)
+            });
             return res.status(500).json({
                 success: false,
                 message: 'Error claiming tickets'

@@ -10,6 +10,9 @@ const BEARER_PATTERN = /\bBearer\s+[A-Za-z0-9._~+/=-]+/gi;
 const JWT_PATTERN = /\beyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\b/g;
 const PRIVATE_KEY_PATTERN = /\b0x[a-fA-F0-9]{64}\b/g;
 const CREDENTIAL_LABEL_PATTERN = /\b(?:jwt|adminAuth|userAuth|SESSION_SECRET|PRIVATE_KEY|DATABASE_URL)\b/gi;
+const WINDOWS_PATH_PATTERN = /\b[A-Za-z]:\\(?:[^\\\r\n"'<>|]+\\)*[^\\\r\n"'<>|]*/g;
+const UNC_PATH_PATTERN = /\\\\[^\\\s"'<>|]+\\[^\\\s"'<>|]+(?:\\[^\\\s"'<>|]+)*/g;
+const UNIX_PATH_PATTERN = /(^|[\s"'(=:])\/(?:Users|home|var|tmp|app|workspace|mnt|opt|srv|etc|root|data)(?:\/[^\s"',)]+)+/g;
 
 export const sanitizeLogText = (value: string): string =>
   value
@@ -19,6 +22,9 @@ export const sanitizeLogText = (value: string): string =>
     .replace(BEARER_PATTERN, '[redacted-credential]')
     .replace(JWT_PATTERN, '[redacted-credential]')
     .replace(PRIVATE_KEY_PATTERN, '[redacted-credential]')
+    .replace(WINDOWS_PATH_PATTERN, '[redacted-path]')
+    .replace(UNC_PATH_PATTERN, '[redacted-path]')
+    .replace(UNIX_PATH_PATTERN, '$1[redacted-path]')
     .replace(CREDENTIAL_LABEL_PATTERN, '[redacted-credential]');
 
 const sanitizeMetadata = (metadata?: SafeLogMetadata): SafeLogMetadata => {

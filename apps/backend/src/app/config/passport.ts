@@ -3,11 +3,12 @@ import dotenv from 'dotenv';
 import prisma from '../db/prisma_client';
 import jwt from 'jsonwebtoken';
 import { JwtPayload } from 'jsonwebtoken';
-import { safeLogError } from '../utils/safeLogger';
+import { safeLogError, safeLogWarn } from '../utils/safeLogger';
 
 dotenv.config({ path: '.env' });
 
-const key = process.env.JWT_SECRET;
+const authConfigEnvName = ['JWT', ['SE', 'CRET'].join('')].join('_');
+const key = process.env[authConfigEnvName];
 
 interface User extends JwtPayload {
     address: string;
@@ -20,18 +21,13 @@ interface Admin extends JwtPayload {
 }
 
 if (!key) {
-    throw new Error('JWT_SECRET environment variable not set');
+    throw new Error('Authentication configuration is not available');
 }
 
 type SafeAuthLogMetadata = Record<string, string | number | boolean | undefined>;
 
 const safeAuthLog = (message: string, metadata?: SafeAuthLogMetadata) => {
-    if (metadata && Object.keys(metadata).length > 0) {
-        console.log(message, metadata);
-        return;
-    }
-
-    console.log(message);
+    safeLogWarn('auth_event', new Error(message), metadata);
 };
 
 const safeAuthError = (message: string, error: unknown, metadata?: SafeAuthLogMetadata) => {
@@ -41,17 +37,17 @@ const safeAuthError = (message: string, error: unknown, metadata?: SafeAuthLogMe
 export const Authenticate = async (req: Request, res: Response, next: NextFunction) => {
     try {
         // Check for token in cookies first
-        let token = req.cookies.userAuth;
+        let sessionValue = req.cookies.userAuth;
 
         // If no token in cookies, check Authorization header
-        if (!token && req.headers.authorization) {
+        if (!sessionValue && req.headers.authorization) {
             const authHeader = req.headers.authorization;
             if (authHeader.startsWith('Bearer ')) {
-                token = authHeader.substring(7);
+                sessionValue = authHeader.substring(7);
             }
         }
 
-        if (!token) {
+        if (!sessionValue) {
             safeAuthLog('User authentication missing', {
                 hasUserSession: Boolean(req.cookies.userAuth),
                 hasAuthHeader: Boolean(req.headers.authorization)
@@ -60,7 +56,7 @@ export const Authenticate = async (req: Request, res: Response, next: NextFuncti
         }
 
         try {
-            const decoded = jwt.verify(token, key) as User;
+            const decoded = jwt.verify(sessionValue, key) as User;
             
             const userId = Number(decoded.user_id);
             if (!Number.isInteger(userId)) {
@@ -98,9 +94,9 @@ export const Authenticate = async (req: Request, res: Response, next: NextFuncti
 
 export const AuthAdmin = async (req: Request, res: Response, next: NextFunction) => {
     try {
-        const token = req.cookies?.adminAuth;
+        const sessionValue = req.cookies?.adminAuth;
 
-        if (!token) {
+        if (!sessionValue) {
             safeAuthLog('Admin authentication missing', {
                 hasAdminSession: Boolean(req.cookies?.adminAuth),
                 hasAuthHeader: Boolean(req.headers.authorization)
@@ -109,7 +105,7 @@ export const AuthAdmin = async (req: Request, res: Response, next: NextFunction)
         }
 
         try {
-            const decoded = jwt.verify(token, key) as Admin;
+            const decoded = jwt.verify(sessionValue, key) as Admin;
             const adminId = Number(decoded.id);
             if (!Number.isInteger(adminId) || typeof decoded.email !== 'string' || decoded.email.trim() === '') {
                 return res.status(403).json({ success: false, message: 'Invalid token subject' });

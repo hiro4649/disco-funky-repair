@@ -1,7 +1,6 @@
 import { Request, Response } from 'express';
 import { PrismaClient } from '@prisma/client';
 import moment from 'moment';
-import path from 'path';
 import fs from 'fs';
 import { promises as fsPromises } from 'fs';
 import lighthouse from '@lighthouse-web3/sdk';
@@ -38,18 +37,17 @@ export class TrialNftTemplateController {
             if (!NFT_STORAGE_API_KEY) {
                 return res.status(500).json({
                     success: false,
-                    message: 'IPFS storage API key is not configured. Please set NFT_STORAGE_API_KEY in .env file.'
+                    message: 'Image storage is not configured'
                 });
             }
 
             // Upload image to IPFS immediately
-            console.log(`📤 Uploading Trial NFT template image to IPFS: ${file.path}`);
             let imageUrl = '';
             
             try {
                 // Verify file exists
                 if (!fs.existsSync(file.path)) {
-                    throw new Error(`File does not exist: ${file.path}`);
+                    throw new Error('Upload file does not exist');
                 }
 
                 // Upload to IPFS using Lighthouse
@@ -61,14 +59,10 @@ export class TrialNftTemplateController {
 
                 const imageCid = output.data.Hash;
                 imageUrl = `${NFT_STORAGE_ENDPOINT}${imageCid}`;
-                
-                console.log(`✅ Trial NFT template image uploaded to IPFS, CID: ${imageCid}`);
-                console.log(`🔗 IPFS URL: ${imageUrl}`);
 
                 // Delete local file after successful IPFS upload
                 try {
                     await fsPromises.unlink(file.path);
-                    console.log(`🗑️ Deleted local file: ${file.path}`);
                 } catch (deleteError) {
                     safeLogError('delete_trial_nft_template_upload_file', deleteError);
                 }
@@ -93,19 +87,16 @@ export class TrialNftTemplateController {
                 }
             });
 
-            console.log(`✅ Created Trial NFT template: ${name}`);
-
             return res.status(201).json({
                 success: true,
                 message: 'Trial NFT template created successfully',
                 data: template
             });
         } catch (error) {
-            console.error('Error creating Trial NFT template:', error);
+            safeLogError('trial_nft_template_create', error);
             return res.status(500).json({
                 success: false,
-                message: 'Error creating template',
-                error: error instanceof Error ? error.message : 'Unknown error'
+                message: 'Error creating template'
             });
         }
     }
@@ -150,11 +141,10 @@ export class TrialNftTemplateController {
                 }
             });
         } catch (error) {
-            console.error('Error fetching Trial NFT templates:', error);
+            safeLogError('trial_nft_template_get_all', error);
             return res.status(500).json({
                 success: false,
-                message: 'Error fetching templates',
-                error: error instanceof Error ? error.message : 'Unknown error'
+                message: 'Error fetching templates'
             });
         }
     }
@@ -202,7 +192,7 @@ export class TrialNftTemplateController {
                 count: availableTemplates.length
             });
         } catch (error) {
-            console.error('Error fetching available templates:', error);
+            safeLogError('trial_nft_template_get_available', error);
             return res.status(500).json({
                 success: false,
                 message: 'Error fetching templates'
@@ -232,17 +222,15 @@ export class TrialNftTemplateController {
                 if (!NFT_STORAGE_API_KEY) {
                     return res.status(500).json({
                         success: false,
-                        message: 'IPFS storage API key is not configured. Please set NFT_STORAGE_API_KEY in .env file.'
+                        message: 'Image storage is not configured'
                     });
                 }
 
                 // Upload new image to IPFS
-                console.log(`📤 Uploading updated Trial NFT template image to IPFS: ${req.file.path}`);
-                
                 try {
                     // Verify file exists
                     if (!fs.existsSync(req.file.path)) {
-                        throw new Error(`File does not exist: ${req.file.path}`);
+                        throw new Error('Upload file does not exist');
                     }
 
                     // Upload to IPFS using Lighthouse
@@ -254,14 +242,10 @@ export class TrialNftTemplateController {
 
                     const imageCid = output.data.Hash;
                     const imageUrl = `${NFT_STORAGE_ENDPOINT}${imageCid}`;
-                    
-                    console.log(`✅ Updated Trial NFT template image uploaded to IPFS, CID: ${imageCid}`);
-                    console.log(`🔗 IPFS URL: ${imageUrl}`);
 
                     // Delete local file after successful IPFS upload
                     try {
                         await fsPromises.unlink(req.file.path);
-                        console.log(`🗑️ Deleted local file: ${req.file.path}`);
                     } catch (deleteError) {
                         safeLogError('delete_trial_nft_template_updated_file', deleteError);
                     }
@@ -289,11 +273,10 @@ export class TrialNftTemplateController {
                 data: template
             });
         } catch (error) {
-            console.error('Error updating Trial NFT template:', error);
+            safeLogError('trial_nft_template_update', error, { templateId: req.params.id });
             return res.status(500).json({
                 success: false,
-                message: 'Error updating template',
-                error: error instanceof Error ? error.message : 'Unknown error'
+                message: 'Error updating template'
             });
         }
     }
@@ -335,11 +318,10 @@ export class TrialNftTemplateController {
                 message: 'Template deleted successfully'
             });
         } catch (error) {
-            console.error('Error deleting Trial NFT template:', error);
+            safeLogError('trial_nft_template_delete', error, { templateId: req.params.id });
             return res.status(500).json({
                 success: false,
-                message: 'Error deleting template',
-                error: error instanceof Error ? error.message : 'Unknown error'
+                message: 'Error deleting template'
             });
         }
     }
@@ -377,7 +359,7 @@ export class TrialNftTemplateController {
                 }
             });
         } catch (error) {
-            console.error('Error fetching template stats:', error);
+            safeLogError('trial_nft_template_get_stats', error);
             return res.status(500).json({
                 success: false,
                 message: 'Error fetching statistics'

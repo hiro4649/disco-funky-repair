@@ -1,5 +1,6 @@
 import { Request, Response } from 'express';
 import prisma from '../db/prisma_client';
+import { safeLogError } from '../utils/safeLogger';
 
 export class UserManageController {
     // Get user DISCO balance
@@ -33,7 +34,7 @@ export class UserManageController {
                 }
             });
         } catch (error) {
-            console.error('Error fetching balance:', error);
+            safeLogError('user_manage_get_balance', error);
             res.status(500).json({
                 success: false,
                 message: 'Internal server error'
@@ -108,7 +109,7 @@ export class UserManageController {
                 }
             });
         } catch (error) {
-            console.error('Error processing deposit:', error);
+            safeLogError('user_manage_deposit', error, { hasTxHash: Boolean(req.body?.tx_hash) });
             res.status(500).json({
                 success: false,
                 message: 'Internal server error'
@@ -182,7 +183,7 @@ export class UserManageController {
                 }
             });
         } catch (error) {
-            console.error('Error processing withdrawal:', error);
+            safeLogError('user_manage_withdraw', error, { hasTxHash: Boolean(req.body?.tx_hash) });
             res.status(500).json({
                 success: false,
                 message: 'Internal server error'
@@ -263,7 +264,7 @@ export class UserManageController {
                 }
             });
         } catch (error) {
-            console.error('Error processing bet:', error);
+            safeLogError('user_manage_bet', error);
             res.status(500).json({
                 success: false,
                 message: 'Internal server error'
@@ -337,7 +338,7 @@ export class UserManageController {
                 }
             });
         } catch (error) {
-            console.error('Error processing cashout:', error);
+            safeLogError('user_manage_cashout', error);
             res.status(500).json({
                 success: false,
                 message: 'Internal server error'
@@ -397,7 +398,7 @@ export class UserManageController {
                 }
             });
         } catch (error) {
-            console.error('Error fetching transaction history:', error);
+            safeLogError('user_manage_transaction_history', error);
             res.status(500).json({
                 success: false,
                 message: 'Internal server error'

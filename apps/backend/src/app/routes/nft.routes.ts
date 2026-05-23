@@ -29,13 +29,7 @@ router.post('/admin/nft/upload/images', AuthAdmin, uploadNftImages, asyncHandler
 router.post('/admin/nft/:nftId/upload-image', AuthAdmin, uploadSingleImage, asyncHandler(NftController.uploadSingleImage.bind(NftController)));
 
 // Step 2: Upload selected NFTs to IPFS (after admin verification)
-router.post('/admin/nft/upload-to-ipfs', AuthAdmin, (req, res, next) => {
-  console.log('📩 Received POST /admin/nft/upload-to-ipfs');
-  console.log('Upload-to-IPFS request summary', {
-    nftIdCount: Array.isArray(req.body?.nftIds) ? req.body.nftIds.length : 0
-  });
-  next();
-}, asyncHandler(NftController.uploadToIPFS.bind(NftController)));
+router.post('/admin/nft/upload-to-ipfs', AuthAdmin, asyncHandler(NftController.uploadToIPFS.bind(NftController)));
 
 // Refresh image matches (re-scan uploads directory)
 router.post('/admin/nft/refresh-matches', AuthAdmin, asyncHandler(NftController.refreshImageMatches.bind(NftController)));

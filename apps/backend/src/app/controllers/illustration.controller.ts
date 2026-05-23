@@ -4,6 +4,7 @@ import { randomInt } from 'crypto';
 import moment from 'moment';
 import getDiscoNFTEVM from '../lib/getDiscoNFTEVM';
 import { getTrialNFTBonusPoints } from '../lib/trialNftService';
+import { safeLogError } from '../utils/safeLogger';
 
 const prisma = new PrismaClient();
 
@@ -49,10 +50,10 @@ export class IllustrationController {
                 data: illustration
             });
         } catch (error) {
+            safeLogError('illustration_create', error);
             return res.status(500).json({
                 success: false,
-                message: 'Error creating illustration',
-                error: error instanceof Error ? error.message : 'Unknown error'
+                message: 'Error creating illustration'
             });
         }
     }
@@ -70,10 +71,10 @@ export class IllustrationController {
                 data: illustrations
             });
         } catch (error) {
+            safeLogError('illustration_get_all', error);
             return res.status(500).json({
                 success: false,
-                message: 'Error fetching illustrations',
-                error: error instanceof Error ? error.message : 'Unknown error'
+                message: 'Error fetching illustrations'
             });
         }
     }
@@ -104,10 +105,10 @@ export class IllustrationController {
                 data: illustration
             });
         } catch (error) {
+            safeLogError('illustration_get_by_id', error, { illustrationId: req.params.id });
             return res.status(500).json({
                 success: false,
-                message: 'Error fetching illustration',
-                error: error instanceof Error ? error.message : 'Unknown error'
+                message: 'Error fetching illustration'
             });
         }
     }
@@ -133,10 +134,10 @@ export class IllustrationController {
                 data: illustration
             });
         } catch (error) {
+            safeLogError('illustration_update', error, { illustrationId: req.params.id });
             return res.status(500).json({
                 success: false,
-                message: 'Error updating illustration',
-                error: error instanceof Error ? error.message : 'Unknown error'
+                message: 'Error updating illustration'
             });
         }
     }
@@ -154,10 +155,10 @@ export class IllustrationController {
                 message: 'Illustration deleted successfully'
             });
         } catch (error) {
+            safeLogError('illustration_delete', error, { illustrationId: req.params.id });
             return res.status(500).json({
                 success: false,
-                message: 'Error deleting illustration',
-                error: error instanceof Error ? error.message : 'Unknown error'
+                message: 'Error deleting illustration'
             });
         }
     }
@@ -189,10 +190,10 @@ export class IllustrationController {
                 data: userIllustrations
             });
         } catch (error) {
+            safeLogError('illustration_get_user_illustrations', error, { userId: getAuthenticatedIllustrationUserId(req) });
             return res.status(500).json({
                 success: false,
-                message: 'Error fetching user illustrations',
-                error: error instanceof Error ? error.message : 'Unknown error'
+                message: 'Error fetching user illustrations'
             });
         }
     }
@@ -277,11 +278,9 @@ export class IllustrationController {
                                 }
                             }
                         });
-                    } else {
-                        console.log(`User ${user.wallet_address} has no NFT balance, skipping NFT bonus`);
                     }
                 } catch (error) {
-                    console.error('Error checking NFT balance:', error);
+                    safeLogError('illustration_add_user_nft_balance_check', error, { userId: parseInt(userId) });
                     // Still give the bonus even if NFT check fails (fallback behavior)
                 }
             }
@@ -292,10 +291,13 @@ export class IllustrationController {
                 message: 'Illustration added to user successfully'
             });
         } catch (error) {
+            safeLogError('illustration_add_to_user', error, {
+                userId: Number(req.body?.userId) || undefined,
+                illustrationId: Number(req.body?.illustrationId) || undefined
+            });
             return res.status(500).json({
                 success: false,
-                message: 'Error adding illustration to user',
-                error: error instanceof Error ? error.message : 'Unknown error'
+                message: 'Error adding illustration to user'
             });
         }
     }
@@ -324,10 +326,10 @@ export class IllustrationController {
                 data: illustrations
             });
         } catch (error) {
+            safeLogError('illustration_get_by_rarity', error, { rarity: req.params.rarity });
             return res.status(500).json({
                 success: false,
-                message: 'Error fetching illustrations by rarity',
-                error: error instanceof Error ? error.message : 'Unknown error'
+                message: 'Error fetching illustrations by rarity'
             });
         }
     }
@@ -513,10 +515,10 @@ export class IllustrationController {
                 });
             }
 
+            safeLogError('illustration_draw', error, { userId: getAuthenticatedIllustrationUserId(req) });
             return res.status(500).json({
                 success: false,
-                message: 'Error drawing illustration',
-                error: error instanceof Error ? error.message : 'Unknown error'
+                message: 'Error drawing illustration'
             });
         }
 
@@ -570,7 +572,6 @@ export class IllustrationController {
                                     receivedDate: moment.utc().toDate()
                                 }
                             });
-                            console.log(`User ${userWalletAddress} received ${realNFTCount} real NFT bonus points`);
                         }
 
                         // Record trial NFT bonus if any (with day info)
@@ -594,7 +595,6 @@ export class IllustrationController {
                                     }
                                 });
                             }
-                            console.log(`User ${userWalletAddress} received ${trialBonus.points} trial NFT bonus points (Day ${trialBonus.dayOfHolding})`);
                         }
 
                         // Update user fan_points with total bonus
@@ -607,12 +607,9 @@ export class IllustrationController {
                             }
                         });
 
-                        console.log(`User ${userWalletAddress} total NFT bonus: ${totalBonus} points (Real: ${realNFTCount}, Trial Day ${trialBonus.dayOfHolding}: ${trialBonus.points})`);
-                    } else {
-                        console.log(`User ${userWalletAddress} has no NFT balance, skipping NFT bonus`);
                     }
                 } catch (error) {
-                    console.error('Error checking NFT balance:', error);
+                    safeLogError('illustration_process_draw_nft_bonus', error, { userId });
                 }
         }
 
