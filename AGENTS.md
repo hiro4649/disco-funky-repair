@@ -1,4 +1,4 @@
-﻿# AGENTS.md
+# AGENTS.md
 
 ## 最重要ルール
 
@@ -92,40 +92,41 @@ mainへの直接push
 関係ないP1/P2修正の混入
 
 <!-- CODEX_QUALITY_HARNESS_BEGIN -->
-<!-- CODEX_QUALITY_HARNESS_FILE v0.7.2 -->
-## Codex Quality Harness
+CODEX_QUALITY_HARNESS_FILE v0.8.0
 
-Use the repo-local harness files in `docs/process/` and `scripts/codex-*`.
-Run the secret scan and local quality gate before reporting merge readiness.
-R3 or human-review-required changes need manual confirmation for the current head.
-Manual confirmation cannot override secret scan failures, blocked paths, high-confidence secrets, implementation/harness mixing, or profile-required failures.
-Production, release, merge-ready, or go/no-go claims require local/remote evidence, residual risks, rollback or merge-after verification, and current-head human confirmation when required.
-Keep outputs safe-summary-only: no raw diff, raw logs, raw payload, endpoint value, secret value, private path, production data, or personal data.
-Root harness version and profile template version are separate; keep compatible profile-template files at v0.7.0 unless the source profile explicitly changes.
+## Target Harness Boundary
 
-## Funky Asset Safety Rule
+This repository is a downstream target using Codex Development Harness v0.8.0.
+Harness work must stay in harness-managed files unless the task explicitly asks
+for product code changes. Preserve project-specific authority and boundary text
+outside this block.
 
-資産、NFT、FanPoint、ticket、tier、送金、wallet、admin権限、contract、staging envに触れる変更はR3扱いにする。
-R3変更では、認証、認可、所有者確認、chainId、contract address、txHash、receipt、event log、idempotency、二重実行防止、rollbackを必ず確認する。
-DB更新だけでon-chain成功扱いにしない。
-tBNB未入金、staging未反映、receipt未確認の状態をproduction readyと書かない。
+## Plan-First Rule
 
-## OpenAI Codex Method Rule
+Use plan-first for R3, ambiguous, security-sensitive, migration, release,
+dependency, multi-file, or architecture tradeoff work. Keep the plan short and
+connect it to affected areas and failure propagation risk.
 
-Use `docs/process/CODEX_TASK_BRIEF_TEMPLATE.md` for non-trivial tasks.
-For complex, ambiguous, R3, security, migration, dependency, release, or multi-file work, plan before coding.
-PRs must satisfy `docs/process/CODEX_OPENAI_CODEX_METHOD_POLICY.md`.
-Reviews should use `docs/process/code_review.md`.
-Do not claim merge readiness unless method gate, quality gate, and required checks pass.
+## Safe Output Rule
 
-## Structured Evidence and CI Replay Rule
+Use safe summary only. Do not print raw logs, raw diffs, raw payloads, secret
+values, endpoint values, private paths, production data, or personal data.
 
-Root harness version is v0.7.2. Profile templates remain v0.7.0 compatible unless a project propagation task explicitly says otherwise.
-Do not bump `profiles/*` to v0.7.2 only to satisfy source validation.
-Prefer `.codex/evidence-pack.json`, `.codex/manual-confirmation.json`, CI replay, and PR body lint results over prose-only evidence where available.
-Do not claim production ready, release ready, merge ready, go/no-go, or equivalent production/shipping wording without checkable evidence.
-Use safe summary only: no raw diff, raw logs, raw payload, endpoint value, secret value, private path, production data, or personal data.
-Manual confirmation cannot override non-overridable failures such as secret scan failure, blocked paths, high-confidence secret findings, implementation/harness mixing, profile required check failure, OpenAI method gate failure, stale evidence, or unsafe output.
-For R3, security, release, dependency, migration, or multi-file work, keep plan-first evidence, review evidence, residual risks, and rollback or stop condition visible.
+## Merge-Ready Claim Rule
+
+Do not claim merge-ready unless required gates, current-head evidence, CI replay
+where applicable, and human confirmation rules are satisfied.
+
+## Manual Confirmation Limit
+
+Manual confirmation cannot override non-overridable failures: secret scan,
+blocked paths, high-confidence sensitive findings, stale evidence, unsafe
+output, product/harness scope mixing, or weakened quality gates.
+
+## Profile/Core Separation
+
+Source harness version and profile template version are separate. Target mode
+uses CODEX_HARNESS_MODE=target and does not require source profiles unless a
+project explicitly opts in.
 
 <!-- CODEX_QUALITY_HARNESS_END -->
