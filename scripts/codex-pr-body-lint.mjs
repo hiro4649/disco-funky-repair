@@ -62,8 +62,8 @@ function bodyFromArgs(args, env) {
 
 function sectionPresent(body, section) {
   const escaped = section.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  return new RegExp(`(^|\\n)\\s*(?:#{1,6}\\s*)?${escaped}\\s*:`, 'i').test(body) ||
-    new RegExp(`(^|\\n)\\s*(?:#{1,6}\\s*)?${escaped}\\s*$`, 'i').test(body);
+  return new RegExp(`(^|\\n)\\s*(?:#{1,6}\\s*)?${escaped}\\s*:`, 'im').test(body) ||
+    new RegExp(`(^|\\n)\\s*(?:#{1,6}\\s*)?${escaped}\\s*$`, 'im').test(body);
 }
 
 export function buildPrBodyLintReport(env = process.env, argv = process.argv) {

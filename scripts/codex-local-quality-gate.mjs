@@ -12,6 +12,7 @@ import {
 } from './codex-production-readiness-gate.mjs';
 import { buildEvidenceIntegrityReport } from './codex-evidence-integrity-gate.mjs';
 import { buildHermesInvariantReport } from './codex-hermes-invariant-gate.mjs';
+import { buildGithubReplayContextAsync } from './codex-ci-replay.mjs';
 
 process.chdir(path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..'));
 
@@ -3090,14 +3091,14 @@ function computeModeTransitionSafety() {
     newHumanReviewTriggers: report.humanReviewReasons.slice(0, 10),
   };
 }
-function runOpenAICodexMethodGate() {
+function runOpenAICodexMethodGate(gateEnv = process.env) {
   const script = path.join('scripts', 'codex-openai-method-gate.mjs');
   if (!fs.existsSync(script)) {
     return { status: 'fail', failures: ['methodGateScript=missing'], safeSummary: 'OpenAI Codex Method Gate script is missing.' };
   }
   const result = spawnSync(process.execPath, [script], {
     encoding: 'utf8',
-    env: { ...process.env, CODEX_OPENAI_METHOD_REPORT: 'json' },
+    env: { ...gateEnv, CODEX_OPENAI_METHOD_REPORT: 'json' },
     stdio: ['ignore', 'pipe', 'pipe'],
   });
   const output = String(result.stdout || '').trim();
@@ -3155,7 +3156,7 @@ function runV071SelfTestGate() {
     };
   }
 }
-function runJsonGateScript(scriptPath, statusField, reportEnvName) {
+function runJsonGateScript(scriptPath, statusField, reportEnvName, gateEnv = process.env) {
   const script = path.join(...scriptPath.split('/'));
   if (!fs.existsSync(script)) {
     return {
@@ -3166,7 +3167,7 @@ function runJsonGateScript(scriptPath, statusField, reportEnvName) {
   }
   const result = spawnSync(process.execPath, [script, '--json'], {
     encoding: 'utf8',
-    env: { ...process.env, [reportEnvName]: 'json', CODEX_QUALITY_REPORT: 'json' },
+    env: { ...gateEnv, [reportEnvName]: 'json', CODEX_QUALITY_REPORT: 'json' },
     stdio: ['ignore', 'pipe', 'pipe'],
   });
   const output = String(result.stdout || '').trim();
@@ -3190,6 +3191,48 @@ function runJsonGateScript(scriptPath, statusField, reportEnvName) {
 }
 function runV072SelfTestGate() {
   return runJsonGateScript('scripts/codex-v072-self-test.mjs', 'v072SelfTestStatus', 'CODEX_V072_SELF_TEST_REPORT');
+}
+function isPullRequestContext(env = process.env) {
+  return env.CODEX_EVENT_NAME === 'pull_request' ||
+    Boolean(env.CODEX_PR_NUMBER) ||
+    Boolean(env.GITHUB_REF && env.GITHUB_REF.includes('/pull/'));
+}
+async function resolveRemoteGateContext(env = process.env) {
+  const args = {
+    repo: env.CODEX_REPOSITORY || env.GITHUB_REPOSITORY || '',
+    pr: env.CODEX_PR_NUMBER || '',
+    head: env.CODEX_PR_HEAD_SHA || env.GITHUB_SHA || '',
+    base: env.CODEX_PR_BASE_SHA || '',
+  };
+  if (!isPullRequestContext(env) || !args.repo || !args.pr || !args.head) {
+    return {
+      env: {},
+      status: 'not_applicable',
+      reasonCodes: ['ci_replay_not_requested'],
+      prBodySource: 'not_applicable',
+      confirmationSource: 'not_applicable',
+      safeSummaryOnly: true,
+    };
+  }
+  if (env.CODEX_PR_BODY || env.CODEX_PR_BODY_PATH || env.GITHUB_EVENT_PATH) {
+    return {
+      env: {},
+      status: 'pass',
+      reasonCodes: [],
+      prBodySource: env.CODEX_PR_BODY ? 'CODEX_PR_BODY' : env.CODEX_PR_BODY_PATH ? 'CODEX_PR_BODY_PATH' : 'GITHUB_EVENT_PATH',
+      confirmationSource: 'provided_context',
+      safeSummaryOnly: true,
+    };
+  }
+  const context = await buildGithubReplayContextAsync(args, env);
+  return {
+    env: context.status === 'pass' ? context.env : {},
+    status: context.status,
+    reasonCodes: context.reasonCodes || [],
+    prBodySource: context.prBodySource || 'missing',
+    confirmationSource: context.confirmationSource || 'missing',
+    safeSummaryOnly: true,
+  };
 }
 function computeFailureReasonCatalogStatus() {
   const file = path.join('docs', 'process', 'CODEX_FAILURE_REASON_CATALOG.json');
@@ -6206,17 +6249,26 @@ report.curatorSuggestionStatus = validateCuratorSuggestionScript();
 applyGovernancePolicyStatus(report.curatorSuggestionStatus, 'curatorSuggestion.failed', 'Curator suggestion governance failed.');
 report.selfEvolutionPolicyStatus = validateSelfEvolutionPolicy();
 applyGovernancePolicyStatus(report.selfEvolutionPolicyStatus, 'selfEvolutionPolicy.failed', 'Self-evolution policy governance failed.');
-report.openaiCodexMethodStatus = runOpenAICodexMethodGate();
+const remoteGateContext = await resolveRemoteGateContext(process.env);
+const gateEnv = { ...process.env, ...remoteGateContext.env };
+report.remoteContextStatus = {
+  status: remoteGateContext.status,
+  reasonCodes: remoteGateContext.reasonCodes,
+  prBodySource: remoteGateContext.prBodySource,
+  confirmationSource: remoteGateContext.confirmationSource,
+  safeSummaryOnly: true,
+};
+report.openaiCodexMethodStatus = runOpenAICodexMethodGate(gateEnv);
 applyOpenAIMethodGateStatus(report.openaiCodexMethodStatus);
-report.productionReadinessStatus = buildProductionReadinessReport(process.env).productionReadinessStatus;
-report.evidenceIntegrityStatus = buildEvidenceIntegrityReport(process.env).evidenceIntegrityStatus;
-report.hermesInvariantStatus = buildHermesInvariantReport(process.env).hermesInvariantStatus;
-report.humanConfirmationStatus = buildHumanConfirmationStatus(process.env).humanConfirmationStatus;
-report.evidencePackStatus = runJsonGateScript('scripts/codex-evidence-pack-validate.mjs', 'evidencePackStatus', 'CODEX_EVIDENCE_PACK_REPORT');
-report.humanConfirmationObjectStatus = runJsonGateScript('scripts/codex-human-confirmation-validate.mjs', 'humanConfirmationObjectStatus', 'CODEX_HUMAN_CONFIRMATION_REPORT');
-report.safeOutputScanStatus = runJsonGateScript('scripts/codex-safe-output-scan.mjs', 'safeOutputScanStatus', 'CODEX_SAFE_OUTPUT_SCAN_REPORT');
-report.ciReplayStatus = runJsonGateScript('scripts/codex-ci-replay.mjs', 'ciReplayStatus', 'CODEX_CI_REPLAY_REPORT');
-report.prBodyLintStatus = runJsonGateScript('scripts/codex-pr-body-lint.mjs', 'prBodyLintStatus', 'CODEX_PR_BODY_LINT_REPORT');
+report.productionReadinessStatus = buildProductionReadinessReport(gateEnv).productionReadinessStatus;
+report.evidenceIntegrityStatus = buildEvidenceIntegrityReport(gateEnv).evidenceIntegrityStatus;
+report.hermesInvariantStatus = buildHermesInvariantReport(gateEnv).hermesInvariantStatus;
+report.humanConfirmationStatus = buildHumanConfirmationStatus(gateEnv).humanConfirmationStatus;
+report.evidencePackStatus = runJsonGateScript('scripts/codex-evidence-pack-validate.mjs', 'evidencePackStatus', 'CODEX_EVIDENCE_PACK_REPORT', gateEnv);
+report.humanConfirmationObjectStatus = runJsonGateScript('scripts/codex-human-confirmation-validate.mjs', 'humanConfirmationObjectStatus', 'CODEX_HUMAN_CONFIRMATION_REPORT', gateEnv);
+report.safeOutputScanStatus = runJsonGateScript('scripts/codex-safe-output-scan.mjs', 'safeOutputScanStatus', 'CODEX_SAFE_OUTPUT_SCAN_REPORT', gateEnv);
+report.ciReplayStatus = runJsonGateScript('scripts/codex-ci-replay.mjs', 'ciReplayStatus', 'CODEX_CI_REPLAY_REPORT', gateEnv);
+report.prBodyLintStatus = runJsonGateScript('scripts/codex-pr-body-lint.mjs', 'prBodyLintStatus', 'CODEX_PR_BODY_LINT_REPORT', gateEnv);
 report.failureReasonCatalogStatus = computeFailureReasonCatalogStatus();
 report.v071SelfTestStatus = runV071SelfTestGate();
 report.v072SelfTestStatus = runV072SelfTestGate();
