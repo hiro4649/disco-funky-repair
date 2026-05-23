@@ -16,6 +16,7 @@ import {
 import getDiscoNFTEVM from '../lib/getDiscoNFTEVM';
 import { getTotalNFTCount } from '../lib/trialNftService';
 import { selectPrizeDrawWinner } from '../lib/prizeDrawRng';
+import { safeLogError, safeLogWarn } from '../utils/safeLogger';
 
 enum Status {
     READY = 'READY',
@@ -47,15 +48,13 @@ const prisma = new PrismaClient();
 const PRIZE_TRANSFER_AMOUNT_SCALE = 3;
 
 const logPrizeTransferError = (
-    message: string,
+    operation: string,
     correlationId: string,
     err: unknown,
     txHash?: string | null
 ) => {
-    const errorName = err instanceof Error ? err.name : typeof err;
-    console.error(message, {
+    safeLogError(operation, err, {
         correlationId,
-        errorName,
         hasTxHash: Boolean(txHash)
     });
 };
@@ -527,7 +526,7 @@ export class PrizeController {
 
             res.status(200).json({ data: returnData, success: true }); // Set status code to 200 for a successful response
         } catch (err) {
-            console.error('Error fetching prizes:', err); // Log the error for debugging
+            safeLogError('Prize public catalog fetch', err);
             res.status(500).json({
                 error: 'An error occurred while fetching prizes.'
             }); // Send a meaningful error response
@@ -559,7 +558,7 @@ export class PrizeController {
             });
             res.status(200).json({ success: true, data: updatedPrize });
         } catch (err) {
-            console.error(err); // Log the error for debugging
+            safeLogError('Prize update', err, { prizeId: Number(req.params.prize_id) });
             res.status(404).json({ error: 'Prize not found or invalid data' });
         }
     }
@@ -634,7 +633,10 @@ export class PrizeController {
             });
             res.status(201).json({ success: true, data: newPrize });
         } catch (err) {
-            console.error(err); // Log the error for debugging
+            safeLogError('Prize creation', err, {
+                prizeId: req.params.prize_id ? Number(req.params.prize_id) : undefined,
+                hasFile: Boolean(req.file)
+            });
             res.status(500).json({ error: 'Error creating prize' });
         }
     }
@@ -666,7 +668,7 @@ export class PrizeController {
                 message: 'Prize deleted successfully'
             });
         } catch (err) {
-            console.error('Error deleting prize:', err);
+            safeLogError('Prize deletion', err, { prizeId: Number(req.params.prize_id) });
             res.status(500).json({
                 message: 'An error occurred while deleting the prize'
             });
@@ -782,7 +784,7 @@ export class PrizeController {
                     msg: 'Prize inventory changed during draw. Please try again.'
                 });
             }
-            console.error('Error drawing a lottery winner:', err); // Log the error for debugging
+            safeLogError('Prize draw', err, { userId });
             return res.status(500).json({ error: 'Internal Server Error' }); // Send a meaningful error response
         }
     }
@@ -822,7 +824,10 @@ export class PrizeController {
             return res.status(200).json({ msg: 'Prize token withdrawn successfully' });
 
         } catch (error) {
-            console.error('Error withdrawing prize token:', error);
+            safeLogError('Prize withdrawal lookup', error, {
+                userId,
+                prizeId: Number(prizeId)
+            });
             return res.status(500).json({ msg: 'Internal server error' });
         }
     }
@@ -860,7 +865,7 @@ export class PrizeController {
                 status: Status.CANCELLED
             });
         } catch (err) {
-            console.error('Error cancelling prize transaction:', err);
+            safeLogError('Prize transaction cancellation', err, { prizeId });
             return res.status(500).json({ success: false, msg: 'Internal server error' });
         }
     }
@@ -898,7 +903,7 @@ export class PrizeController {
                 status: Status.FAILED
             });
         } catch (err) {
-            console.error('Error marking prize transaction failed:', err);
+            safeLogError('Prize transaction failure mark', err, { prizeId });
             return res.status(500).json({ success: false, msg: 'Internal server error' });
         }
     }
@@ -993,7 +998,7 @@ export class PrizeController {
                 }); // Set status code to 200 for a successful response
             }
         } catch (err) {
-            console.error('Error fetching prize transactions:', err); // Log the error for debugging
+            safeLogError('Prize transactions fetch', err);
             res.status(500).json({
                 error: 'An error occurred while fetching prize transactions.'
             }); // Send a meaningful error response
@@ -1096,7 +1101,7 @@ export class PrizeController {
                     });
                 } catch (receiptErr) {
                     logPrizeTransferError(
-                        'Prize transfer receipt check failed',
+                        'Prize transfer receipt check',
                         correlationId,
                         receiptErr,
                         prizeTransaction.tx_hash
@@ -1333,7 +1338,7 @@ export class PrizeController {
                 const broadcastTxHash = txHash || (typeof transferErr?.txHash === 'string' ? transferErr.txHash : null);
                 const broadcastEvidence = txEvidence || transferErr?.evidence || null;
                 logPrizeTransferError(
-                    'Prize transfer failed',
+                    'Prize transfer',
                     correlationId,
                     transferErr,
                     broadcastTxHash
@@ -1474,7 +1479,7 @@ export class PrizeController {
                 });
             }
         } catch (err) {
-            logPrizeTransferError('Error in sendToWallet', correlationId, err);
+            logPrizeTransferError('Prize sendToWallet', correlationId, err);
 
             // Handle unexpected errors gracefully
             return res.status(500).json({ msg: "Internal server error", correlationId });
@@ -1533,14 +1538,14 @@ export class PrizeController {
                             });
                         }
                     } catch (error) {
-                        console.error(`Error distributing ticket to user ${id}:`, error);
+                        safeLogWarn('Prize ticket distribution for user', error, { userId: id });
                     }
                 })
             );
 
             res.status(200).json({ success: true, message: 'Tickets distributed successfully' });
         } catch (error) {
-            console.error('Error distributing tickets:', error);
+            safeLogError('Prize ticket distribution', error);
             res.status(500).json({ error: 'An error occurred while distributing tickets' });
         }
     }

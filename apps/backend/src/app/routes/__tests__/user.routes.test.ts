@@ -1,5 +1,7 @@
 import express from 'express';
 const request = require('supertest');
+const fs = require('fs');
+const path = require('path');
 
 const mockPrisma = {
   $transaction: jest.fn(),
@@ -21,7 +23,8 @@ const mockPrisma = {
     findFirst: jest.fn()
   },
   airdropTokens: {
-    findFirst: jest.fn()
+    findFirst: jest.fn(),
+    update: jest.fn()
   },
   holdDateHistory: {
     findMany: jest.fn()
@@ -154,6 +157,77 @@ describe('admin and all-user read route authorization', () => {
 
     expect(response.status).toBe(200);
     expectControllerReached();
+  });
+
+  it('does not expose raw error.message when all-users admin listing fails', async () => {
+    const consoleErrorSpy = jest.spyOn(console, 'error').mockImplementation(() => undefined);
+    mockPrisma.user.findMany.mockRejectedValueOnce(new Error('raw user query failure'));
+
+    const response = await request(createApp())
+      .get('/user/all')
+      .set('Authorization', 'Bearer admin-token');
+
+    expect(response.status).toBe(500);
+    expect(JSON.stringify(response.body)).not.toContain('raw user query failure');
+    expect(response.body).toEqual({
+      success: false,
+      message: 'Internal server error'
+    });
+    consoleErrorSpy.mockRestore();
+  });
+
+  it('returns a fixed server error when all user data fails', async () => {
+    const consoleErrorSpy = jest.spyOn(console, 'error').mockImplementation(() => undefined);
+    mockPrisma.user.findMany.mockRejectedValueOnce(new Error('raw all user data failure'));
+
+    const response = await request(createApp())
+      .get('/admin/user/all')
+      .set('Authorization', 'Bearer admin-token');
+
+    expect(response.status).toBe(500);
+    expect(JSON.stringify(response.body)).not.toContain('raw all user data failure');
+    expect(response.body).toEqual({
+      success: false,
+      message: 'Internal server error'
+    });
+    consoleErrorSpy.mockRestore();
+  });
+});
+
+describe('user controller safe logging', () => {
+  const controllerSourcePath = path.join(__dirname, '../../controllers/users.controller.ts');
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    mockPrisma.airdropTokens.update.mockResolvedValue({ id: 1, balance: '100' });
+  });
+
+  it('does not keep direct console calls or req.body logging in users.controller.ts', () => {
+    const source = fs.readFileSync(controllerSourcePath, 'utf8');
+
+    expect(source).not.toMatch(/console\.(?:error|log|warn)/);
+    expect(source).not.toContain('console.log(req.body)');
+  });
+
+  it('does not log the full token-balance request body', async () => {
+    const consoleLogSpy = jest.spyOn(console, 'log').mockImplementation(() => undefined);
+
+    const response = await request(createApp())
+      .post('/admin/seting/tokenbalance')
+      .set('Authorization', 'Bearer admin-token')
+      .send({
+        id: 1,
+        token_balance: '100',
+        unexpectedPayload: 'must-not-be-logged'
+      });
+
+    expect(response.status).toBe(200);
+    expect(consoleLogSpy).not.toHaveBeenCalled();
+    expect(mockPrisma.airdropTokens.update).toHaveBeenCalledWith({
+      where: { id: 1 },
+      data: { balance: '100' }
+    });
+    consoleLogSpy.mockRestore();
   });
 });
 
@@ -409,6 +483,23 @@ describe('user privacy read route authorization', () => {
     }));
   });
 
+  it('does not expose raw error.message when holding average fails', async () => {
+    const consoleErrorSpy = jest.spyOn(console, 'error').mockImplementation(() => undefined);
+    mockPrisma.holdDateHistory.findMany.mockRejectedValueOnce(new Error('raw holding average failure'));
+
+    const response = await request(createApp())
+      .get('/user/holding/average/1')
+      .set('Authorization', 'Bearer user-token');
+
+    expect(response.status).toBe(500);
+    expect(JSON.stringify(response.body)).not.toContain('raw holding average failure');
+    expect(response.body).toEqual({
+      success: false,
+      message: 'Internal server error'
+    });
+    consoleErrorSpy.mockRestore();
+  });
+
   it('does not read another user holding history', async () => {
     const response = await request(createApp())
       .get('/user/holding/history/2')
@@ -429,5 +520,22 @@ describe('user privacy read route authorization', () => {
         userId: 1
       }
     }));
+  });
+
+  it('does not expose raw error.message when holding history fails', async () => {
+    const consoleErrorSpy = jest.spyOn(console, 'error').mockImplementation(() => undefined);
+    mockPrisma.holdDateHistory.findMany.mockRejectedValueOnce(new Error('raw hold history failure'));
+
+    const response = await request(createApp())
+      .get('/user/holding/history/1')
+      .set('Authorization', 'Bearer user-token');
+
+    expect(response.status).toBe(500);
+    expect(JSON.stringify(response.body)).not.toContain('raw hold history failure');
+    expect(response.body).toEqual({
+      success: false,
+      message: 'Internal server error'
+    });
+    consoleErrorSpy.mockRestore();
   });
 });

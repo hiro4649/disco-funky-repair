@@ -2,6 +2,7 @@ import { Request, Response } from 'express';
 import prisma from '../db/prisma_client';
 import moment from 'moment';
 import { Prisma } from '@prisma/client';
+import { safeLogError } from '../utils/safeLogger';
 // import jwt, { JwtPayload } from 'jsonwebtoken';
 // import { jwtDecode } from 'jwt-decode'
 // import { number } from 'zod';
@@ -91,7 +92,7 @@ export class UserController {
                 }
             });
         } catch (error) {
-            console.error('Error fetching users:', error);
+            safeLogError('User list fetch', error);
             res.status(500).json({
                 success: false,
                 message: 'Internal server error'
@@ -133,7 +134,11 @@ export class UserController {
             }
             res.status(200).json({ data: user });
         } catch (err) {
-            console.log(err);
+            safeLogError('All user data fetch', err);
+            return res.status(500).json({
+                success: false,
+                message: 'Internal server error'
+            });
         }
     }
     static async getUserPrizeTransaction(req: Request, res: Response) {
@@ -285,7 +290,7 @@ export class UserController {
                 }
             });
         } catch (error) {
-            console.error('Error computing average holding date:', error);
+            safeLogError('User average holding date fetch', error, { userId: user_id });
             res.status(500).json({ success: false, message: 'Internal server error' });
         }
     }
@@ -345,7 +350,7 @@ export class UserController {
                 data: formattedRecords
             });
         } catch (error) {
-            console.error('Error fetching hold date history:', error);
+            safeLogError('User hold date history fetch', error, { userId: user_id });
             res.status(500).json({ success: false, message: 'Internal server error' });
         }
     }
@@ -475,7 +480,6 @@ export class UserController {
 
     static async setTokenBalance(req: Request, res: Response) {
         const { token_balance, id } = req.body;
-        console.log(req.body);
 
         try {
             const token = await prisma.airdropTokens.update({
@@ -488,7 +492,9 @@ export class UserController {
             });
             return res.status(200).json({ success: true, data: token });
         } catch (e) {
-            console.log(e);
+            safeLogError('Token balance update', e, {
+                airdropTokenId: Number.isInteger(Number(id)) ? Number(id) : undefined
+            });
             return res.status(404).json({ success: true, msg: 'Not found' });
         }
     }
@@ -571,7 +577,7 @@ export class UserController {
                 }
             });
         } catch (error) {
-            console.error('Error fetching user info:', error);
+            safeLogError('User info fetch', error, { userId: authenticatedUserId });
             res.status(500).json({
                 success: false,
                 message: 'Internal server error'

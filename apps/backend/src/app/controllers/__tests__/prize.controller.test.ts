@@ -1,6 +1,10 @@
+const fs = require('fs');
+const path = require('path');
+
 const mockPrisma = {
   user: {
     findUnique: jest.fn(),
+    findMany: jest.fn(),
     update: jest.fn(),
     updateMany: jest.fn()
   },
@@ -18,6 +22,11 @@ const mockPrisma = {
   },
   tokenDetail: {
     findUnique: jest.fn()
+  },
+  lotteryTickets: {
+    findFirst: jest.fn(),
+    update: jest.fn(),
+    create: jest.fn()
   },
   $transaction: jest.fn()
 };
@@ -40,6 +49,7 @@ jest.mock('../../lib/trialNftService', () => ({
 }));
 
 import { getPrizeTransferReceiptEvidence, isPrizeTransferTokenAllowed, sendTokensToWallet } from '../../utils/tokenHeplers';
+import getDiscoNFTEVM from '../../lib/getDiscoNFTEVM';
 import { PrizeController } from '../prize.controller';
 
 let consoleErrorSpy: jest.SpyInstance;
@@ -137,6 +147,16 @@ const readyPrizeTransaction = () => ({
     decimals: 18,
     ca: VALID_ASSET_CONTRACT
   }
+});
+
+describe('PrizeController safe logging', () => {
+  const controllerSourcePath = path.join(__dirname, '../prize.controller.ts');
+
+  it('does not keep direct console calls in prize.controller.ts', () => {
+    const source = fs.readFileSync(controllerSourcePath, 'utf8');
+
+    expect(source).not.toMatch(/console\.(?:error|log|warn)/);
+  });
 });
 
 describe('PrizeController.getPrize public catalog', () => {
@@ -877,6 +897,7 @@ describe('PrizeController.sendToWallet', () => {
       msg: 'Prize transfer was broadcasted and requires manual review.',
       correlationId: expect.any(String)
     }));
+    expect(JSON.stringify(res.json.mock.calls[0][0])).not.toContain('raw rpc failure');
   });
 
   it('does not downgrade a RECEIVED transaction during broadcast fallback', async () => {
@@ -1041,6 +1062,7 @@ describe('PrizeController.sendToWallet', () => {
       msg: 'Prize transfer could not be started.',
       correlationId: expect.any(String)
     }));
+    expect(JSON.stringify(res.json.mock.calls[0][0])).not.toContain('raw rpc failure');
   });
 
   it('moves provider chainId mismatch to MANUAL_REVIEW without marking RECEIVED', async () => {
@@ -1082,6 +1104,7 @@ describe('PrizeController.sendToWallet', () => {
       msg: 'Prize transfer chain mismatch requires manual review.',
       correlationId: expect.any(String)
     }));
+    expect(JSON.stringify(res.json.mock.calls[0][0])).not.toContain('Provider chainId mismatch');
   });
 });
 
@@ -1491,5 +1514,49 @@ describe('PrizeController user-owned prize authorization', () => {
     expect(mockPrisma.user.findUnique).not.toHaveBeenCalled();
     expect(mockPrisma.prizeTransactions.findFirst).not.toHaveBeenCalled();
     expect(res.status).toHaveBeenCalledWith(403);
+  });
+});
+
+describe('PrizeController.distributeTicketToAllUser safe logging', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    mockPrisma.user.findMany.mockResolvedValue([
+      { id: 1, wallet_address: '0xuser' }
+    ]);
+    mockPrisma.lotteryTickets.findFirst.mockResolvedValue(null);
+    mockPrisma.lotteryTickets.create.mockResolvedValue({});
+    mockPrisma.lotteryTickets.update.mockResolvedValue({});
+    (getDiscoNFTEVM as jest.Mock).mockResolvedValue(1);
+  });
+
+  it('does not expose raw error.message when ticket distribution fails before processing users', async () => {
+    const consoleErrorSpy = jest.spyOn(console, 'error').mockImplementation(() => undefined);
+    mockPrisma.user.findMany.mockRejectedValueOnce(new Error('raw distribution failure'));
+    const res = createResponse();
+
+    await PrizeController.distributeTicketToAllUser({} as any, res);
+
+    expect(res.status).toHaveBeenCalledWith(500);
+    expect(JSON.stringify(res.json.mock.calls[0][0])).not.toContain('raw distribution failure');
+    expect(res.json).toHaveBeenCalledWith({
+      error: 'An error occurred while distributing tickets'
+    });
+    consoleErrorSpy.mockRestore();
+  });
+
+  it('continues per-user distribution failures without exposing raw errors in the response', async () => {
+    const consoleWarnSpy = jest.spyOn(console, 'warn').mockImplementation(() => undefined);
+    (getDiscoNFTEVM as jest.Mock).mockRejectedValueOnce(new Error('raw per-user failure'));
+    const res = createResponse();
+
+    await PrizeController.distributeTicketToAllUser({} as any, res);
+
+    expect(res.status).toHaveBeenCalledWith(200);
+    expect(JSON.stringify(res.json.mock.calls[0][0])).not.toContain('raw per-user failure');
+    expect(res.json).toHaveBeenCalledWith({
+      success: true,
+      message: 'Tickets distributed successfully'
+    });
+    consoleWarnSpy.mockRestore();
   });
 });
