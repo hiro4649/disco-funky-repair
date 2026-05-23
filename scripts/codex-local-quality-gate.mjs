@@ -695,7 +695,7 @@ function computeFailureReasonCatalogStatus() {
     'target_manifest_missing',
     'change_classification_unknown',
     'product_verification_required',
-    'npm_skip_not_allowed_for_product_change',
+    'product_checks_skipped_for_product_change',
     'runtime_claim_requires_product_checks',
     'package_change_requires_package_verification',
     'target_quality_score_unavailable',

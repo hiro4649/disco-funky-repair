@@ -347,7 +347,7 @@
       "canManualConfirmationOverride": true
     },
     {
-      "reasonCode": "npm_skip_not_allowed_for_product_change",
+      "reasonCode": "product_checks_skipped_for_product_change",
       "gate": "productVerification",
       "severity": "error",
       "safeMessage": "CODEX_SKIP_NPM cannot be used for product-relevant changes.",
