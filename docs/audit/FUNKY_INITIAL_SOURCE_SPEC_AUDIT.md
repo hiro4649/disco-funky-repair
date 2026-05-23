@@ -53,7 +53,6 @@ The comparison focused on behavior and ownership boundaries rather than line-by-
 
 ## B. Intentional Specification Changes Or Safety Changes
 
-- Crash game API is now intentionally disabled with `FEATURE_DISABLED`.
 - Virtual-balance user-manage API is now intentionally disabled with `FEATURE_DISABLED`.
 - `PATCH /api/nft/:id` is now intentionally disabled with `FEATURE_DISABLED`.
 - NFT admin upload/list/delete routes now require `AuthAdmin`.
@@ -68,7 +67,6 @@ The comparison focused on behavior and ownership boundaries rather than line-by-
 
 These are not automatically bugs, but they need human review because they can change user-visible behavior:
 
-- Crash game was present in the initial backend/frontend source but is disabled in current main.
 - Virtual-balance user management was present in the initial backend/admin flow but is disabled in current main.
 - Initial NFT mint status update used a backend PATCH route after mint; current main disables that route and keeps the browser flow away from that mutation.
 - Initial admin token/NFT management included direct frontend contract operations; current main blocks those with manual-review messaging.
@@ -77,7 +75,6 @@ These are not automatically bugs, but they need human review because they can ch
 
 ## D. Removed Or Disabled Functions
 
-- Crash game backend route is disabled.
 - Virtual-balance user-manage backend route is disabled.
 - NFT mint-status PATCH route is disabled.
 - Browser-side admin contract-write workflows are disabled or redirected to manual review.
@@ -103,7 +100,7 @@ These disabled paths appear explainable as asset-safety hardening for the curren
 ## F. Not Determinable From Initial Code Alone
 
 - Which duplicated initial source tree should be treated as the canonical human baseline.
-- Whether Crash game and virtual-balance user-manage should remain disabled, be hidden from UI, or return under a separate safety plan.
+- Whether virtual-balance user-manage should remain disabled, be hidden from UI, or return under a separate safety plan.
 - Whether initial frontend admin pages that depended on direct contract writes should have replacement operational flows.
 - Whether all current frontend navigation matches disabled backend behavior.
 - Whether staging domain, runtime env, CORS, cookie domain, and runtime log evidence exist outside the repo.
@@ -111,7 +108,6 @@ These disabled paths appear explainable as asset-safety hardening for the curren
 
 ## G. Human Review Decisions Needed
 
-- Confirm whether disabled Crash game behavior is an accepted safety reduction or a product gap.
 - Confirm whether disabled virtual-balance user management is an accepted safety reduction or a product gap.
 - Confirm whether disabling `PATCH /api/nft/:id` is the intended current NFT mint-state policy.
 - Confirm whether frontend admin user-management navigation should remain visible when virtual-balance APIs are disabled.
@@ -119,6 +115,14 @@ These disabled paths appear explainable as asset-safety hardening for the curren
 - Confirm whether current Prize receipt/manual-review semantics are the intended replacement for initial txHash-based completion.
 - Confirm whether Daily FanPoint AM/PM idempotency matches the expected user reward semantics.
 - Confirm whether BSC-only launch behavior fully replaces initial chain/ecosystem remnants.
+
+## H. Out-Of-Scope Initial-Code Contamination
+
+- Crash game appears in the initial source but is not part of the formal FUNKY scope.
+- Crash game is treated as a developer-added out-of-scope feature in the initial source, not as current FUNKY specification.
+- Current disabled Crash game behavior is not classified as suspected specification divergence.
+- Crash game is not a revival candidate.
+- If Crash game UI or backend references remain visible, they should be removed or kept disabled as cleanup candidates.
 
 ## Current Safety Notes
 
@@ -142,22 +146,25 @@ This report does not:
 ## Residual Risks
 
 - The canonical initial source tree needs human confirmation because the baseline contains duplicated source/export trees.
-- Disabled features need a product/security decision: keep disabled, hide from UI, or re-enable through a separate safety plan.
+- Disabled formal-feature candidates other than Crash game still need product/security decisions: keep disabled, hide from UI, or re-enable through a separate safety plan.
+- Any remaining Crash game references should be removed or kept disabled because Crash game is out of FUNKY scope.
 - Staging domain, staging runtime env, no-tx evidence, and runtime log inspection remain blocked or unknown.
 - tBNB funding and real receipt checks remain unverified by this report.
 - This is a docs-only audit report; it does not fix any suspected divergence.
 
 ## Recommended Next PR Candidates
 
-- Docs-only decision record for Crash game and virtual-balance user-manage scope.
-- Frontend-only cleanup if disabled backend flows remain visible in admin navigation.
+- Docs-only decision record for virtual-balance user-manage scope.
+- Frontend/backend cleanup PR if any Crash game references remain visible despite being out of FUNKY scope.
+- Frontend-only cleanup if disabled formal backend flows remain visible in admin navigation.
 - Backend-only or frontend-only follow-up for any human-confirmed specification divergence.
 - Separate safe-logging PRs for remaining direct console/raw-ish error handling, without mixing them into this audit report.
 
 ## Human Review Checklist
 
 - Confirm the canonical initial baseline interpretation.
-- Review each disabled path and decide whether it is accepted safety hardening or a required future feature.
+- Confirm Crash game remains excluded from FUNKY scope and any remaining references are cleanup-only candidates.
+- Review each disabled formal-feature path and decide whether it is accepted safety hardening or a required future feature.
 - Confirm current Prize, NFT, FanPoint, ticket, wallet, and admin-route semantics.
 - Confirm no initial user-facing flow required for launch has disappeared without an accepted safety reason.
 - Keep staging no-tx preflight blocked until non-secret runtime evidence exists.
