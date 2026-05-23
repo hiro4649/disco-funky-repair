@@ -92,7 +92,7 @@ mainへの直接push
 関係ないP1/P2修正の混入
 
 <!-- CODEX_QUALITY_HARNESS_BEGIN -->
-<!-- CODEX_QUALITY_HARNESS_FILE v0.7.1 -->
+<!-- CODEX_QUALITY_HARNESS_FILE v0.7.2 -->
 ## Codex Quality Harness
 
 Use the repo-local harness files in `docs/process/` and `scripts/codex-*`.
@@ -117,5 +117,15 @@ For complex, ambiguous, R3, security, migration, dependency, release, or multi-f
 PRs must satisfy `docs/process/CODEX_OPENAI_CODEX_METHOD_POLICY.md`.
 Reviews should use `docs/process/code_review.md`.
 Do not claim merge readiness unless method gate, quality gate, and required checks pass.
+
+## Structured Evidence and CI Replay Rule
+
+Root harness version is v0.7.2. Profile templates remain v0.7.0 compatible unless a project propagation task explicitly says otherwise.
+Do not bump `profiles/*` to v0.7.2 only to satisfy source validation.
+Prefer `.codex/evidence-pack.json`, `.codex/manual-confirmation.json`, CI replay, and PR body lint results over prose-only evidence where available.
+Do not claim production ready, release ready, merge ready, go/no-go, or equivalent production/shipping wording without checkable evidence.
+Use safe summary only: no raw diff, raw logs, raw payload, endpoint value, secret value, private path, production data, or personal data.
+Manual confirmation cannot override non-overridable failures such as secret scan failure, blocked paths, high-confidence secret findings, implementation/harness mixing, profile required check failure, OpenAI method gate failure, stale evidence, or unsafe output.
+For R3, security, release, dependency, migration, or multi-file work, keep plan-first evidence, review evidence, residual risks, and rollback or stop condition visible.
 
 <!-- CODEX_QUALITY_HARNESS_END -->
