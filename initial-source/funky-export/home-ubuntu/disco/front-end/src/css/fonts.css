@@ -1,0 +1,30 @@
+/* Import Noto Sans fonts */
+@import url('https://fonts.googleapis.com/css2?family=Noto+Sans:wght@100;200;300;400;500;600;700;800;900&display=swap&display=swap&font-display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@100;200;300;400;500;600;700;800;900&display=swap&font-display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@100;200;300;400;500;600;700;800;900&display=swap&font-display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@100;200;300;400;500;600;700;800;900&display=swap&font-display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Noto+Sans+Arabic:wght@100;200;300;400;500;600;700;800;900&display=swap&font-display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Noto+Sans+Cyrillic:wght@100;200;300;400;500;600;700;800;900&display=swap&font-display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Noto+Sans+Devanagari:wght@100;200;300;400;500;600;700;800;900&display=swap&font-display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@100;200;300;400;500;600;700;800;900&display=swap&font-display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Noto+Sans+Thai:wght@100;200;300;400;500;600;700;800;900&display=swap&font-display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Noto+Sans+Vietnamese:wght@100;200;300;400;500;600;700;800;900&display=swap&font-display=swap');
+
+/* Font family classes with system font fallbacks */
+.font-noto-sans { font-family: 'Noto Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; }
+.font-noto-sans-jp { font-family: 'Noto Sans JP', 'Hiragino Sans', 'Hiragino Kaku Gothic Pro', '游ゴシック', 'Yu Gothic', 'メイリオ', Meiryo, -apple-system, BlinkMacSystemFont, sans-serif; }
+.font-noto-sans-sc { font-family: 'Noto Sans SC', 'PingFang SC', 'Microsoft YaHei', -apple-system, BlinkMacSystemFont, sans-serif; }
+.font-noto-sans-tc { font-family: 'Noto Sans TC', 'PingFang TC', 'Microsoft JhengHei', -apple-system, BlinkMacSystemFont, sans-serif; }
+.font-noto-sans-arabic { font-family: 'Noto Sans Arabic', 'Arabic UI', -apple-system, BlinkMacSystemFont, sans-serif; }
+.font-noto-sans-cyrillic { font-family: 'Noto Sans Cyrillic', -apple-system, BlinkMacSystemFont, sans-serif; }
+.font-noto-sans-devanagari { font-family: 'Noto Sans Devanagari', -apple-system, BlinkMacSystemFont, sans-serif; }
+.font-noto-sans-kr { font-family: 'Noto Sans KR', 'Apple SD Gothic Neo', 'Malgun Gothic', '맑은 고딕', -apple-system, BlinkMacSystemFont, sans-serif; }
+.font-noto-sans-thai { font-family: 'Noto Sans Thai', -apple-system, BlinkMacSystemFont, sans-serif; }
+.font-noto-sans-vietnamese { font-family: 'Noto Sans Vietnamese', -apple-system, BlinkMacSystemFont, sans-serif; }
+
+/* Base font styles */
+:root {
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+}

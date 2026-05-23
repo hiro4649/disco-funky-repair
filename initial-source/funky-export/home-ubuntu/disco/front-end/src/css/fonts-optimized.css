@@ -1,0 +1,67 @@
+/* Optimized font loading with font-display */
+@font-face {
+  font-family: 'Noto Sans';
+  font-display: swap;
+  src: url('https://fonts.googleapis.com/css2?family=Noto+Sans:wght@300;400;500&display=swap');
+}
+
+@font-face {
+  font-family: 'Noto Sans JP';
+  font-display: swap;
+  src: url('https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@300;400;500&display=swap');
+}
+
+@font-face {
+  font-family: 'Noto Sans SC';
+  font-display: swap;
+  src: url('https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@300;400;500&display=swap');
+}
+
+@font-face {
+  font-family: 'Noto Sans TC';
+  font-display: swap;
+  src: url('https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@300;400;500&display=swap');
+}
+
+@font-face {
+  font-family: 'Inter';
+  font-display: swap;
+  src: url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500&display=swap');
+}
+
+@font-face {
+  font-family: 'Saira';
+  font-display: swap;
+  src: url('https://fonts.googleapis.com/css2?family=Saira:wght@300;400;500&display=swap');
+}
+
+@font-face {
+  font-family: 'Satoshi';
+  font-display: swap;
+  src: url('/fonts/Satoshi-Regular.woff2') format('woff2');
+  font-weight: 300;
+}
+
+@font-face {
+  font-family: 'Satoshi';
+  font-display: swap;
+  src: url('/fonts/Satoshi-Medium.woff2') format('woff2');
+  font-weight: 400;
+}
+
+@font-face {
+  font-family: 'Satoshi';
+  font-display: swap;
+  src: url('/fonts/Satoshi-Bold.woff2') format('woff2');
+  font-weight: 500;
+}
+
+/* Font family classes - these are now handled by Tailwind */
+/* Keeping these for backward compatibility */
+.font-noto-sans { font-family: 'Noto Sans', sans-serif; }
+.font-noto-sans-jp { font-family: 'Noto Sans JP', sans-serif; }
+.font-noto-sans-sc { font-family: 'Noto Sans SC', sans-serif; }
+.font-noto-sans-tc { font-family: 'Noto Sans TC', sans-serif; }
+.font-inter { font-family: 'Inter', sans-serif; }
+.font-saira { font-family: 'Saira', sans-serif; }
+.font-satoshi { font-family: 'Satoshi', sans-serif; } 

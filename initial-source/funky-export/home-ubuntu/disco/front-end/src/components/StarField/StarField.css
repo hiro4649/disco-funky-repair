@@ -1,0 +1,16 @@
+* {
+  margin: 0;
+  padding: 0;
+}
+
+.star-canvas {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  display: block;
+  z-index: 998; /* Below the loading sections (1000) but visible through their transparency */
+  pointer-events: none;
+  background: transparent;
+} 

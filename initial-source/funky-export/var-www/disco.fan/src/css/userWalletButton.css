@@ -1,0 +1,104 @@
+:root {
+  --wkit-accent-hs: 168, 100%;
+  --wkit-on-accent-rgb: 255, 255, 255;
+  --wkit-bg-rgb: 0, 0, 0;
+  --wkit-on-bg-rgb: 255, 255, 255;
+  --wkit-font-family: 'Inter', sans-serif;
+  --wkit-font-family-mono: 'IBM Plex Mono', monospace;
+  --wkit-font-size-large: 18px;
+  --wkit-font-size-medium: 20px;
+  --wkit-font-size-small: 14px;
+  --wkit-line-height-large: 22px;
+  --wkit-line-height-medium: 20px;
+  --wkit-line-height-small: 17px;
+  --wkit-button-width: 180px;
+  --wkit-border-radius: 16px;
+}
+
+.wkit-dialog__content {
+  border: 0.5px solid #fff;
+  padding: 24px 20px;
+}
+.wkit-dialog__content > div > div:nth-child(3) {
+  height: 0px !important;
+}
+
+.wkit-select__scroll {
+  margin: 0;
+}
+.wkit-select__scroll::-webkit-scrollbar {
+  width: 1px;
+}
+.wkit-select__scroll::-webkit-scrollbar-track {
+  border-radius: 10px;
+  background: #000;
+  box-shadow: inset 0 0 5px rgba(0, 0, 0, 0.2);
+}
+.wkit-select__scroll::-webkit-scrollbar-thumb {
+  border-radius: 10px;
+  background: #000;
+}
+.wkit-button {
+  padding: 3px 10px;
+  font-size: 14px;
+  color: black;
+  font-weight: 400;
+}
+
+.wkit-select-item {
+  font-weight: 400;
+  /* padding: 6px 6px 6px 16px; */
+}
+
+.wkit-connected-button {
+  font-size: 10px;
+  padding: 3px 16px;
+  color: white;
+}
+
+.wkit-connected-button__balance {
+  font-size: 12px;
+  display: none;
+}
+
+.wkit-address-select__address {
+  font-size: 12px;
+  display: none;
+}
+
+.wkit-address-select__right-arrow {
+  display: none;
+}
+
+.wkit-connected-container {
+  display: none;
+}
+
+.wkit-new-to-sui {
+  display: none;
+}
+
+.wkit-select__title {
+  display: none;
+}
+
+.wkit-dialog__header {
+  justify-content: center;
+  margin-bottom: 0;
+}
+
+.wkit-dialog__title {
+  color: #00FFCC;
+  font-weight: 400;
+  font-size: 20px;
+}
+
+button.wkit-dialog__close {
+  color: white;
+  display: none;
+}
+
+.wkit-select__scroll {
+  min-height: 160px !important;
+  font-weight: 600 !important;
+}

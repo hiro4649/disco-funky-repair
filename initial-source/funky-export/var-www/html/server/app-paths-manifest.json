@@ -1,0 +1,18 @@
+{
+  "/_not-found": "app/_not-found.js",
+  "/favicon.ico/route": "app/favicon.ico/route.js",
+  "/charts/basic-chart/page": "app/charts/basic-chart/page.js",
+  "/airdrop-prizes/page": "app/airdrop-prizes/page.js",
+  "/lottery-ticket/page": "app/lottery-ticket/page.js",
+  "/calendar/page": "app/calendar/page.js",
+  "/auth/signin/page": "app/auth/signin/page.js",
+  "/forms/form-elements/page": "app/forms/form-elements/page.js",
+  "/page": "app/page.js",
+  "/leader-board/page": "app/leader-board/page.js",
+  "/forms/form-layout/page": "app/forms/form-layout/page.js",
+  "/pages/settings/page": "app/pages/settings/page.js",
+  "/prize-history/page": "app/prize-history/page.js",
+  "/profile/page": "app/profile/page.js",
+  "/tables/page": "app/tables/page.js",
+  "/ui-elements/alerts/page": "app/ui-elements/alerts/page.js"
+}

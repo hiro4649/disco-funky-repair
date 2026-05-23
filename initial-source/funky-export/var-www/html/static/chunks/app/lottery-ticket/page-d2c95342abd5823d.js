@@ -1,0 +1,11 @@
+(self.webpackChunk_N_E=self.webpackChunk_N_E||[]).push([[819,777],{4266:function(e,t,s){Promise.resolve().then(s.t.bind(s,1749,23)),Promise.resolve().then(s.bind(s,7837)),Promise.resolve().then(s.bind(s,1289))},7134:function(e,t,s){"use strict";s.d(t,{Z:function(){return n}});/**
+ * @license lucide-react v0.414.0 - ISC
+ *
+ * This source code is licensed under the ISC license.
+ * See the LICENSE file in the root directory of this source tree.
+ */let n=(0,s(7977).Z)("SendHorizontal",[["path",{d:"m3 3 3 9-3 9 19-9Z",key:"1aobqy"}],["path",{d:"M6 12h16",key:"s4cdu5"}]])},416:function(e,t,s){"use strict";var n=s(7437);s(2265),t.Z=e=>{let{label:t,onClick:s,customClasses:r,children:i,leftIconFlag:a=!1}=e;return(0,n.jsx)(n.Fragment,{children:(0,n.jsxs)("button",{className:"inline-flex items-center justify-center gap-2.5 text-center font-medium hover:bg-opacity-90 ".concat(r),onClick:()=>{},children:[a?i:(0,n.jsx)(n.Fragment,{}),t,a?(0,n.jsx)(n.Fragment,{}):i]})})}},7837:function(e,t,s){"use strict";s.r(t),s.d(t,{default:function(){return c}});var n=s(7437),r=s(416),i=s(7134);/**
+ * @license lucide-react v0.414.0 - ISC
+ *
+ * This source code is licensed under the ISC license.
+ * See the LICENSE file in the root directory of this source tree.
+ */let a=(0,s(7977).Z)("Bell",[["path",{d:"M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9",key:"1qo2s2"}],["path",{d:"M10.3 21a1.94 1.94 0 0 0 3.4 0",key:"qgo35s"}]]);var c=()=>(0,n.jsxs)(n.Fragment,{children:[(0,n.jsx)("div",{className:"my-4 mx-6 text-center",children:(0,n.jsx)(r.Z,{label:"Get DISCO Tokens",onClick:()=>{},customClasses:"bg-[#BF4974] text-white h-15 w-full rounded-[18px] text-xl font-bold shadow-2",children:(0,n.jsx)(i.Z,{})})}),(0,n.jsxs)("div",{className:"my-8 mx-10 text-center space-y-2",children:[(0,n.jsxs)("div",{className:"flex gap-2 text-2xl items-center text-black font-medium",children:[(0,n.jsx)(a,{}),"Service description"]}),(0,n.jsx)("p",{className:"text-left",children:"We guarantee that the probability of airdrop prizes being released is accurate due to the lottery system.Please note that airdrop prizes include tokens issued by parties other than our project."})]})]})}},function(e){e.O(0,[374,289,971,69,744],function(){return e(e.s=4266)}),_N_E=e.O()}]);

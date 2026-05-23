@@ -1,0 +1,7 @@
+
+>>>> In-memory PM2 is out-of-date, do:
+>>>> $ pm2 update
+In memory PM2 version: 6.0.5
+Local PM2 version: 6.0.8
+
+[PM2][WARN] all doesn't exist

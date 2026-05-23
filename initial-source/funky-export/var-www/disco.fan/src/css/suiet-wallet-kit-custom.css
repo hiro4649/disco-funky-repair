@@ -1,0 +1,30 @@
+:root {
+  --wkit-accent-hs: 260, 70%;
+  --wkit-on-accent-rgb: 255, 255, 255;
+  --wkit-bg-rgb: 239, 241, 245;
+  --wkit-on-bg-rgb: 10, 14, 34;
+  --wkit-font-family: 'Inter', sans-serif;
+  --wkit-font-family-mono: 'IBM Plex Mono', monospace;
+  --wkit-font-size-large: 18px;
+  --wkit-font-size-medium: 16px;
+  --wkit-font-size-small: 14px;
+  --wkit-line-height-large: 22px;
+  --wkit-line-height-medium: 20px;
+  --wkit-line-height-small: 17px;
+  --wkit-button-width: 180px;
+  --wkit-border-radius: 16px;
+}
+.wkit-button {
+    padding: 12px 15px;
+    font-size: 16px;
+    color: white;
+}
+.wkit-connected-button {
+    font-size: 12px;
+}
+.wkit-connected-button__balance {
+    font-size: 12px;
+}
+.wkit-address-select__address {
+    font-size: 12px;
+}

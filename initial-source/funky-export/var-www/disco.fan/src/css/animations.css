@@ -1,0 +1,129 @@
+@keyframes fadeBlink {
+  0% { opacity: 1; } 
+  50% { opacity: 0.1; }
+  100% { opacity: 1; }
+}
+
+.slow-blink {
+    animation: fadeBlink 1.5s infinite ease-in-out;
+  }
+@keyframes fadeBlink-sending-wallet {
+  0% { opacity: 1; } 
+  50% { opacity: 0.6; }
+  100% { opacity: 1; }
+}
+  
+.fade-sending-wallet {
+  animation: fadeBlink-sending-wallet 1.5s infinite ease-in-out;
+}
+  
+@keyframes airdrop-fade {
+    0% { opacity: 0;transform: translateY(6rem);}
+    /* 60% { opacity: 0;transform: translateY(6rem);}   */
+    100% { opacity: 1; transform: translateY(0);}
+  }
+
+.airdrop-fade-in {
+   animation: airdrop-fade 1.8s 1s ease;
+  }
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-fadeIn {
+  animation: fadeIn 0.5s ease-out forwards;
+}
+
+/* Remove the rarity label styles since they're now handled by styled-components */
+
+/* Add Bull animation keyframes */
+@keyframes bullFlash {
+  0% {
+    opacity: 0;
+    transform: translate(-50%, -50%) scale(0.7);
+    text-shadow: none;
+  }
+  30% {
+    opacity: 1;
+    transform: translate(-50%, -50%) scale(1.1);
+    text-shadow: 0 0 8px #fff000, 0 0 20px #ffcc00;
+  }
+  50% {
+    transform: translate(-50%, -50%) scale(1.3);
+    text-shadow: 0 0 15px #ffcc00, 0 0 30px #ff9900;
+  }
+  100% {
+    opacity: 1;
+    transform: translate(-50%, -50%) scale(1);
+    text-shadow: 0 0 10px #ffcc00, 0 0 20px #ff9900;
+  }
+}
+
+/* Marquee animation for prize banner - old version with jumps */
+@keyframes marquee {
+  0% {
+    transform: translateX(0%);
+  }
+  100% {
+    transform: translateX(-33.33%);
+  }
+}
+
+.animate-marquee {
+  animation: marquee 30s linear infinite;
+}
+
+/* Seamless marquee animation - continuous scroll without jumps */
+@keyframes seamless-marquee {
+  0% {
+    transform: translateX(0%);
+  }
+  100% {
+    transform: translateX(-25%);
+  }
+}
+
+.animate-seamless-marquee {
+  animation: seamless-marquee 40s linear infinite;
+}
+
+/* CSS-only marquee - smooth and no re-renders */
+@keyframes css-marquee {
+  0% {
+    transform: translateX(0%);
+  }
+  100% {
+    transform: translateX(-33.33%);
+  }
+}
+
+.animate-css-marquee {
+  animation: css-marquee 30s linear infinite;
+  display: flex;
+  width: max-content;
+  will-change: transform;
+}
+
+/* Rainbow animation for fan points gacha text */
+@keyframes rainbow {
+  0% { color: #ff0000; } /* Red */
+  14% { color: #ff8000; } /* Orange */
+  28% { color: #ffff00; } /* Yellow */
+  42% { color: #00ff00; } /* Green */
+  57% { color: #0080ff; } /* Blue */
+  71% { color: #8000ff; } /* Indigo */
+  85% { color: #ff0080; } /* Violet */
+  100% { color: #ff0000; } /* Back to red */
+}
+
+.rainbow-text {
+  animation: rainbow 3s linear infinite;
+}

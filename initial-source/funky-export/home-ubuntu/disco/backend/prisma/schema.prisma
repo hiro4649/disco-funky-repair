@@ -1,0 +1,436 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
+// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id                      Int                    @id @default(autoincrement())
+  wallet_address          String                 @unique @db.VarChar(255)
+  level                   Int
+  fan_points              Int                    @default(0)
+  updatedAt               DateTime               @default(now()) @db.Timestamp(6)
+  createdAt               DateTime               @default(now()) @db.Timestamp(6)
+  tickets                 Int                    @default(0)
+  claimTickets            Int                    @default(0)
+  rarity                  Int                    @default(1)
+  disco_balance           Float                  @default(0)
+  holdingDate             Int                    @default(0)
+  held_amount             Float                  @default(0) @db.DoublePrecision
+  held_updates            Float                  @default(0) @db.DoublePrecision
+  referral_code           String?                @unique @db.VarChar(255)
+  referred_by             String?                @db.VarChar(255)
+  DiscoTransactions       DiscoTransactions[]
+  IllustrationHistory     IllustrationHistory[]
+  LotteryTickets          LotteryTickets[]
+  PointHistory            PointHistory[]
+  PrizeTransactions       PrizeTransactions[]
+  ReferralRewardsReferred ReferralRewards[]      @relation("Referred")
+  ReferralRewards         ReferralRewards[]      @relation("Referrer")
+  ownedToken              ownedToken[]
+  HoldDateHistory         HoldDateHistory[]
+  TransactionCheckpoint   TransactionCheckpoint?
+  TransactionAudit        TransactionAudit[]
+  ScheduledTierUpdate     ScheduledTierUpdate?
+  TrialNft                TrialNft[]
+}
+
+model Prize {
+  id                Int                 @id @default(autoincrement())
+  ca                String              @db.VarChar(255)
+  token_name        String              @db.VarChar(255)
+  symbol            String              @db.VarChar(255)
+  price             Float               @db.DoublePrecision
+  balance           Float               @db.DoublePrecision
+  default_image     String              @db.Text
+  icon              String              @db.Text
+  decimals          Int                 @db.Integer
+  listed_DEX        String              @db.VarChar(255)
+  telegram          String?             @db.VarChar(255)
+  twitter           String?             @db.VarChar(255)
+  discord           String?             @db.VarChar(255)
+  ranking           Int                 @db.Integer
+  quantity          Int                 @db.Integer
+  real_probability  Float               @db.DoublePrecision
+  probability       Float               @db.DoublePrecision
+  fake_probability  Float               @default(0) @db.DoublePrecision
+  saved_probability Float               @db.DoublePrecision
+  earned_pts        Int                 @db.Integer
+  flag              Boolean             @default(false)
+  dance             Boolean             @default(false)
+  updatedAt         DateTime            @default(now()) @db.Timestamp(6)
+  createdAt         DateTime            @default(now()) @db.Timestamp(6)
+  PrizeTransactions PrizeTransactions[]
+}
+
+model TokenDetail {
+  id                   Int      @id @default(autoincrement())
+  ca                   String   @unique @db.VarChar(255)
+  listed_DEX           String   @db.VarChar(255)
+  token_symbol         String   @db.VarChar(255)
+  price                Float    @db.DoublePrecision // convert SUI (native)
+  price_usd            Float    @db.DoublePrecision // convert USDT 
+  fdv                  Float    @db.DoublePrecision
+  holders              Float    @db.DoublePrecision
+  market_cap           Float    @db.DoublePrecision
+  circulating_supply   Float    @db.DoublePrecision
+  max_supply           Float    @db.DoublePrecision
+  total_supply         Float    @db.DoublePrecision
+  scarcityScore        Float    @db.DoublePrecision
+  totalVolume          Float    @db.DoublePrecision
+  volume_24h           Float    @db.DoublePrecision
+  liquidity            Float    @db.DoublePrecision
+  tradeVolumeRatio     Float    @db.DoublePrecision
+  tradeVolumeRatio_dex Float    @db.DoublePrecision
+  txns                 Float    @db.DoublePrecision
+  txns_24h             Float    @db.DoublePrecision
+  updatedAt            DateTime @default(now()) @db.Timestamp(6)
+  createdAt            DateTime @default(now()) @db.Timestamp(6)
+}
+
+model Admin {
+  id            Int      @id @default(autoincrement())
+  email         String   @unique() @db.VarChar(255)
+  password_hash String   @db.VarChar(255)
+  updatedAt     DateTime @default(now()) @db.Timestamp(6)
+  createdAt     DateTime @default(now()) @db.Timestamp(6)
+
+  AirdropTokens AirdropTokens[]
+}
+
+model PrizeTransactions {
+  id               Int       @id @default(autoincrement())
+  user             User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId           Int
+  prize            Prize     @relation(fields: [prizeId], references: [id], onDelete: Cascade)
+  prizeId          Int
+  tx_hash          String?   @db.VarChar(255)
+  probability_time DateTime  @db.Timestamp(6)
+  end_time         DateTime?
+  status           Status    @default(READY)
+}
+
+model ownedToken {
+  id                  Int   @id @default(autoincrement())
+  userId              Int   @unique
+  sixHourTokenBalance Float @db.DoublePrecision
+  tallyTokenBalance   Float @db.DoublePrecision
+  weeklyTokenBalance  Float @default(0) @db.DoublePrecision
+  dailyCheckTimes     Int   @default(0)
+  user                User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+model LotteryTickets {
+  id           Int      @id @default(autoincrement())
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId       Int
+  ticket       Int      @default(0)
+  receivedDate DateTime @db.Timestamp(6)
+}
+
+model PointHistory {
+  id           Int      @id @default(autoincrement())
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  reason       Int      @default(1) @db.Integer // 1: Daily Bonus, 2: Prize Bonus, 3: NFT Bonus
+  userId       Int
+  point        Int      @default(0)
+  receivedDate DateTime @db.Timestamp(6)
+}
+
+model AirdropTokens {
+  id        Int      @id @default(autoincrement())
+  admin     Admin    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId    Int
+  balance   Int      @default(10000)
+  updatedAt DateTime @default(now()) @db.Timestamp(6)
+  createdAt DateTime @default(now()) @db.Timestamp(6)
+}
+
+model Nft {
+  id             Int      @id @default(autoincrement())
+  holderId       Int?     @db.Integer
+  name           String   @db.Text
+  creator        String   @db.VarChar(255)
+  owner          String   @db.VarChar(255)
+  description    String   @db.Text
+  image          String   @db.Text // IPFS URL after upload, or empty before
+  excelImageName String?  @db.VarChar(255) // Original image filename from Excel
+  localImagePath String?  @db.Text // Matched local file path
+  royalty        Float    @db.DoublePrecision
+  attributes     Json     @db.Json
+  collectionId   String   @db.Text
+  externalUrl    String?  @db.Text
+  ipfsCid        String?  @db.Text
+  mintStatus     Boolean  @default(false) // Minted on blockchain
+  excelUploaded  Boolean  @default(false) // Excel data saved to DB
+  ipfsUploaded   Boolean  @default(false) // Image & metadata uploaded to IPFS
+  imageMatched   Boolean  @default(false) // Local image file found
+  updatedAt      DateTime @default(now()) @db.Timestamp(6)
+  createdAt      DateTime @default(now()) @db.Timestamp(6)
+}
+
+// Trial NFT Template - Created by admin, available for users to mint
+model TrialNftTemplate {
+  id           Int      @id @default(autoincrement())
+  name         String   @db.VarChar(255)
+  description  String   @db.Text
+  image        String   @db.Text // IPFS URL (uploaded via Lighthouse)
+  isAvailable  Boolean  @default(true) // Can users mint this?
+  maxMints     Int      @default(0) // 0 = unlimited
+  mintCount    Int      @default(0) // How many have been minted
+  validDays    Int      @default(5) // How many days the trial NFT is valid
+  updatedAt    DateTime @default(now()) @db.Timestamp(6)
+  createdAt    DateTime @default(now()) @db.Timestamp(6)
+
+  TrialNft     TrialNft[] // Relation to minted trial NFTs
+
+  @@index([isAvailable])
+}
+
+// Trial NFT - Minted by user from a template
+model TrialNft {
+  id           Int      @id @default(autoincrement())
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId       Int
+  template     TrialNftTemplate? @relation(fields: [templateId], references: [id])
+  templateId   Int?
+  name         String   @default("Trial NFT") @db.VarChar(255)
+  description  String   @default("Free trial NFT that boosts FanPoints for 5 days") @db.Text
+  image        String   @db.Text // Image URL for the trial NFT
+  receivedDate DateTime @db.Timestamp(6) // When the trial NFT was minted
+  expiresAt    DateTime @db.Timestamp(6) // When it expires (receivedDate + validDays)
+  isActive     Boolean  @default(true) // Whether the trial NFT is still active
+  bonusApplied Int      @default(0) // Total bonus points applied from this NFT
+  updatedAt    DateTime @default(now()) @db.Timestamp(6)
+  createdAt    DateTime @default(now()) @db.Timestamp(6)
+
+  @@index([userId])
+  @@index([templateId])
+  @@index([expiresAt])
+  @@index([isActive])
+}
+
+model SetTicketDistribute {
+  id        Int      @id @default(autoincrement())
+  day       Int?     @db.Integer
+  hour      Int?     @db.Integer
+  minutes   Int?     @db.Integer
+  weekly    Boolean  @default(false)
+  updatedAt DateTime @default(now()) @db.Timestamp(6)
+  createdAt DateTime @default(now()) @db.Timestamp(6)
+}
+
+model News {
+  id        Int      @id @default(autoincrement())
+  title     String   @db.VarChar(255)
+  content   String   @db.Text
+  image_url String?  @db.Text
+  updatedAt DateTime @default(now()) @db.Timestamp(6)
+  createdAt DateTime @default(now()) @db.Timestamp(6)
+}
+
+model Illustration {
+  id                  Int                   @id @default(autoincrement())
+  image_url           String?               @db.Text
+  earned_pts          Int                   @default(0)
+  rarity              Int                   @default(1)
+  probability         Float                 @default(0)
+  updatedAt           DateTime              @default(now()) @db.Timestamp(6)
+  createdAt           DateTime              @default(now()) @db.Timestamp(6)
+  IllustrationHistory IllustrationHistory[]
+}
+
+model IllustrationHistory {
+  id             Int          @id @default(autoincrement())
+  user           User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId         Int
+  illustration   Illustration @relation(fields: [illustrationId], references: [id], onDelete: Cascade)
+  illustrationId Int
+  updatedAt      DateTime     @default(now()) @db.Timestamp(6)
+  createdAt      DateTime     @default(now()) @db.Timestamp(6)
+}
+
+model HoldDateHistory {
+  id              Int      @id @default(autoincrement())
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId          Int
+  tx_hash         String   @db.VarChar(255) // Transaction hash for tracking
+  purchase_amount Decimal  @db.Decimal(38, 18) // Amount of tokens (38 digits, 18 decimals for ERC20 precision)
+  purchase_date   DateTime @db.Timestamp(6) // When tokens were purchased
+  updatedAt       DateTime @default(now()) @db.Timestamp(6) // Track when FIFO was last recalculated
+  createdAt       DateTime @default(now()) @db.Timestamp(6)
+
+  @@unique([userId, tx_hash])
+  @@index([userId])
+  @@index([purchase_date])
+  @@index([updatedAt]) // For finding users with recent transactions
+}
+
+// Transaction checkpoint for incremental processing
+model TransactionCheckpoint {
+  id                  Int      @id @default(autoincrement())
+  user                User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId              Int      @unique
+  lastProcessedBlock  Int      @default(0) // Last block number processed
+  lastTransactionHash String?  @db.VarChar(255) // Last transaction hash processed
+  lastBalance         Float    @default(0) @db.DoublePrecision // Last known balance
+  transactionCount    Int      @default(0) // Total transactions processed
+  lastActivityDate    DateTime @default(now()) @db.Timestamp(6) // Last transaction date on-chain
+  lastProcessedDate   DateTime @default(now()) @db.Timestamp(6) // Last time we checked
+  processingPriority  Int      @default(1) // 1=high (daily), 2=medium (weekly), 3=low (monthly)
+  needsFullRecalc     Boolean  @default(false) // Force full recalculation flag
+  updatedAt           DateTime @default(now()) @db.Timestamp(6)
+  createdAt           DateTime @default(now()) @db.Timestamp(6)
+
+  @@index([processingPriority])
+  @@index([lastProcessedDate])
+  @@index([lastActivityDate])
+  @@index([needsFullRecalc])
+}
+
+// Transaction classification audit log for transparency
+model TransactionAudit {
+  id                    Int      @id @default(autoincrement())
+  user                  User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId                Int
+  tx_hash               String   @db.VarChar(255)
+  from_address          String   @db.VarChar(255)
+  to_address            String   @db.VarChar(255)
+  amount                Float    @db.DoublePrecision
+  transaction_type      String   @db.VarChar(50) // PURCHASE, SALE, LP_ADD, LP_REMOVE, AIRDROP, etc.
+  fifo_impact           String   @db.VarChar(20) // INCREASE, DECREASE, NEUTRAL, IGNORE
+  classification_reason String   @db.Text // Why was it classified this way
+  metadata              Json?    @db.Json // Additional context (DEX address, pair, etc.)
+  block_number          Int
+  transaction_date      DateTime @db.Timestamp(6)
+  processed_at          DateTime @default(now()) @db.Timestamp(6)
+  createdAt             DateTime @default(now()) @db.Timestamp(6)
+
+  @@unique([userId, tx_hash])
+  @@index([userId])
+  @@index([transaction_type])
+  @@index([fifo_impact])
+  @@index([transaction_date])
+}
+
+// Scheduled tier updates for predictive contract updates
+model ScheduledTierUpdate {
+  id           Int      @id @default(autoincrement())
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId       Int      @unique
+  scheduledAt  DateTime @db.Timestamp(6) // When user will cross tier boundary
+  expectedTier Int // Expected tier value (0, 30, 180, 360, 720)
+  currentTier  Int // Current tier value
+  processed    Boolean  @default(false)
+  createdAt    DateTime @default(now()) @db.Timestamp(6)
+  updatedAt    DateTime @default(now()) @db.Timestamp(6)
+
+  @@index([scheduledAt, processed])
+  @@index([processed])
+}
+
+model TicketCode {
+  id             Int              @id @default(autoincrement())
+  wallet_address String           @db.VarChar(255)
+  code           String           @unique @db.VarChar(10)
+  status         TicketCodeStatus @default(PENDING)
+  claimed_at     DateTime?        @db.Timestamp(6)
+  created_at     DateTime         @default(now()) @db.Timestamp(6)
+  updated_at     DateTime         @default(now()) @db.Timestamp(6)
+}
+
+enum Status {
+  READY
+  SENDING
+  RECEIVED
+}
+
+enum TicketCodeStatus {
+  PENDING
+  CLAIMED
+  EXPIRED
+}
+
+model DexList {
+  id        Int      @id @default(autoincrement())
+  address   String   @unique @db.VarChar(255)
+  name      String?  @db.VarChar(255)
+  isActive  Boolean  @default(true)
+  addedBy   String?  @db.VarChar(255) // Admin address who added this DEX
+  txHash    String?  @db.VarChar(255) // Transaction hash when added
+  updatedAt DateTime @default(now()) @db.Timestamp(6)
+  createdAt DateTime @default(now()) @db.Timestamp(6)
+}
+
+model FeeChangeHistory {
+  id          Int      @id @default(autoincrement())
+  changeType  String   @db.VarChar(50) // 'percentage', 'recipient', or 'holding_date'
+  oldValue    String?  @db.Text // Previous value
+  newValue    String   @db.Text // New value
+  changedBy   String   @db.VarChar(255) // Admin address who made the change
+  txHash      String?  @db.VarChar(255) // Transaction hash
+  holdingDate Int?     @db.Integer // Holding period in days (for percentage and holding_date changes)
+  updatedAt   DateTime @default(now()) @db.Timestamp(6)
+  createdAt   DateTime @default(now()) @db.Timestamp(6)
+}
+
+model DiscoTransactions {
+  id             Int                    @id @default(autoincrement())
+  user           User                   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId         Int
+  type           DiscoTransactionType
+  amount         Float                  @db.DoublePrecision
+  balance_before Float                  @db.DoublePrecision
+  balance_after  Float                  @db.DoublePrecision
+  game           String?                @db.VarChar(50) // 'Crash', 'Lottery', etc.
+  game_id        String?                @db.VarChar(255) // Game session ID
+  tx_hash        String?                @db.VarChar(255) // Blockchain transaction hash
+  status         DiscoTransactionStatus @default(PENDING)
+  updatedAt      DateTime               @default(now()) @db.Timestamp(6)
+  createdAt      DateTime               @default(now()) @db.Timestamp(6)
+}
+
+model ReferralRewards {
+  id                Int      @id @default(autoincrement())
+  referrer_wallet   String   @db.VarChar(255)
+  referred_wallet   String   @db.VarChar(255)
+  snapshot_verified Boolean  @default(false)
+  rewarded          Boolean  @default(false)
+  expires_at        DateTime @db.Timestamp(6)
+  created_at        DateTime @default(now()) @db.Timestamp(6)
+  updated_at        DateTime @default(now()) @db.Timestamp(6)
+  referred          User     @relation("Referred", fields: [referred_wallet], references: [wallet_address], onDelete: Cascade)
+  referrer          User     @relation("Referrer", fields: [referrer_wallet], references: [wallet_address], onDelete: Cascade)
+
+  @@unique([referrer_wallet, referred_wallet])
+  @@index([snapshot_verified])
+  @@index([rewarded])
+  @@index([expires_at])
+}
+
+enum DiscoTransactionType {
+  DEPOSIT
+  WITHDRAW
+  BET
+  WIN
+  CASHOUT
+  REFUND
+}
+
+enum DiscoTransactionStatus {
+  PENDING
+  COMPLETED
+  FAILED
+  CANCELLED
+}

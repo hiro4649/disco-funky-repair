@@ -1,0 +1,13 @@
+.outer {
+    --rotation: 90;
+  }
+  
+  @keyframes rotate {
+    from {
+      --rotation: 90;
+    }
+    to {
+      --rotation: 450;
+    }
+  }
+  

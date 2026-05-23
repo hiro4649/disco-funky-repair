@@ -1,0 +1,62 @@
+.curtain-screen {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  z-index: 9999;
+}
+
+.curtain-background {
+  background: #666666;
+  width: 100%;
+  height: 100%;
+  position: absolute;
+  top: 0;
+  left: 0;
+  z-index: 0;
+  visibility: hidden;
+}
+
+.curtain-content {
+  color: white;
+  font-size: 3em;
+  z-index: 1;
+  opacity: 0;
+  visibility: hidden;
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  transition: opacity 1s ease-in;
+  font-family: sans-serif;
+}
+
+.curtain-content h1 {
+  margin: 0;
+  text-align: center;
+}
+
+.curtain-cover {
+  position: absolute;
+  top: 0;
+  width: 50%;
+  height: 100%;
+  background-color: black;
+  z-index: 2;
+  transition: transform 1s ease-in-out;
+}
+
+.curtain-left {
+  left: 0;
+  transform: translateX(0%);
+}
+
+.curtain-right {
+  right: 0;
+  transform: translateX(0%);
+} 

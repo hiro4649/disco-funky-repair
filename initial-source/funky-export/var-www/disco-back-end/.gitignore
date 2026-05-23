@@ -1,0 +1,10 @@
+node_modules/
+dist/
+coverage/
+*.env
+prisma/migrations
+<<<<<<< HEAD
+uploads/
+=======
+uploads/
+>>>>>>> 1f718a310e6c40c368c0f1580eb491a5cff443f8
