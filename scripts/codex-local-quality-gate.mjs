@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// CODEX_QUALITY_HARNESS_FILE v0.7.1
+// CODEX_QUALITY_HARNESS_FILE v0.7.2
 import fs from 'node:fs';
 import path from 'node:path';
 import process from 'node:process';
@@ -12,6 +12,7 @@ import {
 } from './codex-production-readiness-gate.mjs';
 import { buildEvidenceIntegrityReport } from './codex-evidence-integrity-gate.mjs';
 import { buildHermesInvariantReport } from './codex-hermes-invariant-gate.mjs';
+import { buildGithubReplayContextAsync } from './codex-ci-replay.mjs';
 
 process.chdir(path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..'));
 
@@ -23,7 +24,7 @@ const agentMemoryPolicyPath = path.join('docs', 'process', 'CODEX_AGENT_MEMORY_P
 const skillLifecyclePolicyPath = path.join('docs', 'process', 'CODEX_SKILL_LIFECYCLE_POLICY.json');
 const selfEvolutionPolicyPath = path.join('docs', 'process', 'CODEX_HARNESS_SELF_EVOLUTION_POLICY.json');
 const openaiMethodPolicyPath = path.join('docs', 'process', 'CODEX_OPENAI_CODEX_METHOD_POLICY.json');
-const HARNESS_VERSION = '0.7.1';
+const HARNESS_VERSION = '0.7.2';
 const PROFILE_TEMPLATE_VERSION = '0.7.0';
 const marker = `CODEX_QUALITY_HARNESS_FILE v${HARNESS_VERSION}`;
 const SOURCE_REPO_MODE = process.env.CODEX_HARNESS_SOURCE_REPO === '1';
@@ -534,7 +535,14 @@ const report = {
   evidenceIntegrityStatus: { status: 'not_run' },
   hermesInvariantStatus: { status: 'not_run' },
   humanConfirmationStatus: { status: 'not_run' },
+  evidencePackStatus: { status: 'not_run' },
+  humanConfirmationObjectStatus: { status: 'not_run' },
+  safeOutputScanStatus: { status: 'not_run' },
+  ciReplayStatus: { status: 'not_run' },
+  prBodyLintStatus: { status: 'not_run' },
+  failureReasonCatalogStatus: { status: 'not_run' },
   v071SelfTestStatus: { status: 'not_run' },
+  v072SelfTestStatus: { status: 'not_run' },
   qualityScoreStatus: { status: 'not_run' },
   outputSizeBudget: { topFindings: 5, rootCauses: 5, safeSummary: true },
   recommendedNextAction: 'run quality gate',
@@ -3083,14 +3091,14 @@ function computeModeTransitionSafety() {
     newHumanReviewTriggers: report.humanReviewReasons.slice(0, 10),
   };
 }
-function runOpenAICodexMethodGate() {
+function runOpenAICodexMethodGate(gateEnv = process.env) {
   const script = path.join('scripts', 'codex-openai-method-gate.mjs');
   if (!fs.existsSync(script)) {
     return { status: 'fail', failures: ['methodGateScript=missing'], safeSummary: 'OpenAI Codex Method Gate script is missing.' };
   }
   const result = spawnSync(process.execPath, [script], {
     encoding: 'utf8',
-    env: { ...process.env, CODEX_OPENAI_METHOD_REPORT: 'json' },
+    env: { ...gateEnv, CODEX_OPENAI_METHOD_REPORT: 'json' },
     stdio: ['ignore', 'pipe', 'pipe'],
   });
   const output = String(result.stdout || '').trim();
@@ -3148,6 +3156,130 @@ function runV071SelfTestGate() {
     };
   }
 }
+function runJsonGateScript(scriptPath, statusField, reportEnvName, gateEnv = process.env) {
+  const script = path.join(...scriptPath.split('/'));
+  if (!fs.existsSync(script)) {
+    return {
+      status: 'not_applicable',
+      labels: [`${statusField}_script_missing`],
+      safeSummaryOnly: true,
+    };
+  }
+  const result = spawnSync(process.execPath, [script, '--json'], {
+    encoding: 'utf8',
+    env: { ...gateEnv, [reportEnvName]: 'json', CODEX_QUALITY_REPORT: 'json' },
+    stdio: ['ignore', 'pipe', 'pipe'],
+  });
+  const output = String(result.stdout || '').trim();
+  if (!output) {
+    return {
+      status: 'fail',
+      labels: [`${statusField}_no_output`],
+      safeSummaryOnly: true,
+    };
+  }
+  try {
+    const parsed = JSON.parse(output);
+    return parsed[statusField] || { status: 'fail', labels: [`${statusField}_missing`], safeSummaryOnly: true };
+  } catch {
+    return {
+      status: 'fail',
+      labels: [`${statusField}_parse_failed`],
+      safeSummaryOnly: true,
+    };
+  }
+}
+function runV072SelfTestGate() {
+  return runJsonGateScript('scripts/codex-v072-self-test.mjs', 'v072SelfTestStatus', 'CODEX_V072_SELF_TEST_REPORT');
+}
+function isPullRequestContext(env = process.env) {
+  return env.CODEX_EVENT_NAME === 'pull_request' ||
+    Boolean(env.CODEX_PR_NUMBER) ||
+    Boolean(env.GITHUB_REF && env.GITHUB_REF.includes('/pull/'));
+}
+async function resolveRemoteGateContext(env = process.env) {
+  const args = {
+    repo: env.CODEX_REPOSITORY || env.GITHUB_REPOSITORY || '',
+    pr: env.CODEX_PR_NUMBER || '',
+    head: env.CODEX_PR_HEAD_SHA || env.GITHUB_SHA || '',
+    base: env.CODEX_PR_BASE_SHA || '',
+  };
+  if (!isPullRequestContext(env) || !args.repo || !args.pr || !args.head) {
+    return {
+      env: {},
+      status: 'not_applicable',
+      reasonCodes: ['ci_replay_not_requested'],
+      prBodySource: 'not_applicable',
+      confirmationSource: 'not_applicable',
+      safeSummaryOnly: true,
+    };
+  }
+  if (env.CODEX_PR_BODY || env.CODEX_PR_BODY_PATH || env.GITHUB_EVENT_PATH) {
+    return {
+      env: {},
+      status: 'pass',
+      reasonCodes: [],
+      prBodySource: env.CODEX_PR_BODY ? 'CODEX_PR_BODY' : env.CODEX_PR_BODY_PATH ? 'CODEX_PR_BODY_PATH' : 'GITHUB_EVENT_PATH',
+      confirmationSource: 'provided_context',
+      safeSummaryOnly: true,
+    };
+  }
+  const context = await buildGithubReplayContextAsync(args, env);
+  return {
+    env: context.status === 'pass' ? context.env : {},
+    status: context.status,
+    reasonCodes: context.reasonCodes || [],
+    prBodySource: context.prBodySource || 'missing',
+    confirmationSource: context.confirmationSource || 'missing',
+    safeSummaryOnly: true,
+  };
+}
+function computeFailureReasonCatalogStatus() {
+  const file = path.join('docs', 'process', 'CODEX_FAILURE_REASON_CATALOG.json');
+  if (!fs.existsSync(file)) {
+    return {
+      status: 'fail',
+      reasonCodes: ['failure_reason_catalog_missing'],
+      safeSummaryOnly: true,
+    };
+  }
+  try {
+    const parsed = readJsonFile(file);
+    const required = [
+      'missing_head_sha',
+      'head_sha_mismatch',
+      'stale_evidence',
+      'missing_remote_evidence',
+      'missing_command_result',
+      'weak_evidence_phrase',
+      'unsafe_claim_wording',
+      'missing_human_confirmation',
+      'human_confirmation_incomplete',
+      'non_overridable_failure_present',
+      'unsafe_value_detected',
+      'scope_mismatch',
+      'forbidden_path_changed',
+      'local_ci_parity_mismatch',
+      'evidence_pack_missing',
+      'evidence_pack_invalid',
+      'manual_confirmation_invalid',
+    ];
+    const items = Array.isArray(parsed) ? parsed : Object.values(parsed).flat().filter((item) => item && typeof item === 'object');
+    const codes = new Set(items.map((item) => item.reasonCode || item.code).filter(Boolean));
+    const missing = required.filter((code) => !codes.has(code));
+    return {
+      status: missing.length ? 'fail' : 'pass',
+      missing,
+      safeSummaryOnly: true,
+    };
+  } catch {
+    return {
+      status: 'fail',
+      reasonCodes: ['failure_reason_catalog_invalid'],
+      safeSummaryOnly: true,
+    };
+  }
+}
 function applyV071Status(name, status) {
   const value = status?.status || 'missing';
   if (value === 'fail' || value === 'missing') {
@@ -3170,7 +3302,14 @@ function computeQualityScoreStatus() {
     ['evidenceIntegrityStatus', report.evidenceIntegrityStatus],
     ['hermesInvariantStatus', report.hermesInvariantStatus],
     ['humanConfirmationStatus', report.humanConfirmationStatus],
+    ['evidencePackStatus', report.evidencePackStatus],
+    ['humanConfirmationObjectStatus', report.humanConfirmationObjectStatus],
+    ['safeOutputScanStatus', report.safeOutputScanStatus],
+    ['ciReplayStatus', report.ciReplayStatus],
+    ['prBodyLintStatus', report.prBodyLintStatus],
+    ['failureReasonCatalogStatus', report.failureReasonCatalogStatus],
     ['v071SelfTestStatus', report.v071SelfTestStatus],
+    ['v072SelfTestStatus', report.v072SelfTestStatus],
     ['safeArtifactValidation', report.safeArtifactValidation],
     ['outputShapeStatus', report.outputShapeStatus],
   ];
@@ -3204,7 +3343,7 @@ function computeOutputShapeStatus() {
     /\b(?:gh[pousr]_|sk-|AKIA)[A-Za-z0-9_-]{8,}\b/,
     /-----BEGIN [^-]+PRIVATE KEY-----/i,
   ];
-  const requiredFields = ['qualityReportSchemaVersion', 'codeAuditSchemaVersion', 'harnessVersion', 'profile', 'riskLevel', 'manualConfirmationStatus', 'rootCauseGroups', 'blockingFindings', 'warningFindings', 'agentMemoryPolicyStatus', 'skillLifecyclePolicyStatus', 'selfEvolutionPolicyStatus', 'curatorSuggestionStatus', 'sourceHarnessValidationStatus', 'profileTemplateCompatibilityStatus', 'openaiCodexMethodStatus', 'methodSupportStatus', 'productionReadinessStatus', 'evidenceIntegrityStatus', 'hermesInvariantStatus', 'humanConfirmationStatus', 'v071SelfTestStatus', 'qualityScoreStatus', 'safeArtifactValidation', 'faultInjectionBenchmark', 'semanticImpact', 'testSufficiency', 'specTestMismatch', 'minimalPrPlan', 'ciRiskPrediction', 'decisionTrace', 'defectTaxonomy', 'ciParity', 'oracleLimits', 'auditGrade', 'oracleValidation', 'decisionSimulator', 'acceptanceCriteria', 'confusionRisk', 'temporalConsistency', 'deploymentBoundary', 'mutationBenchmark', 'adversarialPrSimulator', 'auditBypass', 'realWorldCanarySet', 'specBoundaryMutation', 'testAuditMutation', 'dependencyAdversarial', 'ciParityAdversarial', 'evidenceIntegrity', 'policyLint', 'auditEffectiveness', 'fixOutcome', 'postFixVerificationPlan', 'repairQuality', 'splitEffectiveness', 'noiseControl', 'auditLearningRecommendation', 'decisionRetrospective', 'rolloutScore', 'freshness', 'riskAcceptanceWorkflow', 'reviewerAssignmentQuality', 'verificationCompleteness', 'skippedCheckJustification', 'auditModeRecommendation', 'auditConflict', 'maturityScore'];
+  const requiredFields = ['qualityReportSchemaVersion', 'codeAuditSchemaVersion', 'harnessVersion', 'profile', 'riskLevel', 'manualConfirmationStatus', 'rootCauseGroups', 'blockingFindings', 'warningFindings', 'agentMemoryPolicyStatus', 'skillLifecyclePolicyStatus', 'selfEvolutionPolicyStatus', 'curatorSuggestionStatus', 'sourceHarnessValidationStatus', 'profileTemplateCompatibilityStatus', 'openaiCodexMethodStatus', 'methodSupportStatus', 'productionReadinessStatus', 'evidenceIntegrityStatus', 'hermesInvariantStatus', 'humanConfirmationStatus', 'evidencePackStatus', 'humanConfirmationObjectStatus', 'safeOutputScanStatus', 'ciReplayStatus', 'prBodyLintStatus', 'failureReasonCatalogStatus', 'v071SelfTestStatus', 'v072SelfTestStatus', 'qualityScoreStatus', 'safeArtifactValidation', 'faultInjectionBenchmark', 'semanticImpact', 'testSufficiency', 'specTestMismatch', 'minimalPrPlan', 'ciRiskPrediction', 'decisionTrace', 'defectTaxonomy', 'ciParity', 'oracleLimits', 'auditGrade', 'oracleValidation', 'decisionSimulator', 'acceptanceCriteria', 'confusionRisk', 'temporalConsistency', 'deploymentBoundary', 'mutationBenchmark', 'adversarialPrSimulator', 'auditBypass', 'realWorldCanarySet', 'specBoundaryMutation', 'testAuditMutation', 'dependencyAdversarial', 'ciParityAdversarial', 'evidenceIntegrity', 'policyLint', 'auditEffectiveness', 'fixOutcome', 'postFixVerificationPlan', 'repairQuality', 'splitEffectiveness', 'noiseControl', 'auditLearningRecommendation', 'decisionRetrospective', 'rolloutScore', 'freshness', 'riskAcceptanceWorkflow', 'reviewerAssignmentQuality', 'verificationCompleteness', 'skippedCheckJustification', 'auditModeRecommendation', 'auditConflict', 'maturityScore'];
   const missing = requiredFields.filter((field) => report[field] === undefined);
   return {
     status: missing.length || forbidden.some((pattern) => pattern.test(serialized)) ? 'fail' : 'pass',
@@ -5187,7 +5326,14 @@ function computeSafeArtifactValidation() {
     evidenceIntegrityStatus: report.evidenceIntegrityStatus,
     hermesInvariantStatus: report.hermesInvariantStatus,
     humanConfirmationStatus: report.humanConfirmationStatus,
+    evidencePackStatus: report.evidencePackStatus,
+    humanConfirmationObjectStatus: report.humanConfirmationObjectStatus,
+    safeOutputScanStatus: report.safeOutputScanStatus,
+    ciReplayStatus: report.ciReplayStatus,
+    prBodyLintStatus: report.prBodyLintStatus,
+    failureReasonCatalogStatus: report.failureReasonCatalogStatus,
     v071SelfTestStatus: report.v071SelfTestStatus,
+    v072SelfTestStatus: report.v072SelfTestStatus,
     qualityScoreStatus: report.qualityScoreStatus,
   };
   const unsafe = Object.entries(artifacts).filter(([, value]) => safeForbiddenArtifactHit(value)).map(([name]) => name);
@@ -5215,7 +5361,14 @@ function enforceFinalValidationStatuses() {
     ['evidenceIntegrityStatus', report.evidenceIntegrityStatus],
     ['hermesInvariantStatus', report.hermesInvariantStatus],
     ['humanConfirmationStatus', report.humanConfirmationStatus],
+    ['evidencePackStatus', report.evidencePackStatus],
+    ['humanConfirmationObjectStatus', report.humanConfirmationObjectStatus],
+    ['safeOutputScanStatus', report.safeOutputScanStatus],
+    ['ciReplayStatus', report.ciReplayStatus],
+    ['prBodyLintStatus', report.prBodyLintStatus],
+    ['failureReasonCatalogStatus', report.failureReasonCatalogStatus],
     ['v071SelfTestStatus', report.v071SelfTestStatus],
+    ['v072SelfTestStatus', report.v072SelfTestStatus],
     ['qualityScoreStatus', report.qualityScoreStatus],
     ['safeArtifactValidation', report.safeArtifactValidation],
     ['outputShapeStatus', report.outputShapeStatus],
@@ -6096,18 +6249,41 @@ report.curatorSuggestionStatus = validateCuratorSuggestionScript();
 applyGovernancePolicyStatus(report.curatorSuggestionStatus, 'curatorSuggestion.failed', 'Curator suggestion governance failed.');
 report.selfEvolutionPolicyStatus = validateSelfEvolutionPolicy();
 applyGovernancePolicyStatus(report.selfEvolutionPolicyStatus, 'selfEvolutionPolicy.failed', 'Self-evolution policy governance failed.');
-report.openaiCodexMethodStatus = runOpenAICodexMethodGate();
+const remoteGateContext = await resolveRemoteGateContext(process.env);
+const gateEnv = { ...process.env, ...remoteGateContext.env };
+report.remoteContextStatus = {
+  status: remoteGateContext.status,
+  reasonCodes: remoteGateContext.reasonCodes,
+  prBodySource: remoteGateContext.prBodySource,
+  confirmationSource: remoteGateContext.confirmationSource,
+  safeSummaryOnly: true,
+};
+report.openaiCodexMethodStatus = runOpenAICodexMethodGate(gateEnv);
 applyOpenAIMethodGateStatus(report.openaiCodexMethodStatus);
-report.productionReadinessStatus = buildProductionReadinessReport(process.env).productionReadinessStatus;
-report.evidenceIntegrityStatus = buildEvidenceIntegrityReport(process.env).evidenceIntegrityStatus;
-report.hermesInvariantStatus = buildHermesInvariantReport(process.env).hermesInvariantStatus;
-report.humanConfirmationStatus = buildHumanConfirmationStatus(process.env).humanConfirmationStatus;
+report.productionReadinessStatus = buildProductionReadinessReport(gateEnv).productionReadinessStatus;
+report.evidenceIntegrityStatus = buildEvidenceIntegrityReport(gateEnv).evidenceIntegrityStatus;
+report.hermesInvariantStatus = buildHermesInvariantReport(gateEnv).hermesInvariantStatus;
+report.humanConfirmationStatus = buildHumanConfirmationStatus(gateEnv).humanConfirmationStatus;
+report.evidencePackStatus = runJsonGateScript('scripts/codex-evidence-pack-validate.mjs', 'evidencePackStatus', 'CODEX_EVIDENCE_PACK_REPORT', gateEnv);
+report.humanConfirmationObjectStatus = runJsonGateScript('scripts/codex-human-confirmation-validate.mjs', 'humanConfirmationObjectStatus', 'CODEX_HUMAN_CONFIRMATION_REPORT', gateEnv);
+report.safeOutputScanStatus = runJsonGateScript('scripts/codex-safe-output-scan.mjs', 'safeOutputScanStatus', 'CODEX_SAFE_OUTPUT_SCAN_REPORT', gateEnv);
+report.ciReplayStatus = runJsonGateScript('scripts/codex-ci-replay.mjs', 'ciReplayStatus', 'CODEX_CI_REPLAY_REPORT', gateEnv);
+report.prBodyLintStatus = runJsonGateScript('scripts/codex-pr-body-lint.mjs', 'prBodyLintStatus', 'CODEX_PR_BODY_LINT_REPORT', gateEnv);
+report.failureReasonCatalogStatus = computeFailureReasonCatalogStatus();
 report.v071SelfTestStatus = runV071SelfTestGate();
+report.v072SelfTestStatus = runV072SelfTestGate();
 applyV071Status('productionReadinessStatus', report.productionReadinessStatus);
 applyV071Status('evidenceIntegrityStatus', report.evidenceIntegrityStatus);
 applyV071Status('hermesInvariantStatus', report.hermesInvariantStatus);
 applyV071Status('humanConfirmationStatus', report.humanConfirmationStatus);
+applyV071Status('evidencePackStatus', report.evidencePackStatus);
+applyV071Status('humanConfirmationObjectStatus', report.humanConfirmationObjectStatus);
+applyV071Status('safeOutputScanStatus', report.safeOutputScanStatus);
+applyV071Status('ciReplayStatus', report.ciReplayStatus);
+applyV071Status('prBodyLintStatus', report.prBodyLintStatus);
+applyV071Status('failureReasonCatalogStatus', report.failureReasonCatalogStatus);
 applyV071Status('v071SelfTestStatus', report.v071SelfTestStatus);
+applyV071Status('v072SelfTestStatus', report.v072SelfTestStatus);
 classifyDiff(policy, knownRisks);
 runDiffAudits(policy, knownRisks, codeAuditBaseline);
 for (const warning of report.warnings) {
