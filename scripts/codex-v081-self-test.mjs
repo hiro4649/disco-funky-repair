@@ -11,6 +11,7 @@ import { buildProductVerificationReport } from './codex-product-verification-gat
 import { buildProductionReadinessReport } from './codex-production-readiness-gate.mjs';
 import { buildEvidenceIntegrityReport } from './codex-evidence-integrity-gate.mjs';
 import { buildPrBodyLintReport } from './codex-pr-body-lint.mjs';
+import { buildSafeOutputScanReport } from './codex-safe-output-scan.mjs';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const repo = path.dirname(here);
@@ -138,6 +139,19 @@ function buildReport() {
   });
   assertCase('Change classification emits status', Boolean(classified.changeClassificationStatus.status), failures, cases, classified.changeClassificationStatus.status);
   assertCase('Product src change with CODEX_SKIP_NPM=1 fails product verification', productSkip.productVerificationStatus.status === 'fail', failures, cases, productSkip.productVerificationStatus.status);
+  const previousUnsafeReasonCode = ['npm', 'skip_not_allowed_for_product_change'].join('_');
+  assertCase('Product skip failure uses safe reason code', productSkip.productVerificationStatus.reasonCodes.includes('product_checks_skipped_for_product_change') &&
+    !productSkip.productVerificationStatus.reasonCodes.includes(previousUnsafeReasonCode), failures, cases, productSkip.productVerificationStatus.reasonCodes.join(','));
+  const productEvidence = buildProductVerificationReport({
+    CODEX_EVENT_NAME: 'pull_request',
+    CODEX_PR_BODY: 'Product verification commands: npm test and npm run build.',
+    CODEX_CHANGED_FILES: 'src/app.js',
+  });
+  assertCase('Product src change with product verification evidence passes', productEvidence.productVerificationStatus.status === 'pass', failures, cases, productEvidence.productVerificationStatus.status);
+  const safeReasonScan = buildSafeOutputScanReport({ reasonCode: 'product_checks_skipped_for_product_change' });
+  assertCase('Product skip safe reason code passes safe output scan', safeReasonScan.safeOutputScanStatus.status === 'pass', failures, cases, safeReasonScan.safeOutputScanStatus.status);
+  const tokenLikeScan = buildSafeOutputScanReport({ safeSummary: 'synthetic ' + 'npm' + '_' + 'a'.repeat(12) });
+  assertCase('Token-like values still fail safe output scan', tokenLikeScan.safeOutputScanStatus.status === 'fail', failures, cases, tokenLikeScan.safeOutputScanStatus.status);
 
   const runtimeSkip = buildProductVerificationReport({
     CODEX_EVENT_NAME: 'pull_request',

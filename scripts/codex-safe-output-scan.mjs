@@ -31,7 +31,7 @@ const safePolicyVocabulary = [
 
 const safeLabelAllowlist = new Set([
   'unsafe_value_detected',
-  'npm_skip_not_allowed_for_product_change',
+  'product_checks_skipped_for_product_change',
   'safe_policy_vocabulary',
   'forbidden_field_name_detected',
   'manual_confirmation_required',

@@ -52,7 +52,7 @@ export function buildProductVerificationReport(env = process.env) {
   const productRelevant = classified.productRelevantChanged;
   if (productRelevant) {
     requiredCommands.push('repository_test_or_build_or_project_defined_check');
-    if (skipNpm) reasonCodes.push('npm_skip_not_allowed_for_product_change');
+    if (skipNpm) reasonCodes.push('product_checks_skipped_for_product_change');
     if (!providedEvidence.length) missingEvidence.push('product_verification_commands');
   }
   if (c.runtimeReadinessClaimed) {

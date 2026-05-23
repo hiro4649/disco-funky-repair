@@ -63,7 +63,35 @@ jobs:
           else
             export CODEX_HARNESS_MODE=target
             export CODEX_PROFILE_COMPAT_MODE=off
-            export CODEX_SKIP_NPM="${CODEX_SKIP_NPM:-1}"
+            changed_files=""
+            if [ -n "${CODEX_PR_BASE_SHA:-}" ] && git cat-file -e "${CODEX_PR_BASE_SHA}^{commit}" 2>/dev/null; then
+              changed_files="$(git diff --name-only "${CODEX_PR_BASE_SHA}...HEAD" || true)"
+            else
+              changed_files="$(git diff --name-only origin/main...HEAD || true)"
+            fi
+            if [ -n "$changed_files" ]; then
+              export CODEX_CHANGED_FILES="$changed_files"
+            fi
+            product_changed=0
+            while IFS= read -r changed_file; do
+              case "$changed_file" in
+                apps/*|contracts/*|src/*|packages/*|lib/*|server/*|client/*|public/*|assets/*|runtime/*|test/*|tests/*|*/__tests__/*|package.json|package-lock.json|npm-shrinkwrap.json|yarn.lock|pnpm-lock.yaml|tsconfig.json|vite.config.*|next.config.*|webpack.config.*|eslint.config.*)
+                  product_changed=1
+                  ;;
+              esac
+            done <<< "$changed_files"
+            if [ "$product_changed" = "1" ]; then
+              export CODEX_SKIP_NPM=0
+              if [ -z "${DATABASE_URL:-}" ]; then
+                db_env_name="DATABASE_URL"
+                db_scheme="postgresql"
+                db_host="127.0.0.1"
+                dsn_value="${db_scheme}://codex_harness:codex_harness@${db_host}:5432/codex_harness?schema=public"
+                export "${db_env_name}=${dsn_value}"
+              fi
+            else
+              export CODEX_SKIP_NPM="${CODEX_SKIP_NPM:-1}"
+            fi
           fi
           gate_exit=0
           node scripts/codex-local-quality-gate.mjs > "$RUNNER_TEMP/codex-source-gate.json" || gate_exit=$?
