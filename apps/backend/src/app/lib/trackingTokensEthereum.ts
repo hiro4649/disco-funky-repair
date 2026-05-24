@@ -44,21 +44,21 @@ export const registerAllEthereumTokens = async () => {
                 }
             });
 
-            console.log(`Found ${uniqueTokens.length} unique tokens:`);
+
 
             const provider = new ethers.JsonRpcProvider(QUICKNODE_HTTP_RPC_URL);
 
             // Get admin wallet balance for each token
             for (const [index, tokenAddress] of uniqueTokens.entries()) {
                 try {
-                    console.log(`Processing token: ${tokenAddress}`);
+
                     if (index > 0) {
                         await delay(500);
                     }
 
                     const tokenData = await fetchEthereumTokenData(tokenAddress, provider);
                     if (tokenData === null) {
-                        console.log(`Failed to fetch data for token: ${tokenAddress}`);
+
                         continue;
                     }
 
@@ -85,7 +85,7 @@ export const registerAllEthereumTokens = async () => {
                                 balance_amount: tokenData.balanceAmount,
                             }
                         });
-                        console.log(`Created new prize entry for token: ${tokenAddress}`);
+
                     } else {
                         // Update existing entries
                         for (const existingPrize of existingPrizes) {
@@ -101,7 +101,7 @@ export const registerAllEthereumTokens = async () => {
                                 }
                             });
                         }
-                        console.log(`Updated existing prize entries for token: ${tokenAddress}`);
+
                     }
 
                     // Update token details
@@ -121,7 +121,7 @@ export const registerAllEthereumTokens = async () => {
                 }
             }
         } else {
-            console.log("Error fetching data:", data.message);
+
         }
     } catch (error) {
         safeLogError('register_all_ethereum_tokens', error);
@@ -152,11 +152,11 @@ const fetchEthereumTokenData = async (tokenAddress: string, provider: ethers.Jso
         // Get token market data from DexScreener
         const marketData = await getTokenMarketData(tokenAddress);
         const priceUsd = marketData.price ? parseFloat(marketData.price) : 0;
-        
+
         // Get additional transaction count from Etherscan as fallback/supplement
         const etherscanTxCount = await getTokenTransactionCount24h(tokenAddress);
         const finalTxCount = marketData.txns24h > 0 ? marketData.txns24h : etherscanTxCount;
-        
+
         // Calculate scarcity score
         const scarcityScore = calculateScarcityScore(
             Number(totalSupply), // Using total supply as circulating supply for now
@@ -250,22 +250,22 @@ const getTokenTransactionCount24h = async (tokenAddress: string): Promise<number
     try {
         const endTime = Math.floor(moment.utc().valueOf() / 1000);
         const startTime = endTime - (24 * 3600); // 24 hours ago
-        
+
         const url = `${ETHERSCAN_API_URL}&module=account&action=tokentx&address=${adminWalletAddress}&page=1&offset=100&sort=asc&apikey=${ETHERSCAN_API_KEY}`;
-        
+
         const response = await axios.get(url);
         const data = response.data;
-        
+
         if (data.status === '1' && data.result) {
             // Filter transactions within the last 24 hours
             const recentTransactions = data.result.filter((tx: any) => {
                 const txTime = parseInt(tx.timeStamp);
                 return txTime >= startTime && txTime <= endTime;
             });
-            
+
             return recentTransactions.length;
         }
-        
+
         return 0;
     } catch (error) {
         safeLogError('fetch_token_transaction_count_24h', error, {

@@ -6,9 +6,13 @@
  */
 
 import { EXPLORER_API_KEY_ENV_ORDER, getExplorerApiKeys } from '../config/explorerApiKeys';
+import { safeLogWarn } from '../utils/safeLogger';
 
 if (getExplorerApiKeys().length === 0) {
-    console.error(`Missing explorer API key. Configure one of: ${EXPLORER_API_KEY_ENV_ORDER.join(', ')}`);
+    safeLogWarn('explorer_api_key_missing', new Error('Explorer API key configuration missing'), {
+        configuredKeyCount: 0,
+        acceptedEnvNameCount: EXPLORER_API_KEY_ENV_ORDER.length
+    });
 }
 
 interface RateLimitState {
@@ -38,7 +42,6 @@ class DualApiKeyManager {
             });
         });
 
-        console.log(`Explorer API Key Manager initialized with ${this.apiKeys.length} keys`);
     }
 
     async getNextApiKey(): Promise<string> {

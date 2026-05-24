@@ -11,6 +11,7 @@
 
 import { ethers } from 'ethers';
 import { DISCORD_WEBHOOK_URL, NODE_ENV, CHAIN_NAME, SERVICE_VERSION } from '../config/env';
+import { safeLogError, safeLogWarn, sanitizeLogText } from '../utils/safeLogger';
 
 /**
  * Generate correlation ID for log tracking
@@ -59,14 +60,11 @@ export async function sendDiscordAlert(
     service: string = 'system'
 ): Promise<void> {
     if (!DISCORD_WEBHOOK_URL) {
-        console.warn('⚠️  DISCORD_WEBHOOK_URL not configured. Alert will only be logged to console.');
-        console.log(`🚨 ALERT: ${alert.title}`);
-        console.log(alert.description);
-        if (alert.fields) {
-            alert.fields.forEach(field => {
-                console.log(`  ${field.name}: ${field.value}`);
-            });
-        }
+        safeLogWarn('discord_alert_webhook_missing', new Error('Discord webhook is not configured'), {
+            service,
+            hasFields: Boolean(alert.fields?.length),
+            color: alert.color
+        });
         return;
     }
 
@@ -97,14 +95,15 @@ export async function sendDiscordAlert(
         });
 
         if (!response.ok) {
-            throw new Error(`Discord webhook failed: ${response.status} ${response.statusText}`);
+            throw new Error('Discord webhook request failed');
         }
 
-        console.log(`✅ Discord alert sent: ${alert.title}`);
-
     } catch (error) {
-        console.error('❌ Failed to send Discord alert:', error);
-        console.log(`🚨 ALERT (Discord failed): ${alert.title} - ${alert.description}`);
+        safeLogError('discord_alert_send', error, {
+            service,
+            hasFields: Boolean(alert.fields?.length),
+            color: alert.color
+        });
     }
 }
 
@@ -308,7 +307,7 @@ class FailureAggregator {
 
         const errorTypeName = errorTypeNames[errorType] || errorType;
         const uniqueUsers = new Set(failures.map(f => f.userId));
-        const sampleError = failures[0].error;
+        const sampleErrorMessage = sanitizeLogText(failures[0].error.message);
 
         // Get sample user IDs (max 5)
         const sampleUserIds = Array.from(uniqueUsers).slice(0, 5);
@@ -323,7 +322,7 @@ class FailureAggregator {
                 { name: '失敗件数', value: `**${failures.length}件**`, inline: true },
                 { name: '影響ユーザー数', value: `**${uniqueUsers.size}ユーザー**`, inline: true },
                 { name: 'サンプルユーザーID', value: `${sampleUserIds.join(', ')}${moreUsers ? ` (${moreUsers})` : ''}`, inline: false },
-                { name: 'エラーメッセージ例', value: `\`\`\`${sampleError.message.slice(0, 300)}\`\`\``, inline: false },
+                { name: 'エラーメッセージ例', value: `\`\`\`${sampleErrorMessage.slice(0, 300)}\`\`\``, inline: false },
                 { name: '📋 詳細情報', value: '詳細なログとユーザーID一覧はログファイルまたはDBを確認してください。\n次回の毎時スケジュール更新で自動的に再試行されます。', inline: false }
             ]
         }, 'tierScheduler');
@@ -372,7 +371,7 @@ export async function alertContractUpdateFailed(
                 { name: 'ユーザーID', value: `${userId}`, inline: true },
                 { name: 'ウォレットアドレス', value: `\`${walletAddress.slice(0, 10)}...${walletAddress.slice(-8)}\``, inline: true },
                 { name: 'リトライ回数', value: `${retryCount}回`, inline: true },
-                { name: 'エラーメッセージ', value: `\`\`\`${error.message.slice(0, 500)}\`\`\``, inline: false },
+                { name: 'エラーメッセージ', value: `\`\`\`${sanitizeLogText(error.message).slice(0, 500)}\`\`\``, inline: false },
                 { name: '🔄 次のアクション', value: '次回の毎時スケジュール更新で自動的に再試行されます。\n同一エラーが複数発生した場合は、5分ごとに集約通知が送信されます。', inline: false }
             ]
         }, 'tierScheduler');

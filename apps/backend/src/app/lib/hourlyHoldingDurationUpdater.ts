@@ -17,7 +17,7 @@ const prisma = new PrismaClient();
  * IMPORTANT: HoldDateHistory already contains FIFO-adjusted amounts
  * (reduced by sales using First-In-First-Out method via realtimeHoldingDateUpdater)
  * We just need to recalculate the average as time passes (duration increases hourly)
- * 
+ *
  * PRECISION NOTE: purchase_amount is now Decimal(38,18) for exact ERC20 precision.
  * Prisma returns Decimal objects which we convert to Number for the weighted average.
  */
@@ -69,7 +69,7 @@ const calculateAverageHoldingDuration = async (userId: number): Promise<{ averag
         };
 
     } catch (error) {
-        console.error(`Error calculating holding duration for user ${userId}:`, error);
+
         return { averageDays: 0, averageHours: 0 };
     }
 };
@@ -80,10 +80,7 @@ const calculateAverageHoldingDuration = async (userId: number): Promise<{ averag
  */
 export const updateAllUsersHoldingDuration = async (): Promise<void> => {
     const startTime = Date.now();
-    console.log('\n╔════════════════════════════════════════════════════════════════╗');
-    console.log('║ HOURLY HOLDING DURATION UPDATE                                 ║');
-    console.log(`║ Started at: ${moment.utc().format('YYYY-MM-DD HH:mm:ss')} UTC                         ║`);
-    console.log('╚════════════════════════════════════════════════════════════════╝\n');
+
 
     try {
         // Get all users who have tokens (holdingDate > 0)
@@ -99,7 +96,7 @@ export const updateAllUsersHoldingDuration = async (): Promise<void> => {
             }
         });
 
-        console.log(`📊 Processing ${users.length} users with token holdings...`);
+
 
         let successCount = 0;
         let failedCount = 0;
@@ -124,22 +121,18 @@ export const updateAllUsersHoldingDuration = async (): Promise<void> => {
                 successCount++;
 
                 if (successCount % 100 === 0) {
-                    console.log(`✓ Processed ${successCount}/${users.length} users...`);
+
                 }
 
             } catch (error) {
-                console.error(`❌ Failed to update user ${user.id}:`, error);
+
                 failedCount++;
             }
         }
 
         const processingTime = ((Date.now() - startTime) / 1000).toFixed(2);
 
-        console.log('\n╔════════════════════════════════════════════════════════════════╗');
-        console.log('║ HOURLY HOLDING DURATION UPDATE COMPLETE                       ║');
-        console.log(`║ Completed at: ${moment.utc().format('YYYY-MM-DD HH:mm:ss')} UTC                      ║`);
-        console.log(`║ Success: ${successCount.toString().padEnd(10)} Failed: ${failedCount.toString().padEnd(10)} Time: ${processingTime}s     ║`);
-        console.log('╚════════════════════════════════════════════════════════════════╝\n');
+
 
         // ============================================================
         // WebSocket: Notify frontend that hourly update completed
@@ -152,18 +145,14 @@ export const updateAllUsersHoldingDuration = async (): Promise<void> => {
                 affectedUsers: successCount,
                 updatedUserIds: updatedUsers
             });
-            console.log(`📡 WebSocket event emitted: hourly-holding-duration-updated (${successCount} users)`);
+
         } catch (error) {
-            console.error('Failed to emit WebSocket event:', error);
+
         }
 
     } catch (error) {
         const errorTime = moment.utc().format('YYYY-MM-DD HH:mm:ss');
-        console.error('\n╔════════════════════════════════════════════════════════════════╗');
-        console.error('║ ⚠️  HOURLY HOLDING DURATION UPDATE FAILED                      ║');
-        console.error(`║ Failed at: ${errorTime} UTC                            ║`);
-        console.error('╚════════════════════════════════════════════════════════════════╝');
-        console.error('Error details:', error);
+
     }
 };
 

@@ -14,6 +14,7 @@ import {
   TIER_UPDATER_ABI,
   VALID_TIER_DAYS
 } from '../lib/tierSync';
+import { safeLogError } from '../utils/safeLogger';
 
 // Read-only token contract ABI. Governance writes are handled outside the backend.
 const TOKEN_ABI = [
@@ -162,8 +163,7 @@ export class TokenManagementService {
 
     } catch (error) {
       const safeError = this.toSafeTierUpdateError(error);
-      const errorName = error instanceof Error ? error.name : typeof error;
-      console.error('Error updating user holding date:', { errorName });
+      safeLogError('token_management_update_user_holding_date', error);
       return {
         success: false,
         error: safeError
@@ -218,8 +218,7 @@ export class TokenManagementService {
       };
 
     } catch (error) {
-      const errorName = error instanceof Error ? error.name : typeof error;
-      console.error('Error getting contract state:', { errorName });
+      safeLogError('token_management_get_contract_state', error);
       return {
         success: false,
         error: 'Failed to get contract state'
@@ -248,7 +247,7 @@ export class TokenManagementService {
         }
       });
     } catch (error) {
-      console.error('Error saving fee change to database:', error);
+      safeLogError('token_management_save_fee_change', error);
       throw error;
     }
   }

@@ -23,16 +23,13 @@ async function getTokenBalance(
     const resp = await fetch(apiUrl);
     const data = await resp.json();
     if (data.status !== "1") {
-        console.warn("Etherscan token balance returned non-success", {
-          operation: "get_token_balance",
-          resultType: typeof data.result
-        });
+
         throw new Error(data.result || "Etherscan returned error");
     }
 
     // result is string (wei units)
     return Number(data.result);
-    
+
   } catch (err) {
     safeLogError("get_token_balance", err, {
       walletAddressPrefix: walletAddress.slice(0, 10),

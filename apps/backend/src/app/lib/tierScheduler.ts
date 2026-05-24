@@ -61,7 +61,7 @@ export const scheduleTierUpdate = async (userId: number, currentHoldingDays: num
 
         // If user has already passed the tier (edge case), update immediately
         if (daysUntilNextTier <= 0) {
-            console.log(`⚡ User ${userId} already passed tier ${nextTierDays}, triggering immediate update`);
+
             await updateUserContractTier(userId);
             return;
         }
@@ -87,11 +87,11 @@ export const scheduleTierUpdate = async (userId: number, currentHoldingDays: num
             }
         });
 
-        console.log(`📅 Scheduled tier update for user ${userId}: ${currentTier} → ${nextTierDays} in ${daysUntilNextTier.toFixed(2)} days`);
+
 
     } catch (error) {
         const errorName = error instanceof Error ? error.name : typeof error;
-        console.error(`Failed to schedule tier update for user ${userId}:`, { errorName });
+
     }
 };
 
@@ -102,7 +102,7 @@ export const scheduleTierUpdate = async (userId: number, currentHoldingDays: num
  */
 export const processScheduledTierUpdates = async (): Promise<void> => {
     try {
-        console.log('🔍 Checking for scheduled tier updates...');
+
 
         // Get all scheduled updates that should be processed in the next hour
         const upcomingUpdates = await prisma.scheduledTierUpdate.findMany({
@@ -126,11 +126,11 @@ export const processScheduledTierUpdates = async (): Promise<void> => {
         });
 
         if (upcomingUpdates.length === 0) {
-            console.log('✅ No tier updates scheduled for the next hour');
+
             return;
         }
 
-        console.log(`📋 Found ${upcomingUpdates.length} scheduled tier update(s)`);
+
 
         for (const scheduled of upcomingUpdates) {
             try {
@@ -141,11 +141,11 @@ export const processScheduledTierUpdates = async (): Promise<void> => {
 
                 const currentTier = getMilestoneTier(currentHoldingDays);
 
-                console.log(`👤 User ${scheduled.userId}: Current ${currentHoldingDays.toFixed(2)} days (tier ${currentTier}), Expected tier ${scheduled.expectedTier}`);
+
 
                 // Check if user has crossed the tier boundary
                 if (currentTier >= scheduled.expectedTier) {
-                    console.log(`✅ User ${scheduled.userId} reached tier ${scheduled.expectedTier}, updating contract...`);
+
 
                     await updateUserContractTier(scheduled.userId);
 
@@ -161,20 +161,20 @@ export const processScheduledTierUpdates = async (): Promise<void> => {
                     // Schedule next tier update if applicable
                     await scheduleTierUpdate(scheduled.userId, currentHoldingDays);
                 } else {
-                    console.log(`⏳ User ${scheduled.userId} hasn't reached tier ${scheduled.expectedTier} yet`);
+
                 }
 
             } catch (error) {
                 const errorName = error instanceof Error ? error.name : typeof error;
-                console.error(`Failed to process scheduled update for user ${scheduled.userId}:`, { errorName });
+
             }
         }
 
-        console.log('✅ Scheduled tier updates processing complete');
+
 
     } catch (error) {
         const errorName = error instanceof Error ? error.name : typeof error;
-        console.error('Error processing scheduled tier updates:', { errorName });
+
     }
 };
 
@@ -192,7 +192,7 @@ export const updateUserContractTier = async (
     for (let attempt = 0; attempt < retries; attempt++) {
         try {
             if (!TIER_RELAYER_PRIVATE_KEY || !QUICKNODE_HTTP_RPC_URL || !TIER_UPDATER_CONTRACT_ADDRESS) {
-                console.error('Missing required environment variables for tier updater contract update');
+
                 return;
             }
 
@@ -207,7 +207,7 @@ export const updateUserContractTier = async (
             });
 
             if (!user) {
-                console.error(`User ${userId} not found`);
+
                 return;
             }
 
@@ -228,11 +228,11 @@ export const updateUserContractTier = async (
             const currentContractTier = await contract.holdingDate(user.wallet_address);
 
             if (Number(currentContractTier) === milestoneTier) {
-                console.log(`User ${userId} already has correct tier ${milestoneTier} in contract`);
+
                 return;
             }
 
-            console.log(`🔄 Updating contract tier for user ${userId}: ${currentContractTier} → ${milestoneTier} (attempt ${attempt + 1}/${retries})`);
+
 
             // Estimate gas and get current gas price
             const estimatedGas = await estimateTierSyncGas(
@@ -263,13 +263,11 @@ export const updateUserContractTier = async (
                 : 0;
 
             if (relayerBalance < estimatedCost) {
-                console.error(`❌ Insufficient balance for user ${userId} contract update`);
-                console.error(`   Required: ${ethers.formatEther(estimatedCost)} BNB`);
-                console.error(`   Available: ${ethers.formatEther(relayerBalance)} BNB`);
+
                 throw new Error('Insufficient tier relayer wallet balance');
             }
 
-            console.log(`💰 Tier relayer balance check passed: ${ethers.formatEther(relayerBalance)} BNB (can afford ${remainingTransactions} more updates)`);
+
 
             // Check for gas price spikes
             await walletBalanceMonitor.checkGasPriceSpike(gasPriceForCost);
@@ -292,8 +290,7 @@ export const updateUserContractTier = async (
                 txOptions
             );
 
-            console.log(`📡 Transaction sent: ${tx.hash}`);
-            console.log(`⏳ Waiting for confirmation...`);
+
 
             const receipt = await tx.wait();
 
@@ -301,8 +298,7 @@ export const updateUserContractTier = async (
                 throw new Error('Transaction receipt is null');
             }
 
-            console.log(`✅ Contract updated for user ${userId}. TX: ${receipt.hash}`);
-            console.log(`⛽ Gas used: ${receipt.gasUsed.toString()}`);
+
 
             // Record gas usage for future predictions
             const gasUsed = receipt.gasUsed;
@@ -315,11 +311,11 @@ export const updateUserContractTier = async (
         } catch (error) {
             lastError = error as Error;
             const errorName = error instanceof Error ? error.name : typeof error;
-            console.error(`❌ Attempt ${attempt + 1}/${retries} failed for user ${userId}:`, { errorName });
+
 
             // If insufficient balance, no point retrying
             if (error instanceof Error && error.message.includes('Insufficient tier relayer wallet balance')) {
-                console.error(`💰 Tier relayer wallet out of funds - stopping retries`);
+
                 await alertContractUpdateFailed(userId, user?.wallet_address || '', error, attempt + 1);
                 throw error;
             }
@@ -327,7 +323,7 @@ export const updateUserContractTier = async (
             // If not the last attempt, wait before retrying
             if (attempt < retries - 1) {
                 const delay = Math.pow(2, attempt) * 5000; // 5s, 10s, 20s
-                console.log(`⏳ Retrying in ${delay / 1000}s...`);
+
                 await new Promise(resolve => setTimeout(resolve, delay));
             }
         }
@@ -335,7 +331,7 @@ export const updateUserContractTier = async (
 
     // All retries exhausted
     if (lastError) {
-        console.error(`❌ All ${retries} attempts failed for user ${userId}`);
+
         const user = await prisma.user.findUnique({
             where: { id: userId },
             select: { wallet_address: true }
@@ -359,9 +355,9 @@ export const cleanupOldScheduledUpdates = async (): Promise<void> => {
             }
         });
 
-        console.log(`🧹 Cleaned up ${result.count} old scheduled tier updates`);
+
     } catch (error) {
-        console.error('Error cleaning up old scheduled updates:', error);
+
     }
 };
 

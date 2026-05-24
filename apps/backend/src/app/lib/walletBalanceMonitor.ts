@@ -19,6 +19,7 @@ import {
     alertBalanceInfo,
     alertGasPriceSpike
 } from './discordAlerts';
+import { safeLogError, safeLogWarn } from '../utils/safeLogger';
 
 const prisma = new PrismaClient();
 
@@ -63,7 +64,10 @@ class WalletBalanceMonitor {
      */
     async getAdminWalletInfo(): Promise<{ address: string; balance: bigint } | null> {
         if (!ADMIN_PRIVATE_KEY || !QUICKNODE_HTTP_RPC_URL) {
-            console.error('Missing ADMIN_PRIVATE_KEY or QUICKNODE_HTTP_RPC_URL');
+            safeLogWarn('wallet_balance_monitor_config_missing', new Error('Wallet monitor configuration missing'), {
+                hasAdminCredential: Boolean(ADMIN_PRIVATE_KEY),
+                hasRpcEndpoint: Boolean(QUICKNODE_HTTP_RPC_URL)
+            });
             return null;
         }
 
@@ -77,7 +81,7 @@ class WalletBalanceMonitor {
                 balance
             };
         } catch (error) {
-            console.error('Failed to get admin wallet info:', error);
+            safeLogError('wallet_balance_get_admin_info', error);
             return null;
         }
     }
@@ -315,21 +319,11 @@ class WalletBalanceMonitor {
      * Perform daily balance check (scheduled task)
      */
     async performDailyBalanceCheck(): Promise<void> {
-        console.log('\n╔════════════════════════════════════════════════════════════════╗');
-        console.log('║ DAILY ADMIN WALLET BALANCE CHECK                               ║');
-        console.log('╚════════════════════════════════════════════════════════════════╝\n');
-
         const status = await this.getWalletStatus();
         if (!status) {
-            console.error('❌ Failed to get wallet status');
+            safeLogWarn('wallet_balance_daily_check_status_missing', new Error('Wallet status unavailable'));
             return;
         }
-
-        console.log(`💳 Admin Wallet: ${status.address}`);
-        console.log(`💰 Balance: ${status.balanceInBNB} BNB`);
-        console.log(`⛽ Daily Gas Usage: ~${status.dailyUsageInBNB} BNB/day`);
-        console.log(`📊 Days Remaining: ${status.daysRemaining !== null ? `~${status.daysRemaining} days` : 'Unknown (insufficient history)'}`);
-        console.log(`📈 Status: ${status.status.toUpperCase()}`);
 
         // Send alert based on status (state-based)
         if (status.status === 'critical') {
@@ -348,8 +342,6 @@ class WalletBalanceMonitor {
                 await this.sendBalanceInfoAlert(status.address, BigInt(status.balance));
             }
         }
-
-        console.log('\n✅ Daily balance check complete\n');
     }
 }
 

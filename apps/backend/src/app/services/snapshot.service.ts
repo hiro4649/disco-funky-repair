@@ -1,7 +1,8 @@
-import { PrismaClient } from '@prisma/client';
+﻿import { PrismaClient } from '@prisma/client';
 import moment from 'moment';
 import getTokenBalance from '../lib/getToken';
 import { TOKEN_CONTRACT_ADDRESS } from '../config/env';
+import { safeLogError, safeLogWarn } from '../utils/safeLogger';
 
 const prisma = new PrismaClient();
 
@@ -15,10 +16,9 @@ export class SnapshotService {
     totalChecked: number;
   }> {
     try {
-      console.log('Starting daily snapshot verification...');
 
       if (!TOKEN_CONTRACT_ADDRESS) {
-        console.error('TOKEN_CONTRACT_ADDRESS is not configured. Skipping snapshot verification.');
+        safeLogWarn('snapshot_token_contract_missing', new Error('Token contract address is not configured'));
         return { verifiedCount: 0, totalChecked: 0 };
       }
 
@@ -44,7 +44,7 @@ export class SnapshotService {
         
         try {
           if (!TOKEN_CONTRACT_ADDRESS) {
-            console.error('TOKEN_CONTRACT_ADDRESS is not configured');
+            safeLogWarn('snapshot_token_contract_missing', new Error('Token contract address is not configured'));
             continue;
           }
 
@@ -52,7 +52,6 @@ export class SnapshotService {
           const tokenBalance = await getTokenBalance(user.wallet_address, TOKEN_CONTRACT_ADDRESS);
           const balanceInTokens = Number(tokenBalance) / Math.pow(10, 9); // Convert from smallest unit to tokens (assuming 9 decimals)
           
-          console.log(`Checking wallet ${user.wallet_address}: balance=${balanceInTokens} DISCO tokens, holdingDate=${user.holdingDate} days`);
           
           // Check if referred user has held 10k+ DISCO tokens for 24+ hours
           if (balanceInTokens >= 10000 && user.holdingDate >= 1) {
@@ -66,24 +65,21 @@ export class SnapshotService {
             });
             
             verifiedCount++;
-            console.log(`Verified referral: ${referral.referred_wallet} -> ${referral.referrer_wallet} (balance: ${balanceInTokens} tokens)`);
           } else {
-            console.log(`Referral not verified: ${referral.referred_wallet} (balance: ${balanceInTokens} DISCO tokens, holdingDate: ${user.holdingDate} days)`);
           }
         } catch (error) {
-          console.error(`Error checking DISCO token balance for wallet ${user.wallet_address}:`, error);
+          safeLogError('snapshot_check_token_balance', error, { userId: user.id, referralId: referral.id });
           // Continue with other referrals
         }
       }
 
-      console.log(`Snapshot completed: ${verifiedCount}/${pendingReferrals.length} referrals verified`);
 
       return {
         verifiedCount,
         totalChecked: pendingReferrals.length
       };
     } catch (error) {
-      console.error('Error running daily snapshot:', error);
+      safeLogError('snapshot_run_daily', error);
       throw error;
     }
   }
@@ -96,7 +92,6 @@ export class SnapshotService {
     distributedCount: number;
   }> {
     try {
-      console.log('Starting reward distribution...');
 
       // Get all verified but not rewarded referrals that haven't expired
       const now = moment.utc().toDate();
@@ -126,7 +121,7 @@ export class SnapshotService {
           });
 
           if (!referrerUser || !referredUser) {
-            console.error(`User not found for referral ${referral.id}`);
+            safeLogWarn('snapshot_referral_user_missing', new Error('Referral user lookup failed'), { referralId: referral.id });
             continue;
           }
 
@@ -174,18 +169,16 @@ export class SnapshotService {
           });
 
           distributedCount++;
-          console.log(`Distributed rewards for referral: ${referral.referred_wallet} -> ${referral.referrer_wallet}`);
         } catch (error) {
-          console.error(`Error distributing rewards for referral ${referral.id}:`, error);
+          safeLogError('snapshot_distribute_referral_reward', error, { referralId: referral.id });
           // Continue with other referrals
         }
       }
 
-      console.log(`Reward distribution completed: ${distributedCount} rewards distributed`);
 
       return { distributedCount };
     } catch (error) {
-      console.error('Error distributing rewards:', error);
+      safeLogError('snapshot_distribute_rewards', error);
       throw error;
     }
   }
@@ -198,7 +191,6 @@ export class SnapshotService {
     cleanedCount: number;
   }> {
     try {
-      console.log('Starting cleanup of expired referrals...');
 
       const now = moment.utc().toDate();
       const expiredReferrals = await prisma.referralRewards.findMany({
@@ -218,14 +210,12 @@ export class SnapshotService {
         });
         
         cleanedCount++;
-        console.log(`Cleaned up expired referral: ${referral.referred_wallet} -> ${referral.referrer_wallet}`);
       }
 
-      console.log(`Cleanup completed: ${cleanedCount} expired referrals removed`);
 
       return { cleanedCount };
     } catch (error) {
-      console.error('Error cleaning up expired referrals:', error);
+      safeLogError('snapshot_cleanup_expired_referrals', error);
       throw error;
     }
   }
@@ -240,7 +230,6 @@ export class SnapshotService {
     // totalChecked: number;
   }> {
     try {
-      console.log('Starting daily referral process...');
 
       // Step 1: Clean up expired referrals
       const cleanupResult = await this.cleanupExpiredReferrals();
@@ -251,7 +240,6 @@ export class SnapshotService {
       // Step 3: Distribute rewards
       // const rewardResult = await this.distributeRewards();
 
-      console.log('Daily referral process completed successfully');
 
       return {
         cleanedCount: cleanupResult.cleanedCount,
@@ -260,7 +248,7 @@ export class SnapshotService {
         // totalChecked: snapshotResult.totalChecked
       };
     } catch (error) {
-      console.error('Error in daily referral process:', error);
+      safeLogError('snapshot_daily_referral_process', error);
       throw error;
     }
   }

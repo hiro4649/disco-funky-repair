@@ -48,6 +48,8 @@ describe('explorer request logging safety', () => {
       'postgresql://user:password@db.example.invalid:5432/app',
       `Authorization: Bearer ${jwt}`,
       `Cookie: adminAuth=${jwt}`,
+      `{"password":"secret-password","token":"secret-token"}`,
+      'raw payload: {"wallet":"0x1234","password":"secret-password"}',
       `${sessionSecretKey}=session-secret-value`,
       `${databaseUrlKey}=postgresql://user:password@db.example.invalid:5432/app`,
       `${privateKeyLabel}=0x1234567890abcdef`,
@@ -70,11 +72,15 @@ describe('explorer request logging safety', () => {
     expect(sanitized).not.toContain('SESSION_SECRET');
     expect(sanitized).not.toContain('DATABASE_URL');
     expect(sanitized).not.toContain('PRIVATE_KEY');
+    expect(sanitized).not.toContain('secret-password');
+    expect(sanitized).not.toContain('secret-token');
+    expect(sanitized).not.toContain('raw payload');
     expect(sanitized).not.toContain('HIRO-001');
     expect(sanitized).not.toContain('/home/funky/app');
     expect(sanitized).toContain('[redacted-url]');
     expect(sanitized).toContain('[redacted-credential]');
     expect(sanitized).toContain('[redacted-path]');
+    expect(sanitized).toContain('[redacted-payload]');
   });
 
   it('logs safe explorer failure metadata without the raw error object or API URL', () => {
@@ -212,5 +218,47 @@ describe('explorer request logging safety', () => {
       expect(source).not.toContain('Internal server error: JWT secret is not set.');
       expect(source).not.toContain('JWT_SECRET environment variable not set');
     }
+  });
+
+  it('keeps selected service and lib logging paths off direct console output', () => {
+    const sources = [
+      readLibFile('discordAlerts.ts'),
+      readLibFile('dualApiKeyManager.ts'),
+      readLibFile('enhancedHoldingDateProcessor.ts'),
+      readLibFile('getToken.ts'),
+      readLibFile('getTokenPrice.ts'),
+      readLibFile('holdingDateService.ts'),
+      readLibFile('hourlyHoldingDurationUpdater.ts'),
+      readLibFile('incrementalFIFOProcessor.ts'),
+      readLibFile('incrementalHoldingDateProcessor.ts'),
+      readLibFile('optimizedHoldingDateChecker.ts'),
+      readLibFile('quicknodeRpcService.ts'),
+      readLibFile('realtimeEventListener.ts'),
+      readLibFile('realtimeHoldingDateUpdater.ts'),
+      readLibFile('tierScheduler.ts'),
+      readLibFile('trackingTokenBalanceEthereum.ts'),
+      readLibFile('trackingTokensEthereum.ts'),
+      readLibFile('trialNftService.ts'),
+      readLibFile('trialNftScheduler.ts'),
+      readLibFile('walletBalanceMonitor.ts'),
+      readAppFile('services', 'cron.service.ts'),
+      readAppFile('services', 'snapshot.service.ts'),
+      readAppFile('services', 'tokenManagementService.ts'),
+      readAppFile('services', 'trackingService.ts'),
+      readAppFile('utils', 'tokenHeplers.ts')
+    ];
+
+    for (const source of sources) {
+      expect(source).not.toMatch(/console\.(?:error|log|warn)/);
+    }
+
+    const trackingSource = readLibFile('trackingTokenBalanceEthereum.ts');
+    expect(trackingSource).not.toMatch(/console\.log\(["']transactions:/);
+    expect(trackingSource).not.toMatch(/console\.log\(["']tokenBalance:/);
+    expect(trackingSource).toContain("safeLogWarn('referral_reward_user_missing'");
+
+    const discordAlertSource = readLibFile('discordAlerts.ts');
+    expect(discordAlertSource).not.toContain('ALERT (Discord failed)');
+    expect(discordAlertSource).toContain('sanitizeLogText(error.message)');
   });
 });

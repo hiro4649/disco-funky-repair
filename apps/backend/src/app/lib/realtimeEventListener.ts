@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Real-Time Event Listener
  *
  * Listens to Transfer events from the token contract via WebSocket
@@ -17,6 +17,7 @@ import { PrismaClient } from '@prisma/client';
 import { processUserRealtime } from './realtimeHoldingDateUpdater';
 import { alertWebSocketDisconnected, alertWebSocketReconnected } from './discordAlerts';
 import { CHAIN_NAME, QUICKNODE_WS_RPC_URL, TOKEN_CONTRACT_ADDRESS } from '../config/env';
+import { safeLogError, safeLogWarn, sanitizeLogText } from '../utils/safeLogger';
 
 const prisma = new PrismaClient();
 
@@ -37,12 +38,12 @@ class RealtimeEventListener {
 
     constructor() {
         if (!QUICKNODE_WS_RPC_URL) {
-            console.error('❌ QUICKNODE_WS_RPC_URL not configured! Real-time events will not work.');
+            safeLogWarn('realtime_event_listener_ws_config_missing', new Error('WebSocket RPC endpoint is not configured'));
             return;
         }
 
         if (!TOKEN_CONTRACT_ADDRESS) {
-            console.error('❌ TOKEN_CONTRACT_ADDRESS not configured!');
+            safeLogWarn('realtime_event_listener_token_config_missing', new Error('Token contract address is not configured'));
             return;
         }
 
@@ -54,11 +55,10 @@ class RealtimeEventListener {
      */
     private async connect(): Promise<void> {
         try {
-            console.log('🔌 Connecting to QuickNode WebSocket RPC...');
 
             const wsRpcUrl = QUICKNODE_WS_RPC_URL;
             if (!wsRpcUrl) {
-                console.error('QUICKNODE_WS_RPC_URL is not configured');
+                safeLogWarn('realtime_event_listener_ws_config_missing', new Error('WebSocket RPC endpoint is not configured'));
                 return;
             }
 
@@ -77,7 +77,6 @@ class RealtimeEventListener {
             // Handle connection events using provider events instead of websocket directly
             this.provider.on('network', async (newNetwork, oldNetwork) => {
                 if (oldNetwork === null) {
-                    console.log('✅ WebSocket connected successfully');
                     const wasReconnecting = this.reconnectAttempts > 0;
                     this.isConnected = true;
                     this.reconnectAttempts = 0;
@@ -85,25 +84,23 @@ class RealtimeEventListener {
                     if (wasReconnecting) {
                         try {
                             await alertWebSocketReconnected();
-                            console.log('📡 Discord alert sent: WebSocket reconnected');
                         } catch (e) {
-                            console.error('Failed to send WebSocket reconnected alert:', e);
+                            safeLogError('realtime_event_listener_reconnected_alert', e);
                         }
                     }
                 }
             });
 
             this.provider.on('error', (error: Error) => {
-                console.error('❌ WebSocket error:', error.message);
+                safeLogError('realtime_event_listener_websocket', error);
                 this.isConnected = false;
                 this.disconnectStartTime = Date.now();
                 this.handleDisconnect(error);
             });
 
-            console.log(`🎧 Listening for Transfer events on contract: ${TOKEN_CONTRACT_ADDRESS}`);
 
         } catch (error) {
-            console.error('❌ Failed to connect to WebSocket:', error);
+            safeLogError('realtime_event_listener_connect', error);
             this.disconnectStartTime = Date.now();
             this.handleDisconnect(error as Error);
         }
@@ -122,7 +119,6 @@ class RealtimeEventListener {
             const fromLower = from.toLowerCase();
             const toLower = to.toLowerCase();
 
-            console.log(`📡 Transfer detected: ${fromLower.slice(0, 8)}... → ${toLower.slice(0, 8)}... (${ethers.formatEther(value)} tokens)`);
 
             // Extract event data for QuickNode RPC processing
             const eventData = {
@@ -133,7 +129,6 @@ class RealtimeEventListener {
                 blockNumber: event.log.blockNumber
             };
 
-            console.log(`🔍 Transaction hash: ${eventData.hash}, Block: ${eventData.blockNumber}`);
 
             // Check if from or to are registered users
             const affectedUsers = await prisma.user.findMany({
@@ -149,26 +144,23 @@ class RealtimeEventListener {
             });
 
             if (affectedUsers.length === 0) {
-                // console.log('ℹ️  No registered users affected by this transfer');
                 return;
             }
 
-            console.log(`👥 ${affectedUsers.length} registered user(s) affected`);
 
             // Process each affected user in real-time with event data
             for (const user of affectedUsers) {
-                console.log(`⚡ Processing user ${user.id} (${user.wallet_address.slice(0, 10)}...) in real-time`);
 
                 try {
                     // Pass event data for QuickNode RPC processing (fast path)
                     await processUserRealtime(user.id, user.wallet_address, eventData);
                 } catch (error) {
-                    console.error(`❌ Failed to process user ${user.id}:`, error);
+                    safeLogError('realtime_event_listener_process_user', error, { userId: user.id });
                 }
             }
 
         } catch (error) {
-            console.error('❌ Error handling Transfer event:', error);
+            safeLogError('realtime_event_listener_transfer_event', error);
         }
     }
 
@@ -186,7 +178,7 @@ class RealtimeEventListener {
         let closeReason: string | undefined;
 
         if (error) {
-            closeReason = error.message;
+            closeReason = sanitizeLogText(error.message);
             // Try to extract close code from error message
             const codeMatch = error.message.match(/code[:\s]+(\d+)/i);
             if (codeMatch) {
@@ -219,20 +211,20 @@ class RealtimeEventListener {
                 lastBlockNumber: this.lastBlockNumber || undefined,
                 downtimeSeconds
             });
-            console.log(`📡 Discord alert sent for WebSocket disconnect (attempt ${this.reconnectAttempts + 1})`);
         } catch (alertError) {
-            console.error('Failed to send WebSocket disconnect alert:', alertError);
+            safeLogError('realtime_event_listener_disconnect_alert', alertError);
         }
 
         if (this.reconnectAttempts >= this.MAX_RECONNECT_ATTEMPTS) {
-            console.error(`❌ Max reconnection attempts (${this.MAX_RECONNECT_ATTEMPTS}) reached. Giving up.`);
+            safeLogWarn('realtime_event_listener_reconnect_exhausted', new Error('WebSocket reconnect attempts exhausted'), {
+                reconnectAttempts: this.reconnectAttempts
+            });
             return;
         }
 
         this.reconnectAttempts++;
         const delay = this.RECONNECT_DELAY * this.reconnectAttempts;
 
-        console.log(`🔄 Attempting to reconnect (${this.reconnectAttempts}/${this.MAX_RECONNECT_ATTEMPTS}) in ${delay / 1000}s...`);
 
         await this.sleep(delay);
 
@@ -253,7 +245,6 @@ class RealtimeEventListener {
      * Graceful shutdown
      */
     async stop(): Promise<void> {
-        console.log('🛑 Stopping real-time event listener...');
 
         if (this.contract) {
             this.contract.removeAllListeners();
@@ -264,7 +255,6 @@ class RealtimeEventListener {
         }
 
         this.isConnected = false;
-        console.log('✅ Real-time event listener stopped');
     }
 
     /**

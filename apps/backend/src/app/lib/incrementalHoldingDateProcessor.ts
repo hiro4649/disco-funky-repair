@@ -68,14 +68,14 @@ export const fetchIncrementalTransactions = async (
             if (process.env.NODE_ENV === 'production') {
                 throw new Error('ETHERSCAN_API_URL is not configured');
             }
-            console.warn('ETHERSCAN_API_URL is not configured; incremental transaction fetch disabled.');
+
             return [];
         }
         if (!ETHERSCAN_API_KEY) {
             if (process.env.NODE_ENV === 'production') {
                 throw new Error('Explorer API key is not configured');
             }
-            console.warn('Explorer API key is not configured; incremental transaction fetch disabled.');
+
             return [];
         }
 

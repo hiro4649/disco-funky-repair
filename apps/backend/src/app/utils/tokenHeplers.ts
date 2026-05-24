@@ -9,6 +9,7 @@ import {
     QUICKNODE_HTTP_RPC_URL,
     TOKEN_CONTRACT_ADDRESS
 } from "../config/env";
+import { safeLogError } from "./safeLogger";
 
 export type PrizeTransferReceiptStatus = 'RECEIVED' | 'BROADCASTED' | 'MANUAL_REVIEW';
 
@@ -82,8 +83,7 @@ export const calculateTokenQuantity = async (ca: string, price: number): Promise
 
         return Math.floor(price / priceUsd);
     } catch (error) {
-        // eslint-disable-next-line no-console
-        console.error("Error fetching token quantity:", error);
+        safeLogError('calculate_token_quantity', error);
     }
     return 0;
 };
@@ -100,8 +100,7 @@ export const fetchTokenBalance = async (ca: string): Promise<number> => {
         }
         return balance;
     } catch (error) {
-        // eslint-disable-next-line no-console
-        console.error("Error fetching token balance:", error);
+        safeLogError('fetch_token_balance', error);
         return 0.0;
     }
 };

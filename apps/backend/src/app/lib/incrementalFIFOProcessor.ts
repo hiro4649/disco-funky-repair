@@ -10,7 +10,7 @@
  * 6. Save updated FIFO queue
  *
  * This avoids re-classifying all historical transactions every time.
- * 
+ *
  * PRECISION NOTE: Uses Decimal(38,18) in database for exact ERC20 token amounts.
  * All internal calculations use BigInt (wei) for zero precision loss.
  */
@@ -50,7 +50,7 @@ interface IncrementalFIFOResult {
 
 /**
  * Load existing FIFO queue from database
- * 
+ *
  * Converts Decimal(38,18) from database to BigInt (wei) for precise calculations.
  * Prisma Decimal is converted via string to avoid any floating-point precision loss.
  */
@@ -65,11 +65,11 @@ const loadExistingFIFOQueue = async (userId: number): Promise<FIFOPurchase[]> =>
         // Prisma Decimal.toString() gives exact decimal representation
         const decimalStr = h.purchase_amount.toString();
         const [intPart, fracPart = ''] = decimalStr.split('.');
-        
+
         // Pad or trim fractional part to exactly 18 digits
         const paddedFrac = fracPart.padEnd(DECIMALS, '0').slice(0, DECIMALS);
         const weiStr = intPart + paddedFrac;
-        
+
         return {
             timestamp: Math.floor(h.purchase_date.getTime() / 1000),
             amount: BigInt(weiStr), // Exact conversion, no precision loss
@@ -129,7 +129,7 @@ const applyTransactionsToFIFO = (
         }
 
         if (remainingSale > BigInt(0)) {
-            console.warn(`Sale exceeded available purchases. Remaining: ${remainingSale}`);
+
         }
     }
 
@@ -150,7 +150,7 @@ const bigIntToTokens = (amountWei: bigint): number => {
 
 /**
  * Calculate weighted average holding days from FIFO queue
- * 
+ *
  * Uses BigInt for token amounts until the final calculation.
  * The weighted average result is inherently floating-point (days can be fractional).
  */
@@ -190,7 +190,7 @@ export const processIncrementalFIFO = async (
 
     // 1. Load existing FIFO queue from database
     const existingQueue = await loadExistingFIFOQueue(userId);
-    console.log(`Loaded ${existingQueue.length} existing purchases from FIFO queue`);
+
 
     // 2. Classify NEW transactions only
     const config: TransactionClassifierConfig = {
@@ -204,11 +204,11 @@ export const processIncrementalFIFO = async (
     const classifiedNew = await classifyAllTransactions(newTransactions, config);
     const { purchases: newPurchases, sales: newSales, ignored } = getTransactionsForFIFO(classifiedNew);
 
-    console.log(`Classified ${newTransactions.length} new transactions: ${newPurchases.length} purchases, ${newSales.length} sales, ${ignored.length} ignored`);
+
 
     // 3. Apply new transactions to existing FIFO queue
     const updatedQueue = applyTransactionsToFIFO(existingQueue, newPurchases, newSales);
-    console.log(`Updated FIFO queue: ${existingQueue.length} → ${updatedQueue.length} purchases`);
+
 
     // 4. Calculate holding date from updated queue
     const averageDays = calculateHoldingDaysFromQueue(updatedQueue, currentTimeMs);
@@ -266,9 +266,9 @@ async function saveTransactionAudit(userId: number, classifiedTransactions: Clas
             });
         }
 
-        console.log(`Saved ${auditRecords.length} transaction audit records for user ${userId}`);
+
     } catch (error) {
-        console.error(`Error saving transaction audit for user ${userId}:`, error);
+
     }
 }
 
@@ -278,12 +278,12 @@ async function saveTransactionAudit(userId: number, classifiedTransactions: Clas
  */
 const bigIntToDecimalString = (amountWei: bigint): string => {
     const weiStr = amountWei.toString();
-    
+
     if (weiStr.length <= DECIMALS) {
         // Amount is less than 1 token, pad with leading zeros
         return '0.' + weiStr.padStart(DECIMALS, '0');
     }
-    
+
     // Insert decimal point at the correct position
     const intPart = weiStr.slice(0, -DECIMALS);
     const fracPart = weiStr.slice(-DECIMALS);
@@ -326,7 +326,7 @@ export const saveFIFOQueue = async (userId: number, fifoQueue: FIFOPurchase[]): 
     });
 
     if (fifoQueue.length > 0) {
-        console.log(`Saved ${fifoQueue.length} purchases to FIFO queue (Decimal precision, atomic transaction)`);
+
     }
 };
 

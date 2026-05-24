@@ -19,7 +19,7 @@ interface HoldingDateSyncUser {
 
 const createTierUpdaterContract = () => {
   if (!TIER_RELAYER_PRIVATE_KEY || !QUICKNODE_HTTP_RPC_URL || !TIER_UPDATER_CONTRACT_ADDRESS) {
-    console.error('Missing required environment variables for tier updater sync');
+
     return null;
   }
 
@@ -52,11 +52,11 @@ const syncUsersToContract = async (source: string): Promise<void> => {
   const users = await fetchTierSyncUsers();
 
   if (users.length === 0) {
-    console.log('No users found to sync');
+
     return;
   }
 
-  console.log(`Checking ${users.length} users for tier updater sync...`);
+
 
   for (const user of users) {
     try {
@@ -64,13 +64,10 @@ const syncUsersToContract = async (source: string): Promise<void> => {
       const milestoneTier = getMilestoneTier(actualHoldingDays);
       const currentContractTier = Number(await contract.holdingDate(user.wallet_address));
 
-      console.log(
-        `User ${user.id} (${user.wallet_address}): Actual=${actualHoldingDays}d, ` +
-        `Tier=${milestoneTier}, Contract=${currentContractTier}`
-      );
+
 
       if (currentContractTier === milestoneTier) {
-        console.log(`User ${user.id} already has correct tier ${milestoneTier} in contract`);
+
         continue;
       }
 
@@ -103,10 +100,10 @@ const syncUsersToContract = async (source: string): Promise<void> => {
       );
 
       const receipt = await tx.wait();
-      console.log(`Successfully synced user ${user.id} to tier ${milestoneTier}. TX: ${receipt.hash}`);
+
     } catch (error) {
       const errorName = error instanceof Error ? error.name : typeof error;
-      console.error(`Error syncing holding date for user ${user.id}:`, { errorName });
+
     }
   }
 };
@@ -119,12 +116,12 @@ const syncUsersToContract = async (source: string): Promise<void> => {
  */
 export const updateHoldingDateMilestones = async () => {
   try {
-    console.log('Starting holding date milestone update process...');
+
     await syncUsersToContract('MILESTONE_SYNC');
-    console.log('Holding date milestone update process completed');
+
   } catch (error) {
     const errorName = error instanceof Error ? error.name : typeof error;
-    console.error('Error in updateHoldingDateMilestones:', { errorName });
+
   }
 };
 
@@ -133,12 +130,12 @@ export const updateHoldingDateMilestones = async () => {
  */
 export const syncAllHoldingDates = async () => {
   try {
-    console.log('Starting full holding date sync process...');
+
     await syncUsersToContract('FULL_SYNC');
-    console.log('Full holding date sync process completed');
+
   } catch (error) {
     const errorName = error instanceof Error ? error.name : typeof error;
-    console.error('Error in syncAllHoldingDates:', { errorName });
+
   }
 };
 

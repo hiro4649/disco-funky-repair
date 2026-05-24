@@ -1,4 +1,4 @@
-import prisma from '../db/prisma_client';
+﻿import prisma from '../db/prisma_client';
 import { Prisma } from '@prisma/client';
 import moment from 'moment';
 import getDiscoNFTEVM from './getDiscoNFTEVM';
@@ -103,7 +103,6 @@ export const getTotalNFTCount = async (walletAddress: string, userId: number): P
         });
 
         const totalCount = realNFTCount + activeTrialNFTs;
-        console.log(`User ${userId}: Real NFTs: ${realNFTCount}, Trial NFTs: ${activeTrialNFTs}, Total: ${totalCount}`);
 
         return totalCount;
     } catch (error) {
@@ -238,8 +237,6 @@ export const claimTrialNFT = async (userId: number, templateId?: number): Promis
                 data: { fan_points: { increment: 1 } }
             });
 
-            console.log(`Trial NFT claimed for user ${userId}, expires at ${expiresAt.toISOString()}`);
-            console.log(`User ${userId} received 1 fan-point immediately for Trial NFT mint (Day 1)`);
             return { success: true, data: trialNft, message: 'Trial NFT claimed successfully! +1 Fan Point' };
         }, {
             isolationLevel: Prisma.TransactionIsolationLevel.Serializable
@@ -280,7 +277,6 @@ export const expireOldTrialNFTs = async () => {
         });
 
         if (expiredTrialNFTs.length === 0) {
-            console.log('No trial NFTs to expire');
             return 0;
         }
 
@@ -297,7 +293,6 @@ export const expireOldTrialNFTs = async () => {
             }
         });
 
-        console.log(`🗑️ Expired ${result.count} trial NFT(s)`);
         return result.count;
     } catch (error) {
         safeLogError('trial_nft_expire_old', error);
@@ -402,14 +397,12 @@ export const getTrialNFTBonusPoints = async (userId: number, isForDailyCron: boo
         // For daily cron job: Day 1 bonus is already given at mint time, so skip it
         // Only give bonus for Day 2-5
         if (isForDailyCron && dayOfHolding === 1) {
-            console.log(`📊 Trial NFT for user ${userId}: Day 1 - skipping (already given at mint)`);
             return { points: 0, dayOfHolding: 1, trialNftId: activeTrialNFT.id };
         }
 
         // Points = day of holding (Day 2 = 2pts, Day 3 = 3pts, etc.)
         const points = dayOfHolding;
 
-        console.log(`📊 Trial NFT bonus for user ${userId}: Day ${dayOfHolding} = ${points} points`);
 
         return { 
             points, 
@@ -446,7 +439,6 @@ export const applyTrialNFTBonus = async (userId: number, isForDailyCron: boolean
             }
         });
 
-        console.log(`✅ Applied ${points} trial NFT bonus points to user ${userId} (Day ${dayOfHolding})`);
         return points;
     } catch (error) {
         safeLogError('trial_nft_apply_bonus', error, { userId });
@@ -469,7 +461,6 @@ export const processDailyNFTHolderBonus = async (): Promise<{
     totalTrialNFTBonus: number;
     errors: number;
 }> => {
-    console.log('🎁 Starting daily NFT holder bonus processing...');
     
     let processedUsers = 0;
     let totalRealNFTBonus = 0;
@@ -485,7 +476,6 @@ export const processDailyNFTHolderBonus = async (): Promise<{
             }
         });
 
-        console.log(`📊 Processing ${users.length} users for daily NFT bonus...`);
 
         for (const user of users) {
             try {
@@ -514,7 +504,6 @@ export const processDailyNFTHolderBonus = async (): Promise<{
 
                     if (alreadyReceivedToday) {
                         // User already received Real NFT bonus today (from mint), skip daily bonus
-                        console.log(`  ⏭️ User ${user.id}: Skipping Real NFT daily bonus (already received mint bonus today)`);
                     } else {
                         // Real NFT holders get 1 point per NFT per day
                         userRealNFTBonus = realNFTCount;
@@ -574,7 +563,6 @@ export const processDailyNFTHolderBonus = async (): Promise<{
 
                 if (userRealNFTBonus > 0 || userTrialNFTBonus > 0) {
                     processedUsers++;
-                    console.log(`  ✓ User ${user.id}: Real NFT +${userRealNFTBonus}pts, Trial NFT Day ${dayOfHolding || 0} +${userTrialNFTBonus}pts`);
                 }
 
             } catch (userError) {
@@ -583,11 +571,6 @@ export const processDailyNFTHolderBonus = async (): Promise<{
             }
         }
 
-        console.log(`\n📊 Daily NFT Holder Bonus Summary:`);
-        console.log(`   Users processed: ${processedUsers}`);
-        console.log(`   Real NFT bonus total: ${totalRealNFTBonus} pts`);
-        console.log(`   Trial NFT bonus total: ${totalTrialNFTBonus} pts`);
-        console.log(`   Errors: ${errors}`);
 
         return {
             processedUsers,

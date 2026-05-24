@@ -1,5 +1,6 @@
-import cron from 'node-cron';
+﻿import cron from 'node-cron';
 import { SnapshotService } from './snapshot.service';
+import { safeLogError } from '../utils/safeLogger';
 
 export class CronService {
   private static isRunning = false;
@@ -12,18 +13,16 @@ export class CronService {
     // Run every day at 00:00 UTC
     cron.schedule('0 0 * * *', async () => {
       if (this.isRunning) {
-        console.log('Daily snapshot already running, skipping...');
         return;
       }
 
       this.isRunning = true;
-      console.log('Starting scheduled daily snapshot...');
 
       try {
         const result = await SnapshotService.runDailyProcess();
-        console.log('Scheduled daily snapshot completed:', result);
+        void result;
       } catch (error) {
-        console.error('Error in scheduled daily snapshot:', error);
+        safeLogError('cron_daily_snapshot', error);
       } finally {
         this.isRunning = false;
       }
@@ -32,7 +31,6 @@ export class CronService {
       timezone: 'UTC'
     });
 
-    console.log('Daily snapshot cron job started (runs at 00:00 UTC)');
   }
 
   /**
@@ -40,7 +38,6 @@ export class CronService {
    */
   static startAllCronJobs(): void {
     this.startDailySnapshot();
-    console.log('All cron jobs started');
   }
 
   /**
@@ -50,6 +47,5 @@ export class CronService {
     cron.getTasks().forEach(task => {
       task.stop();
     });
-    console.log('All cron jobs stopped');
   }
 }
