@@ -623,7 +623,7 @@ export class AuthController {
                     maxAge: 7200000 // 2 hours in milliseconds
                 });
                 
-                return res.status(200).json({ success: true, token: newToken });
+                return res.status(200).json({ success: true });
             } catch (err) {
                 // Token verification failed
                 return res.status(403).json({ success: false, message: 'Invalid token' });

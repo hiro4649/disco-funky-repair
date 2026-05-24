@@ -35,6 +35,7 @@ jest.mock('bcryptjs', () => ({
 
 import { Wallet } from 'ethers';
 import bcrypt from 'bcryptjs';
+import jwt from 'jsonwebtoken';
 import { AuthController } from '../auth.controller';
 
 const createResponse = () => {
@@ -350,5 +351,59 @@ describe('AuthController admin cookie session', () => {
     expect(logged).not.toContain('Authorization');
     expect(logged).not.toContain('adminAuth');
     expect(res.status).toHaveBeenCalledWith(500);
+  });
+});
+
+describe('AuthController refresh token cookie session', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    process.env.JWT_SECRET = 'test-jwt-secret';
+    process.env.NODE_ENV = 'test';
+  });
+
+  it('refreshes the httpOnly user cookie without returning the JWT in the response body', async () => {
+    mockPrisma.user.findUnique.mockResolvedValue({
+      id: 12,
+      wallet_address: '0xrefreshuser'
+    });
+    const existingToken = jwt.sign(
+      { user_id: 12, address: '0xrefreshuser' },
+      process.env.JWT_SECRET as string,
+      { expiresIn: '1h' }
+    );
+    const req = createRequest({});
+    req.cookies = { userAuth: existingToken };
+    const res = createResponse();
+
+    await AuthController.refreshToken(req, res);
+
+    expect(mockPrisma.user.findUnique).toHaveBeenCalledWith({ where: { id: 12 } });
+    expect(res.cookie).toHaveBeenCalledWith('userAuth', expect.any(String), expect.objectContaining({
+      httpOnly: true,
+      secure: false,
+      sameSite: 'lax',
+      maxAge: 7200000
+    }));
+    expect(res.status).toHaveBeenCalledWith(200);
+    expect(res.json).toHaveBeenCalledWith({ success: true });
+    const body = res.json.mock.calls[0][0];
+    expect(body).not.toHaveProperty('token');
+    expect(body).not.toHaveProperty('newToken');
+    expect(body).not.toHaveProperty('jwt');
+    expect(body).not.toHaveProperty('accessToken');
+    expect(JSON.stringify(body)).not.toMatch(/eyJ/);
+  });
+
+  it('rejects invalid refresh tokens without exposing token material', async () => {
+    const req = createRequest({});
+    req.cookies = { userAuth: 'not-a-valid-token' };
+    const res = createResponse();
+
+    await AuthController.refreshToken(req, res);
+
+    expect(res.cookie).not.toHaveBeenCalled();
+    expect(res.status).toHaveBeenCalledWith(403);
+    expect(res.json).toHaveBeenCalledWith({ success: false, message: 'Invalid token' });
+    expect(JSON.stringify(res.json.mock.calls[0][0])).not.toContain('not-a-valid-token');
   });
 });
