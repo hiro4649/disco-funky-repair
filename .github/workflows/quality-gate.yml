@@ -24,6 +24,24 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: '20'
+      - name: Prepare target product verification
+        shell: bash
+        env:
+          CODEX_HARNESS_MODE: "target"
+          CODEX_PROFILE_COMPAT_MODE: "off"
+          CODEX_QUALITY_REPORT: "json"
+          CODEX_EVENT_NAME: ${{ github.event_name }}
+          CODEX_PR_NUMBER: ${{ github.event.pull_request.number || '' }}
+          CODEX_PR_HEAD_SHA: ${{ github.event.pull_request.head.sha || '' }}
+          CODEX_PR_BASE_SHA: ${{ github.event.pull_request.base.sha || '' }}
+          CODEX_REPOSITORY: ${{ github.repository }}
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          node scripts/codex-remote-product-checks.mjs > "$RUNNER_TEMP/codex-remote-product-checks.json"
+          cp "$RUNNER_TEMP/codex-remote-product-checks.safe.json" ./codex-remote-product-checks.safe.json 2>/dev/null || true
+          cp "$RUNNER_TEMP/codex-product-verification-evidence.remote.json" ./codex-product-verification-evidence.remote.json 2>/dev/null || true
+          cp "$RUNNER_TEMP/codex-remote-product-baseline.json" ./codex-remote-product-baseline.json 2>/dev/null || true
       - name: Run Codex target quality gate
         shell: bash
         env:
@@ -31,7 +49,6 @@ jobs:
           CODEX_PROFILE_COMPAT_MODE: "off"
           CODEX_QUALITY_REPORT: "json"
           CODEX_OPENAI_METHOD_REPORT: "json"
-          CODEX_SKIP_NPM: "1"
           CODEX_EVENT_NAME: ${{ github.event_name }}
           CODEX_PR_NUMBER: ${{ github.event.pull_request.number || '' }}
           CODEX_PR_HEAD_SHA: ${{ github.event.pull_request.head.sha || '' }}
@@ -103,4 +120,7 @@ jobs:
             codex-safe-artifact-index.json
             codex-workflow-preflight.safe.json
             codex-test-metrics.safe.json
+            codex-remote-product-checks.safe.json
+            codex-product-verification-evidence.remote.json
+            codex-remote-product-baseline.json
           if-no-files-found: ignore
