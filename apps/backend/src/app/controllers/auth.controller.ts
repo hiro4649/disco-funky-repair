@@ -150,7 +150,6 @@ export class AuthController {
             });
 
             if (!referrer) {
-                console.log('Invalid referral code', { hasReferralCode: Boolean(referralCode) });
                 return;
             }
 
@@ -163,7 +162,6 @@ export class AuthController {
             });
 
             if (existingReferral) {
-                console.log('Referral already exists for this user');
                 return;
             }
 
@@ -273,7 +271,7 @@ export class AuthController {
                 const jwtSecret = process.env.JWT_SECRET;
                 if (!jwtSecret) {
                     // Handle the case where the JWT_SECRET is not set
-                    return res.status(500).json({ message: "Internal server error: JWT secret is not set." });
+                    return res.status(500).json({ message: "Internal server error" });
                 }
                 const payload = { user_id: user.id, address: user.wallet_address };
                 const token = jwt.sign(payload, jwtSecret, { expiresIn: '1h' });
@@ -305,9 +303,6 @@ export class AuthController {
 
                 // Fetch ALL token transactions for FIFO calculation
                 const transactions = await getTokenTransactions(wallet_address, TOKEN_CONTRACT_ADDRESS);
-                console.log('Token transaction history fetched', {
-                    transactionCount: Array.isArray(transactions) ? transactions.length : 0
-                });
 
                 if (transactions && Array.isArray(transactions) && transactions.length > 0) {
                     const userId = user.id;
@@ -479,7 +474,7 @@ export class AuthController {
                 const jwtSecret = process.env.JWT_SECRET;
                 if (!jwtSecret) {
                     // Handle the case where the JWT_SECRET is not set
-                    return res.status(500).json({ message: "Internal server error: JWT secret is not set." });
+                    return res.status(500).json({ message: "Internal server error" });
                 }
                 const payload = { user_id: user.id, address: user.wallet_address };
                 const token = jwt.sign(payload, jwtSecret, { expiresIn: '1h' });
@@ -531,7 +526,7 @@ export class AuthController {
                 const jwtSecret = process.env.JWT_SECRET;
                 if (!jwtSecret) {
                     // Handle the case where the JWT_SECRET is not set
-                    return res.status(500).json({ message: "Internal server error: JWT secret is not set." });
+                    return res.status(500).json({ message: "Internal server error" });
                 }
 
                 // Sign the JWT token
@@ -592,7 +587,7 @@ export class AuthController {
             // Ensure JWT_SECRET is defined
             const jwtSecret = process.env.JWT_SECRET;
             if (!jwtSecret) {
-                return res.status(500).json({ message: "Internal server error: JWT secret is not set." });
+                return res.status(500).json({ message: "Internal server error" });
             }
             
             try {
@@ -646,7 +641,7 @@ export class AuthController {
             if (!jwtSecret) {
                 return res.status(500).json({ 
                     success: false,
-                    message: 'Internal server error: JWT secret is not set.' 
+                    message: 'Internal server error'
                 });
             }
 
@@ -698,7 +693,7 @@ export class AuthController {
             if (!jwtSecret) {
                 return res.status(500).json({ 
                     success: false,
-                    message: 'Internal server error: JWT secret is not set.' 
+                    message: 'Internal server error'
                 });
             }
 

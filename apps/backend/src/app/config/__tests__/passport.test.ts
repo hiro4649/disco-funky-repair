@@ -57,16 +57,19 @@ const responseOutput = (res: MockResponse) =>
 
 describe('passport authentication logging', () => {
     let logSpy: jest.SpyInstance;
+    let warnSpy: jest.SpyInstance;
     let errorSpy: jest.SpyInstance;
 
     beforeEach(() => {
         jest.clearAllMocks();
         logSpy = jest.spyOn(console, 'log').mockImplementation(() => undefined);
+        warnSpy = jest.spyOn(console, 'warn').mockImplementation(() => undefined);
         errorSpy = jest.spyOn(console, 'error').mockImplementation(() => undefined);
     });
 
     afterEach(() => {
         logSpy.mockRestore();
+        warnSpy.mockRestore();
         errorSpy.mockRestore();
     });
 
@@ -86,7 +89,7 @@ describe('passport authentication logging', () => {
         await AuthAdmin(req, res, next);
 
         expect(next).toHaveBeenCalledTimes(1);
-        const output = consoleOutput(logSpy, errorSpy);
+        const output = consoleOutput(logSpy, warnSpy, errorSpy);
         expect(output).not.toContain(adminToken);
     });
 
@@ -107,7 +110,7 @@ describe('passport authentication logging', () => {
         expect(res.status).toHaveBeenCalledWith(401);
         expect(mockPrisma.admin.findUnique).not.toHaveBeenCalled();
 
-        const output = consoleOutput(logSpy, errorSpy);
+        const output = consoleOutput(logSpy, warnSpy, errorSpy);
         expect(output).not.toContain(adminToken);
         expect(output).not.toContain(`Bearer ${adminToken}`);
         expect(responseOutput(res)).not.toContain(adminToken);
@@ -128,7 +131,7 @@ describe('passport authentication logging', () => {
         expect(next).not.toHaveBeenCalled();
         expect(res.status).toHaveBeenCalledWith(403);
 
-        const output = consoleOutput(logSpy, errorSpy);
+        const output = consoleOutput(logSpy, warnSpy, errorSpy);
         expect(output).not.toContain(rawAdminToken);
         expect(responseOutput(res)).not.toContain(rawAdminToken);
     });
@@ -186,7 +189,7 @@ describe('passport authentication logging', () => {
         expect(next).not.toHaveBeenCalled();
         expect(res.status).toHaveBeenCalledWith(403);
 
-        const output = consoleOutput(logSpy, errorSpy);
+        const output = consoleOutput(logSpy, warnSpy, errorSpy);
         expect(output).not.toContain(rawUserToken);
         expect(responseOutput(res)).not.toContain(rawUserToken);
     });
@@ -203,10 +206,12 @@ describe('passport authentication logging', () => {
 
         expect(next).not.toHaveBeenCalled();
         expect(res.status).toHaveBeenCalledWith(401);
-        expect(logSpy).toHaveBeenCalledWith('Admin authentication missing', {
+        expect(warnSpy).toHaveBeenCalledWith('auth_event warning', expect.objectContaining({
+            operation: 'auth_event',
             hasAdminSession: false,
-            hasAuthHeader: false
-        });
+            hasAuthHeader: false,
+            errorMessage: 'Admin authentication missing'
+        }));
     });
 
     it('does not log credential labels or values from auth failures', async () => {
@@ -224,7 +229,7 @@ describe('passport authentication logging', () => {
 
         await AuthAdmin(req, res, next);
 
-        const output = consoleOutput(logSpy, errorSpy);
+        const output = consoleOutput(logSpy, warnSpy, errorSpy);
         expect(output).not.toContain(rawAdminToken);
         expect(output).not.toContain('Bearer');
         expect(output).not.toContain('Authorization');

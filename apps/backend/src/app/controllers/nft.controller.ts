@@ -151,15 +151,10 @@ export class NftController {
    */
   private static async imageUpload(imagePath: string): Promise<string> {
     try {
-      console.log('Lighthouse image upload starting');
-      
       // Verify file exists before upload
       if (!fs.existsSync(imagePath)) {
         throw new Error('Image file does not exist');
       }
-      
-      const fileStats = fs.statSync(imagePath);
-      console.log('Lighthouse image upload file summary', { size: fileStats.size });
       
       const output = await lighthouse.upload(imagePath, NFT_STORAGE_API_KEY);
       
@@ -319,8 +314,6 @@ export class NftController {
         mimetype: file.mimetype
       }));
 
-      console.log('NFT image upload completed', { fileCount: uploadedFiles.length });
-
       // Auto-match uploaded images with unmatched NFT records
       let matchedCount = 0;
       for (const file of uploadedFiles) {
@@ -349,8 +342,6 @@ export class NftController {
           }
         }
       }
-
-      console.log('NFT image upload match summary', { matchedCount });
 
       return res.json({
         success: true,
@@ -434,10 +425,6 @@ export class NftController {
     try {
       const { nftIds } = req.body;
 
-      console.log('Upload to IPFS request received', {
-        nftIdCount: Array.isArray(nftIds) ? nftIds.length : 0
-      });
-
       // Check if API key is configured
       if (!NFT_STORAGE_API_KEY) {
         safeLogError('upload_to_ipfs_missing_configuration', new Error('IPFS storage is not configured'));
@@ -458,53 +445,33 @@ export class NftController {
 
       for (const nftId of nftIds) {
         try {
-          console.log('Processing NFT IPFS upload item', { nftId: Number(nftId) });
-          
           const nft = await prisma.nft.findUnique({
             where: { id: Number(nftId) }
           });
 
           if (!nft) {
-            console.log('NFT not found during IPFS upload', { nftId: Number(nftId) });
             results.push({ id: nftId, name: 'Unknown', status: 'error: NFT not found' });
             continue;
           }
 
-          console.log('NFT IPFS upload record summary', {
-            nftId: nft.id,
-            imageMatched: nft.imageMatched,
-            hasLocalImagePath: Boolean(nft.localImagePath)
-          });
-
           if (nft.ipfsUploaded) {
-            console.log('NFT already uploaded to IPFS', { nftId: nft.id });
             results.push({ id: nftId, name: nft.name, status: 'skipped: already uploaded to IPFS' });
             continue;
           }
 
           if (!nft.imageMatched || !nft.localImagePath) {
-            console.log('No matched image for NFT IPFS upload', { nftId: nft.id });
             results.push({ id: nftId, name: nft.name, status: 'error: no image matched' });
             continue;
           }
 
           const localImage = this.validateLocalImageForIpfs(nft.localImagePath);
-          console.log('Checking local image file for IPFS upload', {
-            nftId: nft.id,
-            filename: path.basename(nft.localImagePath)
-          });
 
           if (!localImage.ok) {
-            console.log('Local image rejected for IPFS upload', {
-              nftId: nft.id,
-              reason: localImage.reason
-            });
+            safeLogWarn('nft_ipfs_local_image_rejected', new Error(localImage.reason), { nftId: nft.id });
             results.push({ id: Number(nftId), name: nft.name, status: localImage.status });
             continue;
           }
 
-          console.log('Uploading image to IPFS', { nftId: nft.id });
-          
           // Upload image to IPFS
           const imageCid = await this.imageUpload(localImage.filePath);
           
@@ -523,8 +490,6 @@ export class NftController {
             externalUrl: nft.externalUrl,
           };
 
-          console.log('Uploading metadata to IPFS', { nftId: nft.id });
-          
           // Upload metadata to IPFS
           const metadataCid = await this.uploadMetadata(metadata);
           
@@ -545,13 +510,11 @@ export class NftController {
           try {
             if (fs.existsSync(localImage.filePath)) {
               await fsPromises.unlink(localImage.filePath);
-              console.log('Deleted local NFT image file', { nftId: nft.id });
             }
           } catch (deleteError) {
             safeLogError('delete_uploaded_nft_local_file', deleteError, { nftId: nft.id });
           }
 
-          console.log('NFT successfully uploaded to IPFS', { nftId: nft.id });
           results.push({ id: nftId, name: nft.name, status: 'success: uploaded to IPFS' });
         } catch (error) {
           safeLogError('upload_nft_to_ipfs', error, { nftId: Number(nftId) });
@@ -563,8 +526,6 @@ export class NftController {
       const errorCount = results.filter(r => r.status.includes('error')).length;
       const partialSuccess = successCount > 0 && errorCount > 0;
       const responseStatus = partialSuccess ? 207 : errorCount > 0 ? 400 : 200;
-
-      console.log('NFT IPFS upload complete', { successCount, errorCount });
 
       return res.status(responseStatus).json({
         success: errorCount === 0,
@@ -590,8 +551,6 @@ export class NftController {
    */
   static async refreshImageMatches(req: Request, res: Response): Promise<Response> {
     try {
-      console.log('Refreshing image matches');
-
       // Check if upload directory exists
       if (!fs.existsSync(UPLOAD_DIR)) {
         fs.mkdirSync(UPLOAD_DIR, { recursive: true });
@@ -599,14 +558,11 @@ export class NftController {
 
       // List all files in directory
       const allFiles = await fsPromises.readdir(UPLOAD_DIR);
-      console.log('Uploaded image directory summary', { fileCount: allFiles.length });
 
       // Get all NFTs that haven't been uploaded to IPFS yet
       const nfts = await prisma.nft.findMany({
         where: { ipfsUploaded: false, excelUploaded: true }
       });
-
-      console.log('NFT image refresh candidate summary', { nftCount: nfts.length });
 
       let matchedCount = 0;
       let unmatchedCount = 0;
@@ -635,8 +591,6 @@ export class NftController {
           unmatchedCount++;
         }
       }
-
-      console.log('NFT image match refresh complete', { matchedCount, unmatchedCount });
 
       return res.json({
         success: true,
@@ -951,7 +905,6 @@ export class NftController {
             data: { fan_points: { increment: 1 } }
           });
 
-          console.log(`🎁 User ${holderId} received 1 fan-point immediately for Real NFT mint (${updatedNFT?.name})`);
         } catch (pointError) {
           safeLogError('give_immediate_nft_mint_bonus', pointError, {
             holderId: Number(holderId),

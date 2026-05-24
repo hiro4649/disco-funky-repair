@@ -1,5 +1,6 @@
 import { Request, Response } from 'express';
 import { PrismaClient } from '@prisma/client';
+import { safeLogError } from '../utils/safeLogger';
 
 const prisma = new PrismaClient();
 
@@ -20,10 +21,10 @@ export class NewsController {
                 data: news
             });
         } catch (error) {
+            safeLogError('news_create', error);
             return res.status(500).json({
                 success: false,
-                message: 'Error creating news',
-                error: error instanceof Error ? error.message : 'Unknown error'
+                message: 'Error creating news'
             });
         }
     }
@@ -41,10 +42,10 @@ export class NewsController {
                 data: news
             });
         } catch (error) {
+            safeLogError('news_get_all', error);
             return res.status(500).json({
                 success: false,
-                message: 'Error fetching news',
-                error: error instanceof Error ? error.message : 'Unknown error'
+                message: 'Error fetching news'
             });
         }
     }
@@ -76,10 +77,10 @@ export class NewsController {
                 data: news
             });
         } catch (error) {
+            safeLogError('news_get_by_id', error, { newsId: req.params.id });
             return res.status(500).json({
                 success: false,
-                message: 'Error fetching news',
-                error: error instanceof Error ? error.message : 'Unknown error'
+                message: 'Error fetching news'
             });
         }
     }
@@ -104,10 +105,10 @@ export class NewsController {
                 data: news
             });
         } catch (error) {
+            safeLogError('news_update', error, { newsId: req.params.id });
             return res.status(500).json({
                 success: false,
-                message: 'Error updating news',
-                error: error instanceof Error ? error.message : 'Unknown error'
+                message: 'Error updating news'
             });
         }
     }
@@ -125,10 +126,10 @@ export class NewsController {
                 message: 'News deleted successfully'
             });
         } catch (error) {
+            safeLogError('news_delete', error, { newsId: req.params.id });
             return res.status(500).json({
                 success: false,
-                message: 'Error deleting news',
-                error: error instanceof Error ? error.message : 'Unknown error'
+                message: 'Error deleting news'
             });
         }
     }

@@ -11,6 +11,7 @@ import {
     getUserTransactionHistory,
     explainHoldingDateCalculation
 } from '../lib/enhancedHoldingDateProcessor';
+import { safeLogError } from '../utils/safeLogger';
 
 const prisma = new PrismaClient();
 
@@ -102,11 +103,10 @@ export class TransactionHistoryController {
             });
 
         } catch (error) {
-            console.error('Error fetching transaction history:', error);
+            safeLogError('transaction_history_get', error, { userId: getAuthenticatedUserId(req) });
             return res.status(500).json({
                 success: false,
-                message: 'Failed to fetch transaction history',
-                error: error instanceof Error ? error.message : 'Unknown error'
+                message: 'Failed to fetch transaction history'
             });
         }
     }
@@ -153,11 +153,10 @@ export class TransactionHistoryController {
             });
 
         } catch (error) {
-            console.error('Error explaining holding date:', error);
+            safeLogError('holding_date_explain', error, { userId: getAuthenticatedUserId(req) });
             return res.status(500).json({
                 success: false,
-                message: 'Failed to explain holding date',
-                error: error instanceof Error ? error.message : 'Unknown error'
+                message: 'Failed to explain holding date'
             });
         }
     }
@@ -237,11 +236,10 @@ export class TransactionHistoryController {
             });
 
         } catch (error) {
-            console.error('Error fetching transaction types:', error);
+            safeLogError('transaction_types_get', error);
             return res.status(500).json({
                 success: false,
-                message: 'Failed to fetch transaction types',
-                error: error instanceof Error ? error.message : 'Unknown error'
+                message: 'Failed to fetch transaction types'
             });
         }
     }
@@ -287,11 +285,10 @@ export class TransactionHistoryController {
             });
 
         } catch (error) {
-            console.error('Error fetching transaction detail:', error);
+            safeLogError('transaction_detail_get', error, { userId: getAuthenticatedUserId(req) });
             return res.status(500).json({
                 success: false,
-                message: 'Failed to fetch transaction detail',
-                error: error instanceof Error ? error.message : 'Unknown error'
+                message: 'Failed to fetch transaction detail'
             });
         }
     }
@@ -363,11 +360,10 @@ export class TransactionHistoryController {
             });
 
         } catch (error) {
-            console.error('Error fetching FIFO snapshot:', error);
+            safeLogError('fifo_snapshot_get', error, { userId: getAuthenticatedUserId(req) });
             return res.status(500).json({
                 success: false,
-                message: 'Failed to fetch FIFO snapshot',
-                error: error instanceof Error ? error.message : 'Unknown error'
+                message: 'Failed to fetch FIFO snapshot'
             });
         }
     }

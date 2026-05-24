@@ -1,5 +1,6 @@
 import { Request, Response } from 'express';
 import { PrismaClient } from '@prisma/client';
+import { safeLogError } from '../utils/safeLogger';
 // import { setupDynamicCron } from '../services/trackingService';
 const prisma = new PrismaClient();
 
@@ -22,10 +23,10 @@ export class SetTicketDistributeController {
                 data: ticketDistribute
             });
         } catch (error) {
+            safeLogError('ticket_distribution_setting_create', error);
             return res.status(500).json({
                 success: false,
-                message: 'Error creating ticket distribution setting',
-                error: error instanceof Error ? error.message : 'Unknown error'
+                message: 'Error creating ticket distribution setting'
             });
         }
     }
@@ -39,10 +40,10 @@ export class SetTicketDistributeController {
                 data: ticketDistributes
             });
         } catch (error) {
+            safeLogError('ticket_distribution_setting_get_all', error);
             return res.status(500).json({
                 success: false,
-                message: 'Error fetching ticket distribution settings',
-                error: error instanceof Error ? error.message : 'Unknown error'
+                message: 'Error fetching ticket distribution settings'
             });
         }
     }
@@ -67,10 +68,10 @@ export class SetTicketDistributeController {
                 data: ticketDistribute
             });
         } catch (error) {
+            safeLogError('ticket_distribution_setting_get_by_id', error, { settingId: req.params.id });
             return res.status(500).json({
                 success: false,
-                message: 'Error fetching ticket distribution setting',
-                error: error instanceof Error ? error.message : 'Unknown error'
+                message: 'Error fetching ticket distribution setting'
             });
         }
     }
@@ -98,10 +99,10 @@ export class SetTicketDistributeController {
                 data: ticketDistribute
             });
         } catch (error) {
+            safeLogError('ticket_distribution_setting_update', error, { settingId: req.params.id });
             return res.status(500).json({
                 success: false,
-                message: 'Error updating ticket distribution setting',
-                error: error instanceof Error ? error.message : 'Unknown error'
+                message: 'Error updating ticket distribution setting'
             });
         }
     }
@@ -121,11 +122,11 @@ export class SetTicketDistributeController {
                 message: 'Ticket distribution setting deleted successfully'
             });
         } catch (error) {
+            safeLogError('ticket_distribution_setting_delete', error, { settingId: req.params.id });
             return res.status(500).json({
                 success: false,
-                message: 'Error deleting ticket distribution setting',
-                error: error instanceof Error ? error.message : 'Unknown error'
+                message: 'Error deleting ticket distribution setting'
             });
         }
     }
-} 
+}

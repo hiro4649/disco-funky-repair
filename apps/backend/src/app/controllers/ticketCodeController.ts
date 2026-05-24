@@ -2,6 +2,7 @@ import { Request, Response } from 'express';
 import moment from 'moment';
 import prisma from '../db/prisma_client';
 import { generateRandomCode } from '../utils/ticketCodeGenerator';
+import { safeLogError } from '../utils/safeLogger';
 
 // Utility function to check if a ticket code is expired (older than 30 days)
 const isTicketCodeExpired = (createdAt: Date): boolean => {
@@ -39,7 +40,7 @@ export const generateGlobalTicketCode = async (req: Request, res: Response) => {
             data: ticketCode
         });
     } catch (error) {
-        console.error('Error generating global ticket code:', error);
+        safeLogError('ticket_code_generate_global', error);
         res.status(500).json({
             success: false,
             message: 'Internal server error'
@@ -117,7 +118,7 @@ export const getAllTicketCodes = async (req: Request, res: Response) => {
             }
         });
     } catch (error) {
-        console.error('Error fetching ticket codes:', error);
+        safeLogError('ticket_code_get_all', error);
         res.status(500).json({
             success: false,
             message: 'Internal server error'
@@ -269,7 +270,9 @@ export const claimTicketCode = async (req: Request, res: Response) => {
 
         return res.status(claimResult.statusCode).json(claimResult.body);
     } catch (error) {
-        console.error('Error claiming ticket code:', error);
+        safeLogError('ticket_code_claim', error, {
+            userId: Number((req.user as { user_id?: number } | undefined)?.user_id)
+        });
         res.status(500).json({
             success: false,
             message: 'Internal server error'
@@ -318,7 +321,7 @@ export const getCurrentGlobalTicketCode = async (req: Request, res: Response) =>
             }
         });
     } catch (error) {
-        console.error('Error fetching current global ticket code:', error);
+        safeLogError('ticket_code_get_current_global', error);
         res.status(500).json({
             success: false,
             message: 'Internal server error'
@@ -366,7 +369,7 @@ export const getUserLatestTicketCode = async (req: Request, res: Response) => {
             data: latestTicketCode
         });
     } catch (error) {
-        console.error('Error fetching latest ticket code:', error);
+        safeLogError('ticket_code_get_latest_for_user', error);
         res.status(500).json({
             success: false,
             message: 'Internal server error'
@@ -398,7 +401,7 @@ export const getUserTicketBalance = async (req: Request, res: Response) => {
             }
         });
     } catch (error) {
-        console.error('Error fetching user ticket balance:', error);
+        safeLogError('ticket_code_get_user_balance', error);
         res.status(500).json({
             success: false,
             message: 'Internal server error'
