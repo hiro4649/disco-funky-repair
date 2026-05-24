@@ -24,9 +24,27 @@ import { safeLogError } from '../utils/safeLogger';
 // Default image should be an IPFS URL or full URL, not a local path
 const DEFAULT_TRIAL_NFT_IMAGE = process.env.TRIAL_NFT_IMAGE_URL || 'https://gateway.lighthouse.storage/ipfs/QmDefaultTrialNFT';
 const DEFAULT_TRIAL_NFT_DURATION_DAYS = 5;
+const REAL_NFT_DAILY_BONUS_REASON = 3;
+const TRIAL_NFT_DAILY_BONUS_REASON = 5;
 
 type TrialNftClaimResult = { success: boolean; data?: any; message: string };
 type TrialNftPrismaClient = typeof prisma | Prisma.TransactionClient;
+type DailyBonusWindow = {
+    dailyWindowKey: string;
+    startOfDay: Date;
+    endOfDay: Date;
+    receivedDate: Date;
+};
+type DailyBonusAwardOptions = {
+    userId: number;
+    points: number;
+    reason: number;
+    window: DailyBonusWindow;
+    trialNftId?: number;
+};
+type DailyBonusAwardResult =
+    | { status: 'awarded'; points: number }
+    | { status: 'already_awarded'; points: 0 };
 
 const findExistingTrialNftClaim = async (
     client: TrialNftPrismaClient,
@@ -79,6 +97,89 @@ const isPrismaTransactionConflict = (error: unknown): boolean => (
     'code' in error &&
     (error as { code?: string }).code === 'P2034'
 );
+
+const isPrismaUniqueConstraintError = (error: unknown): boolean => (
+    typeof error === 'object' &&
+    error !== null &&
+    'code' in error &&
+    (error as { code?: string }).code === 'P2002'
+);
+
+const getDailyBonusWindow = (now: moment.Moment = moment.utc()): DailyBonusWindow => ({
+    dailyWindowKey: now.format('YYYY-MM-DD'),
+    startOfDay: now.clone().startOf('day').toDate(),
+    endOfDay: now.clone().endOf('day').toDate(),
+    receivedDate: now.toDate()
+});
+
+const awardDailyNftBonusOnce = async ({
+    userId,
+    points,
+    reason,
+    window,
+    trialNftId
+}: DailyBonusAwardOptions): Promise<DailyBonusAwardResult> => {
+    if (points <= 0) {
+        return { status: 'already_awarded', points: 0 };
+    }
+
+    try {
+        return await prisma.$transaction(async (tx) => {
+            const existingBonus = await tx.pointHistory.findFirst({
+                where: {
+                    userId,
+                    reason,
+                    OR: [
+                        { dailyWindowKey: window.dailyWindowKey },
+                        {
+                            receivedDate: {
+                                gte: window.startOfDay,
+                                lte: window.endOfDay
+                            }
+                        }
+                    ]
+                }
+            });
+
+            if (existingBonus) {
+                return { status: 'already_awarded', points: 0 };
+            }
+
+            await tx.pointHistory.create({
+                data: {
+                    userId,
+                    point: points,
+                    reason,
+                    receivedDate: window.receivedDate,
+                    dailyWindowKey: window.dailyWindowKey
+                }
+            });
+
+            await tx.user.update({
+                where: { id: userId },
+                data: {
+                    fan_points: { increment: points }
+                }
+            });
+
+            if (trialNftId) {
+                await tx.trialNft.update({
+                    where: { id: trialNftId },
+                    data: {
+                        bonusApplied: { increment: points }
+                    }
+                });
+            }
+
+            return { status: 'awarded', points };
+        });
+    } catch (error) {
+        if (isPrismaUniqueConstraintError(error)) {
+            return { status: 'already_awarded', points: 0 };
+        }
+        throw error;
+    }
+};
 
 /**
  * Get total NFT count for a user (real NFTs from blockchain + active trial NFTs)
@@ -459,15 +560,18 @@ export const processDailyNFTHolderBonus = async (): Promise<{
     processedUsers: number;
     totalRealNFTBonus: number;
     totalTrialNFTBonus: number;
+    skippedAlreadyAwarded: number;
     errors: number;
 }> => {
     
     let processedUsers = 0;
     let totalRealNFTBonus = 0;
     let totalTrialNFTBonus = 0;
+    let skippedAlreadyAwarded = 0;
     let errors = 0;
 
     try {
+        const bonusWindow = getDailyBonusWindow();
         // Get all users
         const users = await prisma.user.findMany({
             select: {
@@ -486,79 +590,39 @@ export const processDailyNFTHolderBonus = async (): Promise<{
                 const realNFTCount = await getDiscoNFTEVM(user.wallet_address);
                 
                 if (realNFTCount > 0) {
-                    // Check if user already received Real NFT bonus TODAY (from immediate mint bonus)
-                    // If they minted today, skip the daily bonus for today
-                    const todayStart = moment.utc().startOf('day').toDate();
-                    const todayEnd = moment.utc().endOf('day').toDate();
-                    
-                    const alreadyReceivedToday = await prisma.pointHistory.findFirst({
-                        where: {
-                            userId: user.id,
-                            reason: 3, // Real NFT Bonus
-                            receivedDate: {
-                                gte: todayStart,
-                                lte: todayEnd
-                            }
-                        }
+                    const result = await awardDailyNftBonusOnce({
+                        userId: user.id,
+                        points: realNFTCount,
+                        reason: REAL_NFT_DAILY_BONUS_REASON,
+                        window: bonusWindow
                     });
 
-                    if (alreadyReceivedToday) {
-                        // User already received Real NFT bonus today (from mint), skip daily bonus
+                    if (result.status === 'awarded') {
+                        userRealNFTBonus = result.points;
+                        totalRealNFTBonus += result.points;
                     } else {
-                        // Real NFT holders get 1 point per NFT per day
-                        userRealNFTBonus = realNFTCount;
-                        
-                        await prisma.pointHistory.create({
-                            data: {
-                                userId: user.id,
-                                point: userRealNFTBonus,
-                                reason: 3, // NFT Holder Bonus
-                                receivedDate: moment.utc().toDate()
-                            }
-                        });
-
-                        await prisma.user.update({
-                            where: { id: user.id },
-                            data: {
-                                fan_points: { increment: userRealNFTBonus }
-                            }
-                        });
-
-                        totalRealNFTBonus += userRealNFTBonus;
+                        skippedAlreadyAwarded++;
                     }
                 }
 
                 // 2. Check Trial NFT holdings
-                const { points: trialPoints, dayOfHolding, trialNftId } = await getTrialNFTBonusPoints(user.id);
+                const { points: trialPoints, trialNftId } = await getTrialNFTBonusPoints(user.id);
                 
                 if (trialPoints > 0 && trialNftId) {
-                    userTrialNFTBonus = trialPoints;
-                    
-                    await prisma.pointHistory.create({
-                        data: {
-                            userId: user.id,
-                            point: userTrialNFTBonus,
-                            reason: 5, // Trial NFT Daily Bonus
-                            receivedDate: moment.utc().toDate()
-                        }
+                    const result = await awardDailyNftBonusOnce({
+                        userId: user.id,
+                        points: trialPoints,
+                        reason: TRIAL_NFT_DAILY_BONUS_REASON,
+                        window: bonusWindow,
+                        trialNftId
                     });
 
-                    await prisma.user.update({
-                        where: { id: user.id },
-                        data: {
-                            fan_points: { increment: userTrialNFTBonus }
-                        }
-                    });
-
-                    // Update bonusApplied counter
-                    await prisma.trialNft.update({
-                        where: { id: trialNftId },
-                        data: {
-                            bonusApplied: { increment: userTrialNFTBonus }
-                        }
-                    });
-
-                    totalTrialNFTBonus += userTrialNFTBonus;
+                    if (result.status === 'awarded') {
+                        userTrialNFTBonus = result.points;
+                        totalTrialNFTBonus += result.points;
+                    } else {
+                        skippedAlreadyAwarded++;
+                    }
                 }
 
                 if (userRealNFTBonus > 0 || userTrialNFTBonus > 0) {
@@ -576,6 +640,7 @@ export const processDailyNFTHolderBonus = async (): Promise<{
             processedUsers,
             totalRealNFTBonus,
             totalTrialNFTBonus,
+            skippedAlreadyAwarded,
             errors
         };
 

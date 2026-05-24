@@ -1,5 +1,6 @@
 import cron from 'node-cron';
 import { expireOldTrialNFTs, processDailyNFTHolderBonus } from './trialNftService';
+import { safeLogError } from '../utils/safeLogger';
 
 /**
  * Trial NFT & NFT Holder Bonus Scheduler
@@ -33,7 +34,7 @@ export const startDailyNFTBonusScheduler = () => {
             const result = await processDailyNFTHolderBonus();
 
         } catch (error) {
-
+            safeLogError('trial_nft_daily_bonus_scheduler', error);
         }
     }, {
         scheduled: true,
@@ -60,7 +61,7 @@ export const startTrialNFTExpirationScheduler = () => {
             const expiredCount = await expireOldTrialNFTs();
 
         } catch (error) {
-
+            safeLogError('trial_nft_expiration_scheduler', error);
         }
     }, {
         scheduled: true,
