@@ -63,7 +63,6 @@
   },
   "dependencies": {
     "@lighthouse-web3/sdk": "^0.4.2",
-    "@mysten/sui": "^1.17.0",
     "@prisma/client": "^6.15.0",
     "@types/cors": "^2.8.17",
     "@types/multer": "^1.4.11",
