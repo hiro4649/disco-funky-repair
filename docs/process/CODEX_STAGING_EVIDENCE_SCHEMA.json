@@ -1,0 +1,176 @@
+{
+  "marker": "CODEX_QUALITY_HARNESS_FILE v0.8.2",
+  "schemaName": "CODEX_STAGING_EVIDENCE_SCHEMA",
+  "schemaVersion": "1.0.0",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "marker",
+    "schemaVersion",
+    "profile",
+    "environment",
+    "evidenceType",
+    "headSha",
+    "checkedAt",
+    "checkedByRole",
+    "overallStatus",
+    "stagingFrontendUrlStatus",
+    "stagingBackendUrlStatus",
+    "httpsStatus",
+    "dnsStatus",
+    "nginxStatus",
+    "backendRuntimeEnvPresence",
+    "corsOriginSummary",
+    "cookieDomainSummary",
+    "frontendPublicEnvSummary",
+    "deployedMainSha",
+    "noTxSmokeSummary",
+    "runtimeLogInspectionSummary",
+    "secretsIncluded",
+    "rawLogsIncluded",
+    "txExecuted",
+    "fundedTxExecuted",
+    "residualRisks",
+    "nextActions"
+  ],
+  "properties": {
+    "marker": {
+      "const": "CODEX_QUALITY_HARNESS_FILE v0.8.2"
+    },
+    "schemaVersion": {
+      "const": "1.0.0"
+    },
+    "exampleOnly": {
+      "type": "boolean"
+    },
+    "profile": {
+      "const": "funky"
+    },
+    "environment": {
+      "const": "staging"
+    },
+    "evidenceType": {
+      "enum": [
+        "no_tx_preflight",
+        "no_tx_smoke",
+        "funded_tx_smoke",
+        "runtime_log_inspection",
+        "staging_readiness"
+      ]
+    },
+    "headSha": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{40}$"
+    },
+    "checkedAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "checkedByRole": {
+      "enum": [
+        "operator",
+        "release-manager",
+        "asset-security-reviewer",
+        "implementation-reviewer",
+        "project-owner"
+      ]
+    },
+    "overallStatus": {
+      "enum": [
+        "PASS",
+        "FAIL",
+        "BLOCKED",
+        "UNKNOWN"
+      ]
+    },
+    "stagingFrontendUrlStatus": {
+      "$ref": "#/$defs/statusEvidence"
+    },
+    "stagingBackendUrlStatus": {
+      "$ref": "#/$defs/statusEvidence"
+    },
+    "httpsStatus": {
+      "$ref": "#/$defs/statusEvidence"
+    },
+    "dnsStatus": {
+      "$ref": "#/$defs/statusEvidence"
+    },
+    "nginxStatus": {
+      "$ref": "#/$defs/statusEvidence"
+    },
+    "backendRuntimeEnvPresence": {
+      "$ref": "#/$defs/statusEvidence"
+    },
+    "corsOriginSummary": {
+      "$ref": "#/$defs/statusEvidence"
+    },
+    "cookieDomainSummary": {
+      "$ref": "#/$defs/statusEvidence"
+    },
+    "frontendPublicEnvSummary": {
+      "$ref": "#/$defs/statusEvidence"
+    },
+    "deployedMainSha": {
+      "$ref": "#/$defs/statusEvidence"
+    },
+    "noTxSmokeSummary": {
+      "$ref": "#/$defs/statusEvidence"
+    },
+    "runtimeLogInspectionSummary": {
+      "$ref": "#/$defs/statusEvidence"
+    },
+    "secretsIncluded": {
+      "const": false
+    },
+    "rawLogsIncluded": {
+      "const": false
+    },
+    "txExecuted": {
+      "type": "boolean"
+    },
+    "fundedTxExecuted": {
+      "type": "boolean"
+    },
+    "residualRisks": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "maxLength": 240
+      }
+    },
+    "nextActions": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "maxLength": 240
+      }
+    }
+  },
+  "$defs": {
+    "statusEvidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "status"
+      ],
+      "properties": {
+        "status": {
+          "enum": [
+            "PASS",
+            "FAIL",
+            "BLOCKED",
+            "UNKNOWN"
+          ]
+        },
+        "evidenceRef": {
+          "type": "string",
+          "maxLength": 160
+        },
+        "summary": {
+          "type": "string",
+          "maxLength": 240
+        }
+      }
+    }
+  }
+}

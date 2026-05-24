@@ -1,0 +1,70 @@
+{
+  "marker": "CODEX_QUALITY_HARNESS_FILE v0.8.2",
+  "schemaVersion": "1.0.0",
+  "exampleOnly": true,
+  "profile": "funky",
+  "environment": "staging",
+  "evidenceType": "no_tx_smoke",
+  "headSha": "1111111111111111111111111111111111111111",
+  "checkedAt": "2026-01-01T00:00:00Z",
+  "checkedByRole": "release-manager",
+  "overallStatus": "PASS",
+  "stagingFrontendUrlStatus": {
+    "status": "PASS",
+    "evidenceRef": "staging_frontend_domain_checked"
+  },
+  "stagingBackendUrlStatus": {
+    "status": "PASS",
+    "evidenceRef": "staging_backend_domain_checked"
+  },
+  "httpsStatus": {
+    "status": "PASS",
+    "evidenceRef": "https_checked"
+  },
+  "dnsStatus": {
+    "status": "PASS",
+    "evidenceRef": "dns_checked"
+  },
+  "nginxStatus": {
+    "status": "PASS",
+    "evidenceRef": "reverse_proxy_checked"
+  },
+  "backendRuntimeEnvPresence": {
+    "status": "PASS",
+    "evidenceRef": "backend_staging_env_presence_checked"
+  },
+  "corsOriginSummary": {
+    "status": "PASS",
+    "evidenceRef": "cors_staging_origin_only_checked"
+  },
+  "cookieDomainSummary": {
+    "status": "PASS",
+    "evidenceRef": "cookie_domain_checked_without_value"
+  },
+  "frontendPublicEnvSummary": {
+    "status": "PASS",
+    "evidenceRef": "frontend_public_env_checked"
+  },
+  "deployedMainSha": {
+    "status": "PASS",
+    "evidenceRef": "deployed_main_sha_checked"
+  },
+  "noTxSmokeSummary": {
+    "status": "PASS",
+    "evidenceRef": "no_tx_smoke_checked"
+  },
+  "runtimeLogInspectionSummary": {
+    "status": "PASS",
+    "evidenceRef": "sanitized_runtime_log_inspection_checked"
+  },
+  "secretsIncluded": false,
+  "rawLogsIncluded": false,
+  "txExecuted": false,
+  "fundedTxExecuted": false,
+  "residualRisks": [
+    "This is an example only and does not provide live staging evidence."
+  ],
+  "nextActions": [
+    "Use current-head evidence when recording a real staging check."
+  ]
+}

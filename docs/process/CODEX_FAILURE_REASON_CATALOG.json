@@ -521,6 +521,102 @@
       "safeMessage": "Compact reason summary is invalid or unsafe.",
       "nextBestFix": "Regenerate safe reason summary from the report.",
       "canManualConfirmationOverride": false
+    },
+    {
+      "reasonCode": "staging_evidence_missing",
+      "gate": "stagingEvidence",
+      "severity": "error",
+      "safeMessage": "Required staging evidence is missing.",
+      "nextBestFix": "Provide current-head non-secret staging evidence or remove the readiness claim.",
+      "canManualConfirmationOverride": false
+    },
+    {
+      "reasonCode": "staging_evidence_not_required",
+      "gate": "stagingEvidence",
+      "severity": "not_applicable",
+      "safeMessage": "Staging evidence is not required for this PR.",
+      "nextBestFix": "No staging evidence action is required unless readiness is claimed.",
+      "canManualConfirmationOverride": true
+    },
+    {
+      "reasonCode": "staging_schema_change_no_readiness_claim",
+      "gate": "stagingEvidence",
+      "severity": "not_applicable",
+      "safeMessage": "Only staging schema, policy, or examples changed without a readiness claim.",
+      "nextBestFix": "Keep examples marked as examples and do not claim staging readiness.",
+      "canManualConfirmationOverride": true
+    },
+    {
+      "reasonCode": "staging_evidence_blocked",
+      "gate": "stagingEvidence",
+      "severity": "not_applicable",
+      "safeMessage": "Staging evidence records a blocked or unknown state.",
+      "nextBestFix": "Keep blocked or unknown status until non-secret evidence supports PASS.",
+      "canManualConfirmationOverride": true
+    },
+    {
+      "reasonCode": "staging_evidence_invalid",
+      "gate": "stagingEvidence",
+      "severity": "error",
+      "safeMessage": "Staging evidence is invalid.",
+      "nextBestFix": "Fix the staging evidence schema fields.",
+      "canManualConfirmationOverride": false
+    },
+    {
+      "reasonCode": "staging_evidence_stale",
+      "gate": "stagingEvidence",
+      "severity": "error",
+      "safeMessage": "Staging evidence is not tied to the current head.",
+      "nextBestFix": "Regenerate staging evidence for the current head SHA.",
+      "canManualConfirmationOverride": false
+    },
+    {
+      "reasonCode": "staging_claim_without_evidence",
+      "gate": "stagingEvidence",
+      "severity": "error",
+      "safeMessage": "A staging readiness claim lacks passing staging evidence.",
+      "nextBestFix": "Remove the claim or provide complete current-head staging evidence.",
+      "canManualConfirmationOverride": false
+    },
+    {
+      "reasonCode": "staging_pass_without_required_fields",
+      "gate": "stagingEvidence",
+      "severity": "error",
+      "safeMessage": "Staging PASS evidence is missing required fields.",
+      "nextBestFix": "Complete the required staging evidence fields or lower the status.",
+      "canManualConfirmationOverride": false
+    },
+    {
+      "reasonCode": "staging_secret_like_value_present",
+      "gate": "stagingEvidence",
+      "severity": "error",
+      "safeMessage": "Staging evidence contains unsafe value-shaped content.",
+      "nextBestFix": "Remove unsafe values and keep safe summaries only.",
+      "canManualConfirmationOverride": false
+    },
+    {
+      "reasonCode": "staging_raw_logs_present",
+      "gate": "stagingEvidence",
+      "severity": "error",
+      "safeMessage": "Staging evidence includes raw logs.",
+      "nextBestFix": "Replace raw logs with a safe inspection summary.",
+      "canManualConfirmationOverride": false
+    },
+    {
+      "reasonCode": "staging_no_tx_claim_has_tx",
+      "gate": "stagingEvidence",
+      "severity": "error",
+      "safeMessage": "No-tx staging evidence indicates a transaction was executed.",
+      "nextBestFix": "Use funded-tx evidence or correct the no-tx flags.",
+      "canManualConfirmationOverride": false
+    },
+    {
+      "reasonCode": "production_ready_without_staging_evidence",
+      "gate": "stagingEvidence",
+      "severity": "error",
+      "safeMessage": "Release GO evidence is missing required staging evidence.",
+      "nextBestFix": "Remove the GO claim or provide complete staged evidence.",
+      "canManualConfirmationOverride": false
     }
   ]
 }

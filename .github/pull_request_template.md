@@ -41,6 +41,16 @@ Human confirmation needed:
 
 ## Environment Readiness
 
+## Staging Evidence
+
+Staging readiness claimed: yes/no
+
+Evidence file:
+
+Overall status:
+
+Secrets/raw logs included: no
+
 ## Golden Set
 
 ## Workflow Runner

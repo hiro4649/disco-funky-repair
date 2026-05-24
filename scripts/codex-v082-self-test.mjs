@@ -13,6 +13,7 @@ import { buildProductVerificationEvidenceReport } from './codex-product-verifica
 import { buildTestMetricsReport } from './codex-test-metrics-collect.mjs';
 import { buildStalePrAuditReport } from './codex-stale-pr-audit-gate.mjs';
 import { buildCompactReasonSummary } from './codex-reason-summary.mjs';
+import { buildStagingEvidenceReport } from './codex-staging-evidence-gate.mjs';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const repo = path.dirname(here);
@@ -82,6 +83,7 @@ function sourcePassReport() {
     'productVerificationEvidenceStatus',
     'testMetricsStatus',
     'stalePrAuditStatus',
+    'stagingEvidenceStatus',
     'reasonSummaryStatus',
     'bestOfNEvidenceStatus',
     'taskQueueLiteStatus',
@@ -133,6 +135,7 @@ function targetPassReport() {
     'productVerificationEvidenceStatus',
     'testMetricsStatus',
     'stalePrAuditStatus',
+    'stagingEvidenceStatus',
     'reasonSummaryStatus',
     'safeOutputScanStatus',
     'v080SelfTestStatus',
@@ -149,6 +152,54 @@ function withRulesTmp(callback) {
   fs.mkdirSync(path.join(tmp, 'docs', 'process'), { recursive: true });
   fs.copyFileSync(path.join(repo, 'docs', 'process', 'CODEX_CHANGE_CLASSIFICATION_RULES.json'), path.join(tmp, 'docs', 'process', 'CODEX_CHANGE_CLASSIFICATION_RULES.json'));
   return callback(tmp);
+}
+
+function statusEvidence(status = 'PASS') {
+  return { status, evidenceRef: `${status.toLowerCase()}_safe_evidence_ref` };
+}
+
+function stagingEvidence(overrides = {}) {
+  const base = {
+    marker,
+    schemaVersion: '1.0.0',
+    profile: 'funky',
+    environment: 'staging',
+    evidenceType: 'no_tx_smoke',
+    headSha: '2222222222222222222222222222222222222222',
+    checkedAt: '2026-01-01T00:00:00Z',
+    checkedByRole: 'release-manager',
+    overallStatus: 'PASS',
+    stagingFrontendUrlStatus: statusEvidence(),
+    stagingBackendUrlStatus: statusEvidence(),
+    httpsStatus: statusEvidence(),
+    dnsStatus: statusEvidence(),
+    nginxStatus: statusEvidence(),
+    backendRuntimeEnvPresence: statusEvidence(),
+    corsOriginSummary: statusEvidence(),
+    cookieDomainSummary: statusEvidence(),
+    frontendPublicEnvSummary: statusEvidence(),
+    deployedMainSha: statusEvidence(),
+    noTxSmokeSummary: statusEvidence(),
+    runtimeLogInspectionSummary: statusEvidence(),
+    secretsIncluded: false,
+    rawLogsIncluded: false,
+    txExecuted: false,
+    fundedTxExecuted: false,
+    residualRisks: ['safe summary residual risk'],
+    nextActions: ['safe summary next action'],
+  };
+  return { ...base, ...overrides };
+}
+
+function stagingEnv(evidence, extra = {}) {
+  return {
+    CODEX_EVENT_NAME: 'pull_request',
+    CODEX_PR_HEAD_SHA: '2222222222222222222222222222222222222222',
+    CODEX_CHANGED_FILES: 'docs/process/FUNKY_STAGING_NO_TX_PREFLIGHT_EVIDENCE.json',
+    CODEX_STAGING_EVIDENCE_INLINE_JSON: JSON.stringify(evidence),
+    CODEX_PR_BODY: 'Staging readiness claimed: no.',
+    ...extra,
+  };
 }
 
 function buildReport() {
@@ -296,6 +347,40 @@ function buildReport() {
   write(unsafeEvidence, JSON.stringify({ rawLogs: 'stored output' }));
   result = buildProductVerificationEvidenceReport({ CODEX_PRODUCT_VERIFICATION_EVIDENCE_PATH: unsafeEvidence });
   assertCase('unsafe evidence field fails safe output', result.productVerificationEvidenceStatus.status === 'fail', failures, cases, result.productVerificationEvidenceStatus.status);
+
+  result = buildStagingEvidenceReport(stagingEnv(stagingEvidence({
+    overallStatus: 'BLOCKED',
+    checkedByRole: 'implementation-reviewer',
+    stagingFrontendUrlStatus: { status: 'BLOCKED', summary: 'domain not confirmed' },
+  })));
+  assertCase('valid BLOCKED staging evidence is not a readiness pass', result.stagingEvidenceStatus.status === 'not_applicable' && result.stagingEvidenceStatus.liveBlockedOrUnknown, failures, cases, result.stagingEvidenceStatus.status);
+  result = buildStagingEvidenceReport(stagingEnv(stagingEvidence()));
+  assertCase('valid PASS no-tx staging evidence passes with required fields', result.stagingEvidenceStatus.status === 'pass', failures, cases, result.stagingEvidenceStatus.status);
+  result = buildStagingEvidenceReport(stagingEnv(stagingEvidence({
+    stagingFrontendUrlStatus: { status: 'BLOCKED', summary: 'domain missing' },
+  })));
+  assertCase('PASS staging evidence with missing domain fails', result.stagingEvidenceStatus.status === 'fail', failures, cases, result.stagingEvidenceStatus.status);
+  result = buildStagingEvidenceReport(stagingEnv(stagingEvidence({ secretsIncluded: true })));
+  assertCase('staging evidence with secretsIncluded true fails', result.stagingEvidenceStatus.status === 'fail', failures, cases, result.stagingEvidenceStatus.status);
+  result = buildStagingEvidenceReport(stagingEnv(stagingEvidence({ rawLogsIncluded: true })));
+  assertCase('staging evidence with rawLogsIncluded true fails', result.stagingEvidenceStatus.status === 'fail', failures, cases, result.stagingEvidenceStatus.status);
+  result = buildStagingEvidenceReport(stagingEnv(stagingEvidence({ txExecuted: true })));
+  assertCase('no-tx staging evidence with txExecuted true fails', result.stagingEvidenceStatus.status === 'fail', failures, cases, result.stagingEvidenceStatus.status);
+  result = buildStagingEvidenceReport(stagingEnv(stagingEvidence({ headSha: '3333333333333333333333333333333333333333' })));
+  assertCase('stale staging evidence head fails', result.stagingEvidenceStatus.status === 'fail', failures, cases, result.stagingEvidenceStatus.status);
+  result = buildStagingEvidenceReport({
+    CODEX_EVENT_NAME: 'pull_request',
+    CODEX_PR_BODY: 'Production Go/No-Go: GO',
+    CODEX_PR_HEAD_SHA: '2222222222222222222222222222222222222222',
+    CODEX_CHANGED_FILES: 'docs/process/README.md',
+  });
+  assertCase('release GO claim without staging evidence fails', result.stagingEvidenceStatus.status === 'fail', failures, cases, result.stagingEvidenceStatus.status);
+  result = buildStagingEvidenceReport({
+    CODEX_EVENT_NAME: 'pull_request',
+    CODEX_PR_BODY: 'Staging readiness claimed: no.',
+    CODEX_CHANGED_FILES: 'docs/process/README.md',
+  });
+  assertCase('normal docs-only PR without staging claim does not require staging evidence', result.stagingEvidenceStatus.status === 'not_applicable', failures, cases, result.stagingEvidenceStatus.status);
 
   const metricsFile = path.join(os.tmpdir(), `codex-safe-metrics-${Date.now()}.json`);
   write(metricsFile, JSON.stringify({ command: 'npm test', result: 'pass', durationMs: 123, testCount: 4, safeSummary: 'safe metrics' }));

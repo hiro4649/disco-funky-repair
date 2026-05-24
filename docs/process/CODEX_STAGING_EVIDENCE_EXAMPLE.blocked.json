@@ -1,0 +1,70 @@
+{
+  "marker": "CODEX_QUALITY_HARNESS_FILE v0.8.2",
+  "schemaVersion": "1.0.0",
+  "exampleOnly": true,
+  "profile": "funky",
+  "environment": "staging",
+  "evidenceType": "no_tx_preflight",
+  "headSha": "0000000000000000000000000000000000000000",
+  "checkedAt": "2026-01-01T00:00:00Z",
+  "checkedByRole": "implementation-reviewer",
+  "overallStatus": "BLOCKED",
+  "stagingFrontendUrlStatus": {
+    "status": "BLOCKED",
+    "summary": "Staging domain is not confirmed."
+  },
+  "stagingBackendUrlStatus": {
+    "status": "BLOCKED",
+    "summary": "Backend staging URL is not confirmed."
+  },
+  "httpsStatus": {
+    "status": "BLOCKED",
+    "summary": "HTTPS evidence is not recorded."
+  },
+  "dnsStatus": {
+    "status": "BLOCKED",
+    "summary": "DNS evidence is not recorded."
+  },
+  "nginxStatus": {
+    "status": "UNKNOWN",
+    "summary": "Reverse proxy evidence is not recorded."
+  },
+  "backendRuntimeEnvPresence": {
+    "status": "UNKNOWN",
+    "summary": "Runtime env presence has not been checked."
+  },
+  "corsOriginSummary": {
+    "status": "BLOCKED",
+    "summary": "CORS origin evidence depends on confirmed staging domain."
+  },
+  "cookieDomainSummary": {
+    "status": "BLOCKED",
+    "summary": "Cookie domain evidence depends on confirmed staging domain."
+  },
+  "frontendPublicEnvSummary": {
+    "status": "UNKNOWN",
+    "summary": "Frontend public env evidence is not recorded."
+  },
+  "deployedMainSha": {
+    "status": "UNKNOWN",
+    "summary": "Current main deployment evidence is not recorded."
+  },
+  "noTxSmokeSummary": {
+    "status": "BLOCKED",
+    "summary": "No-tx smoke cannot run until staging domain and env are confirmed."
+  },
+  "runtimeLogInspectionSummary": {
+    "status": "UNKNOWN",
+    "summary": "Runtime log inspection is not performed."
+  },
+  "secretsIncluded": false,
+  "rawLogsIncluded": false,
+  "txExecuted": false,
+  "fundedTxExecuted": false,
+  "residualRisks": [
+    "This is an example only and does not provide live staging evidence."
+  ],
+  "nextActions": [
+    "Record non-secret staging domain and env evidence before changing status."
+  ]
+}

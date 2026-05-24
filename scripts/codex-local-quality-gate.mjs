@@ -429,6 +429,7 @@ function computeOutputShapeStatus(report) {
     'productVerificationEvidenceStatus',
     'testMetricsStatus',
     'stalePrAuditStatus',
+    'stagingEvidenceStatus',
     'reasonSummaryStatus',
     'bestOfNEvidenceStatus',
     'taskQueueLiteStatus',
@@ -486,6 +487,7 @@ function computeQualityScoreStatus(report) {
     'productVerificationEvidenceStatus',
     'testMetricsStatus',
     'stalePrAuditStatus',
+    'stagingEvidenceStatus',
     'ciReplayStatus',
     'prBodyLintStatus',
     'evidencePackStatus',
@@ -509,6 +511,7 @@ function computeQualityScoreStatus(report) {
     'productVerificationEvidenceStatus',
     'testMetricsStatus',
     'stalePrAuditStatus',
+    'stagingEvidenceStatus',
     'reasonSummaryStatus',
     'secretScan',
     'agentMemoryPolicyStatus',
@@ -584,6 +587,7 @@ function computeTargetOutputShapeStatus(report) {
     'productVerificationEvidenceStatus',
     'testMetricsStatus',
     'stalePrAuditStatus',
+    'stagingEvidenceStatus',
     'reasonSummaryStatus',
     'safeOutputScanStatus',
     'goldenSetStatus',
@@ -618,6 +622,7 @@ function computeTargetQualityScoreStatus(report) {
     'productVerificationEvidenceStatus',
     'testMetricsStatus',
     'stalePrAuditStatus',
+    'stagingEvidenceStatus',
     'reasonSummaryStatus',
     'safeOutputScanStatus',
     'goldenSetStatus',
@@ -640,6 +645,7 @@ function computeTargetQualityScoreStatus(report) {
     'productVerificationEvidenceStatus',
     'testMetricsStatus',
     'stalePrAuditStatus',
+    'stagingEvidenceStatus',
     'goldenSetStatus',
     'bestOfNEvidenceStatus',
     'taskQueueLiteStatus',
@@ -743,6 +749,15 @@ function computeFailureReasonCatalogStatus() {
     'stale_confirmation_detected',
     'stale_harness_version_in_pr',
     'reason_summary_invalid',
+    'staging_evidence_missing',
+    'staging_evidence_invalid',
+    'staging_evidence_stale',
+    'staging_claim_without_evidence',
+    'staging_pass_without_required_fields',
+    'staging_secret_like_value_present',
+    'staging_raw_logs_present',
+    'staging_no_tx_claim_has_tx',
+    'production_ready_without_staging_evidence',
   ];
   if (!fs.existsSync(file)) return { status: 'fail', missingReasonCodes: required, safeSummaryOnly: true };
   try {
@@ -833,6 +848,7 @@ async function runSourceHarnessGate() {
     productVerificationEvidenceStatus: { status: 'not_run' },
     testMetricsStatus: { status: 'not_run' },
     stalePrAuditStatus: { status: 'not_run' },
+    stagingEvidenceStatus: { status: 'not_run' },
     reasonSummaryStatus: { status: 'not_run' },
     bestOfNEvidenceStatus: { status: 'not_run' },
     taskQueueLiteStatus: { status: 'not_run' },
@@ -883,6 +899,7 @@ async function runSourceHarnessGate() {
   report.productVerificationEvidenceStatus = runGateScript('scripts/codex-product-verification-evidence-normalize.mjs', 'productVerificationEvidenceStatus', 'CODEX_PRODUCT_VERIFICATION_EVIDENCE_REPORT', gateEnv);
   report.testMetricsStatus = runGateScript('scripts/codex-test-metrics-collect.mjs', 'testMetricsStatus', 'CODEX_TEST_METRICS_REPORT', gateEnv);
   report.stalePrAuditStatus = runGateScript('scripts/codex-stale-pr-audit-gate.mjs', 'stalePrAuditStatus', 'CODEX_STALE_PR_AUDIT_REPORT', gateEnv);
+  report.stagingEvidenceStatus = runGateScript('scripts/codex-staging-evidence-gate.mjs', 'stagingEvidenceStatus', 'CODEX_STAGING_EVIDENCE_REPORT', gateEnv);
   report.productionReadinessStatus = runGateScript('scripts/codex-production-readiness-gate.mjs', 'productionReadinessStatus', 'CODEX_PRODUCTION_READINESS_REPORT', gateEnv);
   report.evidenceIntegrityStatus = runGateScript('scripts/codex-evidence-integrity-gate.mjs', 'evidenceIntegrityStatus', 'CODEX_EVIDENCE_INTEGRITY_REPORT', gateEnv);
   report.hermesInvariantStatus = runGateScript('scripts/codex-hermes-invariant-gate.mjs', 'hermesInvariantStatus', 'CODEX_HERMES_INVARIANT_REPORT', gateEnv);
@@ -934,6 +951,7 @@ async function runSourceHarnessGate() {
     productVerificationEvidenceStatus: report.productVerificationEvidenceStatus,
     testMetricsStatus: report.testMetricsStatus,
     stalePrAuditStatus: report.stalePrAuditStatus,
+    stagingEvidenceStatus: report.stagingEvidenceStatus,
     reasonSummaryStatus: report.reasonSummaryStatus,
     productionReadinessStatus: report.productionReadinessStatus,
     evidenceIntegrityStatus: report.evidenceIntegrityStatus,
@@ -992,6 +1010,7 @@ async function runSourceHarnessGate() {
     console.log(`productVerificationEvidenceStatus: ${report.productVerificationEvidenceStatus.status}`);
     console.log(`testMetricsStatus: ${report.testMetricsStatus.status}`);
     console.log(`stalePrAuditStatus: ${report.stalePrAuditStatus.status}`);
+    console.log(`stagingEvidenceStatus: ${report.stagingEvidenceStatus.status}`);
     console.log(`reasonSummaryStatus: ${report.reasonSummaryStatus.status}`);
     console.log(`productionReadinessStatus: ${report.productionReadinessStatus.status}`);
     console.log(`evidenceIntegrityStatus: ${report.evidenceIntegrityStatus.status}`);
@@ -1076,6 +1095,7 @@ async function runTargetHarnessGate() {
     productVerificationEvidenceStatus: { status: 'not_run' },
     testMetricsStatus: { status: 'not_run' },
     stalePrAuditStatus: { status: 'not_run' },
+    stagingEvidenceStatus: { status: 'not_run' },
     reasonSummaryStatus: { status: 'not_run' },
     safeOutputScanStatus: { status: 'not_run' },
     goldenSetStatus: { status: 'not_run' },
@@ -1104,6 +1124,7 @@ async function runTargetHarnessGate() {
   report.productVerificationEvidenceStatus = runGateScript('scripts/codex-product-verification-evidence-normalize.mjs', 'productVerificationEvidenceStatus', 'CODEX_PRODUCT_VERIFICATION_EVIDENCE_REPORT', gateEnv);
   report.testMetricsStatus = runGateScript('scripts/codex-test-metrics-collect.mjs', 'testMetricsStatus', 'CODEX_TEST_METRICS_REPORT', gateEnv);
   report.stalePrAuditStatus = runGateScript('scripts/codex-stale-pr-audit-gate.mjs', 'stalePrAuditStatus', 'CODEX_STALE_PR_AUDIT_REPORT', gateEnv);
+  report.stagingEvidenceStatus = runGateScript('scripts/codex-staging-evidence-gate.mjs', 'stagingEvidenceStatus', 'CODEX_STAGING_EVIDENCE_REPORT', gateEnv);
   report.safeOutputScanStatus = runGateScript('scripts/codex-safe-output-scan.mjs', 'safeOutputScanStatus', 'CODEX_SAFE_OUTPUT_SCAN_REPORT', gateEnv);
   report.goldenSetStatus = fs.existsSync(path.join('docs', 'process', 'golden', 'cases.json'))
     ? runGateScript('scripts/codex-golden-set-gate.mjs', 'goldenSetStatus', 'CODEX_GOLDEN_SET_REPORT', gateEnv)
@@ -1140,6 +1161,7 @@ async function runTargetHarnessGate() {
     productVerificationEvidenceStatus: report.productVerificationEvidenceStatus,
     testMetricsStatus: report.testMetricsStatus,
     stalePrAuditStatus: report.stalePrAuditStatus,
+    stagingEvidenceStatus: report.stagingEvidenceStatus,
     reasonSummaryStatus: report.reasonSummaryStatus,
     safeOutputScanStatus: report.safeOutputScanStatus,
     goldenSetStatus: report.goldenSetStatus,
