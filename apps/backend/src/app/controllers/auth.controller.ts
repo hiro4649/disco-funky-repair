@@ -7,6 +7,7 @@ import { z } from "zod";
 import jwt from "jsonwebtoken";
 import bcrypt from 'bcryptjs';
 import { ETHERSCAN_API_URL, ETHERSCAN_API_KEY, TOKEN_CONTRACT_ADDRESS } from "../config/env";
+import { requiresStrictCors } from "../config/runtime";
 import { etherscanRateLimiter } from "../utils/rateLimiter";
 import { safeLogError } from "../utils/safeLogger";
 import { fetchJsonWithTimeout } from "../utils/externalCallTimeout";
@@ -17,6 +18,27 @@ const WALLET_LOGIN_NONCE_TTL_MINUTES = 5;
 const INVALID_ADMIN_CREDENTIALS_RESPONSE = {
     success: false,
     message: "Invalid credentials"
+};
+
+const getAuthCookieOptions = (maxAge: number) => {
+    const strictRuntime = requiresStrictCors(process.env);
+
+    return {
+        httpOnly: true,
+        secure: strictRuntime,
+        sameSite: strictRuntime ? 'strict' as const : 'lax' as const,
+        maxAge
+    };
+};
+
+const getClearAuthCookieOptions = () => {
+    const strictRuntime = requiresStrictCors(process.env);
+
+    return {
+        httpOnly: true,
+        secure: strictRuntime,
+        sameSite: strictRuntime ? 'strict' as const : 'lax' as const
+    };
 };
 
 const hashNonce = (nonce: string): string => createHash('sha256').update(nonce).digest('hex');
@@ -285,12 +307,7 @@ export class AuthController {
                 const payload = { user_id: user.id, address: user.wallet_address };
                 const token = jwt.sign(payload, jwtSecret, { expiresIn: '1h' });
                 // Secure cookie settings to prevent XSS
-                res.cookie('userAuth', token, { 
-                    httpOnly: true, 
-                    secure: process.env.NODE_ENV === 'production', // Only use secure in production
-                    sameSite: process.env.NODE_ENV === 'production' ? 'strict' : 'lax', // Use lax in development
-                    maxAge: 3600000 // 1 hour in milliseconds
-                });
+                res.cookie('userAuth', token, getAuthCookieOptions(3600000));
                 
                 return res.status(200).json({ success: true });
             } else {
@@ -488,12 +505,7 @@ export class AuthController {
                 const payload = { user_id: user.id, address: user.wallet_address };
                 const token = jwt.sign(payload, jwtSecret, { expiresIn: '1h' });
                 // Secure cookie settings to prevent XSS
-                res.cookie('userAuth', token, { 
-                    httpOnly: true, 
-                    secure: process.env.NODE_ENV === 'production', // Only use secure in production
-                    sameSite: process.env.NODE_ENV === 'production' ? 'strict' : 'lax', // Use lax in development
-                    maxAge: 3600000 // 1 hour in milliseconds
-                });
+                res.cookie('userAuth', token, getAuthCookieOptions(3600000));
                 return res.status(201).json({ success: true });
             }
 
@@ -548,12 +560,7 @@ export class AuthController {
             );
 
             // Set the auth cookie with enhanced security settings
-            res.cookie('adminAuth', token, {
-                httpOnly: true,
-                secure: process.env.NODE_ENV === 'production',
-                sameSite: process.env.NODE_ENV === 'production' ? 'strict' : 'lax',
-                maxAge: 3600000 // 1 hour in milliseconds
-            });
+            res.cookie('adminAuth', token, getAuthCookieOptions(3600000));
             return res.status(200).json({
                 message: "Signin successful",
                 success: true
@@ -565,21 +572,13 @@ export class AuthController {
     }
     // Admin logout
     static async logout(req: Request, res: Response) {
-        res.clearCookie('adminAuth', {
-            httpOnly: true,
-            secure: process.env.NODE_ENV === 'production',
-            sameSite: process.env.NODE_ENV === 'production' ? 'strict' : 'lax'
-        });
+        res.clearCookie('adminAuth', getClearAuthCookieOptions());
         res.json({ success: true, message: 'Logged out' });
     }
 
     // User logout
     static async userLogout(req: Request, res: Response) {
-        res.clearCookie('userAuth', {
-            httpOnly: true,
-            secure: process.env.NODE_ENV === 'production',
-            sameSite: process.env.NODE_ENV === 'production' ? 'strict' : 'lax'
-        });
+        res.clearCookie('userAuth', getClearAuthCookieOptions());
         res.json({ success: true, message: 'Logged out' });
     }
     
@@ -616,12 +615,7 @@ export class AuthController {
                 const newToken = jwt.sign(payload, jwtSecret, { expiresIn: '1h' });
                 
                 // Set secure cookie with the new token
-                res.cookie('userAuth', newToken, { 
-                    httpOnly: true, 
-                    secure: process.env.NODE_ENV === 'production', // Only use secure in production
-                    sameSite: process.env.NODE_ENV === 'production' ? 'strict' : 'lax', // Use lax in development
-                    maxAge: 7200000 // 2 hours in milliseconds
-                });
+                res.cookie('userAuth', newToken, getAuthCookieOptions(7200000));
                 
                 return res.status(200).json({ success: true });
             } catch (err) {

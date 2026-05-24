@@ -64,9 +64,16 @@ const createLoginMessage = (walletAddress: string, nonce = 'nonce-value') => [
   'Chain ID: 56'
 ].join('\n');
 
+const resetRuntimeEnv = () => {
+  process.env.NODE_ENV = 'test';
+  delete process.env.APP_ENV;
+  delete process.env.BACKEND_APP_ENV;
+};
+
 describe('AuthController wallet signature login', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    resetRuntimeEnv();
     process.env.JWT_SECRET = 'test-jwt-secret';
     mockPrisma.$transaction.mockImplementation(async (callback: any) => callback(mockPrisma));
   });
@@ -164,6 +171,43 @@ describe('AuthController wallet signature login', () => {
     expect(res.json).toHaveBeenCalledWith({ success: true });
   });
 
+  it.each([
+    ['production runtime', { NODE_ENV: 'production' }],
+    ['staging runtime', { BACKEND_APP_ENV: 'staging' }]
+  ])('uses strict userAuth cookie options in %s', async (_label, runtimeEnv) => {
+    Object.assign(process.env, runtimeEnv);
+    const wallet = Wallet.createRandom();
+    const message = createLoginMessage(wallet.address);
+    const signature = await wallet.signMessage(message);
+    const user = { id: 10, wallet_address: wallet.address.toLowerCase() };
+
+    mockPrisma.walletLoginNonce.findFirst.mockResolvedValue({
+      id: 5,
+      expires_at: new Date(Date.now() + 60_000),
+      used_at: null
+    });
+    mockPrisma.walletLoginNonce.updateMany.mockResolvedValue({ count: 1 });
+    mockPrisma.user.findUnique.mockResolvedValue(user);
+    mockPrisma.user.update.mockResolvedValue(user);
+
+    const res = createResponse();
+    await AuthController.signup(
+      createRequest({
+        wallet_address: wallet.address,
+        message,
+        signature
+      }),
+      res
+    );
+
+    expect(res.cookie).toHaveBeenCalledWith('userAuth', expect.any(String), expect.objectContaining({
+      httpOnly: true,
+      secure: true,
+      sameSite: 'strict',
+      maxAge: 3600000
+    }));
+  });
+
   it('rejects a signature that does not match the requested wallet and does not consume nonce', async () => {
     const requestedWallet = Wallet.createRandom();
     const attackerWallet = Wallet.createRandom();
@@ -218,6 +262,7 @@ describe('AuthController admin cookie session', () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
+    resetRuntimeEnv();
     process.env.JWT_SECRET = 'test-jwt-secret';
     errorSpy = jest.spyOn(console, 'error').mockImplementation(() => undefined);
   });
@@ -255,6 +300,35 @@ describe('AuthController admin cookie session', () => {
       success: true
     }));
     expect(res.json.mock.calls[0][0]).not.toHaveProperty('token');
+  });
+
+  it.each([
+    ['production runtime', { NODE_ENV: 'production' }],
+    ['staging runtime', { APP_ENV: 'staging' }]
+  ])('uses strict adminAuth cookie options in %s', async (_label, runtimeEnv) => {
+    Object.assign(process.env, runtimeEnv);
+    mockPrisma.admin.findUnique.mockResolvedValue({
+      id: 7,
+      email: 'admin@example.com',
+      password_hash: 'hashed-password'
+    });
+    (bcrypt.compare as jest.Mock).mockResolvedValue(true);
+
+    const res = createResponse();
+    await AuthController.signin(
+      createRequest({
+        email: 'admin@example.com',
+        password: 'correct-password'
+      }),
+      res
+    );
+
+    expect(res.cookie).toHaveBeenCalledWith('adminAuth', expect.any(String), expect.objectContaining({
+      httpOnly: true,
+      secure: true,
+      sameSite: 'strict',
+      maxAge: 3600000
+    }));
   });
 
   it('returns the same response for invalid admin signin credentials', async () => {
@@ -357,8 +431,8 @@ describe('AuthController admin cookie session', () => {
 describe('AuthController refresh token cookie session', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    resetRuntimeEnv();
     process.env.JWT_SECRET = 'test-jwt-secret';
-    process.env.NODE_ENV = 'test';
   });
 
   it('refreshes the httpOnly user cookie without returning the JWT in the response body', async () => {
@@ -392,6 +466,38 @@ describe('AuthController refresh token cookie session', () => {
     expect(body).not.toHaveProperty('jwt');
     expect(body).not.toHaveProperty('accessToken');
     expect(JSON.stringify(body)).not.toMatch(/eyJ/);
+  });
+
+  it('uses strict userAuth cookie options during staging refresh without returning JWT fields', async () => {
+    process.env.BACKEND_APP_ENV = 'staging';
+    mockPrisma.user.findUnique.mockResolvedValue({
+      id: 12,
+      wallet_address: '0xrefreshuser'
+    });
+    const existingToken = jwt.sign(
+      { user_id: 12, address: '0xrefreshuser' },
+      process.env.JWT_SECRET as string,
+      { expiresIn: '1h' }
+    );
+    const req = createRequest({});
+    req.cookies = { userAuth: existingToken };
+    const res = createResponse();
+
+    await AuthController.refreshToken(req, res);
+
+    expect(res.cookie).toHaveBeenCalledWith('userAuth', expect.any(String), expect.objectContaining({
+      httpOnly: true,
+      secure: true,
+      sameSite: 'strict',
+      maxAge: 7200000
+    }));
+    expect(res.status).toHaveBeenCalledWith(200);
+    expect(res.json).toHaveBeenCalledWith({ success: true });
+    const body = res.json.mock.calls[0][0];
+    expect(body).not.toHaveProperty('token');
+    expect(body).not.toHaveProperty('newToken');
+    expect(body).not.toHaveProperty('jwt');
+    expect(body).not.toHaveProperty('accessToken');
   });
 
   it('rejects invalid refresh tokens without exposing token material', async () => {
