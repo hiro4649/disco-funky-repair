@@ -347,6 +347,14 @@
       "canManualConfirmationOverride": true
     },
     {
+      "reasonCode": "product_verification_command_failed",
+      "gate": "productVerification",
+      "severity": "error",
+      "safeMessage": "One or more product verification commands failed.",
+      "nextBestFix": "Fix the product check failure before merge.",
+      "canManualConfirmationOverride": false
+    },
+    {
       "reasonCode": "npm_skip_not_allowed_for_product_change",
       "gate": "productVerification",
       "severity": "error",

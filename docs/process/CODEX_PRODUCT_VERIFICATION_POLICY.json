@@ -18,6 +18,7 @@
   ],
   "reasonCodes": [
     "product_verification_required",
+    "product_verification_command_failed",
     "npm_skip_not_allowed_for_product_change",
     "runtime_claim_requires_product_checks",
     "package_change_requires_package_verification",

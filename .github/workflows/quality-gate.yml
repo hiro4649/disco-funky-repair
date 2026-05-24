@@ -24,6 +24,130 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: '20'
+      - name: Prepare target product verification
+        shell: bash
+        run: |
+          set -euo pipefail
+          changed_file_list="$RUNNER_TEMP/codex-changed-files.txt"
+          if git rev-parse --verify HEAD^2 >/dev/null 2>&1; then
+            git diff --name-only HEAD^1 HEAD^2 > "$changed_file_list"
+          elif [ -n "${{ github.event.pull_request.base.sha || '' }}" ] && [ -n "${{ github.event.pull_request.head.sha || '' }}" ]; then
+            git diff --name-only "${{ github.event.pull_request.base.sha }}" "${{ github.event.pull_request.head.sha }}" > "$changed_file_list"
+          else
+            git diff --name-only origin/main...HEAD > "$changed_file_list"
+          fi
+          product_change=0
+          if grep -Eq '^(apps/|contracts/|src/|packages/|lib/|server/|client/|test/|tests/|__tests__/|package\.json$|package-lock\.json$|npm-shrinkwrap\.json$|yarn\.lock$|pnpm-lock\.yaml$|tsconfig\.json$|vite\.config\.|next\.config\.|webpack\.config\.|eslint\.config\.)' "$changed_file_list"; then
+            product_change=1
+          fi
+          evidence_path="$RUNNER_TEMP/codex-product-verification-evidence.json"
+          printf '{"commands":[],"safeSummaryOnly":true}\n' > "$evidence_path"
+          {
+            echo "CODEX_CHANGED_FILES<<CODEX_CHANGED_FILES_EOF"
+            cat "$changed_file_list"
+            echo "CODEX_CHANGED_FILES_EOF"
+            echo "CODEX_PRODUCT_CHANGE=$product_change"
+            echo "CODEX_PRODUCT_VERIFICATION_EVIDENCE_PATH=$evidence_path"
+            if [ "$product_change" = "1" ]; then
+              echo "CODEX_SKIP_NPM=0"
+            else
+              echo "CODEX_SKIP_NPM=1"
+              echo "CODEX_NPM_SKIP_REASON=non-product-change"
+            fi
+          } >> "$GITHUB_ENV"
+      - name: Run target product checks
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ "${CODEX_PRODUCT_CHANGE:-0}" != "1" ]; then
+            echo "No product-relevant changed files; target product checks skipped by policy."
+            exit 0
+          fi
+          product_failed=0
+          evidence_path="${CODEX_PRODUCT_VERIFICATION_EVIDENCE_PATH}"
+          export DATABASE_URL="$(node -e "const p=['postgresql',':','//','codex_harness',':','codex_harness','@','127.0.0.1',':','5432','/','codex_harness','?schema=public']; process.stdout.write(p.join(''))")"
+          record_check() {
+            local name="$1"
+            local result="$2"
+            local summary="$3"
+            node - "$evidence_path" "$name" "$result" "$summary" <<'NODE'
+          const fs = require('fs');
+          const [file, name, result, safeSummary] = process.argv.slice(2);
+          let evidence = { commands: [], safeSummaryOnly: true };
+          try { evidence = JSON.parse(fs.readFileSync(file, 'utf8')); } catch {}
+          evidence.commands = Array.isArray(evidence.commands) ? evidence.commands : [];
+          evidence.commands.push({
+            name,
+            required: true,
+            result,
+            source: 'remote',
+            durationMs: null,
+            testCount: null,
+            safeSummary,
+          });
+          evidence.safeSummaryOnly = true;
+          fs.writeFileSync(file, `${JSON.stringify(evidence, null, 2)}\n`);
+          NODE
+          }
+          run_check() {
+            local name="$1"
+            local summary="$2"
+            shift 2
+            set +e
+            "$@"
+            local status=$?
+            set -e
+            if [ "$status" -eq 0 ]; then
+              record_check "$name" "pass" "$summary"
+            else
+              record_check "$name" "fail" "$summary"
+              product_failed=1
+            fi
+          }
+          changed="${CODEX_CHANGED_FILES}"
+          backend_changed=0
+          frontend_changed=0
+          contracts_changed=0
+          all_product_changed=0
+          if printf '%s\n' "$changed" | grep -Eq '^(apps/backend/|__tests__/|test/|tests/)'; then backend_changed=1; fi
+          if printf '%s\n' "$changed" | grep -Eq '^apps/frontend/'; then frontend_changed=1; fi
+          if printf '%s\n' "$changed" | grep -Eq '^contracts/'; then contracts_changed=1; fi
+          if printf '%s\n' "$changed" | grep -Eq '^(package\.json|package-lock\.json|npm-shrinkwrap\.json|yarn\.lock|pnpm-lock\.yaml|tsconfig\.json|src/|packages/|lib/|server/|client/)'; then all_product_changed=1; fi
+          if [ "$backend_changed" = "1" ] || [ "$all_product_changed" = "1" ]; then
+            if [ -f apps/backend/package.json ]; then
+              pushd apps/backend >/dev/null
+              run_check "apps/backend npm ci" "backend dependency install completed" npm ci --no-audit --no-fund
+              run_check "apps/backend prisma validate" "backend prisma schema validation completed" npm run prisma:validate
+              run_check "apps/backend build" "backend build completed" npm run build
+              run_check "apps/backend test" "backend test suite completed" npm test -- --runInBand
+              popd >/dev/null
+            fi
+          fi
+          if [ "$frontend_changed" = "1" ] || [ "$all_product_changed" = "1" ]; then
+            if [ -f apps/frontend/package.json ]; then
+              pushd apps/frontend >/dev/null
+              run_check "apps/frontend npm ci" "frontend dependency install completed" npm ci --no-audit --no-fund
+              if [ -f env.validation.test.mjs ]; then
+                run_check "apps/frontend env validation test" "frontend env validation completed" node env.validation.test.mjs
+              fi
+              run_check "apps/frontend build" "frontend build completed" npm run build
+              popd >/dev/null
+            fi
+          fi
+          if [ "$contracts_changed" = "1" ] || [ "$all_product_changed" = "1" ]; then
+            if [ -f contracts/package.json ]; then
+              pushd contracts >/dev/null
+              run_check "contracts npm ci" "contracts dependency install completed" npm ci --no-audit --no-fund
+              run_check "contracts compile" "contracts compile completed" npm run compile
+              run_check "contracts test" "contracts test completed" npm test
+              run_check "contracts compile nft" "contracts NFT compile completed" npm run compile:nft
+              run_check "contracts test nft" "contracts NFT tests completed" npm run test:nft
+              popd >/dev/null
+            fi
+          fi
+          if [ "$product_failed" = "1" ]; then
+            echo "One or more target product checks failed; target quality gate will consume safe evidence."
+          fi
       - name: Run Codex target quality gate
         shell: bash
         env:
@@ -31,7 +155,6 @@ jobs:
           CODEX_PROFILE_COMPAT_MODE: "off"
           CODEX_QUALITY_REPORT: "json"
           CODEX_OPENAI_METHOD_REPORT: "json"
-          CODEX_SKIP_NPM: "1"
           CODEX_EVENT_NAME: ${{ github.event_name }}
           CODEX_PR_NUMBER: ${{ github.event.pull_request.number || '' }}
           CODEX_PR_HEAD_SHA: ${{ github.event.pull_request.head.sha || '' }}
