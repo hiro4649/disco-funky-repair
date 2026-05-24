@@ -10,8 +10,7 @@
     "Tokenomics": "ٹوکن کی معیشت",
     "VGC Tokens Model": "VGC ٹوکن ماڈل",
     "FAQ": "اکثر پوچھے گئے سوالات",
-    "Terms of Use": "استعمال کی شرائط",
-    "Fan Games": "فین گیمز"
+    "Terms of Use": "استعمال کی شرائط"
   },
   "Home": {
     "Airdrop": "مفت ایئر ڈراپ",
@@ -38,10 +37,10 @@
     "Next token snapshot": "اگلا اسنیپ شاٹ",
     "My FUNKY Tokens": "میرے FUNKY ٹوکنز",
     "Latest Snapshot": "تازہ ترین تصدیق کی تاریخ",
-   "Pending 24h Hold": "زیر التواء 24 گھنٹے",
-   "24h Held Tokens": "مکمل 24 گھنٹے",
+    "Pending 24h Hold": "زیر التواء 24 گھنٹے",
+    "24h Held Tokens": "مکمل 24 گھنٹے",
     "Weekly Holding Bonus": "ہفتہ وار ہولڈنگ بونس",
-   "1w Held Tokens": "مکمل 1 ہفتہ",
+    "1w Held Tokens": "مکمل 1 ہفتہ",
     "My Wallet": "میرا والیٹ",
     "Next ticket distribution": "اگلی ٹکٹ تقسیم",
     "Ticket distribution history": "ٹکٹ کی تقسیم کی تاریخ",
@@ -382,4 +381,4 @@
     "Article9_2": "اور اگر اس سروس سے متعلق کوئی تنازعہ ہو تو، پہلا مقدمہ سنگاپور کی عدالت کے دائرہ اختیار میں آئے گا۔",
     "LastUpdated": "آخری بار اپڈیٹ ہوا: 1 مئی 2025"
   }
-} 
+}

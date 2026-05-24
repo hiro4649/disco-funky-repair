@@ -11,8 +11,7 @@
     "Tokenomics": "Tokenomics",
     "VGC Tokens Model": "VGC Token Model",
     "FAQ": "FAQ",
-    "Terms of Use": "Terms of Use",
-    "Fan Games": "Fan Games"
+    "Terms of Use": "Terms of Use"
   },
   "Home": {
     "Airdrop": "Free Airdrop",
@@ -326,14 +325,12 @@
   "ModalLogin": {
     "Connect Wallet": "Please connect your wallet",
     "AI Description": "The prize token drawing is conducted fairly by the AI agent",
-
     "No Deposit": "No Deposit",
     "No Crypto": "No cryptocurrency deposit required",
     "Transfer Money": "Transfer Crypto",
     "Airdrop Sent": "Airdrop will be sent to your wallet",
     "All Free": "All Free",
     "No Decrease": "Your crypto will never decrease",
-
     "Explore": "FUNKY RAVE Guide"
   },
   "ModalTiket": {

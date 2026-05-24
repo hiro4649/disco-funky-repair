@@ -10,8 +10,7 @@
     "Tokenomics": "トークンエコノミクス",
     "VGC Tokens Model": "VGCトークンモデル",
     "FAQ": "よくある質問",
-    "Terms of Use": "ご利用規約",
-    "Fan Games": "ファンゲーム"
+    "Terms of Use": "ご利用規約"
   },
   "Home": {
     "Airdrop": "無料エアドロップ",
@@ -452,7 +451,6 @@
     "Token Management": "トークン管理",
     "Illustration History": "イラスト履歴",
     "AirdropPrize Management": "エアドロップ賞品管理",
-    "NFT Management": "NFT管理",
     "Upload NFT metadata (Excel) and images. After verification, upload selected NFTs to IPFS.": "NFTメタデータ（Excel）と画像をアップロードします。確認後、選択したNFTをIPFSにアップロードします。",
     "Step 1: Upload NFT Metadata (Excel)": "ステップ1: NFTメタデータ（Excel）をアップロード",
     "Upload .xlsx file with NFT data. This saves to database without IPFS upload.": ".xlsxファイルをアップロードします。これはIPFSアップロードなしでデータベースに保存されます。",
