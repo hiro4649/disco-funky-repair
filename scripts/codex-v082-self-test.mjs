@@ -5,7 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
-import { HARNESS_VERSION, marker, writeJsonReport } from './codex-v080-lib.mjs';
+import { HARNESS_VERSION, marker, scanObjectForUnsafe, writeJsonReport } from './codex-v080-lib.mjs';
 import { evaluateWorkflowReport } from './codex-workflow-quality-runner.mjs';
 import { classifyChange, loadClassificationRules } from './codex-change-classification-gate.mjs';
 import { buildProductVerificationReport } from './codex-product-verification-gate.mjs';
@@ -43,6 +43,24 @@ function assertCase(name, ok, failures, cases, status = ok ? 'pass' : 'fail') {
 
 function passStatus(status = 'pass') {
   return { status, safeSummaryOnly: true, reasonCodes: [] };
+}
+
+function runWorkflowRunner(reportFile, cwd) {
+  return spawnSync(process.execPath, [path.join(repo, 'scripts', 'codex-workflow-quality-runner.mjs'), '--report', reportFile, '--gate-exit', '1'], {
+    cwd,
+    env: { ...process.env, CODEX_QUALITY_REPORT: 'json' },
+    encoding: 'utf8',
+    stdio: ['ignore', 'pipe', 'pipe'],
+  });
+}
+
+function safeArtifactFilesExist(dir) {
+  return [
+    'codex-quality-gate-safe-summary.json',
+    'codex-failure-reasons.json',
+    'codex-evidence-pack.normalized.json',
+    'codex-target-quality-summary.json',
+  ].every((name) => fs.existsSync(path.join(dir, name)));
 }
 
 function sourcePassReport() {
@@ -149,6 +167,29 @@ function buildReport() {
   manualSource.humanConfirmationObjectStatus = passStatus('manual_confirmation_required');
   result = evaluateWorkflowReport(manualSource, { eventName: 'pull_request' });
   assertCase('workflow runner preserves manual_confirmation_required', result.status === 'fail', failures, cases, result.status);
+  assertCase('workflow runner scanner allows internal npm skip reason label', scanObjectForUnsafe({
+    productVerificationStatus: { reasonCodes: ['npm_skip_not_allowed_for_product_change'] },
+  }).length === 0, failures, cases);
+  const unsafeNpmTokenFixture = ['npm', 'actualunsafevalue1234567890'].join('_');
+  assertCase('workflow runner scanner still blocks token-like unsafe values', scanObjectForUnsafe({
+    productVerificationStatus: { safeSummary: unsafeNpmTokenFixture },
+  }).length > 0, failures, cases);
+  const invalidRunnerTmp = fs.mkdtempSync(path.join(os.tmpdir(), 'codex-v082-runner-'));
+  const invalidJsonPath = path.join(invalidRunnerTmp, 'invalid.json');
+  write(invalidJsonPath, '{ invalid json');
+  let runnerResult = runWorkflowRunner(invalidJsonPath, invalidRunnerTmp);
+  assertCase('workflow runner writes safe artifacts for invalid JSON report', runnerResult.status !== 0 && safeArtifactFilesExist(invalidRunnerTmp), failures, cases, runnerResult.status !== 0 ? 'pass' : 'fail');
+  const unsafeReportTmp = fs.mkdtempSync(path.join(os.tmpdir(), 'codex-v082-runner-'));
+  const unsafeReportPath = path.join(unsafeReportTmp, 'unsafe.json');
+  write(unsafeReportPath, JSON.stringify({ status: 'fail', targetQualityScoreStatus: { status: 'fail' }, safeSummary: unsafeNpmTokenFixture }));
+  runnerResult = runWorkflowRunner(unsafeReportPath, unsafeReportTmp);
+  const unsafeArtifactText = safeArtifactFilesExist(unsafeReportTmp)
+    ? fs.readFileSync(path.join(unsafeReportTmp, 'codex-failure-reasons.json'), 'utf8')
+    : '';
+  assertCase('workflow runner writes safe artifacts for unsafe report without unsafe value', runnerResult.status !== 0 && safeArtifactFilesExist(unsafeReportTmp) && !unsafeArtifactText.includes(unsafeNpmTokenFixture), failures, cases, runnerResult.status !== 0 ? 'pass' : 'fail');
+  const missingReportTmp = fs.mkdtempSync(path.join(os.tmpdir(), 'codex-v082-runner-'));
+  runnerResult = runWorkflowRunner(path.join(missingReportTmp, 'missing.json'), missingReportTmp);
+  assertCase('workflow runner writes safe artifacts for missing report', runnerResult.status !== 0 && safeArtifactFilesExist(missingReportTmp), failures, cases, runnerResult.status !== 0 ? 'pass' : 'fail');
 
   result = withRulesTmp((tmp) => loadClassificationRules({ CODEX_CHANGE_CLASSIFICATION_RULES_PATH: path.join(tmp, 'docs', 'process', 'CODEX_CHANGE_CLASSIFICATION_RULES.json') }));
   assertCase('change classification rules JSON loads', result.ok, failures, cases, result.ok ? 'pass' : result.reasonCode);

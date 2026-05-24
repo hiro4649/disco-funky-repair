@@ -98,13 +98,15 @@ const optionalNotApplicable = new Set([
 ]);
 
 function readReport(file) {
-  if (!file) return { ok: false, report: null, reasonCode: 'workflow_runner_invalid_report' };
+  if (!file) return { ok: false, report: null, reasonCode: 'workflow_runner_invalid_report', unsafeCategory: 'missing_report' };
   try {
     const report = JSON.parse(fs.readFileSync(file, 'utf8'));
-    if (scanObjectForUnsafe(report).length) return { ok: false, report: null, reasonCode: 'workflow_runner_invalid_report' };
+    if (scanObjectForUnsafe(report).length) {
+      return { ok: false, report: null, reasonCode: 'workflow_runner_invalid_report', unsafeCategory: 'unsafe_pattern' };
+    }
     return { ok: true, report };
   } catch {
-    return { ok: false, report: null, reasonCode: 'workflow_runner_invalid_report' };
+    return { ok: false, report: null, reasonCode: 'workflow_runner_invalid_report', unsafeCategory: 'parse_error' };
   }
 }
 
@@ -198,6 +200,52 @@ function writeArtifacts(result, report) {
   }
 }
 
+function writeInvalidReportArtifacts(reasonCode, unsafeCategory = 'unknown') {
+  const safeSummary = {
+    marker,
+    harnessVersion: HARNESS_VERSION,
+    mode: 'unknown',
+    status: 'fail',
+    mergeReady: false,
+    targetMergeReady: false,
+    humanReviewRequired: false,
+    qualityScoreStatus: { status: 'missing', safeSummaryOnly: true },
+    reasonSummary: {
+      status: 'fail',
+      mode: 'unknown',
+      score: null,
+      blockingReasons: [{ reasonCode, gate: 'workflowQualityRunner' }],
+      manualReasons: [],
+      optionalNotApplicable: [],
+      topNextActions: ['Regenerate the local quality gate JSON report.'],
+      safeSummaryOnly: true,
+    },
+    failureCount: 1,
+    warningCount: 0,
+    safeSummaryOnly: true,
+  };
+  const failureReasons = [{
+    reasonCode,
+    gate: 'workflowQualityRunner',
+    severity: 'error',
+    safeMessage: 'Workflow quality runner received invalid or unsafe report data.',
+    unsafeCategory,
+    safeSummaryOnly: true,
+  }];
+  fs.writeFileSync('codex-quality-gate-safe-summary.json', JSON.stringify(safeSummary, null, 2));
+  fs.writeFileSync('codex-failure-reasons.json', JSON.stringify(failureReasons, null, 2));
+  fs.writeFileSync('codex-evidence-pack.normalized.json', JSON.stringify({
+    evidencePackStatus: { status: 'missing', safeSummaryOnly: true },
+    normalizedEvidencePackPresent: false,
+    safeSummaryOnly: true,
+  }, null, 2));
+  fs.writeFileSync('codex-target-quality-summary.json', JSON.stringify({
+    targetQualityScoreStatus: { status: 'missing', safeSummaryOnly: true },
+    targetMergeReady: false,
+    safeSummaryOnly: true,
+  }, null, 2));
+}
+
 export function buildWorkflowQualityRunnerReport(report, options = {}) {
   const result = evaluateWorkflowReport(report, options);
   return simpleStatus('workflowQualityRunnerStatus', result.status, {
@@ -212,6 +260,7 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
   const file = args.report || process.env.CODEX_WORKFLOW_REPORT_PATH || process.argv[2];
   const loaded = readReport(file);
   if (!loaded.ok) {
+    writeInvalidReportArtifacts(loaded.reasonCode, loaded.unsafeCategory);
     const report = simpleStatus('workflowQualityRunnerStatus', 'fail', { reasonCodes: [loaded.reasonCode] });
     writeJsonReport(report, 'CODEX_WORKFLOW_RUNNER_REPORT');
     process.exit(1);
