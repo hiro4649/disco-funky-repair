@@ -74,6 +74,13 @@ export function listFiles(dir) {
 export function concreteUnsafeFindings(value, pathLabel = 'value') {
   const text = String(value || '');
   if (!text) return [];
+  const safeInternalReasonLabels = new Set([
+    'unsafe_value_detected',
+    'npm_skip_not_allowed_for_product_change',
+    'workflow_runner_invalid_report',
+    'workflow_runner_failed',
+  ]);
+  if (safeInternalReasonLabels.has(text.trim())) return [];
   const rules = [
     ['unsafe_value_detected', /\b(?:https?|postgres(?:ql)?|mysql|mongodb):\/\/[^\s<>"'`]+/i],
     ['unsafe_value_detected', /\b(?:gh[pousr]_|sk-|AKIA|glpat-|npm_|xox[baprs]-)[A-Za-z0-9_-]{8,}\b/],
