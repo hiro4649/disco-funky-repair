@@ -448,4 +448,3 @@ export const getTransactionReceiptStatus = async (txHash: string): Promise<Prize
 };
 
 export const requestRPC = 'https://api.dexscreener.com/latest/dex/tokens/';
-export const requestAPI = 'https://suiscan.xyz/api/sui-backend/mainnet/api/coins/';

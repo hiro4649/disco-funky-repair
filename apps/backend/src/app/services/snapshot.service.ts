@@ -48,7 +48,7 @@ export class SnapshotService {
             continue;
           }
 
-          // Get actual DISCO token balance from Sui wallet
+          // Get actual FUNKY token balance from the configured token contract.
           const tokenBalance = await getTokenBalance(user.wallet_address, TOKEN_CONTRACT_ADDRESS);
           const balanceInTokens = Number(tokenBalance) / Math.pow(10, 9); // Convert from smallest unit to tokens (assuming 9 decimals)
           
