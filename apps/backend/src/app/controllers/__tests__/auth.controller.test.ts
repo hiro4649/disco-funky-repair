@@ -256,6 +256,58 @@ describe('AuthController admin cookie session', () => {
     expect(res.json.mock.calls[0][0]).not.toHaveProperty('token');
   });
 
+  it('returns the same response for invalid admin signin credentials', async () => {
+    const expectedBody = { success: false, message: 'Invalid credentials' };
+
+    mockPrisma.admin.findUnique.mockResolvedValueOnce({
+      id: 7,
+      email: 'admin@example.com',
+      password_hash: 'hashed-password'
+    });
+    (bcrypt.compare as jest.Mock).mockResolvedValueOnce(false);
+    const wrongPasswordResponse = createResponse();
+
+    await AuthController.signin(
+      createRequest({
+        email: 'admin@example.com',
+        password: 'wrong-password'
+      }),
+      wrongPasswordResponse
+    );
+
+    mockPrisma.admin.findUnique.mockResolvedValueOnce(null);
+    const missingAdminResponse = createResponse();
+
+    await AuthController.signin(
+      createRequest({
+        email: 'missing@example.com',
+        password: 'wrong-password'
+      }),
+      missingAdminResponse
+    );
+
+    mockPrisma.admin.findUnique.mockResolvedValueOnce({
+      id: 8,
+      email: 'incomplete@example.com',
+      password_hash: null
+    });
+    const missingPasswordHashResponse = createResponse();
+
+    await AuthController.signin(
+      createRequest({
+        email: 'incomplete@example.com',
+        password: 'wrong-password'
+      }),
+      missingPasswordHashResponse
+    );
+
+    for (const res of [wrongPasswordResponse, missingAdminResponse, missingPasswordHashResponse]) {
+      expect(res.status).toHaveBeenCalledWith(401);
+      expect(res.json).toHaveBeenCalledWith(expectedBody);
+      expect(res.cookie).not.toHaveBeenCalled();
+    }
+  });
+
   it('clears the admin cookie on logout', async () => {
     const res = createResponse();
 
