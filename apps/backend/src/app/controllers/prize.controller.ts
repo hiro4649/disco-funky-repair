@@ -1298,42 +1298,85 @@ export class PrizeController {
                         correlationId
                     });
                 }
-                try {
-                    await prisma.$transaction(async (tx) => {
-                        await releasePrizeReservation(
-                            tx,
-                            prizeTransaction.id,
-                            prizeTransaction.prizeId,
-                            tokenAmountInSmallestUnit
-                        );
-                        await tx.prizeTransactions.update({
-                            where: { id: prizeId },
-                            data: {
-                                status: Status.RECEIVED,
-                                ...prizeTransferEvidenceUpdate(txEvidence)
-                            },
-                        });
+
+                const broadcastUpdate = await prisma.prizeTransactions.updateMany({
+                    where: {
+                        id: prizeId,
+                        userId: user.id,
+                        status: Status.SENDING,
+                        tx_hash: null
+                    },
+                    data: {
+                        status: Status.BROADCASTED,
+                        ...prizeTransferEvidenceUpdate(txEvidence),
+                        tx_hash: txHash
+                    }
+                });
+
+                if (broadcastUpdate.count !== 1) {
+                    const latestPrizeTransaction = await prisma.prizeTransactions.findFirst({
+                        where: { id: prizeId, userId: user.id },
+                        select: {
+                            status: true,
+                            tx_hash: true
+                        }
                     });
-                } catch (releaseErr) {
-                    if (releaseErr instanceof PrizeInventoryDepletionError) {
-                        await prisma.prizeTransactions.update({
-                            where: { id: prizeId },
-                            data: {
-                                status: Status.MANUAL_REVIEW,
-                                ...prizeTransferEvidenceUpdate(txEvidence)
-                            },
-                        });
-                        return res.status(202).json({
+
+                    if (isPrizeTransferFinalStatus(latestPrizeTransaction?.status)) {
+                        if (latestPrizeTransaction?.status === Status.RECEIVED) {
+                            return res.status(200).json({
+                                success: true,
+                                txHash: latestPrizeTransaction.tx_hash || txHash
+                            });
+                        }
+
+                        return res.status(409).json({
                             success: false,
-                            msg: 'Prize transfer was confirmed but inventory requires manual review.',
+                            msg: 'Prize transaction is already finalized.',
+                            status: latestPrizeTransaction?.status,
                             correlationId
                         });
                     }
-                    throw releaseErr;
+
+                    const manualReviewUpdate = await prisma.prizeTransactions.updateMany({
+                        where: {
+                            id: prizeId,
+                            userId: user.id,
+                            status: { in: PRIZE_TRANSFER_MANUAL_REVIEW_ELIGIBLE_STATUSES as any }
+                        },
+                        data: {
+                            status: Status.MANUAL_REVIEW,
+                            ...prizeTransferEvidenceUpdate(txEvidence),
+                            tx_hash: txHash
+                        } as any
+                    });
+
+                    if (manualReviewUpdate.count !== 1) {
+                        return res.status(409).json({
+                            success: false,
+                            msg: 'Prize transaction changed during broadcast handling.',
+                            correlationId
+                        });
+                    }
+
+                    return res.status(202).json({
+                        success: false,
+                        msg: 'Prize transfer was broadcasted and requires manual review.',
+                        status: Status.MANUAL_REVIEW,
+                        txHash,
+                        receiptVerified: false,
+                        correlationId
+                    });
                 }
 
-                // Return success response
-                return res.status(200).json({ success: true, txHash });
+                return res.status(202).json({
+                    success: true,
+                    msg: 'Prize transfer was broadcasted and is awaiting receipt confirmation.',
+                    status: Status.BROADCASTED,
+                    txHash,
+                    receiptVerified: false,
+                    correlationId
+                });
             } catch (transferErr: any) {
                 const broadcastTxHash = txHash || (typeof transferErr?.txHash === 'string' ? transferErr.txHash : null);
                 const broadcastEvidence = txEvidence || transferErr?.evidence || null;
