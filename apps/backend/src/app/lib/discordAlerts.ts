@@ -12,6 +12,7 @@
 import { ethers } from 'ethers';
 import { DISCORD_WEBHOOK_URL, NODE_ENV, CHAIN_NAME, SERVICE_VERSION } from '../config/env';
 import { safeLogError, safeLogWarn, sanitizeLogText } from '../utils/safeLogger';
+import { fetchWithTimeout } from '../utils/externalCallTimeout';
 
 /**
  * Generate correlation ID for log tracking
@@ -86,13 +87,13 @@ export async function sendDiscordAlert(
             }]
         };
 
-        const response = await fetch(DISCORD_WEBHOOK_URL, {
+        const response = await fetchWithTimeout(DISCORD_WEBHOOK_URL, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json'
             },
             body: JSON.stringify(embed)
-        });
+        }, undefined, 'discord_webhook_send');
 
         if (!response.ok) {
             throw new Error('Discord webhook request failed');

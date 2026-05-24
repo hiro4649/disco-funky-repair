@@ -72,6 +72,16 @@ const loadTokenHelpers = (envOverrides: Record<string, string | undefined> = {})
   jest.doMock('../../lib/getToken', () => jest.fn());
   jest.doMock('../../lib/getTokenPrice', () => jest.fn());
   jest.doMock('../../db/prisma_client', () => ({}));
+  jest.doMock('../externalCallTimeout', () => {
+    const actual = jest.requireActual('../externalCallTimeout');
+    return {
+      ...actual,
+      withRpcReadTimeout: (promise: PromiseLike<unknown>, operation: string) =>
+        actual.withExternalTimeout(promise, 1, operation),
+      withRpcWriteTimeout: (promise: PromiseLike<unknown>, operation: string) =>
+        actual.withExternalTimeout(promise, 1, operation)
+    };
+  });
   jest.doMock('../../config/env', () => ({
     adminWalletAddress: '0x0000000000000000000000000000000000000005',
     ADMIN_PRIVATE_KEY: 'test-admin-private-key',
@@ -84,11 +94,13 @@ const loadTokenHelpers = (envOverrides: Record<string, string | undefined> = {})
   }));
 
   const helpers = require('../tokenHeplers') as TokenHelpersModule;
-  return { helpers, JsonRpcProvider, Wallet, Contract, contract, provider, transfer, wait };
+  const getTokenPrice = require('../../lib/getTokenPrice') as jest.Mock;
+  return { helpers, JsonRpcProvider, Wallet, Contract, contract, provider, transfer, wait, getTokenPrice };
 };
 
 describe('sendTokensToWallet prize hot wallet separation', () => {
   afterEach(() => {
+    jest.useRealTimers();
     jest.resetModules();
     jest.clearAllMocks();
   });
@@ -172,6 +184,62 @@ describe('sendTokensToWallet prize hot wallet separation', () => {
 
     expect(wait).not.toHaveBeenCalled();
     expect(result.txHash).toBe('0xTransferTx');
+  });
+
+  it('fails safely when the provider network check does not return within the read timeout', async () => {
+    const { helpers, provider, Contract } = loadTokenHelpers();
+    provider.getNetwork.mockImplementationOnce(() => new Promise(() => undefined));
+
+    const promise = helpers.sendTokensToWallet(RECIPIENT, 10n, ALLOWED_TOKEN);
+
+    await expect(promise).rejects.toMatchObject({
+      name: 'ExternalCallTimeoutError',
+      operation: 'provider_get_network',
+      timeoutMs: 1
+    });
+    expect(Contract).not.toHaveBeenCalled();
+  });
+
+  it('does not broadcast when gas estimate does not return within the write timeout', async () => {
+    const { helpers, transfer } = loadTokenHelpers();
+    (transfer as any).estimateGas.mockImplementationOnce(() => new Promise(() => undefined));
+
+    const promise = helpers.sendTokensToWallet(RECIPIENT, 10n, ALLOWED_TOKEN);
+
+    await expect(promise).rejects.toMatchObject({
+      name: 'ExternalCallTimeoutError',
+      operation: 'prize_transfer_estimate_gas',
+      timeoutMs: 1
+    });
+    expect(transfer).not.toHaveBeenCalled();
+  });
+
+  it('does not estimate gas or broadcast when native balance lookup times out', async () => {
+    const { helpers, provider, transfer } = loadTokenHelpers();
+    provider.getBalance.mockImplementationOnce(() => new Promise(() => undefined));
+
+    const promise = helpers.sendTokensToWallet(RECIPIENT, 10n, ALLOWED_TOKEN);
+
+    await expect(promise).rejects.toMatchObject({
+      name: 'ExternalCallTimeoutError',
+      operation: 'prize_operator_native_balance',
+      timeoutMs: 1
+    });
+    expect((transfer as any).estimateGas).not.toHaveBeenCalled();
+    expect(transfer).not.toHaveBeenCalled();
+  });
+
+  it('fails safely when transfer broadcast does not return within the write timeout', async () => {
+    const { helpers, transfer } = loadTokenHelpers();
+    transfer.mockImplementationOnce(() => new Promise(() => undefined));
+
+    const promise = helpers.sendTokensToWallet(RECIPIENT, 10n, ALLOWED_TOKEN);
+
+    await expect(promise).rejects.toMatchObject({
+      name: 'ExternalCallTimeoutError',
+      operation: 'prize_transfer_broadcast',
+      timeoutMs: 1
+    });
   });
 
   it('does not build or send a transfer when provider chainId differs from CHAIN_ID', async () => {
@@ -282,5 +350,24 @@ describe('sendTokensToWallet prize hot wallet separation', () => {
         publicAmount: '10'
       }
     });
+  });
+
+  it('stops token quantity price retries after the configured attempt limit', async () => {
+    const consoleWarnSpy = jest.spyOn(console, 'warn').mockImplementation(() => undefined);
+    const { helpers, getTokenPrice } = loadTokenHelpers();
+    getTokenPrice.mockResolvedValue(null);
+
+    const result = await helpers.calculateTokenQuantity(ALLOWED_TOKEN, 10);
+
+    expect(result).toBe(0);
+    expect(getTokenPrice).toHaveBeenCalledTimes(3);
+    expect(consoleWarnSpy).toHaveBeenCalledWith(
+      'calculate_token_quantity_price_unavailable warning',
+      expect.objectContaining({
+        operation: 'calculate_token_quantity_price_unavailable',
+        attempts: 3,
+        errorName: 'Error'
+      })
+    );
   });
 });

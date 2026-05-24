@@ -1,6 +1,7 @@
 import { etherscanRateLimiter } from "../utils/rateLimiter";
 import { ETHERSCAN_API_URL, ETHERSCAN_API_KEY } from "../config/env";
 import { safeLogError } from "../utils/safeLogger";
+import { fetchJsonWithTimeout } from "../utils/externalCallTimeout";
 
 /**
  * Get ERC20 token balance using Etherscan API V2 (with chainid)
@@ -20,8 +21,12 @@ async function getTokenBalance(
   await etherscanRateLimiter.waitForRateLimit();
   const apiUrl = `${ETHERSCAN_API_URL}&module=account&action=tokenbalance&contractaddress=${tokenAddress}&address=${walletAddress}&tag=latest&apikey=${ETHERSCAN_API_KEY}`;
   try {
-    const resp = await fetch(apiUrl);
-    const data = await resp.json();
+    const data = await fetchJsonWithTimeout<any>(
+      apiUrl,
+      {},
+      undefined,
+      "etherscan_token_balance"
+    );
     if (data.status !== "1") {
 
         throw new Error(data.result || "Etherscan returned error");

@@ -24,6 +24,7 @@ import { ethers } from 'ethers';
 import { QUICKNODE_HTTP_RPC_URL, ETHERSCAN_API_URL, ETHERSCAN_API_KEY, TOKEN_CONTRACT_ADDRESS } from '../config/env';
 import { etherscanRateLimiter } from '../utils/rateLimiter';
 import { safeLogError, safeLogWarn } from '../utils/safeLogger';
+import { fetchJsonWithTimeout, withRpcReadTimeout } from '../utils/externalCallTimeout';
 import { alertQuickNodeFallback, alertQuickNodeRestored } from './discordAlerts';
 
 // ERC20 ABI for balance and transfer events
@@ -141,7 +142,10 @@ class QuickNodeRpcService {
             // Wait for credit limit
             await creditLimiter.waitForCredits(16);
 
-            const balance = await this.contract.balanceOf(walletAddress);
+            const balance = await withRpcReadTimeout<bigint>(
+                this.contract.balanceOf(walletAddress),
+                'quicknode_token_balance'
+            );
 
 
             return balance;
@@ -188,7 +192,10 @@ class QuickNodeRpcService {
             const MAX_BLOCK_RANGE = 5000;
 
             const latestBlock = toBlock === 'latest'
-                ? await this.provider.getBlockNumber()
+                ? await withRpcReadTimeout<number>(
+                    this.provider.getBlockNumber(),
+                    'quicknode_latest_block'
+                )
                 : typeof toBlock === 'string' ? parseInt(toBlock) : toBlock;
 
             const startBlock = typeof fromBlock === 'string' ? parseInt(fromBlock) : fromBlock;
@@ -202,12 +209,15 @@ class QuickNodeRpcService {
                 // Wait for credit limit (6 credits per eth_getLogs)
                 await creditLimiter.waitForCredits(6);
 
-                const logs = await this.provider.getLogs({
-                    address: TOKEN_CONTRACT_ADDRESS,
-                    topics: topicFilter,
-                    fromBlock: currentBlock,
-                    toBlock: endBlock
-                });
+                const logs = await withRpcReadTimeout<ethers.Log[]>(
+                    this.provider.getLogs({
+                        address: TOKEN_CONTRACT_ADDRESS,
+                        topics: topicFilter,
+                        fromBlock: currentBlock,
+                        toBlock: endBlock
+                    }),
+                    'quicknode_get_logs'
+                );
 
                 allLogs.push(...logs);
 
@@ -237,7 +247,10 @@ class QuickNodeRpcService {
 
                     // Get block timestamp (costs 16 credits per unique block)
                     // We'll batch these to minimize credit usage
-                    const block = await this.provider.getBlock(log.blockNumber);
+                    const block = await withRpcReadTimeout<ethers.Block | null>(
+                        this.provider.getBlock(log.blockNumber),
+                        'quicknode_log_block'
+                    );
                     await creditLimiter.waitForCredits(16);
 
                     transactions.push({
@@ -294,7 +307,10 @@ class QuickNodeRpcService {
             const blocksPerHour = 60 * 60 / 3; // ~1200 blocks/hour
             const blockRange = Math.ceil(hours * blocksPerHour);
 
-            const latestBlock = await this.provider.getBlockNumber();
+            const latestBlock = await withRpcReadTimeout<number>(
+                this.provider.getBlockNumber(),
+                'quicknode_latest_block_window'
+            );
             const fromBlock = Math.max(0, latestBlock - blockRange);
 
 
@@ -334,7 +350,10 @@ class QuickNodeRpcService {
             // Wait for credit limit (16 credits per eth_getBlockByNumber)
             await creditLimiter.waitForCredits(16);
 
-            const block = await this.provider.getBlock(blockNumber);
+            const block = await withRpcReadTimeout<ethers.Block | null>(
+                this.provider.getBlock(blockNumber),
+                'quicknode_block'
+            );
 
             if (!block) {
                 throw new Error(`Block ${blockNumber} not found`);
@@ -380,8 +399,12 @@ class EtherscanFallbackService {
 
             const url = `${ETHERSCAN_API_URL}&module=account&action=tokenbalance&contractaddress=${TOKEN_CONTRACT_ADDRESS}&address=${walletAddress}&tag=latest&apikey=${ETHERSCAN_API_KEY}`;
 
-            const response = await fetch(url);
-            const data = await response.json();
+            const data = await fetchJsonWithTimeout<any>(
+                url,
+                {},
+                undefined,
+                'etherscan_fallback_token_balance'
+            );
 
             if (data.status !== '1') {
                 throw new Error(data.result || 'Etherscan returned error');
@@ -412,8 +435,12 @@ class EtherscanFallbackService {
 
             const url = `${ETHERSCAN_API_URL}&module=account&action=tokentx&contractaddress=${TOKEN_CONTRACT_ADDRESS}&address=${walletAddress}&startblock=0&endblock=99999999&page=1&offset=1000&sort=asc&apikey=${ETHERSCAN_API_KEY}`;
 
-            const response = await fetch(url);
-            const data = await response.json();
+            const data = await fetchJsonWithTimeout<any>(
+                url,
+                {},
+                undefined,
+                'etherscan_fallback_token_transactions'
+            );
 
             if (data.status === '1' && data.result) {
                 const filtered = data.result.filter((tx: any) => {

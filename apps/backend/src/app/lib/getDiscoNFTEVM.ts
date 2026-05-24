@@ -1,6 +1,7 @@
 import { ethers } from 'ethers';
 import { QUICKNODE_HTTP_RPC_URL, NFT_CONTRACT_ADDRESS } from '../config/env';
 import { safeLogError } from '../utils/safeLogger';
+import { withRpcReadTimeout } from '../utils/externalCallTimeout';
 
 // ERC721 ABI for NFT operations
 const erc721Abi = [
@@ -29,7 +30,10 @@ async function getDiscoNFTEVM(walletAddress: string): Promise<number> {
         const contract = new ethers.Contract(NFT_CONTRACT_ADDRESS, erc721Abi, provider);
 
         // Get the balance of NFTs owned by the wallet
-        const balance = await contract.balanceOf(walletAddress);
+        const balance = await withRpcReadTimeout<bigint>(
+            contract.balanceOf(walletAddress),
+            'nft_balance_of'
+        );
         return Number(balance);
     } catch (error) {
         safeLogError('fetch_disco_nft_balance', error, {
