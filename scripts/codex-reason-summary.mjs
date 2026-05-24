@@ -2,7 +2,8 @@
 // CODEX_QUALITY_HARNESS_FILE v0.8.4
 import fs from 'node:fs';
 import { fileURLToPath } from 'node:url';
-import { HARNESS_VERSION, marker, readJson, scanObjectForUnsafe, simpleStatus, writeJsonReport, exitFor } from './codex-v080-lib.mjs';
+import { HARNESS_VERSION, marker, readJson, simpleStatus, writeJsonReport, exitFor } from './codex-v080-lib.mjs';
+import { scanSafeOutput } from './codex-safe-output-scan.mjs';
 
 function loadCatalog() {
   const parsed = readJson('docs/process/CODEX_FAILURE_REASON_CATALOG.json');
@@ -37,7 +38,7 @@ export function buildCompactReasonSummary(report = {}, options = {}) {
   }
   const nextActions = [...blockingReasons, ...manualReasons].slice(0, 5).map((item) => {
     const known = catalog.get(item.reasonCode);
-    return known?.nextBestFix || `Review ${item.gate} safe reason ${item.reasonCode}.`;
+    return known?.nextBestFix || `Review ${item.gate} safe reason code.`;
   });
   const summary = {
     status: report.status || options.status || 'unknown',
@@ -49,7 +50,7 @@ export function buildCompactReasonSummary(report = {}, options = {}) {
     topNextActions: nextActions,
     safeSummaryOnly: true,
   };
-  if (scanObjectForUnsafe(summary).length) {
+  if (scanSafeOutput(summary).findings.length) {
     return { status: 'fail', reasonCodes: ['reason_summary_invalid'], summary: null };
   }
   return { status: 'pass', reasonCodes: [], summary };
