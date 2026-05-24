@@ -35,6 +35,7 @@ Router.use('/', ticketDistributionRoutes);
 Router.use('/', newsRoutes);
 Router.use('/', illustrationRoutes);
 Router.use('/', dexFeeRoutes);
+// Out-of-scope / disabled legacy routes stay mounted only to return explicit 410s.
 Router.use('/', crashGameRoutes);
 Router.use('/', userManageRoutes);
 Router.use('/ticket-code', ticketCodeRoutes);

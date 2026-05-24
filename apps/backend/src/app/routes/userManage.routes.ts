@@ -2,6 +2,7 @@ import express, { Request, Response } from 'express';
 
 const router = express.Router();
 
+// Virtual-balance user-manage is disabled for BSC launch; keep 410s for stale clients only.
 const featureDisabled = (_req: Request, res: Response) =>
     res.status(410).json({
         success: false,

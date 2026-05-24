@@ -206,8 +206,7 @@ describe('explorer request logging safety', () => {
       readAppFile('controllers', 'setTicketDistribute.controller.ts'),
       readAppFile('controllers', 'ticketCodeController.ts'),
       readAppFile('controllers', 'transactionHistoryController.ts'),
-      readAppFile('controllers', 'trialNftTemplate.controller.ts'),
-      readAppFile('controllers', 'userManage.controller.ts')
+      readAppFile('controllers', 'trialNftTemplate.controller.ts')
     ];
 
     for (const source of sources) {
@@ -218,6 +217,10 @@ describe('explorer request logging safety', () => {
       expect(source).not.toContain('Internal server error: JWT secret is not set.');
       expect(source).not.toContain('JWT_SECRET environment variable not set');
     }
+  });
+
+  it('does not keep the disabled virtual-balance controller implementation', () => {
+    expect(fs.existsSync(path.join(__dirname, '..', '..', 'controllers', 'userManage.controller.ts'))).toBe(false);
   });
 
   it('keeps selected service and lib logging paths off direct console output', () => {
