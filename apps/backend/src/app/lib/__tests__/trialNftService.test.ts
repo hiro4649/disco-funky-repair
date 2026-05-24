@@ -18,9 +18,11 @@ const mockPrisma = {
     }
   },
   pointHistory: {
+    findFirst: jest.fn(),
     create: jest.fn()
   },
   user: {
+    findMany: jest.fn(),
     update: jest.fn()
   },
   $transaction: jest.fn()
@@ -37,8 +39,11 @@ jest.mock('../../utils/safeLogger', () => ({
 }));
 
 import { Prisma } from '@prisma/client';
-import { claimTrialNFT } from '../trialNftService';
+import { claimTrialNFT, processDailyNFTHolderBonus } from '../trialNftService';
+import getDiscoNFTEVM from '../getDiscoNFTEVM';
 import { safeLogError } from '../../utils/safeLogger';
+
+const mockGetDiscoNFTEVM = getDiscoNFTEVM as jest.MockedFunction<typeof getDiscoNFTEVM>;
 
 const template = {
   id: 2,
@@ -223,5 +228,191 @@ describe('trialNftService.claimTrialNFT claim safety', () => {
     for (const file of files) {
       expect(fs.readFileSync(file, 'utf8')).not.toContain('console.error');
     }
+  });
+
+  it('keeps Trial NFT scheduler failures observable through safe logging', () => {
+    const scheduler = fs.readFileSync(path.resolve(__dirname, '../trialNftScheduler.ts'), 'utf8');
+
+    expect(scheduler).toContain("safeLogError('trial_nft_daily_bonus_scheduler'");
+    expect(scheduler).toContain("safeLogError('trial_nft_expiration_scheduler'");
+  });
+});
+
+describe('trialNftService.processDailyNFTHolderBonus idempotency', () => {
+  beforeEach(() => {
+    jest.useRealTimers();
+    jest.clearAllMocks();
+    mockPrisma.$transaction.mockImplementation(async (callback: any) => callback(mockPrisma));
+    mockPrisma.user.findMany.mockResolvedValue([
+      { id: 1, wallet_address: '0xuser' }
+    ]);
+    mockPrisma.user.update.mockResolvedValue({});
+    mockPrisma.pointHistory.findFirst.mockResolvedValue(null);
+    mockPrisma.pointHistory.create.mockResolvedValue({});
+    mockPrisma.trialNft.findFirst.mockResolvedValue(null);
+    mockPrisma.trialNft.update.mockResolvedValue({});
+    mockGetDiscoNFTEVM.mockResolvedValue(0);
+  });
+
+  afterEach(() => {
+    jest.useRealTimers();
+  });
+
+  it('awards a real NFT daily bonus once per user and day', async () => {
+    jest.useFakeTimers().setSystemTime(new Date('2026-05-24T00:10:00.000Z'));
+    mockGetDiscoNFTEVM.mockResolvedValue(2);
+    mockPrisma.pointHistory.findFirst
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce({ id: 9001 });
+
+    const firstResult = await processDailyNFTHolderBonus();
+    const secondResult = await processDailyNFTHolderBonus();
+
+    expect(firstResult).toEqual({
+      processedUsers: 1,
+      totalRealNFTBonus: 2,
+      totalTrialNFTBonus: 0,
+      skippedAlreadyAwarded: 0,
+      errors: 0
+    });
+    expect(secondResult).toEqual({
+      processedUsers: 0,
+      totalRealNFTBonus: 0,
+      totalTrialNFTBonus: 0,
+      skippedAlreadyAwarded: 1,
+      errors: 0
+    });
+    expect(mockPrisma.pointHistory.create).toHaveBeenCalledTimes(1);
+    expect(mockPrisma.pointHistory.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        userId: 1,
+        point: 2,
+        reason: 3,
+        dailyWindowKey: '2026-05-24'
+      })
+    });
+    expect(mockPrisma.user.update).toHaveBeenCalledTimes(1);
+    expect(mockPrisma.user.update).toHaveBeenCalledWith({
+      where: { id: 1 },
+      data: {
+        fan_points: { increment: 2 }
+      }
+    });
+  });
+
+  it('awards a trial NFT daily bonus once per user and day', async () => {
+    jest.useFakeTimers().setSystemTime(new Date('2026-05-24T00:10:00.000Z'));
+    const activeTrialNft = {
+      id: 301,
+      userId: 1,
+      isActive: true,
+      receivedDate: new Date('2026-05-22T23:00:00.000Z'),
+      expiresAt: new Date('2026-05-27T00:00:00.000Z')
+    };
+    mockPrisma.trialNft.findFirst.mockResolvedValue(activeTrialNft);
+    mockPrisma.pointHistory.findFirst
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce({ id: 9002 });
+
+    const firstResult = await processDailyNFTHolderBonus();
+    const secondResult = await processDailyNFTHolderBonus();
+
+    expect(firstResult).toEqual({
+      processedUsers: 1,
+      totalRealNFTBonus: 0,
+      totalTrialNFTBonus: 2,
+      skippedAlreadyAwarded: 0,
+      errors: 0
+    });
+    expect(secondResult).toEqual({
+      processedUsers: 0,
+      totalRealNFTBonus: 0,
+      totalTrialNFTBonus: 0,
+      skippedAlreadyAwarded: 1,
+      errors: 0
+    });
+    expect(mockPrisma.pointHistory.create).toHaveBeenCalledTimes(1);
+    expect(mockPrisma.pointHistory.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        userId: 1,
+        point: 2,
+        reason: 5,
+        dailyWindowKey: '2026-05-24'
+      })
+    });
+    expect(mockPrisma.trialNft.update).toHaveBeenCalledTimes(1);
+    expect(mockPrisma.trialNft.update).toHaveBeenCalledWith({
+      where: { id: 301 },
+      data: {
+        bonusApplied: { increment: 2 }
+      }
+    });
+    expect(mockPrisma.user.update).toHaveBeenCalledTimes(1);
+  });
+
+  it('skips fan point updates when a concurrent daily bonus already created history', async () => {
+    jest.useFakeTimers().setSystemTime(new Date('2026-05-24T00:10:00.000Z'));
+    mockGetDiscoNFTEVM.mockResolvedValue(1);
+    mockPrisma.pointHistory.findFirst.mockResolvedValue(null);
+    mockPrisma.pointHistory.create.mockRejectedValueOnce({ code: 'P2002' });
+
+    const result = await processDailyNFTHolderBonus();
+
+    expect(result).toEqual({
+      processedUsers: 0,
+      totalRealNFTBonus: 0,
+      totalTrialNFTBonus: 0,
+      skippedAlreadyAwarded: 1,
+      errors: 0
+    });
+    expect(mockPrisma.user.update).not.toHaveBeenCalled();
+    expect(mockPrisma.trialNft.update).not.toHaveBeenCalled();
+  });
+
+  it('allows a new daily NFT bonus on a different day', async () => {
+    mockGetDiscoNFTEVM.mockResolvedValue(1);
+    mockPrisma.pointHistory.findFirst.mockResolvedValue(null);
+
+    jest.useFakeTimers().setSystemTime(new Date('2026-05-24T00:10:00.000Z'));
+    const firstResult = await processDailyNFTHolderBonus();
+
+    jest.setSystemTime(new Date('2026-05-25T00:10:00.000Z'));
+    const secondResult = await processDailyNFTHolderBonus();
+
+    expect(firstResult.totalRealNFTBonus).toBe(1);
+    expect(secondResult.totalRealNFTBonus).toBe(1);
+    expect(mockPrisma.pointHistory.create).toHaveBeenCalledTimes(2);
+    expect(mockPrisma.pointHistory.create).toHaveBeenNthCalledWith(1, {
+      data: expect.objectContaining({
+        reason: 3,
+        dailyWindowKey: '2026-05-24'
+      })
+    });
+    expect(mockPrisma.pointHistory.create).toHaveBeenNthCalledWith(2, {
+      data: expect.objectContaining({
+        reason: 3,
+        dailyWindowKey: '2026-05-25'
+      })
+    });
+    expect(mockPrisma.user.update).toHaveBeenCalledTimes(2);
+  });
+
+  it('safe logs daily bonus user failures without raw response payloads', async () => {
+    const rawMessage = 'RAW_DAILY_NFT_BONUS_FAILURE';
+    mockGetDiscoNFTEVM.mockRejectedValueOnce(new Error(rawMessage));
+
+    const result = await processDailyNFTHolderBonus();
+
+    expect(result).toEqual({
+      processedUsers: 0,
+      totalRealNFTBonus: 0,
+      totalTrialNFTBonus: 0,
+      skippedAlreadyAwarded: 0,
+      errors: 1
+    });
+    expect(JSON.stringify(result)).not.toContain(rawMessage);
+    expect(safeLogError).toHaveBeenCalledWith('trial_nft_daily_bonus_user', expect.any(Error), {
+      userId: 1
+    });
   });
 });
