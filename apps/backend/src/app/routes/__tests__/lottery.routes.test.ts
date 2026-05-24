@@ -2,6 +2,7 @@ import express from 'express';
 const request = require('supertest');
 
 const mockPrisma = {
+  $queryRaw: jest.fn(),
   ownedToken: {
     findUnique: jest.fn()
   },
@@ -77,6 +78,12 @@ describe('lottery user routes authorization', () => {
     });
     mockPrisma.user.findMany.mockResolvedValue([]);
     mockPrisma.user.update.mockResolvedValue({});
+    mockPrisma.$queryRaw.mockResolvedValue([{
+      id: 1,
+      claimedTickets: 3,
+      remainingClaimTickets: 0,
+      tickets: 13
+    }]);
     mockPrisma.ownedToken.findUnique.mockResolvedValue({
       tallyTokenBalance: '100',
       sixHourTokenBalance: '10',
@@ -92,6 +99,7 @@ describe('lottery user routes authorization', () => {
       .send({ userId: 1 });
 
     expect(response.status).toBe(401);
+    expect(mockPrisma.$queryRaw).not.toHaveBeenCalled();
     expect(mockPrisma.user.findUnique).not.toHaveBeenCalled();
     expect(mockPrisma.user.update).not.toHaveBeenCalled();
   });
@@ -103,6 +111,7 @@ describe('lottery user routes authorization', () => {
       .send({ userId: 2 });
 
     expect(response.status).toBe(403);
+    expect(mockPrisma.$queryRaw).not.toHaveBeenCalled();
     expect(mockPrisma.user.findUnique).not.toHaveBeenCalled();
     expect(mockPrisma.user.update).not.toHaveBeenCalled();
   });
@@ -114,21 +123,134 @@ describe('lottery user routes authorization', () => {
       .send({ wallet_address: '0xAttacker' });
 
     expect(response.status).toBe(200);
-    expect(mockPrisma.user.findUnique).toHaveBeenCalledWith({
-      where: { id: 1 },
-      select: {
-        id: true,
-        claimTickets: true,
-        tickets: true
-      }
-    });
-    expect(mockPrisma.user.update).toHaveBeenCalledWith({
-      where: { id: 1 },
+    expect(mockPrisma.$queryRaw).toHaveBeenCalledTimes(1);
+    expect(mockPrisma.user.findUnique).not.toHaveBeenCalled();
+    expect(mockPrisma.user.update).not.toHaveBeenCalled();
+    expect(response.body).toEqual({
+      success: true,
       data: {
-        claimTickets: 0,
-        tickets: { increment: 3 }
+        userId: 1,
+        claimedTickets: 3,
+        remainingClaimTickets: 0,
+        tickets: 13,
+        totalTickets: 13
       }
     });
+  });
+
+  it('does not double-add tickets when the same user claims twice', async () => {
+    mockPrisma.$queryRaw
+      .mockResolvedValueOnce([{
+        id: 1,
+        claimedTickets: 3,
+        remainingClaimTickets: 0,
+        tickets: 13
+      }])
+      .mockResolvedValueOnce([]);
+    mockPrisma.user.findUnique.mockResolvedValue({
+      id: 1,
+      claimTickets: 0,
+      tickets: 13
+    });
+
+    const [firstResponse, secondResponse] = await Promise.all([
+      request(createApp())
+        .post('/lottery/claim/ticket/to/user')
+        .set('Authorization', 'Bearer user-token')
+        .send({ userId: 1 }),
+      request(createApp())
+        .post('/lottery/claim/ticket/to/user')
+        .set('Authorization', 'Bearer user-token')
+        .send({ userId: 1 })
+    ]);
+
+    expect(firstResponse.status).toBe(200);
+    expect(secondResponse.status).toBe(200);
+    expect(mockPrisma.$queryRaw).toHaveBeenCalledTimes(2);
+    expect(mockPrisma.user.update).not.toHaveBeenCalled();
+    const claimedTotal = firstResponse.body.data.claimedTickets + secondResponse.body.data.claimedTickets;
+    expect(claimedTotal).toBe(3);
+    expect([firstResponse.body.data.claimedTickets, secondResponse.body.data.claimedTickets].sort()).toEqual([0, 3]);
+  });
+
+  it('does not double-add tickets under repeated concurrent claims', async () => {
+    mockPrisma.$queryRaw
+      .mockResolvedValueOnce([{
+        id: 1,
+        claimedTickets: 3,
+        remainingClaimTickets: 0,
+        tickets: 13
+      }])
+      .mockResolvedValue([]);
+    mockPrisma.user.findUnique.mockResolvedValue({
+      id: 1,
+      claimTickets: 0,
+      tickets: 13
+    });
+
+    const responses = await Promise.all(
+      Array.from({ length: 10 }, () =>
+        request(createApp())
+          .post('/lottery/claim/ticket/to/user')
+          .set('Authorization', 'Bearer user-token')
+          .send({ userId: 1 })
+      )
+    );
+
+    expect(responses.every((response) => response.status === 200)).toBe(true);
+    expect(mockPrisma.$queryRaw).toHaveBeenCalledTimes(10);
+    expect(mockPrisma.user.update).not.toHaveBeenCalled();
+    const claimedTotal = responses.reduce((total, response) => total + response.body.data.claimedTickets, 0);
+    expect(claimedTotal).toBe(3);
+  });
+
+  it('returns zero claimed tickets when no claim tickets remain', async () => {
+    mockPrisma.$queryRaw.mockResolvedValue([]);
+    mockPrisma.user.findUnique.mockResolvedValue({
+      id: 1,
+      claimTickets: 0,
+      tickets: 10
+    });
+
+    const response = await request(createApp())
+      .post('/lottery/claim/ticket/to/user')
+      .set('Authorization', 'Bearer user-token')
+      .send({ userId: 1 });
+
+    expect(response.status).toBe(200);
+    expect(response.body).toEqual({
+      success: true,
+      data: {
+        userId: 1,
+        claimedTickets: 0,
+        remainingClaimTickets: 0,
+        tickets: 10,
+        totalTickets: 10
+      }
+    });
+    expect(mockPrisma.user.update).not.toHaveBeenCalled();
+  });
+
+  it('does not expose raw database errors when ticket claim fails', async () => {
+    mockPrisma.$queryRaw.mockRejectedValue(new Error('internal database failure details'));
+    const consoleErrorSpy = jest.spyOn(console, 'error').mockImplementation(() => undefined);
+
+    try {
+      const response = await request(createApp())
+        .post('/lottery/claim/ticket/to/user')
+        .set('Authorization', 'Bearer user-token')
+        .send({ userId: 1 });
+
+      expect(response.status).toBe(500);
+      expect(response.body).toEqual({
+        success: false,
+        message: 'Error claiming tickets'
+      });
+      expect(JSON.stringify(response.body)).not.toContain('internal database failure details');
+      expect(JSON.stringify(consoleErrorSpy.mock.calls)).not.toContain('internal database failure details');
+    } finally {
+      consoleErrorSpy.mockRestore();
+    }
   });
 
   it('does not read another user lottery history', async () => {
