@@ -15,7 +15,6 @@ export default function Sidebar({ isOpenOnMobile, onCloseMobile }: SidebarProps)
 
   const navItems = useMemo(
     () => [
-      { href: "/admin/user-manage", labelKey: "User Management" },
       { href: "/admin/airdrop-prizes", labelKey: "Airdrop" },
       { href: "/admin/nfts", labelKey: "NFT Management" },
       { href: "/admin/trial-nfts", labelKey: "Trial NFTs" },

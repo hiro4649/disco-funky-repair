@@ -17,6 +17,8 @@ import enMessages from '../../../locales/en.json';
 import jaMessages from '../../../locales/ja.json';
 import { safeClientLogError } from "@/utils/safeClientLogger";
 
+const ADMIN_HOME_PATH = "/admin/airdrop-prizes";
+
 export default function AdminLayout({
   children,
 }: {
@@ -58,7 +60,7 @@ export default function AdminLayout({
       if (!adminAuthState) {
         router.push("/admin");
       } else if (adminAuthState && pathName === "/admin") {
-        router.push("/admin/user-manage");
+        router.push(ADMIN_HOME_PATH);
       }
     }
   }, [adminAuthState, isClient, router, pathName, isLoading]);

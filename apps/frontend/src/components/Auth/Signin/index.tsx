@@ -7,6 +7,8 @@ import { setAdminLoading, setAdminAuthState, setAdminId } from '@/store/slices/a
 import apiClient from "../../../../utils/apiClient";
 import { safeClientLogError } from "@/utils/safeClientLogger";
 
+const ADMIN_HOME_PATH = "/admin/airdrop-prizes";
+
 interface AdminData {
   admin_id: number;
   email: string;
@@ -33,7 +35,7 @@ export default function Signin() {
         const adminData = response.data.admin;
         dispatch(setAdminId(adminData.admin_id));
         dispatch(setAdminAuthState(true));
-        router.push('/admin/user-manage');
+        router.push(ADMIN_HOME_PATH);
       } else {
         dispatch(setAdminAuthState(false));
       }

@@ -14,6 +14,8 @@ import apiClient from "../../../../utils/apiClient";
 import { usePathname } from "next/navigation";
 import { useTranslations } from 'next-intl';
 
+const ADMIN_HOME_PATH = "/admin/airdrop-prizes";
+
 type HeaderProps = {
   onLogout: () => void;
   onToggleSidebar?: () => void;
@@ -44,7 +46,6 @@ const Header = (props: HeaderProps) => {
   };
 
   const navItems = useMemo(() => [
-    { href: '/admin/user-manage', label: 'Users' },
     { href: '/admin/airdrop-prizes', label: 'Prizes' },
     { href: '/admin/nfts', label: 'NFTs' },
     { href: '/admin/nft-management', label: 'NFT Management' },
@@ -122,7 +123,7 @@ const Header = (props: HeaderProps) => {
                 <path fillRule="evenodd" d="M3.75 5.25a.75.75 0 01.75-.75h15a.75.75 0 010 1.5h-15a.75.75 0 01-.75-.75zm0 6a.75.75 0 01.75-.75h15a.75.75 0 010 1.5h-15a.75.75 0 01-.75-.75zm0 6a.75.75 0 01.75-.75h15a.75.75 0 010 1.5h-15a.75.75 0 01-.75-.75z" clipRule="evenodd" />
               </svg>
             </button>
-            <Link prefetch={false} href="/admin/user-manage" className="hidden lg:flex items-center gap-x-2">
+            <Link prefetch={false} href={ADMIN_HOME_PATH} className="hidden lg:flex items-center gap-x-2">
               <span className="inline-flex h-8 w-8 items-center justify-center rounded-md bg-gray-900 text-white text-sm">FR</span>
               <span className="text-sm font-semibold text-gray-900">{process.env.NEXT_PUBLIC_APP_NAME} Admin</span>
             </Link>

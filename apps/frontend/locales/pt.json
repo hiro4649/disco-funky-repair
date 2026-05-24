@@ -1,67 +1,65 @@
 {
   "Menu": {
-   "Connect Wallet": "Conectar carteira",
-   "Airdrop Prizes": "Prêmios do airdrop",
-   "Lottery Ticket": "Bilhete de sorteio",
-   "Prize History": "Histórico de prêmios",
-   "Fan Points": "Pontos de fã",
-   "Membership NFT": "NFT de associação",
-   "Explore FUNKY RAVE": "Guia do FUNKY RAVE",
-   "Tokenomics": "Tokenomics",
-   "VGC Tokens Model": "Modelo de Tokens VGC",
-   "FAQ": "Perguntas Frequentes",
-   "Terms of Use": "Termos de uso",
-   "Fan Games": "Jogos de fã"
+    "Connect Wallet": "Conectar carteira",
+    "Airdrop Prizes": "Prêmios do airdrop",
+    "Lottery Ticket": "Bilhete de sorteio",
+    "Prize History": "Histórico de prêmios",
+    "Fan Points": "Pontos de fã",
+    "Membership NFT": "NFT de associação",
+    "Explore FUNKY RAVE": "Guia do FUNKY RAVE",
+    "Tokenomics": "Tokenomics",
+    "VGC Tokens Model": "Modelo de Tokens VGC",
+    "FAQ": "Perguntas Frequentes",
+    "Terms of Use": "Termos de uso"
   },
   "Home": {
-
-   "Airdrop": "Airdrop gratuito",
-   "RiseFlow": "",
-   "RiseFlow Description": "Todos que mantêm tokens FUNKY em sua carteira podem participar diariamente de um sorteio para receber gratuitamente criptomoeda BNB através deste serviço de airdrop!",
-   "No Deposit": "Sem depósito",
-   "No Crypto Required": "Sem depósito de criptomoedas",
-   "Transfer Money": "Transferir",
-   "Airdrop Sent": "O airdrop será enviado para sua carteira",
-   "All Free": "Grátis",
-   "No Decrease": "Suas criptomoedas não serão reduzidas",
-   "Hold FUNKY Get Ticket": "Basta manter FUNKY → 1 ticket por dia",
-   "Explore FUNKY RAVE": "Guia do FUNKY RAVE",
-   "Airdrop Prizes": "Prêmios do airdrop",
-   "Last Updated": "Última atualização"
+    "Airdrop": "Airdrop gratuito",
+    "RiseFlow": "",
+    "RiseFlow Description": "Todos que mantêm tokens FUNKY em sua carteira podem participar diariamente de um sorteio para receber gratuitamente criptomoeda BNB através deste serviço de airdrop!",
+    "No Deposit": "Sem depósito",
+    "No Crypto Required": "Sem depósito de criptomoedas",
+    "Transfer Money": "Transferir",
+    "Airdrop Sent": "O airdrop será enviado para sua carteira",
+    "All Free": "Grátis",
+    "No Decrease": "Suas criptomoedas não serão reduzidas",
+    "Hold FUNKY Get Ticket": "Basta manter FUNKY → 1 ticket por dia",
+    "Explore FUNKY RAVE": "Guia do FUNKY RAVE",
+    "Airdrop Prizes": "Prêmios do airdrop",
+    "Last Updated": "Última atualização"
   },
   "AirdropPrizes": {
-   "Airdrop Prizes": "Prêmios do Airdrop",
-   "Last updated": "Última atualização",
-   "text copy": "Copiado para a área de transferência!"
+    "Airdrop Prizes": "Prêmios do Airdrop",
+    "Last updated": "Última atualização",
+    "text copy": "Copiado para a área de transferência!"
   },
   "LotteryTicket": {
-   "Lottery Ticket": "Bilhete de sorteio",
-   "Next token snapshot": "Próximo snapshot",
-   "My FUNKY Tokens": "Seus tokens FUNKY",
-   "Latest Snapshot": "Verificação recente",
-   "Pending 24h Hold": "Aguardando 24h",
-   "24h Held Tokens": "Mantido 24h",
-   "Weekly Holding Bonus": "Bônus semanal de retenção",
-   "1w Held Tokens": "Mantido 1 semana",
-   "My Wallet": "Minha carteira",
-   "Next ticket distribution": "Próxima distribuição",
-   "Ticket distribution history": "Histórico de distribuição de bilhetes",
-   "Hold FUNKY Tokens → Get 1 Ticket": "Mantenha FUNKY → 1 bilhete",
-   "Next Tickets": "Próx. bilhetes",
-   "TodayGift": "Histórico de distribuição de bilhetes",
-   "MyNft": "Meu NFT de associação"
+    "Lottery Ticket": "Bilhete de sorteio",
+    "Next token snapshot": "Próximo snapshot",
+    "My FUNKY Tokens": "Seus tokens FUNKY",
+    "Latest Snapshot": "Verificação recente",
+    "Pending 24h Hold": "Aguardando 24h",
+    "24h Held Tokens": "Mantido 24h",
+    "Weekly Holding Bonus": "Bônus semanal de retenção",
+    "1w Held Tokens": "Mantido 1 semana",
+    "My Wallet": "Minha carteira",
+    "Next ticket distribution": "Próxima distribuição",
+    "Ticket distribution history": "Histórico de distribuição de bilhetes",
+    "Hold FUNKY Tokens → Get 1 Ticket": "Mantenha FUNKY → 1 bilhete",
+    "Next Tickets": "Próx. bilhetes",
+    "TodayGift": "Histórico de distribuição de bilhetes",
+    "MyNft": "Meu NFT de associação"
   },
   "PrizeHistory": {
-   "Prize History": "Histórico de Prêmios",
-   "No history": "Sem histórico",
-   "Description": "Os tokens ganhos podem ser enviados livremente para sua carteira a partir desta página.",
-   "SendToWallet": "Enviar para a carteira (em 24h)",
-   "Sending": "Enviando...",
-   "text copy": "Copiado para a área de transferência!"
+    "Prize History": "Histórico de Prêmios",
+    "No history": "Sem histórico",
+    "Description": "Os tokens ganhos podem ser enviados livremente para sua carteira a partir desta página.",
+    "SendToWallet": "Enviar para a carteira (em 24h)",
+    "Sending": "Enviando...",
+    "text copy": "Copiado para a área de transferência!"
   },
   "FanPoints": {
     "Fan Points": "Pontos de Fã",
-    "Next token snapshot":"Próxima recompensa",
+    "Next token snapshot": "Próxima recompensa",
     "NoHistory": "Sem histórico",
     "Total points": "Total de Pontos",
     "Description": "Os Pontos de Fã são pontos de experiência que você pode ganhar com base nos resultados dos sorteios e na frequência de uso do serviço.",
@@ -383,4 +381,4 @@
     "Article9_2": "Em caso de litígios relacionados ao Serviço, o tribunal de Singapura será o foro exclusivo de primeira instância.",
     "LastUpdated": "Última atualização: 1º de maio de 2025"
   }
-} 
+}

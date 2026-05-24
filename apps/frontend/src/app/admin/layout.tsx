@@ -6,19 +6,22 @@ import { store } from "@/store/store";
 import { Provider } from "react-redux";
 import { useAppSelector } from "@/store/store";
 import { useLayoutEffect } from "react";
-import { useRouter } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
+
+const ADMIN_HOME_PATH = "/admin/airdrop-prizes";
 
 function AdminLayoutContent({ children }: { children: React.ReactNode }) {
   const router = useRouter();
+  const pathname = usePathname();
   const { adminAuthState } = useAppSelector((state) => state.admin);
 
   useLayoutEffect(() => {
-    if (adminAuthState) {
-      router.push("/admin/user-manage");
-    } else {
+    if (adminAuthState && pathname === "/admin") {
+      router.push(ADMIN_HOME_PATH);
+    } else if (!adminAuthState && pathname !== "/admin") {
       router.push("/admin");
     }
-  }, [adminAuthState, router]);
+  }, [adminAuthState, pathname, router]);
 
   return <>{children}</>;
 }
