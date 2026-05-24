@@ -1,4 +1,3 @@
-import axios from 'axios';
 import { ethers, getAddress } from 'ethers';
 import moment from 'moment';
 import {
@@ -11,6 +10,7 @@ import prisma from '../db/prisma_client';
 import getTokenPrice, { getTokenMarketData, calculateScarcityScore } from '../lib/getTokenPrice';
 import { coinIcons } from '../config/coin-icons';
 import { safeLogError } from '../utils/safeLogger';
+import { axiosGetWithTimeout, withRpcReadTimeout } from '../utils/externalCallTimeout';
 
 // ERC20 ABI for basic token operations
 const erc20Abi = [
@@ -31,7 +31,7 @@ export const registerAllEthereumTokens = async () => {
 
         const url = `${ETHERSCAN_API_URL}&module=account&action=tokentx&address=${adminWalletAddress}&page=1&offset=100&sort=asc&apikey=${ETHERSCAN_API_KEY}`;
 
-        const { data } = await axios.get(url);
+        const { data } = await axiosGetWithTimeout<any>(url);
 
         if (data.status === "1" && data.result) {
             // Extract unique tokens from transactions
@@ -134,19 +134,22 @@ const fetchEthereumTokenData = async (tokenAddress: string, provider: ethers.Jso
 
         // Fetch token metadata
         const [name, symbol] = await Promise.all([
-            contract.name(),
-            contract.symbol(),
+            withRpcReadTimeout<string>(contract.name(), 'token_name'),
+            withRpcReadTimeout<string>(contract.symbol(), 'token_symbol'),
         ]);
 
         const [decimals, totalSupply] = await Promise.all([
-            contract.decimals(),
-            contract.totalSupply()
+            withRpcReadTimeout<bigint>(contract.decimals(), 'token_decimals'),
+            withRpcReadTimeout<bigint>(contract.totalSupply(), 'token_total_supply')
         ]);
 
         // Get admin wallet balance
         let balance = BigInt(0);
         if (adminWalletAddress) {
-            balance = await contract.balanceOf(adminWalletAddress);
+            balance = await withRpcReadTimeout<bigint>(
+                contract.balanceOf(adminWalletAddress),
+                'token_admin_balance'
+            );
         }
 
         // Get token market data from DexScreener
@@ -253,7 +256,7 @@ const getTokenTransactionCount24h = async (tokenAddress: string): Promise<number
 
         const url = `${ETHERSCAN_API_URL}&module=account&action=tokentx&address=${adminWalletAddress}&page=1&offset=100&sort=asc&apikey=${ETHERSCAN_API_KEY}`;
 
-        const response = await axios.get(url);
+        const response = await axiosGetWithTimeout<any>(url);
         const data = response.data;
 
         if (data.status === '1' && data.result) {

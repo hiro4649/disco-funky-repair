@@ -24,6 +24,7 @@ import { tokenBalanceService } from './quicknodeRpcService';
 import { withUserLock } from './userProcessingLock';
 import { ETHERSCAN_API_URL as CONFIGURED_ETHERSCAN_API_URL, TOKEN_CONTRACT_ADDRESS } from '../config/env';
 import { safeLogError } from '../utils/safeLogger';
+import { fetchJsonWithTimeout } from '../utils/externalCallTimeout';
 
 const prisma = new PrismaClient();
 
@@ -123,8 +124,12 @@ const fetchUserTransactions = async (
                 sort: 'asc'
             });
 
-            const response = await fetch(url);
-            const data = await response.json();
+            const data = await fetchJsonWithTimeout<any>(
+                url,
+                {},
+                undefined,
+                'etherscan_realtime_user_transactions'
+            );
 
 
             if (data.status === '1' && Array.isArray(data.result) && data.result.length > 0) {

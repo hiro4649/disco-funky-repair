@@ -6,6 +6,7 @@ import { TOKEN_CONTRACT_ADDRESS, ETHERSCAN_API_KEY, ETHERSCAN_API_URL } from '..
 import { etherscanRateLimiter } from '../utils/rateLimiter';
 import { tokenBalanceService } from './quicknodeRpcService';
 import { safeLogError, safeLogWarn } from '../utils/safeLogger';
+import { fetchJsonWithTimeout } from '../utils/externalCallTimeout';
 const rewardAmount = 100;
 
 type HoldDateSummaryData = {
@@ -150,8 +151,12 @@ const fetchAllTokenTransactions = async (walletAddress: string, tokenAddress: st
             await etherscanRateLimiter.waitForRateLimit();
 
             const url = `${ETHERSCAN_API_URL}&module=account&action=tokentx&contractaddress=${tokenAddress}&address=${walletAddress}&page=${page}&offset=${offset}&sort=asc&apikey=${ETHERSCAN_API_KEY}`;
-            const response = await fetch(url);
-            const data = await response.json();
+            const data = await fetchJsonWithTimeout<any>(
+                url,
+                {},
+                undefined,
+                'etherscan_full_token_transactions'
+            );
 
             if (data.status === '1' && Array.isArray(data.result) && data.result.length > 0) {
                 transactions.push(...data.result);

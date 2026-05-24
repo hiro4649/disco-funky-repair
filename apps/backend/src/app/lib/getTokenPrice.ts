@@ -1,5 +1,5 @@
-import axios from 'axios';
 import { TOKEN_CONTRACT_ADDRESS } from '../config/env';
+import { axiosGetWithTimeout } from '../utils/externalCallTimeout';
 
 interface DexScreenerResponse {
     pairs: {
@@ -72,7 +72,7 @@ function calculateScarcityScore(circulatingSupply: number, maxSupply: number, ma
 async function getTokenPrice(token_address?: string): Promise<string | null> {
     try {
         const address = token_address || TOKEN_CONTRACT_ADDRESS;
-        const response = await axios.get<DexScreenerResponse>(
+        const response = await axiosGetWithTimeout<DexScreenerResponse>(
             `https://api.dexscreener.com/latest/dex/tokens/${address}`
         );
         //
@@ -91,7 +91,7 @@ async function getTokenPrice(token_address?: string): Promise<string | null> {
 async function getTokenMarketData(token_address?: string): Promise<TokenMarketData> {
     try {
         const address = token_address || TOKEN_CONTRACT_ADDRESS;
-        const response = await axios.get<DexScreenerResponse>(
+        const response = await axiosGetWithTimeout<DexScreenerResponse>(
             `https://api.dexscreener.com/latest/dex/tokens/${address}`
         );
 

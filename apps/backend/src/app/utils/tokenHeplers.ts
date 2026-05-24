@@ -9,7 +9,12 @@ import {
     QUICKNODE_HTTP_RPC_URL,
     TOKEN_CONTRACT_ADDRESS
 } from "../config/env";
-import { safeLogError } from "./safeLogger";
+import { safeLogError, safeLogWarn } from "./safeLogger";
+import {
+    TOKEN_PRICE_MAX_ATTEMPTS,
+    withRpcReadTimeout,
+    withRpcWriteTimeout
+} from "./externalCallTimeout";
 
 export type PrizeTransferReceiptStatus = 'RECEIVED' | 'BROADCASTED' | 'MANUAL_REVIEW';
 
@@ -64,19 +69,19 @@ export class PrizeChainIdMismatchError extends Error {
 export const calculateTokenQuantity = async (ca: string, price: number): Promise<number> => {
     try {
         let priceUsd = 0;
-        let flagReqSuccess = false;
-        do {
+        for (let attempt = 1; attempt <= TOKEN_PRICE_MAX_ATTEMPTS; attempt += 1) {
             const getPrice = await getTokenPrice(ca) as number | null;
             if(getPrice !== null) {
-                flagReqSuccess = true;
-                priceUsd = getPrice;
-            }else {
-                flagReqSuccess = false;
+                priceUsd = Number(getPrice);
+                if (priceUsd > 0) {
+                    return Math.floor(price / priceUsd);
+                }
             }
         }
-        while (!flagReqSuccess);
 
-        return Math.floor(price / priceUsd);
+        safeLogWarn('calculate_token_quantity_price_unavailable', new Error('Token price unavailable'), {
+            attempts: TOKEN_PRICE_MAX_ATTEMPTS
+        });
     } catch (error) {
         safeLogError('calculate_token_quantity', error);
     }
@@ -117,7 +122,10 @@ export const isPrizeTransferTokenAllowed = (tokenAddress?: string): boolean => {
 };
 
 const getProviderChainId = async (provider: ethers.JsonRpcProvider): Promise<number> => {
-    const network = await provider.getNetwork();
+    const network = await withRpcReadTimeout<ethers.Network>(
+        provider.getNetwork(),
+        'provider_get_network'
+    );
     return Number(network.chainId);
 };
 
@@ -140,7 +148,10 @@ const getReceiptTimestamp = async (
     provider: ethers.JsonRpcProvider,
     blockNumber: number
 ): Promise<Date | null> => {
-    const block = await provider.getBlock(blockNumber);
+    const block = await withRpcReadTimeout<ethers.Block | null>(
+        provider.getBlock(blockNumber),
+        'provider_get_block'
+    );
     return block ? new Date(Number(block.timestamp) * 1000) : null;
 };
 
@@ -292,24 +303,39 @@ export const sendTokensToWallet = async (
     const contract = new ethers.Contract(erc20, erc20Abi, wallet);
 
     // Check operator token balance first
-    const operatorBalance: bigint = await contract.balanceOf(wallet.address);
+    const operatorBalance: bigint = await withRpcReadTimeout<bigint>(
+        contract.balanceOf(wallet.address),
+        'prize_operator_token_balance'
+    );
     if (operatorBalance < tokenAmount) {
         throw new Error('Insufficient token balance for transfer');
     }
 
     // Optional: ensure operator has gas balance
-    const nativeBalance: bigint = await provider.getBalance(wallet.address);
+    const nativeBalance: bigint = await withRpcReadTimeout<bigint>(
+        provider.getBalance(wallet.address),
+        'prize_operator_native_balance'
+    );
     if (nativeBalance === BigInt(0)) {
         throw new Error('Insufficient native balance to pay gas');
     }
 
-    const estimatedGas = await contract.transfer.estimateGas(userWalletAddress, tokenAmount);
-    const feeData = await provider.getFeeData();
+    const estimatedGas = await withRpcWriteTimeout<bigint>(
+        contract.transfer.estimateGas(userWalletAddress, tokenAmount),
+        'prize_transfer_estimate_gas'
+    );
+    const feeData = await withRpcReadTimeout<ethers.FeeData>(
+        provider.getFeeData(),
+        'provider_fee_data'
+    );
 
-    const tx = await contract.transfer(userWalletAddress, tokenAmount, {
-        gasLimit: estimatedGas,
-        gasPrice: feeData.gasPrice || undefined
-    });
+    const tx = await withRpcWriteTimeout<ethers.TransactionResponse>(
+        contract.transfer(userWalletAddress, tokenAmount, {
+            gasLimit: estimatedGas,
+            gasPrice: feeData.gasPrice || undefined
+        }),
+        'prize_transfer_broadcast'
+    );
     return {
         txHash: tx.hash,
         evidence: buildPrizeTransferEvidence(
@@ -333,7 +359,10 @@ export const getPrizeTransferReceiptEvidence = async (
     const provider = new ethers.JsonRpcProvider(QUICKNODE_HTTP_RPC_URL);
     const chainId = await getProviderChainId(provider);
     const expectedChainId = getExpectedChainId();
-    const receipt = await provider.getTransactionReceipt(txHash);
+    const receipt = await withRpcReadTimeout<ethers.TransactionReceipt | null>(
+        provider.getTransactionReceipt(txHash),
+        'provider_transaction_receipt'
+    );
     const tokenAddress = context.tokenAddress || TOKEN_CONTRACT_ADDRESS || '';
     const publicAmount = context.publicAmount ?? '';
 

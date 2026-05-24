@@ -20,6 +20,7 @@ import {
     alertGasPriceSpike
 } from './discordAlerts';
 import { safeLogError, safeLogWarn } from '../utils/safeLogger';
+import { withRpcReadTimeout } from '../utils/externalCallTimeout';
 
 const prisma = new PrismaClient();
 
@@ -74,7 +75,10 @@ class WalletBalanceMonitor {
         try {
             const provider = new ethers.JsonRpcProvider(QUICKNODE_HTTP_RPC_URL);
             const wallet = new ethers.Wallet(ADMIN_PRIVATE_KEY, provider);
-            const balance = await provider.getBalance(wallet.address);
+            const balance = await withRpcReadTimeout<bigint>(
+                provider.getBalance(wallet.address),
+                'wallet_monitor_native_balance'
+            );
 
             return {
                 address: wallet.address,

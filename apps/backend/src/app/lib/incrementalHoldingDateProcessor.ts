@@ -19,6 +19,7 @@ import { PrismaClient } from '@prisma/client';
 import moment from 'moment';
 import { ETHERSCAN_API_KEY, ETHERSCAN_API_URL as CONFIGURED_ETHERSCAN_API_URL, TOKEN_CONTRACT_ADDRESS } from '../config/env';
 import { safeLogError } from '../utils/safeLogger';
+import { fetchJsonWithTimeout } from '../utils/externalCallTimeout';
 
 const prisma = new PrismaClient();
 
@@ -84,8 +85,12 @@ export const fetchIncrementalTransactions = async (
 
             const url = `${ETHERSCAN_API_URL}&module=account&action=tokentx&contractaddress=${tokenAddress}&address=${walletAddress}&startblock=${startBlock}&endblock=99999999&page=${page}&offset=${offset}&sort=asc&apikey=${ETHERSCAN_API_KEY}`;
 
-            const response = await fetch(url);
-            const data = await response.json();
+            const data = await fetchJsonWithTimeout<any>(
+                url,
+                {},
+                undefined,
+                'etherscan_incremental_transactions'
+            );
             if (data.status === '1' && Array.isArray(data.result) && data.result.length > 0) {
                 transactions.push(...data.result);
 

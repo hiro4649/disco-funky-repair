@@ -9,6 +9,7 @@ import bcrypt from 'bcryptjs';
 import { ETHERSCAN_API_URL, ETHERSCAN_API_KEY, TOKEN_CONTRACT_ADDRESS } from "../config/env";
 import { etherscanRateLimiter } from "../utils/rateLimiter";
 import { safeLogError } from "../utils/safeLogger";
+import { fetchJsonWithTimeout } from "../utils/externalCallTimeout";
 import { createHash, randomBytes } from "crypto";
 import { verifyMessage } from "ethers";
 
@@ -72,8 +73,12 @@ const getTokenTransactions = async (walletAddress: string, tokenAddress: string)
 
         const url = `${ETHERSCAN_API_URL}&module=account&action=tokentx&contractaddress=${tokenAddress}&address=${walletAddress}&startblock=0&endblock=99999999&page=1&offset=1000&sort=asc&apikey=${ETHERSCAN_API_KEY}`;
 
-        const response = await fetch(url);
-        const data = await response.json();
+        const data = await fetchJsonWithTimeout<any>(
+            url,
+            {},
+            undefined,
+            'auth_etherscan_token_transactions'
+        );
 
         if (data.status === '1' && data.result) {
             return data.result;
