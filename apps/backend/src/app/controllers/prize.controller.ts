@@ -1,6 +1,6 @@
 import { Request, Response } from 'express';
 import { Prisma, PrismaClient } from '@prisma/client';
-import { number, symbol, TypeOf, z } from 'zod';
+import { z } from 'zod';
 import prizeSchema from '../validation/prizeValidate';
 import getTokenPrice from '../lib/getTokenPrice';
 import moment from 'moment';
@@ -46,6 +46,112 @@ const PRIZE_TRANSFER_MANUAL_REVIEW_ELIGIBLE_STATUSES = [
 const prisma = new PrismaClient();
 
 const PRIZE_TRANSFER_AMOUNT_SCALE = 3;
+const MAX_INT_FIELD_VALUE = 2147483647;
+const MAX_DECIMAL_FIELD_VALUE = 1000000000000;
+
+const finiteNumberFromRequest = (schema: z.ZodNumber) => z.preprocess((value) => {
+    if (typeof value === 'string') {
+        const trimmed = value.trim();
+        return trimmed === '' ? Number.NaN : Number(trimmed);
+    }
+    return value;
+}, schema.finite());
+
+const nonNegativeIntegerFromRequest = () => finiteNumberFromRequest(
+    z.number().int().min(0).max(MAX_INT_FIELD_VALUE)
+);
+
+const nonNegativeDecimalFromRequest = () => finiteNumberFromRequest(
+    z.number().min(0).max(MAX_DECIMAL_FIELD_VALUE)
+);
+
+const probabilityFromRequest = () => finiteNumberFromRequest(
+    z.number().min(0).max(100)
+);
+
+const booleanFromRequest = () => z.preprocess((value) => {
+    if (typeof value === 'string') {
+        if (value === 'true') {
+            return true;
+        }
+        if (value === 'false') {
+            return false;
+        }
+    }
+    return value;
+}, z.boolean());
+
+const trimmedString = (maxLength: number) => z.preprocess((value) => (
+    typeof value === 'string' ? value.trim() : value
+), z.string().min(1).max(maxLength));
+
+const optionalTrimmedString = (maxLength: number) => z.preprocess((value) => (
+    typeof value === 'string' ? value.trim() : value
+), z.string().max(maxLength));
+
+const optionalUrlString = (maxLength: number) => optionalTrimmedString(maxLength).refine((value) => {
+    if (value === '') {
+        return true;
+    }
+    try {
+        const url = new URL(value);
+        return url.protocol === 'https:' || url.protocol === 'http:';
+    } catch {
+        return false;
+    }
+}, { message: 'Invalid URL' });
+
+const adminPrizeUpdateSchema = z.object({
+    ranking: nonNegativeIntegerFromRequest().optional(),
+    token_name: trimmedString(255).optional(),
+    symbol: trimmedString(255).optional(),
+    quantity: nonNegativeIntegerFromRequest().optional(),
+    price: nonNegativeDecimalFromRequest().optional(),
+    real_probability: probabilityFromRequest().optional(),
+    probability: probabilityFromRequest().optional(),
+    fake_probability: probabilityFromRequest().optional(),
+    earned_pts: nonNegativeIntegerFromRequest().optional(),
+    flag: booleanFromRequest().optional(),
+    dance: booleanFromRequest().optional(),
+    ca: trimmedString(255).refine((value) => ethers.isAddress(value), {
+        message: 'Invalid token address'
+    }).optional(),
+    telegram: optionalUrlString(255).optional(),
+    twitter: optionalUrlString(255).optional(),
+    discord: optionalUrlString(255).optional(),
+    listed_dex: optionalTrimmedString(255).optional(),
+    listed_DEX: optionalTrimmedString(255).optional(),
+    default_image: trimmedString(2048).optional()
+}).strict();
+
+const buildAdminPrizeUpdateData = (
+    body: unknown
+): { success: true; data: Prisma.PrizeUpdateInput } | { success: false } => {
+    const parsed = adminPrizeUpdateSchema.safeParse(body);
+    if (!parsed.success) {
+        return { success: false };
+    }
+
+    const { listed_dex, listed_DEX, ...allowedData } = parsed.data;
+    if (listed_dex !== undefined && listed_DEX !== undefined && listed_dex !== listed_DEX) {
+        return { success: false };
+    }
+
+    const updateData = Object.fromEntries(
+        Object.entries(allowedData).filter(([, value]) => value !== undefined)
+    ) as Prisma.PrizeUpdateInput;
+
+    const listedDexValue = listed_DEX ?? listed_dex;
+    if (listedDexValue !== undefined) {
+        updateData.listed_DEX = listedDexValue;
+    }
+
+    if (Object.keys(updateData).length === 0) {
+        return { success: false };
+    }
+
+    return { success: true, data: updateData };
+};
 
 const logPrizeTransferError = (
     operation: string,
@@ -539,26 +645,19 @@ export class PrizeController {
             if (isNaN(prizeId)) {
                 return res.status(400).json({ error: 'Invalid prize ID' });
             }
-            const updatePrizeData = req.body;
-            updatePrizeData.quantity = Number(req.body.quantity);
-            updatePrizeData.real_probability = Number(req.body.real_probability);
-            updatePrizeData.fake_probability = Number(req.body.fake_probability);
-            updatePrizeData.earned_pts = Number(req.body.earned_pts);
-            updatePrizeData.flag = req.body.flag === 'false' ? Boolean(false) : Boolean(true);
-            updatePrizeData.dance = req.body.dance === 'false' ? Boolean(false) : Boolean(true);
-            if (!updatePrizeData || Object.keys(updatePrizeData).length === 0) {
-                return res.status(400).json({ error: 'No data provided for update' });
+            const updatePrizeData = buildAdminPrizeUpdateData(req.body);
+            if (!updatePrizeData.success) {
+                return res.status(400).json({ success: false, message: 'Invalid prize update payload' });
             }
-            // Update prize in the database
             const updatedPrize = await prisma.prize.update({
                 where: {
                     id: prizeId
                 },
-                data: updatePrizeData, // Use the actual data from the request body
+                data: updatePrizeData.data
             });
             res.status(200).json({ success: true, data: updatedPrize });
         } catch (err) {
-            safeLogError('Prize update', err, { prizeId: Number(req.params.prize_id) });
+            safeLogError('Prize update', new Error('Prize update failed'), { prizeId: Number(req.params.prize_id) });
             res.status(404).json({ error: 'Prize not found or invalid data' });
         }
     }
