@@ -1,10 +1,106 @@
 ﻿import { PrismaClient } from '@prisma/client';
 import moment from 'moment';
+import { Prisma } from '@prisma/client';
 import getTokenBalance from '../lib/getToken';
 import { TOKEN_CONTRACT_ADDRESS } from '../config/env';
 import { safeLogError, safeLogWarn } from '../utils/safeLogger';
 
 const prisma = new PrismaClient();
+const REFERRAL_REWARD_POINTS = 100;
+
+type ReferralRewardDistributionResult =
+  | { status: 'distributed'; rewardAmount: number }
+  | { status: 'already_processed'; rewardAmount: 0 };
+
+type ReferralRewardDistributionOptions = {
+  expiresAfter?: Date;
+};
+
+export const distributeReferralRewardOnce = async (
+  referralId: number,
+  options: ReferralRewardDistributionOptions = {}
+): Promise<ReferralRewardDistributionResult> => {
+  return prisma.$transaction(async (tx) => {
+    return distributeReferralRewardInTransaction(tx, referralId, options);
+  });
+};
+
+const distributeReferralRewardInTransaction = async (
+  tx: Prisma.TransactionClient,
+  referralId: number,
+  options: ReferralRewardDistributionOptions
+): Promise<ReferralRewardDistributionResult> => {
+  const updatedAt = moment.utc().toDate();
+  const reservedReward = await tx.referralRewards.updateMany({
+    where: {
+      id: referralId,
+      snapshot_verified: true,
+      rewarded: false,
+      ...(options.expiresAfter ? { expires_at: { gt: options.expiresAfter } } : {})
+    },
+    data: {
+      rewarded: true,
+      updated_at: updatedAt
+    }
+  });
+
+  if (reservedReward.count !== 1) {
+    return { status: 'already_processed', rewardAmount: 0 };
+  }
+
+  const referral = await tx.referralRewards.findUnique({
+    where: { id: referralId },
+    include: {
+      referrer: {
+        select: {
+          id: true
+        }
+      },
+      referred: {
+        select: {
+          id: true
+        }
+      }
+    }
+  });
+
+  if (!referral?.referrer || !referral?.referred) {
+    throw new Error('referral_reward_users_missing');
+  }
+
+  await tx.user.update({
+    where: { id: referral.referrer.id },
+    data: {
+      fan_points: { increment: REFERRAL_REWARD_POINTS }
+    }
+  });
+
+  await tx.user.update({
+    where: { id: referral.referred.id },
+    data: {
+      fan_points: { increment: REFERRAL_REWARD_POINTS }
+    }
+  });
+
+  await tx.pointHistory.createMany({
+    data: [
+      {
+        userId: referral.referrer.id,
+        reason: 4,
+        point: REFERRAL_REWARD_POINTS,
+        receivedDate: updatedAt
+      },
+      {
+        userId: referral.referred.id,
+        reason: 4,
+        point: REFERRAL_REWARD_POINTS,
+        receivedDate: updatedAt
+      }
+    ]
+  });
+
+  return { status: 'distributed', rewardAmount: REFERRAL_REWARD_POINTS };
+};
 
 export class SnapshotService {
   /**
@@ -90,6 +186,7 @@ export class SnapshotService {
    */
   static async distributeRewards(): Promise<{
     distributedCount: number;
+    alreadyProcessedCount: number;
   }> {
     try {
 
@@ -106,69 +203,16 @@ export class SnapshotService {
       });
 
       let distributedCount = 0;
+      let alreadyProcessedCount = 0;
 
       for (const referral of verifiedReferrals) {
-        const rewardAmount = 100;
-        
         try {
-          // Get user IDs for point history
-          const referrerUser = await prisma.user.findUnique({
-            where: { wallet_address: referral.referrer_wallet }
-          });
-          
-          const referredUser = await prisma.user.findUnique({
-            where: { wallet_address: referral.referred_wallet }
-          });
-
-          if (!referrerUser || !referredUser) {
-            safeLogWarn('snapshot_referral_user_missing', new Error('Referral user lookup failed'), { referralId: referral.id });
-            continue;
+          const result = await distributeReferralRewardOnce(referral.id, { expiresAfter: now });
+          if (result.status === 'distributed') {
+            distributedCount++;
+          } else {
+            alreadyProcessedCount++;
           }
-
-          // Update referrer's fan_points
-          await prisma.user.update({
-            where: { wallet_address: referral.referrer_wallet },
-            data: { 
-              fan_points: { increment: rewardAmount }
-            }
-          });
-
-          // Update referred user's fan_points
-          await prisma.user.update({
-            where: { wallet_address: referral.referred_wallet },
-            data: { 
-              fan_points: { increment: rewardAmount }
-            }
-          });
-
-          // Create point history records
-          await prisma.pointHistory.createMany({
-            data: [
-              {
-                userId: referrerUser.id,
-                reason: 4, // Referral bonus
-                point: rewardAmount,
-                receivedDate: moment.utc().toDate()
-              },
-              {
-                userId: referredUser.id,
-                reason: 4, // Referral bonus
-                point: rewardAmount,
-                receivedDate: moment.utc().toDate()
-              }
-            ]
-          });
-
-          // Mark as rewarded
-          await prisma.referralRewards.update({
-            where: { id: referral.id },
-            data: { 
-              rewarded: true,
-              updated_at: moment.utc().toDate()
-            }
-          });
-
-          distributedCount++;
         } catch (error) {
           safeLogError('snapshot_distribute_referral_reward', error, { referralId: referral.id });
           // Continue with other referrals
@@ -176,7 +220,7 @@ export class SnapshotService {
       }
 
 
-      return { distributedCount };
+      return { distributedCount, alreadyProcessedCount };
     } catch (error) {
       safeLogError('snapshot_distribute_rewards', error);
       throw error;
