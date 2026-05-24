@@ -547,6 +547,30 @@
       "canManualConfirmationOverride": false
     },
     {
+      "reasonCode": "remote_product_checks_not_required",
+      "gate": "productVerification",
+      "severity": "not_applicable",
+      "safeMessage": "Remote product checks are not required for this change.",
+      "nextBestFix": "Keep product checks disabled only for non-product changes without runtime claims.",
+      "canManualConfirmationOverride": true
+    },
+    {
+      "reasonCode": "remote_product_checks_failed",
+      "gate": "productVerification",
+      "severity": "error",
+      "safeMessage": "Remote product checks failed.",
+      "nextBestFix": "Fix the product check failure before merge.",
+      "canManualConfirmationOverride": false
+    },
+    {
+      "reasonCode": "remote_product_checks_unexpected_error",
+      "gate": "productVerification",
+      "severity": "error",
+      "safeMessage": "Remote product check preparation failed unexpectedly.",
+      "nextBestFix": "Repair the remote product check preparation step.",
+      "canManualConfirmationOverride": false
+    },
+    {
       "reasonCode": "remote_npm_diagnostic_missing",
       "gate": "remoteNpmDiagnostic",
       "severity": "info",
