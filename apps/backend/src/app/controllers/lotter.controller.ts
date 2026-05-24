@@ -11,6 +11,13 @@ type AuthenticatedLotteryUser = {
     user_id?: number;
 };
 
+type ClaimedLotteryTicketRow = {
+    id: number;
+    claimedTickets: number;
+    remainingClaimTickets: number;
+    tickets: number;
+};
+
 const getAuthenticatedLotteryUserId = (req: Request): number | null => {
     const userId = Number((req.user as AuthenticatedLotteryUser | undefined)?.user_id);
     return Number.isInteger(userId) && userId > 0 ? userId : null;
@@ -388,7 +395,46 @@ export class LotteryController {
 
             const userId = authenticatedUserId;
 
-            const user = await prisma.user.findUnique({
+            const claimedRows = await prisma.$queryRaw<ClaimedLotteryTicketRow[]>`
+                WITH claimable AS (
+                    SELECT "id", "claimTickets"
+                    FROM "User"
+                    WHERE "id" = ${userId} AND "claimTickets" > 0
+                    FOR UPDATE
+                ),
+                claimed AS (
+                    UPDATE "User" AS u
+                    SET
+                        "tickets" = u."tickets" + claimable."claimTickets",
+                        "claimTickets" = 0
+                    FROM claimable
+                    WHERE u."id" = claimable."id"
+                    RETURNING
+                        u."id",
+                        claimable."claimTickets" AS "claimedTickets",
+                        u."claimTickets" AS "remainingClaimTickets",
+                        u."tickets"
+                )
+                SELECT "id", "claimedTickets", "remainingClaimTickets", "tickets"
+                FROM claimed
+            `;
+
+            const claimedUser = claimedRows[0];
+
+            if (claimedUser) {
+                return res.status(200).json({
+                    success: true,
+                    data: {
+                        userId,
+                        claimedTickets: claimedUser.claimedTickets,
+                        remainingClaimTickets: claimedUser.remainingClaimTickets,
+                        tickets: claimedUser.tickets,
+                        totalTickets: claimedUser.tickets
+                    }
+                });
+            }
+
+            const currentUser = await prisma.user.findUnique({
                 where: { id: userId },
                 select: {
                     id: true,
@@ -397,31 +443,25 @@ export class LotteryController {
                 }
             });
 
-            if (!user) {
+            if (!currentUser) {
                 return res.status(404).json({
                     success: false,
                     message: 'User not found'
                 });
             }
 
-            await prisma.user.update({
-                where: { id: userId },
-                data: {
-                    claimTickets: 0,
-                    tickets: { increment: user.claimTickets }
-                }
-            });
-
             return res.status(200).json({
                 success: true,
                 data: {
                     userId,
-                    remainingClaimTickets: user.claimTickets,
-                    totalTickets: user.tickets + user.claimTickets
+                    claimedTickets: 0,
+                    remainingClaimTickets: currentUser.claimTickets,
+                    tickets: currentUser.tickets,
+                    totalTickets: currentUser.tickets
                 }
             });
         } catch (error) {
-            safeLogError('lottery_claim_tickets', error, {
+            safeLogError('lottery_claim_tickets', new Error('ticket_claim_failed'), {
                 userId: getAuthenticatedLotteryUserId(req)
             });
             return res.status(500).json({
