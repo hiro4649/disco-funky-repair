@@ -24,11 +24,11 @@ files, or `scripts/run-tests.js` unless the project owner explicitly requests
 product work and required verification evidence is available.
 
 <!-- CODEX_QUALITY_HARNESS_BEGIN -->
-CODEX_QUALITY_HARNESS_FILE v0.8.1
+CODEX_QUALITY_HARNESS_FILE v0.8.2
 
 ## Target Harness Boundary
 
-This repository is a downstream target using Codex Development Harness v0.8.1.
+This repository is a downstream target using Codex Development Harness v0.8.2.
 Harness work must stay in harness-managed files unless the task explicitly asks
 for product code changes. Preserve readable project authority and boundary text
 outside this block.
@@ -36,7 +36,8 @@ outside this block.
 ## Source Harness Boundary
 
 The source harness is maintained outside this target repository. Do not copy
-source-only manifests or require source profiles in target-mode work.
+source-only manifests, source-only profiles, or source repo README content into
+target-mode work.
 
 ## Plan-First Rule
 
@@ -55,10 +56,16 @@ Harness-only changes may use `CODEX_SKIP_NPM=1`. Product-relevant changes,
 runtime readiness claims, package changes, or lockfile changes require product
 verification evidence and must not be hidden by npm skip.
 
+## Workflow Runner Rule
+
+Target quality-gate uses the v0.8.2 workflow runner, normalized product
+verification evidence, stale PR audit, safe test metrics, and compact reason
+summary artifacts. Artifacts must stay safe-summary only.
+
 ## Merge-Ready Claim Rule
 
-Do not claim merge-ready unless required gates, current-head evidence, CI replay
-where applicable, target quality score, and human confirmation rules are
+Do not claim merge-ready unless required gates, current-head evidence, target
+quality score, product verification policy, and human confirmation rules are
 satisfied.
 
 ## Manual Confirmation Limit
