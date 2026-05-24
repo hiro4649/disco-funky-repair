@@ -1,6 +1,6 @@
 {
-  "marker": "CODEX_QUALITY_HARNESS_FILE v0.8.2",
-  "harnessVersion": "0.8.2",
+  "marker": "CODEX_QUALITY_HARNESS_FILE v0.8.3",
+  "harnessVersion": "0.8.3",
   "policy": "product_verification",
   "skipAllowedFor": [
     "harnessOnlyWithoutRuntimeClaim",
@@ -18,7 +18,6 @@
   ],
   "reasonCodes": [
     "product_verification_required",
-    "product_verification_command_failed",
     "npm_skip_not_allowed_for_product_change",
     "runtime_claim_requires_product_checks",
     "package_change_requires_package_verification",

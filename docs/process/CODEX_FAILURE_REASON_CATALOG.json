@@ -1,6 +1,6 @@
 {
-  "marker": "CODEX_QUALITY_HARNESS_FILE v0.8.2",
-  "harnessVersion": "0.8.2",
+  "marker": "CODEX_QUALITY_HARNESS_FILE v0.8.3",
+  "harnessVersion": "0.8.3",
   "reasonCodes": [
     {
       "reasonCode": "missing_head_sha",
@@ -239,7 +239,7 @@
       "gate": "safeTrace",
       "severity": "error",
       "safeMessage": "Safe trace schema is invalid.",
-      "nextBestFix": "Use the v0.8.2 safe trace schema.",
+      "nextBestFix": "Use the v0.8.3 safe trace schema.",
       "canManualConfirmationOverride": false
     },
     {
@@ -319,7 +319,7 @@
       "gate": "agentsContext",
       "severity": "error",
       "safeMessage": "AGENTS.md is missing the current harness block.",
-      "nextBestFix": "Add one current v0.8.2 harness block.",
+      "nextBestFix": "Add one current v0.8.3 harness block.",
       "canManualConfirmationOverride": true
     },
     {
@@ -345,14 +345,6 @@
       "safeMessage": "Product-relevant changes require verification evidence.",
       "nextBestFix": "Run project-defined checks or provide explicit review status.",
       "canManualConfirmationOverride": true
-    },
-    {
-      "reasonCode": "product_verification_command_failed",
-      "gate": "productVerification",
-      "severity": "error",
-      "safeMessage": "One or more product verification commands failed.",
-      "nextBestFix": "Fix the product check failure before merge.",
-      "canManualConfirmationOverride": false
     },
     {
       "reasonCode": "npm_skip_not_allowed_for_product_change",
@@ -471,7 +463,7 @@
       "gate": "testMetrics",
       "severity": "error",
       "safeMessage": "Test metrics are invalid.",
-      "nextBestFix": "Use the v0.8.2 safe test metrics schema.",
+      "nextBestFix": "Use the v0.8.3 safe test metrics schema.",
       "canManualConfirmationOverride": false
     },
     {
@@ -523,99 +515,139 @@
       "canManualConfirmationOverride": false
     },
     {
-      "reasonCode": "staging_evidence_missing",
-      "gate": "stagingEvidence",
+      "reasonCode": "remote_product_baseline_missing",
+      "gate": "remoteProductBaseline",
       "severity": "error",
-      "safeMessage": "Required staging evidence is missing.",
-      "nextBestFix": "Provide current-head non-secret staging evidence or remove the readiness claim.",
+      "safeMessage": "Required remote product baseline evidence is missing.",
+      "nextBestFix": "Attach a safe current-base baseline evidence object.",
       "canManualConfirmationOverride": false
     },
     {
-      "reasonCode": "staging_evidence_not_required",
-      "gate": "stagingEvidence",
-      "severity": "not_applicable",
-      "safeMessage": "Staging evidence is not required for this PR.",
-      "nextBestFix": "No staging evidence action is required unless readiness is claimed.",
+      "reasonCode": "remote_product_baseline_stale",
+      "gate": "remoteProductBaseline",
+      "severity": "error",
+      "safeMessage": "Remote product baseline evidence is stale.",
+      "nextBestFix": "Refresh baseline evidence for the current base.",
+      "canManualConfirmationOverride": false
+    },
+    {
+      "reasonCode": "remote_product_baseline_failing",
+      "gate": "remoteProductBaseline",
+      "severity": "manual",
+      "safeMessage": "Remote product baseline is already failing.",
+      "nextBestFix": "Treat candidate failures as baseline-blocked until baseline is repaired or accepted.",
+      "canManualConfirmationOverride": false
+    },
+    {
+      "reasonCode": "remote_product_baseline_invalid",
+      "gate": "remoteProductBaseline",
+      "severity": "error",
+      "safeMessage": "Remote product baseline evidence is invalid or unsafe.",
+      "nextBestFix": "Regenerate safe baseline evidence using the schema.",
+      "canManualConfirmationOverride": false
+    },
+    {
+      "reasonCode": "remote_npm_diagnostic_missing",
+      "gate": "remoteNpmDiagnostic",
+      "severity": "info",
+      "safeMessage": "Remote npm diagnostic evidence is not present.",
+      "nextBestFix": "Add safe diagnostic metadata if an npm failure needs classification.",
       "canManualConfirmationOverride": true
     },
     {
-      "reasonCode": "staging_schema_change_no_readiness_claim",
-      "gate": "stagingEvidence",
-      "severity": "not_applicable",
-      "safeMessage": "Only staging schema, policy, or examples changed without a readiness claim.",
-      "nextBestFix": "Keep examples marked as examples and do not claim staging readiness.",
+      "reasonCode": "remote_npm_diagnostic_invalid",
+      "gate": "remoteNpmDiagnostic",
+      "severity": "error",
+      "safeMessage": "Remote npm diagnostic evidence is invalid.",
+      "nextBestFix": "Regenerate diagnostic evidence from safe metadata only.",
+      "canManualConfirmationOverride": false
+    },
+    {
+      "reasonCode": "remote_npm_diagnostic_unknown",
+      "gate": "remoteNpmDiagnostic",
+      "severity": "manual",
+      "safeMessage": "Remote npm failure category is unknown.",
+      "nextBestFix": "Classify the failure with safe markers or request owner review.",
+      "canManualConfirmationOverride": false
+    },
+    {
+      "reasonCode": "remote_npm_diagnostic_unsafe",
+      "gate": "remoteNpmDiagnostic",
+      "severity": "error",
+      "safeMessage": "Remote npm diagnostic evidence contains unsafe content.",
+      "nextBestFix": "Remove raw logs and unsafe values from diagnostic evidence.",
+      "canManualConfirmationOverride": false
+    },
+    {
+      "reasonCode": "workflow_preflight_failed",
+      "gate": "workflowPreflight",
+      "severity": "error",
+      "safeMessage": "Workflow preflight failed.",
+      "nextBestFix": "Fix the safe preflight setup issue before running the quality gate.",
+      "canManualConfirmationOverride": false
+    },
+    {
+      "reasonCode": "workflow_preflight_missing_required_file",
+      "gate": "workflowPreflight",
+      "severity": "error",
+      "safeMessage": "Workflow preflight found a missing required harness file.",
+      "nextBestFix": "Restore the required harness file or update target manifest correctly.",
+      "canManualConfirmationOverride": false
+    },
+    {
+      "reasonCode": "safe_artifact_index_invalid",
+      "gate": "safeArtifactIndex",
+      "severity": "error",
+      "safeMessage": "Safe artifact index is invalid or unsafe.",
+      "nextBestFix": "Regenerate the safe artifact index from safe artifact names only.",
+      "canManualConfirmationOverride": false
+    },
+    {
+      "reasonCode": "safe_artifact_missing",
+      "gate": "safeArtifactIndex",
+      "severity": "warning",
+      "safeMessage": "An expected safe artifact is missing.",
+      "nextBestFix": "Generate the missing safe artifact or record a safe not-applicable reason.",
       "canManualConfirmationOverride": true
     },
     {
-      "reasonCode": "staging_evidence_blocked",
-      "gate": "stagingEvidence",
-      "severity": "not_applicable",
-      "safeMessage": "Staging evidence records a blocked or unknown state.",
-      "nextBestFix": "Keep blocked or unknown status until non-secret evidence supports PASS.",
+      "reasonCode": "open_pr_hygiene_stale_pr",
+      "gate": "openPrHygiene",
+      "severity": "warning",
+      "safeMessage": "Open PR hygiene report found stale PR evidence.",
+      "nextBestFix": "Refresh or close stale PRs after owner decision.",
       "canManualConfirmationOverride": true
     },
     {
-      "reasonCode": "staging_evidence_invalid",
-      "gate": "stagingEvidence",
-      "severity": "error",
-      "safeMessage": "Staging evidence is invalid.",
-      "nextBestFix": "Fix the staging evidence schema fields.",
+      "reasonCode": "open_pr_hygiene_needs_owner_decision",
+      "gate": "openPrHygiene",
+      "severity": "manual",
+      "safeMessage": "Open PR hygiene report needs owner decision.",
+      "nextBestFix": "Ask the owner whether to refresh, keep, or close candidate PRs.",
+      "canManualConfirmationOverride": true
+    },
+    {
+      "reasonCode": "baseline_failure",
+      "gate": "productVerification",
+      "severity": "manual",
+      "safeMessage": "Candidate failure matches a known failing baseline.",
+      "nextBestFix": "Repair or accept the failing baseline before treating candidate as ready.",
       "canManualConfirmationOverride": false
     },
     {
-      "reasonCode": "staging_evidence_stale",
-      "gate": "stagingEvidence",
+      "reasonCode": "candidate_regression",
+      "gate": "productVerification",
       "severity": "error",
-      "safeMessage": "Staging evidence is not tied to the current head.",
-      "nextBestFix": "Regenerate staging evidence for the current head SHA.",
+      "safeMessage": "Candidate failed while baseline was passing.",
+      "nextBestFix": "Fix the candidate regression or update evidence if classification is wrong.",
       "canManualConfirmationOverride": false
     },
     {
-      "reasonCode": "staging_claim_without_evidence",
-      "gate": "stagingEvidence",
+      "reasonCode": "target_final_summary_invalid",
+      "gate": "targetFinalSummary",
       "severity": "error",
-      "safeMessage": "A staging readiness claim lacks passing staging evidence.",
-      "nextBestFix": "Remove the claim or provide complete current-head staging evidence.",
-      "canManualConfirmationOverride": false
-    },
-    {
-      "reasonCode": "staging_pass_without_required_fields",
-      "gate": "stagingEvidence",
-      "severity": "error",
-      "safeMessage": "Staging PASS evidence is missing required fields.",
-      "nextBestFix": "Complete the required staging evidence fields or lower the status.",
-      "canManualConfirmationOverride": false
-    },
-    {
-      "reasonCode": "staging_secret_like_value_present",
-      "gate": "stagingEvidence",
-      "severity": "error",
-      "safeMessage": "Staging evidence contains unsafe value-shaped content.",
-      "nextBestFix": "Remove unsafe values and keep safe summaries only.",
-      "canManualConfirmationOverride": false
-    },
-    {
-      "reasonCode": "staging_raw_logs_present",
-      "gate": "stagingEvidence",
-      "severity": "error",
-      "safeMessage": "Staging evidence includes raw logs.",
-      "nextBestFix": "Replace raw logs with a safe inspection summary.",
-      "canManualConfirmationOverride": false
-    },
-    {
-      "reasonCode": "staging_no_tx_claim_has_tx",
-      "gate": "stagingEvidence",
-      "severity": "error",
-      "safeMessage": "No-tx staging evidence indicates a transaction was executed.",
-      "nextBestFix": "Use funded-tx evidence or correct the no-tx flags.",
-      "canManualConfirmationOverride": false
-    },
-    {
-      "reasonCode": "production_ready_without_staging_evidence",
-      "gate": "stagingEvidence",
-      "severity": "error",
-      "safeMessage": "Release GO evidence is missing required staging evidence.",
-      "nextBestFix": "Remove the GO claim or provide complete staged evidence.",
+      "safeMessage": "Target final summary is invalid or unsafe.",
+      "nextBestFix": "Regenerate the final summary from safe report fields.",
       "canManualConfirmationOverride": false
     }
   ]

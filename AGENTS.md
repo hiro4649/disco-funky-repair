@@ -24,11 +24,11 @@ files, or `scripts/run-tests.js` unless the project owner explicitly requests
 product work and required verification evidence is available.
 
 <!-- CODEX_QUALITY_HARNESS_BEGIN -->
-CODEX_QUALITY_HARNESS_FILE v0.8.2
+CODEX_QUALITY_HARNESS_FILE v0.8.3
 
 ## Target Harness Boundary
 
-This repository is a downstream target using Codex Development Harness v0.8.2.
+This repository is a downstream target using Codex Development Harness v0.8.3.
 Harness work must stay in harness-managed files unless the task explicitly asks
 for product code changes. Preserve readable project authority and boundary text
 outside this block.
@@ -58,9 +58,10 @@ verification evidence and must not be hidden by npm skip.
 
 ## Workflow Runner Rule
 
-Target quality-gate uses the v0.8.2 workflow runner, normalized product
-verification evidence, stale PR audit, safe test metrics, and compact reason
-summary artifacts. Artifacts must stay safe-summary only.
+Target quality-gate uses the v0.8.3 workflow runner, workflow preflight,
+remote product baseline diagnostics, remote npm diagnostics, safe artifact
+index, open PR hygiene report, final summaries, safe test metrics, and compact
+reason summary artifacts. Artifacts must stay safe-summary only.
 
 ## Merge-Ready Claim Rule
 
