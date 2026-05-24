@@ -1,9 +1,9 @@
 #!/usr/bin/env node
-// CODEX_QUALITY_HARNESS_FILE v0.8.1
+// CODEX_QUALITY_HARNESS_FILE v0.8.2
 import fs from 'node:fs';
 import { fileURLToPath } from 'node:url';
 
-export const HARNESS_VERSION = '0.8.1';
+export const HARNESS_VERSION = '0.8.2';
 export const marker = `CODEX_QUALITY_HARNESS_FILE v${HARNESS_VERSION}`;
 
 const forbiddenFieldNames = new Set([
@@ -31,7 +31,7 @@ const safePolicyVocabulary = [
 
 const safeLabelAllowlist = new Set([
   'unsafe_value_detected',
-  'product_checks_skipped_for_product_change',
+  'npm_skip_not_allowed_for_product_change',
   'safe_policy_vocabulary',
   'forbidden_field_name_detected',
   'manual_confirmation_required',

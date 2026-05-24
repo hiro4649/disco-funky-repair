@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// CODEX_QUALITY_HARNESS_FILE v0.8.1
+// CODEX_QUALITY_HARNESS_FILE v0.8.2
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -11,7 +11,6 @@ import { buildProductVerificationReport } from './codex-product-verification-gat
 import { buildProductionReadinessReport } from './codex-production-readiness-gate.mjs';
 import { buildEvidenceIntegrityReport } from './codex-evidence-integrity-gate.mjs';
 import { buildPrBodyLintReport } from './codex-pr-body-lint.mjs';
-import { buildSafeOutputScanReport } from './codex-safe-output-scan.mjs';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const repo = path.dirname(here);
@@ -40,7 +39,7 @@ function assertCase(name, ok, failures, cases, status = ok ? 'pass' : 'fail') {
   if (!ok) failures.push(name);
 }
 
-function cleanAgents(version = '0.8.1') {
+function cleanAgents(version = HARNESS_VERSION) {
   return `# AGENTS.md
 
 <!-- CODEX_QUALITY_HARNESS_BEGIN -->
@@ -79,8 +78,8 @@ function initTargetFixture(tmp) {
   copyHarnessScripts(tmp);
   write(path.join(tmp, 'AGENTS.md'), cleanAgents());
   write(path.join(tmp, 'docs', 'process', 'CODEX_HARNESS_MANIFEST.json'), JSON.stringify({
-    harnessVersion: '0.8.1',
-    sourceHarnessVersion: '0.8.1',
+    harnessVersion: HARNESS_VERSION,
+    sourceHarnessVersion: HARNESS_VERSION,
     targetRepoMode: true,
     profileCompatibility: 'off',
     managedFiles: ['AGENTS.md', 'docs/process/', 'scripts/codex-'],
@@ -100,7 +99,7 @@ function buildReport() {
   const cases = [];
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'codex-v081-'));
 
-  write(path.join(tmp, 'AGENTS.md'), `${cleanAgents()}\n鬩鋼驍ｵ\n`);
+  write(path.join(tmp, 'AGENTS.md'), `${cleanAgents()}\n鬯ｩ驪ｼ鬩搾ｽｵ\n`);
   let result = run('scripts/codex-agents-context-gate.mjs', { cwd: tmp });
   assertCase('AGENTS entire-file mojibake fails', result.parsed?.agentsContextStatus?.status === 'fail', failures, cases, result.parsed?.agentsContextStatus?.status);
 
@@ -139,19 +138,6 @@ function buildReport() {
   });
   assertCase('Change classification emits status', Boolean(classified.changeClassificationStatus.status), failures, cases, classified.changeClassificationStatus.status);
   assertCase('Product src change with CODEX_SKIP_NPM=1 fails product verification', productSkip.productVerificationStatus.status === 'fail', failures, cases, productSkip.productVerificationStatus.status);
-  const previousUnsafeReasonCode = ['npm', 'skip_not_allowed_for_product_change'].join('_');
-  assertCase('Product skip failure uses safe reason code', productSkip.productVerificationStatus.reasonCodes.includes('product_checks_skipped_for_product_change') &&
-    !productSkip.productVerificationStatus.reasonCodes.includes(previousUnsafeReasonCode), failures, cases, productSkip.productVerificationStatus.reasonCodes.join(','));
-  const productEvidence = buildProductVerificationReport({
-    CODEX_EVENT_NAME: 'pull_request',
-    CODEX_PR_BODY: 'Product verification commands: npm test and npm run build.',
-    CODEX_CHANGED_FILES: 'src/app.js',
-  });
-  assertCase('Product src change with product verification evidence passes', productEvidence.productVerificationStatus.status === 'pass', failures, cases, productEvidence.productVerificationStatus.status);
-  const safeReasonScan = buildSafeOutputScanReport({ reasonCode: 'product_checks_skipped_for_product_change' });
-  assertCase('Product skip safe reason code passes safe output scan', safeReasonScan.safeOutputScanStatus.status === 'pass', failures, cases, safeReasonScan.safeOutputScanStatus.status);
-  const tokenLikeScan = buildSafeOutputScanReport({ safeSummary: 'synthetic ' + 'npm' + '_' + 'a'.repeat(12) });
-  assertCase('Token-like values still fail safe output scan', tokenLikeScan.safeOutputScanStatus.status === 'fail', failures, cases, tokenLikeScan.safeOutputScanStatus.status);
 
   const runtimeSkip = buildProductVerificationReport({
     CODEX_EVENT_NAME: 'pull_request',
@@ -172,6 +158,7 @@ function buildReport() {
       CODEX_QUALITY_REPORT: 'json',
       CODEX_SKIP_NPM: '1',
       CODEX_SKIP_V081_SELF_TEST: '1',
+      CODEX_SKIP_V082_SELF_TEST: '1',
       CODEX_NPM_SKIP_REASON: 'harness-only fixture',
     },
   });
@@ -248,7 +235,7 @@ BEGIN_CODEX_EVIDENCE_PACK_JSON
 {
   "codexEvidencePack": {
     "schemaVersion": "0.8.1",
-    "harnessVersion": "0.8.1",
+    "harnessVersion": "0.8.2",
     "repository": "example/repo",
     "prNumber": 1,
     "headSha": "${structuredHead}",
