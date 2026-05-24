@@ -8,6 +8,22 @@ import { tokenBalanceService } from './quicknodeRpcService';
 import { safeLogError, safeLogWarn } from '../utils/safeLogger';
 const rewardAmount = 100;
 
+type HoldDateSummaryData = {
+    holdingDate: number;
+    held_amount: number;
+};
+
+type HoldDateHistoryRow = {
+    userId: number;
+    tx_hash: string;
+    purchase_amount: Prisma.Decimal;
+    purchase_date: Date;
+};
+
+type HoldDatePersistenceClient = {
+    $transaction<T>(fn: (tx: Prisma.TransactionClient) => Promise<T>): Promise<T>;
+};
+
 // Add tickets to claim the user's claim tickets.
 const handleUserTickets = async (userId: number, ticketCount: number) => {
     const now = moment.utc();
@@ -739,6 +755,31 @@ const calculateWeightedAverageHoldingDate = (
     return { averageDays, fifoAdjustedPurchases };
 };
 
+export const persistHoldDateRecalculation = async (
+    prismaClient: HoldDatePersistenceClient,
+    userId: number,
+    summaryData: HoldDateSummaryData,
+    historyRows: HoldDateHistoryRow[]
+) => {
+    await prismaClient.$transaction(async (tx) => {
+        await tx.user.update({
+            where: { id: userId },
+            data: summaryData
+        });
+
+        await tx.holdDateHistory.deleteMany({
+            where: { userId }
+        });
+
+        if (historyRows.length > 0) {
+            await tx.holdDateHistory.createMany({
+                data: historyRows,
+                skipDuplicates: true
+            });
+        }
+    });
+};
+
 export const checkingHoldingDateFromOnChain = async () => {
     try {
         const users = await prisma.user.findMany({
@@ -756,6 +797,7 @@ export const checkingHoldingDateFromOnChain = async () => {
         const currentTimeMs = Date.now();
 
         for (const user of users) {
+            let historyRowCount = 0;
             try {
                 // Fetch all token transactions
                 const allTransactions = await fetchAllTokenTransactions(user.wallet_address, TOKEN_CONTRACT_ADDRESS);
@@ -774,20 +816,6 @@ export const checkingHoldingDateFromOnChain = async () => {
                 // Handle edge case: user sold all tokens or has invalid data
                 const safeAverageDays = isNaN(averageDays) || !isFinite(averageDays) ? 0 : averageDays;
 
-                // Update user's holdingDate (stored as integer days, but calculated with precision)
-                await prisma.user.update({
-                    where: { id: user.id },
-                    data: {
-                        holdingDate: Math.floor(safeAverageDays),
-                        held_amount: safeAverageDays // Store precise value for internal calculations
-                    }
-                });
-
-                // Clear old HoldDateHistory and insert FIFO-adjusted purchases
-                await prisma.holdDateHistory.deleteMany({
-                    where: { userId: user.id }
-                });
-
                 // Insert FIFO-adjusted purchases into HoldDateHistory
                 // Convert float amounts to Prisma Decimal for exact precision storage
                 const historyRecords = fifoAdjustedPurchases.map((purchase: any) => {
@@ -802,16 +830,23 @@ export const checkingHoldingDateFromOnChain = async () => {
                         purchase_date: purchaseDate
                     };
                 });
+                historyRowCount = historyRecords.length;
 
-                if (historyRecords.length > 0) {
-                    await prisma.holdDateHistory.createMany({
-                        data: historyRecords,
-                        skipDuplicates: true
-                    });
-                }
+                await persistHoldDateRecalculation(
+                    prisma,
+                    user.id,
+                    {
+                        holdingDate: Math.floor(safeAverageDays),
+                        held_amount: safeAverageDays // Store precise value for internal calculations
+                    },
+                    historyRecords
+                );
 
             } catch (error) {
-                safeLogError('update_holding_days_from_chain_user', error, { userId: user.id });
+                safeLogError('update_holding_days_from_chain_user', error, {
+                    userId: user.id,
+                    historyRowCount
+                });
             }
         }
 
