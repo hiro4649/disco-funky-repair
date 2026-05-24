@@ -70,7 +70,7 @@ These are not automatically bugs, but they need human review because they can ch
 - Virtual-balance user management was present in the initial backend/admin flow but is disabled in current main.
 - Initial NFT mint status update used a backend PATCH route after mint; current main disables that route and keeps the browser flow away from that mutation.
 - Initial admin token/NFT management included direct frontend contract operations; current main blocks those with manual-review messaging.
-- Some current frontend admin navigation still points to user-management views while the corresponding virtual-balance backend routes are disabled.
+- PR #133 removed the frontend admin user-management and fan-games entry points; the backend stale-client routes remain disabled with `FEATURE_DISABLED`.
 - Initial source contains older chain/ecosystem remnants in places; current main is BSC-oriented. Human review should confirm no stale user-visible chain assumptions remain.
 
 ## D. Removed Or Disabled Functions
@@ -102,7 +102,7 @@ These disabled paths appear explainable as asset-safety hardening for the curren
 - Which duplicated initial source tree should be treated as the canonical human baseline.
 - Whether virtual-balance user-manage should remain disabled, be hidden from UI, or return under a separate safety plan.
 - Whether initial frontend admin pages that depended on direct contract writes should have replacement operational flows.
-- Whether all current frontend navigation matches disabled backend behavior.
+- Whether any future frontend navigation change reintroduces links to disabled backend behavior.
 - Whether staging domain, runtime env, CORS, cookie domain, and runtime log evidence exist outside the repo.
 - Whether current funded transaction behavior is acceptable in a live staging environment; this report performs no funded transaction checks.
 
@@ -110,7 +110,7 @@ These disabled paths appear explainable as asset-safety hardening for the curren
 
 - Confirm whether disabled virtual-balance user management is an accepted safety reduction or a product gap.
 - Confirm whether disabling `PATCH /api/nft/:id` is the intended current NFT mint-state policy.
-- Confirm whether frontend admin user-management navigation should remain visible when virtual-balance APIs are disabled.
+- Confirm whether PR #133's removal of frontend user-management and fan-games entry points is the accepted current UX.
 - Confirm whether direct browser-side contract writes should remain manual-review only.
 - Confirm whether current Prize receipt/manual-review semantics are the intended replacement for initial txHash-based completion.
 - Confirm whether Daily FanPoint AM/PM idempotency matches the expected user reward semantics.
@@ -122,15 +122,16 @@ These disabled paths appear explainable as asset-safety hardening for the curren
 - Crash game is treated as a developer-added out-of-scope feature in the initial source, not as current FUNKY specification.
 - Current disabled Crash game behavior is not classified as suspected specification divergence.
 - Crash game is not a revival candidate.
-- If Crash game UI or backend references remain visible, they should be removed or kept disabled as cleanup candidates.
+- PR #133 removed frontend fan-games and Crash-specific assets; backend Crash references should remain limited to stale-client `FEATURE_DISABLED` handling.
 
 ## Current Safety Notes
 
 - Current main does not appear to treat DB update alone as sufficient on-chain success for Prize `sendToWallet`.
 - Current main does not appear to treat txHash alone as receipt-confirmed Prize completion.
 - Current NFT upload/IPFS/public catalog behavior is more restrictive than the initial source and appears safety-oriented.
+- PR #133 removed frontend user-visible links/pages/assets for Crash game and virtual-balance user-manage flows.
 - Current staging no-tx preflight remains `BLOCKED`; this report does not change that state.
-- Current main still has follow-up safe-logging work outside this docs-only audit scope. PR #121 is not included in this report.
+- Backend stale-client 410 routes for Crash and virtual-balance user-manage remain by design.
 
 ## Scope Boundaries
 
@@ -147,7 +148,7 @@ This report does not:
 
 - The canonical initial source tree needs human confirmation because the baseline contains duplicated source/export trees.
 - Disabled formal-feature candidates other than Crash game still need product/security decisions: keep disabled, hide from UI, or re-enable through a separate safety plan.
-- Any remaining Crash game references should be removed or kept disabled because Crash game is out of FUNKY scope.
+- Remaining Crash game references should stay limited to explicit out-of-scope docs or backend stale-client disabled handling.
 - Staging domain, staging runtime env, no-tx evidence, and runtime log inspection remain blocked or unknown.
 - tBNB funding and real receipt checks remain unverified by this report.
 - This is a docs-only audit report; it does not fix any suspected divergence.
@@ -155,8 +156,8 @@ This report does not:
 ## Recommended Next PR Candidates
 
 - Docs-only decision record for virtual-balance user-manage scope.
-- Frontend/backend cleanup PR if any Crash game references remain visible despite being out of FUNKY scope.
-- Frontend-only cleanup if disabled formal backend flows remain visible in admin navigation.
+- Backend-only cleanup decision for legacy virtual-balance schema fields and non-user-visible legacy comments, if product/security owners approve DB-safe cleanup.
+- Frontend-only follow-up only if future navigation reintroduces disabled backend flows.
 - Backend-only or frontend-only follow-up for any human-confirmed specification divergence.
 - Separate safe-logging PRs for remaining direct console/raw-ish error handling, without mixing them into this audit report.
 
