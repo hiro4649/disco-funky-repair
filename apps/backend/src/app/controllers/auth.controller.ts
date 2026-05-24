@@ -13,6 +13,10 @@ import { createHash, randomBytes } from "crypto";
 import { verifyMessage } from "ethers";
 
 const WALLET_LOGIN_NONCE_TTL_MINUTES = 5;
+const INVALID_ADMIN_CREDENTIALS_RESPONSE = {
+    success: false,
+    message: "Invalid credentials"
+};
 
 const hashNonce = (nonce: string): string => createHash('sha256').update(nonce).digest('hex');
 
@@ -514,42 +518,41 @@ export class AuthController {
                 where: { email },
             });
 
-            // Check if admin exists and password_hash is defined
-            if (admin && admin.password_hash) {
-                const matchPassword = await bcrypt.compare(password, admin.password_hash);
-
-                if (!matchPassword) {
-                    return res.status(401).json({ message: "Invalid credentials" });
-                }
-
-                // Ensure JWT_SECRET is defined
-                const jwtSecret = process.env.JWT_SECRET;
-                if (!jwtSecret) {
-                    // Handle the case where the JWT_SECRET is not set
-                    return res.status(500).json({ message: "Internal server error" });
-                }
-
-                // Sign the JWT token
-                const token = jwt.sign(
-                    { id: admin.id, email: admin.email }, // payload
-                    jwtSecret, // secret key
-                    { expiresIn: '1h' } // options
-                );
-
-                // Set the auth cookie with enhanced security settings
-                res.cookie('adminAuth', token, { 
-                    httpOnly: true, 
-                    secure: process.env.NODE_ENV === 'production',
-                    sameSite: process.env.NODE_ENV === 'production' ? 'strict' : 'lax',
-                    maxAge: 3600000 // 1 hour in milliseconds
-                });
-                return res.status(200).json({ 
-                    message: "Signin successful",
-                    success: true
-                });
-            } else {
-                return res.status(404).json({ message: "Admin not found or password hash is undefined" });
+            if (!admin?.password_hash) {
+                return res.status(401).json(INVALID_ADMIN_CREDENTIALS_RESPONSE);
             }
+
+            const matchPassword = await bcrypt.compare(password, admin.password_hash);
+
+            if (!matchPassword) {
+                return res.status(401).json(INVALID_ADMIN_CREDENTIALS_RESPONSE);
+            }
+
+            // Ensure JWT_SECRET is defined
+            const jwtSecret = process.env.JWT_SECRET;
+            if (!jwtSecret) {
+                // Handle the case where the JWT_SECRET is not set
+                return res.status(500).json({ message: "Internal server error" });
+            }
+
+            // Sign the JWT token
+            const token = jwt.sign(
+                { id: admin.id, email: admin.email }, // payload
+                jwtSecret, // secret key
+                { expiresIn: '1h' } // options
+            );
+
+            // Set the auth cookie with enhanced security settings
+            res.cookie('adminAuth', token, {
+                httpOnly: true,
+                secure: process.env.NODE_ENV === 'production',
+                sameSite: process.env.NODE_ENV === 'production' ? 'strict' : 'lax',
+                maxAge: 3600000 // 1 hour in milliseconds
+            });
+            return res.status(200).json({
+                message: "Signin successful",
+                success: true
+            });
         } catch (error) {
             safeLogError('admin_signin', error, { emailPresent: Boolean(email) });
             res.status(500).json({ message: "An error occurred while creating admin" });

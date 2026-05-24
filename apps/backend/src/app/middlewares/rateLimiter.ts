@@ -1,5 +1,5 @@
 import { Request, Response, NextFunction } from 'express';
-import rateLimit from 'express-rate-limit';
+import rateLimit, { MemoryStore } from 'express-rate-limit';
 import moment from 'moment';
 
 // In-memory store for illustration draw rate limiting
@@ -34,7 +34,7 @@ export const illustrationDrawRateLimiter = (req: Request, res: Response, next: N
 };
 
 // Clean up old timestamps periodically (every 10 minutes)
-setInterval(() => {
+const illustrationDrawCleanupInterval = setInterval(() => {
     const now = moment.utc().valueOf();
     const tenMinutesAgo = now - (10 * 60 * 1000);
     
@@ -44,6 +44,8 @@ setInterval(() => {
         }
     }
 }, 10 * 60 * 1000); // Run every 10 minutes
+
+illustrationDrawCleanupInterval.unref?.();
 
 // General rate limiter for all requests
 export const apiLimiter = rateLimit({
@@ -55,13 +57,22 @@ export const apiLimiter = rateLimit({
 });
 
 // Strict rate limiter for auth-related endpoints to prevent brute force
+const authLimiterStore = new MemoryStore();
+
 export const authLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
   max: 10, // limit each IP to 10 auth requests per windowMs
+  store: authLimiterStore,
   standardHeaders: true,
   legacyHeaders: false,
   message: { success: false, message: 'Too many login attempts, please try again later.' },
 });
+
+export const resetAuthLimiterForTests = async () => {
+  if (process.env.NODE_ENV === 'test') {
+    await authLimiterStore.resetAll();
+  }
+};
 
 // Medium rate limiter for sensitive endpoints
 export const sensitiveApiLimiter = rateLimit({
@@ -70,4 +81,4 @@ export const sensitiveApiLimiter = rateLimit({
   standardHeaders: true,
   legacyHeaders: false,
   message: { success: false, message: 'Rate limit exceeded, please try again later.' },
-}); 
+});
