@@ -249,6 +249,49 @@ function buildReport() {
     CODEX_PRODUCT_VERIFICATION_RESULT: 'pass',
   });
   assertCase('npm test pass evidence with duration/testCount normalizes to pass', result.productVerificationStatus.status === 'pass', failures, cases, result.productVerificationStatus.status);
+  result = buildProductVerificationReport({
+    CODEX_EVENT_NAME: 'pull_request',
+    CODEX_CHANGED_FILES: 'apps/backend/src/app/routes/userManage.routes.ts\napps/backend/src/app/routes/__tests__/disabledScope.routes.test.ts',
+    CODEX_PRODUCT_VERIFICATION_COMMANDS: 'apps/backend npm ci,apps/backend build,apps/backend test',
+    CODEX_PRODUCT_VERIFICATION_RESULT: 'pass',
+    CODEX_PR_BODY: 'Runtime readiness claimed: no.',
+  });
+  assertCase('backend product change with product checks passes target product verification', result.productVerificationStatus.status === 'pass', failures, cases, result.productVerificationStatus.status);
+  result = buildProductVerificationEvidenceReport({
+    CODEX_EVENT_NAME: 'pull_request',
+    CODEX_CHANGED_FILES: 'apps/backend/src/app/routes/userManage.routes.ts',
+    CODEX_PRODUCT_VERIFICATION_COMMANDS: 'apps/backend test',
+    CODEX_PRODUCT_VERIFICATION_RESULT: 'pass',
+    CODEX_PR_BODY: 'Runtime readiness claimed: no.',
+  });
+  assertCase('backend product change with product checks passes product evidence status', result.productVerificationEvidenceStatus.status === 'pass', failures, cases, result.productVerificationEvidenceStatus.status);
+  result = buildProductVerificationReport({
+    CODEX_EVENT_NAME: 'pull_request',
+    CODEX_CHANGED_FILES: 'apps/backend/src/app/routes/userManage.routes.ts',
+    CODEX_PRODUCT_VERIFICATION_COMMANDS: 'apps/backend test',
+    CODEX_PRODUCT_VERIFICATION_RESULT: 'fail',
+  });
+  assertCase('failed product verification command blocks product change', result.productVerificationStatus.status === 'fail', failures, cases, result.productVerificationStatus.status);
+  result = buildProductVerificationReport({
+    CODEX_EVENT_NAME: 'pull_request',
+    CODEX_CHANGED_FILES: 'README.md',
+    CODEX_SKIP_NPM: '1',
+    CODEX_NPM_SKIP_REASON: 'docs-only',
+  });
+  assertCase('docs-only change with CODEX_SKIP_NPM=1 and reason passes product verification', result.productVerificationStatus.status === 'pass', failures, cases, result.productVerificationStatus.status);
+  result = buildProductVerificationReport({
+    CODEX_EVENT_NAME: 'pull_request',
+    CODEX_CHANGED_FILES: 'scripts/codex-local-quality-gate.mjs',
+    CODEX_SKIP_NPM: '1',
+    CODEX_NPM_SKIP_REASON: 'harness-only',
+  });
+  assertCase('harness-only change with CODEX_SKIP_NPM=1 passes product verification', result.productVerificationStatus.status === 'pass', failures, cases, result.productVerificationStatus.status);
+  result = buildProductVerificationReport({
+    CODEX_EVENT_NAME: 'pull_request',
+    CODEX_CHANGED_FILES: 'apps/backend/src/app/routes/userManage.routes.ts',
+    CODEX_PR_BODY: 'Runtime readiness claimed: yes.',
+  });
+  assertCase('runtime readiness claim without product checks fails', result.productVerificationStatus.status === 'fail', failures, cases, result.productVerificationStatus.status);
   const unsafeEvidence = path.join(os.tmpdir(), `codex-unsafe-evidence-${Date.now()}.json`);
   write(unsafeEvidence, JSON.stringify({ rawLogs: 'stored output' }));
   result = buildProductVerificationEvidenceReport({ CODEX_PRODUCT_VERIFICATION_EVIDENCE_PATH: unsafeEvidence });

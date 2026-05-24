@@ -69,8 +69,8 @@ function envCommands(env) {
   })).filter((item) => item.name);
 }
 
-function hasNamedProductEvidence(commands) {
-  return commands.some((item) => item.result === 'pass' || item.result === 'not_run');
+function hasPassingProductEvidence(commands) {
+  return commands.some((item) => item.result === 'pass');
 }
 
 export function normalizeProductVerificationEvidence(env = process.env) {
@@ -109,21 +109,23 @@ export function normalizeProductVerificationEvidence(env = process.env) {
 
   const reasonCodes = [...classified.reasonCodes.filter((item) => item !== 'no_pr_context')];
   const requiredEvidenceMissing = [];
+  const failedCommands = commands.filter((item) => item.result === 'fail').map((item) => item.name);
   if (classified.productRelevantChanged) {
     if (skipNpm) reasonCodes.push('npm_skip_not_allowed_for_product_change');
-    if (!hasNamedProductEvidence(commands)) requiredEvidenceMissing.push('product_verification_commands');
+    if (!hasPassingProductEvidence(commands)) requiredEvidenceMissing.push('product_verification_commands');
   }
   if (classified.runtimeReadinessClaimed) {
     if (skipNpm) reasonCodes.push('runtime_claim_requires_product_checks');
-    if (!hasNamedProductEvidence(commands)) requiredEvidenceMissing.push('runtime_or_smoke_verification');
+    if (!hasPassingProductEvidence(commands)) requiredEvidenceMissing.push('runtime_or_smoke_verification');
   }
   if (classified.packageOrLockfileChanged) {
-    if (!hasNamedProductEvidence(commands)) {
+    if (!hasPassingProductEvidence(commands)) {
       reasonCodes.push('package_change_requires_package_verification');
       requiredEvidenceMissing.push('package_verification');
     }
   }
   if (requiredEvidenceMissing.length) reasonCodes.push('product_verification_evidence_missing');
+  if (failedCommands.length) reasonCodes.push('product_verification_command_failed');
 
   const normalized = {
     schemaVersion: '0.8.2',
@@ -143,6 +145,7 @@ export function normalizeProductVerificationEvidence(env = process.env) {
     skipAllowed,
     skipReason,
     commands,
+    failedCommands: [...new Set(failedCommands)].slice(0, 20),
     requiredEvidenceMissing: [...new Set(requiredEvidenceMissing)],
     safeSummaryOnly: true,
   };
