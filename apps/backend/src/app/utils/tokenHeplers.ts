@@ -35,11 +35,6 @@ export type PrizeTransferReceiptResult = {
     evidence: PrizeTransferEvidence;
 };
 
-type PrizeTransferError = Error & {
-    txHash?: string;
-    evidence?: PrizeTransferEvidence;
-};
-
 type PrizeTransferEvidenceContext = {
     recipientAddress?: string | null;
     tokenAddress?: string | null;
@@ -315,79 +310,17 @@ export const sendTokensToWallet = async (
         gasLimit: estimatedGas,
         gasPrice: feeData.gasPrice || undefined
     });
-    try {
-        const receipt = await tx.wait();
-        if (!receipt || receipt.status !== 1) {
-            const receiptError = new Error('Token transfer receipt was not successful') as PrizeTransferError;
-            receiptError.txHash = tx.hash;
-            receiptError.evidence = buildPrizeTransferEvidence(
-                tx.hash,
-                chainId,
-                wallet.address,
-                userWalletAddress,
-                erc20,
-                tokenAmount,
-                receipt
-            );
-            throw receiptError;
-        }
-        if (!hasExpectedTransferLog(receipt, erc20, userWalletAddress, tokenAmount)) {
-            const receiptError = new Error('Token transfer receipt evidence did not match expected transfer') as PrizeTransferError;
-            receiptError.txHash = tx.hash;
-            receiptError.evidence = buildPrizeTransferEvidence(
-                tx.hash,
-                chainId,
-                wallet.address,
-                userWalletAddress,
-                erc20,
-                tokenAmount,
-                receipt
-            );
-            throw receiptError;
-        }
-        const receiptTimestamp = await getReceiptTimestamp(provider, receipt.blockNumber);
-        if (!receiptTimestamp) {
-            const receiptError = new Error('Token transfer receipt block was not available') as PrizeTransferError;
-            receiptError.txHash = tx.hash;
-            receiptError.evidence = buildPrizeTransferEvidence(
-                tx.hash,
-                chainId,
-                wallet.address,
-                userWalletAddress,
-                erc20,
-                tokenAmount,
-                receipt
-            );
-            throw receiptError;
-        }
-        return {
-            txHash: receipt.hash,
-            evidence: buildPrizeTransferEvidence(
-                receipt.hash,
-                chainId,
-                wallet.address,
-                userWalletAddress,
-                erc20,
-                tokenAmount,
-                receipt,
-                receiptTimestamp
-            )
-        };
-    } catch (error) {
-        if (error instanceof Error && !('txHash' in error)) {
-            const transferError = error as PrizeTransferError;
-            transferError.txHash = tx.hash;
-            transferError.evidence = buildPrizeTransferEvidence(
-                tx.hash,
-                chainId,
-                wallet.address,
-                userWalletAddress,
-                erc20,
-                tokenAmount
-            );
-        }
-        throw error;
-    }
+    return {
+        txHash: tx.hash,
+        evidence: buildPrizeTransferEvidence(
+            tx.hash,
+            chainId,
+            wallet.address,
+            userWalletAddress,
+            erc20,
+            tokenAmount
+        )
+    };
 };
 
 export const getPrizeTransferReceiptEvidence = async (

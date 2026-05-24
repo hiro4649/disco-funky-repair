@@ -25,15 +25,16 @@ const transferLog = (
 const loadTokenHelpers = (envOverrides: Record<string, string | undefined> = {}) => {
   jest.resetModules();
 
+  const wait = jest.fn().mockResolvedValue({
+    status: 1,
+    hash: '0xReceiptTx',
+    blockNumber: 123,
+    from: HOT_WALLET,
+    logs: [transferLog()]
+  });
   const transfer = jest.fn().mockResolvedValue({
     hash: '0xTransferTx',
-    wait: jest.fn().mockResolvedValue({
-      status: 1,
-      hash: '0xReceiptTx',
-      blockNumber: 123,
-      from: HOT_WALLET,
-      logs: [transferLog()]
-    })
+    wait
   });
   (transfer as any).estimateGas = jest.fn().mockResolvedValue(21000n);
 
@@ -83,7 +84,7 @@ const loadTokenHelpers = (envOverrides: Record<string, string | undefined> = {})
   }));
 
   const helpers = require('../tokenHeplers') as TokenHelpersModule;
-  return { helpers, JsonRpcProvider, Wallet, Contract, contract, provider, transfer };
+  return { helpers, JsonRpcProvider, Wallet, Contract, contract, provider, transfer, wait };
 };
 
 describe('sendTokensToWallet prize hot wallet separation', () => {
@@ -131,8 +132,8 @@ describe('sendTokensToWallet prize hot wallet separation', () => {
     expect(transfer).not.toHaveBeenCalled();
   });
 
-  it('continues the transfer flow for an allowlisted token', async () => {
-    const { helpers, Contract, transfer } = loadTokenHelpers();
+  it('broadcasts the transfer without waiting for receipt confirmation', async () => {
+    const { helpers, Contract, transfer, wait, provider } = loadTokenHelpers();
 
     const result = await helpers.sendTokensToWallet(RECIPIENT, 10n, ALLOWED_TOKEN);
 
@@ -145,20 +146,32 @@ describe('sendTokensToWallet prize hot wallet separation', () => {
       gasLimit: 21000n,
       gasPrice: 1n
     });
+    expect(wait).not.toHaveBeenCalled();
+    expect(provider.getBlock).not.toHaveBeenCalled();
     expect(result).toEqual({
-      txHash: '0xReceiptTx',
+      txHash: '0xTransferTx',
       evidence: {
-        txHash: '0xReceiptTx',
+        txHash: '0xTransferTx',
         chainId: 97,
         from: '0x0000000000000000000000000000000000000004',
         to: RECIPIENT,
         contractAddress: ALLOWED_TOKEN,
-        blockNumber: '123',
-        receiptStatus: 1,
-        receiptTimestamp: new Date(1770000000 * 1000),
+        blockNumber: null,
+        receiptStatus: null,
+        receiptTimestamp: null,
         publicAmount: '10'
       }
     });
+  });
+
+  it('returns after broadcast even when tx.wait would not settle', async () => {
+    const { helpers, wait } = loadTokenHelpers();
+    wait.mockImplementationOnce(() => new Promise(() => undefined));
+
+    const result = await helpers.sendTokensToWallet(RECIPIENT, 10n, ALLOWED_TOKEN);
+
+    expect(wait).not.toHaveBeenCalled();
+    expect(result.txHash).toBe('0xTransferTx');
   });
 
   it('does not build or send a transfer when provider chainId differs from CHAIN_ID', async () => {

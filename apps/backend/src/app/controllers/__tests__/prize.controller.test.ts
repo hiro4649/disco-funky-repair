@@ -117,6 +117,13 @@ const receiptEvidence = (overrides: Record<string, unknown> = {}) => ({
   ...overrides
 });
 
+const broadcastEvidence = (overrides: Record<string, unknown> = {}) => receiptEvidence({
+  blockNumber: null,
+  receiptStatus: null,
+  receiptTimestamp: null,
+  ...overrides
+});
+
 const receiptEvidenceUpdate = (overrides: Record<string, unknown> = {}) => ({
   tx_hash: '0xTx',
   tx_chain_id: 97,
@@ -329,7 +336,7 @@ describe('PrizeController.sendToWallet', () => {
     (isPrizeTransferTokenAllowed as jest.Mock).mockReturnValue(true);
     (sendTokensToWallet as jest.Mock).mockResolvedValue({
       txHash: '0xTx',
-      evidence: receiptEvidence()
+      evidence: broadcastEvidence()
     });
     (getPrizeTransferReceiptEvidence as jest.Mock).mockResolvedValue({
       status: 'RECEIVED',
@@ -341,7 +348,7 @@ describe('PrizeController.sendToWallet', () => {
     consoleErrorSpy.mockRestore();
   });
 
-  it('starts transfer only after READY to SENDING conditional update succeeds', async () => {
+  it('broadcasts transfer only after READY to SENDING conditional update succeeds', async () => {
     const res = createResponse();
 
     await PrizeController.sendToWallet(createRequest(), res);
@@ -367,38 +374,34 @@ describe('PrizeController.sendToWallet', () => {
       BigInt(FIXED_TRANSFER_AMOUNT),
       VALID_ASSET_CONTRACT
     );
-    expect(mockPrisma.prizeTransactions.update).toHaveBeenCalledWith({
-      where: { id: 7 },
-      data: {
-        status: 'RECEIVED',
-        ...receiptEvidenceUpdate()
-      }
-    });
-    expect(mockPrisma.prizeTransactions.updateMany).toHaveBeenCalledWith({
+    expect(mockPrisma.prizeTransactions.updateMany).toHaveBeenNthCalledWith(2, {
       where: {
         id: 7,
-        reservation_released_at: null
+        userId: 1,
+        status: 'SENDING',
+        tx_hash: null
       },
       data: {
-        reservation_released_at: expect.any(Date)
+        status: 'BROADCASTED',
+        ...receiptEvidenceUpdate({
+          tx_receipt_status: null,
+          tx_receipt_timestamp: null,
+          tx_block_number: null
+        })
       }
     });
-    expect(mockPrisma.prize.updateMany).toHaveBeenCalledWith({
-      where: {
-        id: 3,
-        balance_amount: { gte: FIXED_TRANSFER_AMOUNT },
-        reserved_amount: { gte: FIXED_TRANSFER_AMOUNT }
-      },
-      data: {
-        balance_amount: {
-          decrement: FIXED_TRANSFER_AMOUNT
-        },
-        reserved_amount: {
-          decrement: FIXED_TRANSFER_AMOUNT
-        }
-      }
-    });
-    expect(res.status).toHaveBeenCalledWith(200);
+    expect(mockPrisma.prize.updateMany).not.toHaveBeenCalled();
+    expect(mockPrisma.prizeTransactions.update).not.toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({ status: 'RECEIVED' })
+    }));
+    expect(res.status).toHaveBeenCalledWith(202);
+    expect(res.json).toHaveBeenCalledWith(expect.objectContaining({
+      success: true,
+      status: 'BROADCASTED',
+      txHash: '0xTx',
+      receiptVerified: false,
+      correlationId: expect.any(String)
+    }));
   });
 
   it('does not send without an authenticated user context', async () => {
@@ -726,9 +729,6 @@ describe('PrizeController.sendToWallet', () => {
       ...readyPrizeTransaction(),
       reservation_released_at: new Date()
     });
-    mockPrisma.prizeTransactions.updateMany
-      .mockResolvedValueOnce({ count: 1 })
-      .mockResolvedValueOnce({ count: 0 });
     const res = createResponse();
 
     await PrizeController.sendToWallet(createRequest(), res);
@@ -736,23 +736,20 @@ describe('PrizeController.sendToWallet', () => {
     expect(sendTokensToWallet).toHaveBeenCalledTimes(1);
     expect(mockPrisma.prize.update).not.toHaveBeenCalled();
     expect(mockPrisma.prize.updateMany).not.toHaveBeenCalled();
-    expect(res.status).toHaveBeenCalledWith(200);
+    expect(res.status).toHaveBeenCalledWith(202);
   });
 
-  it('moves confirmed transfers to manual review when inventory is below transfer amount', async () => {
+  it('does not release inventory while a broadcasted transfer awaits receipt confirmation', async () => {
     mockPrisma.prize.updateMany.mockResolvedValue({ count: 0 });
     const res = createResponse();
 
     await PrizeController.sendToWallet(createRequest(), res);
 
     expect(sendTokensToWallet).toHaveBeenCalledTimes(1);
-    expect(mockPrisma.prizeTransactions.update).toHaveBeenCalledWith({
-      where: { id: 7 },
-      data: {
-        status: 'MANUAL_REVIEW',
-        ...receiptEvidenceUpdate()
-      }
-    });
+    expect(mockPrisma.prize.updateMany).not.toHaveBeenCalled();
+    expect(mockPrisma.prizeTransactions.update).not.toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({ status: 'RECEIVED' })
+    }));
     expect(res.status).toHaveBeenCalledWith(202);
   });
 
@@ -1439,7 +1436,7 @@ describe('PrizeController.drawPrize', () => {
     mockPrisma.prizeTransactions.updateMany.mockResolvedValue({ count: 1 });
     (sendTokensToWallet as jest.Mock).mockResolvedValue({
       txHash: '0xTx',
-      evidence: receiptEvidence()
+      evidence: broadcastEvidence()
     });
 
     const sendRes = createResponse();
@@ -1456,7 +1453,7 @@ describe('PrizeController.drawPrize', () => {
 
     await PrizeController.drawPrize(createDrawRequest(), drawRes);
 
-    expect(sendRes.status).toHaveBeenCalledWith(200);
+    expect(sendRes.status).toHaveBeenCalledWith(202);
     expect(mockPrisma.prizeTransactions.create).not.toHaveBeenCalledWith({
       data: expect.objectContaining({
         prizeId: 3,
