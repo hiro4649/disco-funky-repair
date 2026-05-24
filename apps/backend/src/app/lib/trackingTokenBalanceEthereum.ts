@@ -1,11 +1,11 @@
-import prisma from '../db/prisma_client';
+﻿import prisma from '../db/prisma_client';
 import { Prisma } from '@prisma/client';
 import moment from 'moment';
 import displayEthereumBalance from './displayEthereumBalance';
 import { TOKEN_CONTRACT_ADDRESS, ETHERSCAN_API_KEY, ETHERSCAN_API_URL } from '../config/env';
 import { etherscanRateLimiter } from '../utils/rateLimiter';
 import { tokenBalanceService } from './quicknodeRpcService';
-import { safeLogError } from '../utils/safeLogger';
+import { safeLogError, safeLogWarn } from '../utils/safeLogger';
 const rewardAmount = 100;
 
 // Add tickets to claim the user's claim tickets.
@@ -15,7 +15,6 @@ const handleUserTickets = async (userId: number, ticketCount: number) => {
     const endOfDay = now.clone().endOf('day').toDate();
 
     try {
-        console.log("Handle User Tickets", 'userId: ', userId, 'ticketCount: ', ticketCount);
 
         const todayTicket = await prisma.lotteryTickets.findFirst({
             where: {
@@ -62,7 +61,6 @@ const handleUserTickets = async (userId: number, ticketCount: number) => {
             const totalTicketsToRemove = ticketsToDelete.reduce((sum: number, ticket: typeof ticketsToDelete[0]) => sum + ticket.ticket, 0);
 
             // Log how many tickets will be deleted
-            console.log(`Deleting ${ticketsToDelete.length} old tickets for user ${userId}, removing ${totalTicketsToRemove} ticket points`);
 
             if (totalTicketsToRemove > 0) {
                 // Delete each ticket record
@@ -78,13 +76,11 @@ const handleUserTickets = async (userId: number, ticketCount: number) => {
                 });
                 if (currentUser) {
                     if (currentUser.tickets < totalTicketsToRemove) {
-                        console.log(`User ${userId} has only ${currentUser.tickets} total tickets, which is less than the ${totalTicketsToRemove} tickets to remove. Setting total tickets to 0.`);
                         await prisma.user.update({
                             where: { id: Number(userId) },
                             data: { tickets: 0 }
                         });
                     } else {
-                        console.log(`User ${userId} has ${currentUser.tickets} total tickets. Proceeding to remove ${totalTicketsToRemove} tickets.`);
                         // Decrease the user's total tickets count
                         await prisma.user.update({
                             where: { id: Number(userId) },
@@ -111,12 +107,10 @@ const MS_IN_DAY = 1000 * 60 * 60 * 24;
 // Helper function to get token transactions using QuickNode RPC (with Etherscan fallback)
 const getTokenTransactions = async (walletAddress: string, tokenAddress: string, hours: number = 24) => {
     try {
-        console.log(`🔍 Fetching transactions for ${walletAddress.slice(0, 10)}... (last ${hours}h) via QuickNode RPC...`);
 
         // Use new QuickNode service with automatic Etherscan fallback
         const transactions = await tokenBalanceService.getTokenTransactions(walletAddress, hours);
 
-        console.log(`✅ Retrieved ${transactions.length} transaction(s) for ${walletAddress.slice(0, 10)}...`);
         return transactions;
     } catch (error) {
         safeLogError('fetch_recent_token_transactions', error, {
@@ -254,7 +248,6 @@ let isSixHourUpdateInProgress = 'inited';
 // Six-hour token balance update function
 export const processSixHourTokenBalance = async () => {
     if (isSixHourUpdateInProgress === 'processing') {
-        console.log('Six-hour token balance update already in progress, skipping...');
         return;
     }
 
@@ -272,7 +265,6 @@ export const processSixHourTokenBalance = async () => {
         });
 
         if (!users.length) {
-            console.log('No users found for six-hour token balance update.');
             return;
         }
 
@@ -282,15 +274,12 @@ export const processSixHourTokenBalance = async () => {
         const discoTokenAmount = await prisma.airdropTokens.findFirst({});
         const airdropDiscoAmount = discoTokenAmount?.balance ?? 10000;
 
-        console.log(`Processing six-hour token balance update for ${users.length} users`);
 
         await Promise.all(
             users.map(async (user: any, index: number) => {
                 try {
                     // Get current balance of user using QuickNode RPC (with Etherscan fallback)
-                    console.log(`💰 Fetching balance for user ${user.id} (${user.wallet_address.slice(0, 10)}...) via QuickNode RPC...`);
                     const tokenBalance = await tokenBalanceService.getTokenBalance(user.wallet_address);
-                    console.log('tokenBalance:', tokenBalance)
                     // Convert balance to human readable format with 18 decimals
                     const currentBalance = Number(displayEthereumBalance(tokenBalance, 18));
 
@@ -306,7 +295,6 @@ export const processSixHourTokenBalance = async () => {
                     if ((hourUTC <= 3 && hourUTC >= 0) || (hourUTC >= 21 && hourUTC <= 23)) {
                         // 2. Get all transactions for last 24 hours
                         const transactions = await getTokenTransactions(user.wallet_address, TOKEN_CONTRACT_ADDRESS, 24);
-                        console.log("transactions:", transactions)
                         // 3. Calculate minimum balance by analyzing transaction flow
                         const minBalance = calculateMinimumBalance(currentBalance, transactions, user.wallet_address);
 
@@ -387,7 +375,9 @@ export const processSixHourTokenBalance = async () => {
 
                                 // Check if referrer and referred user exist
                                 if (!referrerUser || !referredUser) {
-                                    console.error(`User not found for referral ${referral.id}`);
+                                    safeLogWarn('referral_reward_user_missing', new Error('Referral reward user lookup failed'), {
+                                        referralId: referral.id
+                                    });
                                     return;
                                 }
 
@@ -476,7 +466,6 @@ export const processSixHourTokenBalance = async () => {
             })
         );
 
-        console.log('Six-hour token balance update completed successfully');
 
         // Log QuickNode credit usage and service health
         tokenBalanceService.logStatus();
@@ -489,7 +478,6 @@ export const processSixHourTokenBalance = async () => {
                 message: '6-hour token balance update completed',
                 affectedUsers: users.length
             });
-            console.log(`📡 WebSocket event emitted: ticket-balance-updated (${users.length} users)`);
         } catch (error) {
             safeLogError('emit_ticket_balance_updated', error);
         }
@@ -519,11 +507,9 @@ export const processWeeklyBonus = async () => {
         });
 
         if (!users.length) {
-            console.log('No users found for weekly bonus.');
             return;
         }
 
-        console.log(`Processing weekly bonus for ${users.length} users`);
 
         await Promise.all(
             users.map(async (user: any, index: number) => {
@@ -609,7 +595,6 @@ export const processWeeklyBonus = async () => {
             })
         );
 
-        console.log('Weekly bonus processing completed successfully');
     } catch (error) {
         safeLogError('process_weekly_bonus', error);
     }
@@ -764,11 +749,9 @@ export const checkingHoldingDateFromOnChain = async () => {
         });
 
         if (!users.length) {
-            console.log('No users found for checking holding date from on chain.');
             return;
         }
 
-        console.log(`Checking weighted average holding date from on-chain history for ${users.length} users`);
 
         const currentTimeMs = Date.now();
 
@@ -778,7 +761,6 @@ export const checkingHoldingDateFromOnChain = async () => {
                 const allTransactions = await fetchAllTokenTransactions(user.wallet_address, TOKEN_CONTRACT_ADDRESS);
 
                 if (!allTransactions.length) {
-                    console.log(`No transactions found for user ${user.id}`);
                     continue;
                 }
 
@@ -828,13 +810,11 @@ export const checkingHoldingDateFromOnChain = async () => {
                     });
                 }
 
-                console.log(`Updated weighted average holding days for user ${user.id} -> ${averageDays.toFixed(2)} days (${fifoAdjustedPurchases.length} FIFO-adjusted purchases tracked)`);
             } catch (error) {
                 safeLogError('update_holding_days_from_chain_user', error, { userId: user.id });
             }
         }
 
-        console.log('Weighted average holding date calculation completed');
     }
     catch (error) {
         safeLogError('checking_holding_date_from_on_chain', error);

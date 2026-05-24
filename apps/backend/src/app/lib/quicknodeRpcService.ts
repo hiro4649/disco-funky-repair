@@ -1,4 +1,4 @@
-/**
+﻿/**
  * QuickNode RPC Service
  *
  * Provides QuickNode HTTP RPC methods with credit-aware rate limiting
@@ -54,7 +54,6 @@ class QuickNodeCreditLimiter {
         if (currentMonth !== this.monthStart) {
             this.monthlyCredits = 0;
             this.monthStart = currentMonth;
-            console.log(`📊 QuickNode: Monthly credit counter reset`);
         }
 
         // Clean old entries outside the window
@@ -71,7 +70,6 @@ class QuickNodeCreditLimiter {
             const oldestEntry = this.creditWindow[0];
             const waitTime = this.WINDOW_MS - (now - oldestEntry.timestamp);
 
-            console.log(`⏳ QuickNode rate limit: Waiting ${(waitTime / 1000).toFixed(1)}s (${creditsInWindow}/${this.MAX_CREDITS_PER_MINUTE} credits used)`);
             await new Promise(resolve => setTimeout(resolve, waitTime));
 
             // Recurse to re-check after waiting
@@ -94,7 +92,6 @@ class QuickNodeCreditLimiter {
 
     logUsage(): void {
         const usage = this.getMonthlyUsage();
-        console.log(`💳 QuickNode Credits: ${(usage.used / 1_000_000).toFixed(2)}M / 80M (${usage.percentage.toFixed(2)}%)`);
     }
 }
 
@@ -114,7 +111,7 @@ class QuickNodeRpcService {
 
     private initialize(): void {
         if (!QUICKNODE_HTTP_RPC_URL) {
-            console.warn('⚠️  QUICKNODE_HTTP_RPC_URL not configured. QuickNode RPC disabled.');
+            safeLogWarn('quicknode_rpc_config_missing', new Error('QuickNode RPC endpoint is not configured'));
             return;
         }
 
@@ -122,7 +119,6 @@ class QuickNodeRpcService {
             this.provider = new ethers.JsonRpcProvider(QUICKNODE_HTTP_RPC_URL);
             this.contract = new ethers.Contract(TOKEN_CONTRACT_ADDRESS, ERC20_ABI, this.provider);
             this.isAvailable = true;
-            console.log('✅ QuickNode RPC Service initialized');
         } catch (error) {
             safeLogError('quicknode_rpc_initialize', error);
             this.isAvailable = false;
@@ -147,7 +143,6 @@ class QuickNodeRpcService {
 
             const balance = await this.contract.balanceOf(walletAddress);
 
-            console.log(`✅ QuickNode: Balance fetched for ${walletAddress.slice(0, 10)}... (16 credits)`);
 
             return balance;
         } catch (error) {
@@ -216,7 +211,6 @@ class QuickNodeRpcService {
 
                 allLogs.push(...logs);
 
-                console.log(`✅ QuickNode: Fetched ${logs.length} events from blocks ${currentBlock}-${endBlock} (6 credits)`);
             }
 
             // Parse logs and filter for this wallet
@@ -257,7 +251,6 @@ class QuickNodeRpcService {
                         tokenSymbol: 'TOKEN'
                     });
 
-                    console.log(`✅ QuickNode: Fetched block ${log.blockNumber} timestamp (16 credits)`);
                 } catch (parseError) {
                     safeLogError('quicknode_parse_transfer_log', parseError, {
                         blockNumber: log.blockNumber,
@@ -266,7 +259,6 @@ class QuickNodeRpcService {
                 }
             }
 
-            console.log(`✅ QuickNode: Fetched ${transactions.length} transactions for ${walletAddress.slice(0, 10)}...`);
             creditLimiter.logUsage();
 
             return transactions;
@@ -305,7 +297,6 @@ class QuickNodeRpcService {
             const latestBlock = await this.provider.getBlockNumber();
             const fromBlock = Math.max(0, latestBlock - blockRange);
 
-            console.log(`🔍 QuickNode: Fetching last ${hours}h of transactions (blocks ${fromBlock}-${latestBlock})...`);
 
             const transactions = await this.getTokenTransactions(walletAddress, fromBlock, latestBlock);
 
@@ -315,7 +306,6 @@ class QuickNodeRpcService {
                 parseInt(tx.timeStamp) >= cutoffTime
             );
 
-            console.log(`✅ QuickNode: Filtered to ${filteredTransactions.length} transactions within ${hours}h window`);
 
             return filteredTransactions;
 
@@ -350,7 +340,6 @@ class QuickNodeRpcService {
                 throw new Error(`Block ${blockNumber} not found`);
             }
 
-            console.log(`✅ QuickNode: Fetched block ${blockNumber}, timestamp: ${block.timestamp} (16 credits)`);
 
             return {
                 timestamp: block.timestamp,
@@ -398,7 +387,6 @@ class EtherscanFallbackService {
                 throw new Error(data.result || 'Etherscan returned error');
             }
 
-            console.log(`✅ Etherscan (fallback): Balance fetched for ${walletAddress.slice(0, 10)}...`);
 
             return BigInt(data.result);
         } catch (error) {
@@ -433,7 +421,6 @@ class EtherscanFallbackService {
                     return txTime >= startTime && txTime <= endTime;
                 });
 
-                console.log(`✅ Etherscan (fallback): Fetched ${filtered.length} transactions for ${walletAddress.slice(0, 10)}...`);
                 return filtered;
             }
 
@@ -515,7 +502,6 @@ export class TokenBalanceService {
 
         // Fallback to Etherscan
         if (this.isInFallbackMode) {
-            console.log('📡 Using Etherscan API (fallback)');
         }
         const balance = await this.etherscan.getTokenBalance(walletAddress);
         return Number(balance);
@@ -572,7 +558,6 @@ export class TokenBalanceService {
 
         // Fallback to Etherscan
         if (this.isInFallbackMode) {
-            console.log('📡 Using Etherscan API (fallback)');
         }
         return await this.etherscan.getTokenTransactions(walletAddress, hours);
     }
@@ -620,11 +605,6 @@ export class TokenBalanceService {
      */
     logStatus() {
         const status = this.getHealthStatus();
-        console.log('\n📊 Token Balance Service Status:');
-        console.log(`  QuickNode: ${status.quickNode.available ? '✅ Available' : '❌ Unavailable'}`);
-        console.log(`  Failures: ${status.quickNode.failureCount}/${this.MAX_FAILURES}`);
-        console.log(`  Credits: ${(status.quickNode.creditUsage.used / 1_000_000).toFixed(2)}M / 80M (${status.quickNode.creditUsage.percentage.toFixed(2)}%)`);
-        console.log(`  Etherscan: ✅ Available (fallback)\n`);
     }
 }
 

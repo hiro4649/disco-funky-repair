@@ -51,7 +51,7 @@ interface EventData {
  */
 const fetchTransactionFromQuickNode = async (eventData: EventData): Promise<any> => {
     try {
-        console.log(`🚀 Fast path: Fetching block data from QuickNode RPC with credit tracking...`);
+
 
         // Use centralized service with credit-aware rate limiting (16 credits per eth_getBlockByNumber)
         const block = await tokenBalanceService.getQuickNodeBlock(eventData.blockNumber);
@@ -60,7 +60,7 @@ const fetchTransactionFromQuickNode = async (eventData: EventData): Promise<any>
             throw new Error(`Block ${eventData.blockNumber} not found`);
         }
 
-        console.log(`✅ Block ${eventData.blockNumber} fetched, timestamp: ${block.timestamp}`);
+
 
         // Format transaction data in Etherscan-compatible format
         const transaction = {
@@ -74,7 +74,7 @@ const fetchTransactionFromQuickNode = async (eventData: EventData): Promise<any>
             tokenDecimal: '18'    // Standard for most ERC20 tokens
         };
 
-        console.log(`✅ QuickNode RPC: Transaction ${eventData.hash.slice(0, 10)}... retrieved with credit tracking`);
+
 
         return transaction;
 
@@ -105,7 +105,7 @@ const fetchUserTransactions = async (
             if (process.env.NODE_ENV === 'production') {
                 throw new Error('ETHERSCAN_API_URL is not configured');
             }
-            console.warn('ETHERSCAN_API_URL is not configured; realtime fallback fetch disabled.');
+
             return [];
         }
 
@@ -125,8 +125,7 @@ const fetchUserTransactions = async (
 
             const response = await fetch(url);
             const data = await response.json();
-            console.log(`🔍 Fetched page ${page} for ${walletAddress}: ${data.result?.length || 0} txns`);
-            console.log(`Fetched Etherscan fallback page ${page} for ${walletAddress.slice(0, 10)}...: ${data.result?.length || 0} txns`);
+
 
             if (data.status === '1' && Array.isArray(data.result) && data.result.length > 0) {
                 transactions.push(...data.result);
@@ -165,8 +164,7 @@ export const processUserRealtime = async (
 ): Promise<void> => {
     await withUserLock(userId, async () => {
     try {
-        console.log(`⚡ Real-time processing started for user ${userId}...`);
-        console.log(`📊 Processing mode: ${eventData ? 'FAST (QuickNode RPC)' : 'FALLBACK (Etherscan API)'}`);
+
 
         // ============================================================
         // WebSocket: Notify frontend that processing has started
@@ -178,9 +176,7 @@ export const processUserRealtime = async (
                 walletAddress
             };
             io.emit('holding-date-processing', eventData);
-            console.log(`📡 WebSocket event emitted: holding-date-processing`);
-            console.log(`   User ID: ${userId}, Wallet: ${walletAddress.slice(0, 10)}...`);
-            console.log(`   Connected clients: ${io.engine.clientsCount}`);
+
         } catch (error) {
             safeLogError('emit_holding_date_processing', error, { userId });
         }
@@ -194,7 +190,7 @@ export const processUserRealtime = async (
         });
 
         if (!user) {
-            console.error(`User ${userId} not found`);
+
             return;
         }
 
@@ -207,13 +203,13 @@ export const processUserRealtime = async (
         // FAST PATH: Use QuickNode RPC if event data is provided
         if (eventData && !isFirstTime) {
             try {
-                console.log(`🚀 Fast path: Using QuickNode RPC for instant transaction data...`);
+
 
                 // Get transaction from QuickNode RPC (no waiting for indexing!)
                 const transaction = await fetchTransactionFromQuickNode(eventData);
                 newTransactions = [transaction];
 
-                console.log(`✅ QuickNode RPC: Retrieved transaction instantly (no indexing delay)`);
+
 
             } catch (error) {
                 safeLogError('quicknode_realtime_fallback', error, {
@@ -226,7 +222,7 @@ export const processUserRealtime = async (
 
         // FALLBACK PATH: Use Etherscan API if QuickNode RPC failed or no event data
         if (newTransactions.length === 0) {
-            console.log(`📡 Fallback: Fetching transactions from Etherscan API for user ${userId} from block ${startBlock}...`);
+
 
             // Exponential backoff for BSC's variable indexing time
             // BSC indexing: 10-60s normal, 1-3min during congestion, up to 5min rare cases
@@ -234,52 +230,49 @@ export const processUserRealtime = async (
 
             for (let attempt = 0; attempt < delays.length; attempt++) {
                 const delaySeconds = delays[attempt] / 1000;
-                console.log(`⏳ Attempt ${attempt + 1}/${delays.length}: Waiting ${delaySeconds}s for BscScan to index...`);
+
 
                 await new Promise(resolve => setTimeout(resolve, delays[attempt]));
 
                 // Fetch transactions
                 newTransactions = await fetchUserTransactions(walletAddress, startBlock);
 
-                console.log(`🔍 DEBUG: Fetched ${newTransactions.length} transactions from BscScan`);
+
                 if (newTransactions.length > 0) {
-                    console.log(`🔍 DEBUG: First tx block: ${newTransactions[0].blockNumber}, Last tx block: ${newTransactions[newTransactions.length - 1].blockNumber}`);
-                    console.log(`🔍 DEBUG: Checkpoint last block: ${startBlock}`);
-                    console.log(`✅ Found ${newTransactions.length} transaction(s) on attempt ${attempt + 1}`);
+
                     break; // Success!
                 }
 
                 if (attempt < delays.length - 1) {
-                    console.log(`⚠️  No transactions yet, retrying...`);
+
                 }
             }
 
             if (newTransactions.length === 0 && !isFirstTime) {
                 const totalWaitTime = delays.reduce((a, b) => a + b, 0) / 1000;
-                console.log(`❌ User ${userId}: No transactions found after ${totalWaitTime}s total wait time`);
-                console.log(`💡 Transaction will be caught by daily batch fallback at 22:00 UTC`);
+
                 return;
             }
         }
 
-        console.log(`📦 Found ${newTransactions.length} transaction(s) for user ${userId}`);
+
 
         let averageDays: number;
         let fifoAdjustedPurchases: any[];
 
         if (isFirstTime) {
             // FIRST TIME: Process full history
-            console.log(`🔍 First-time user ${userId}, processing full history...`);
+
 
             const result = await processUserWithClassification(userId, walletAddress, newTransactions);
             averageDays = result.averageDays;
             fifoAdjustedPurchases = result.fifoAdjustedPurchases;
 
-            console.log(`✅ Full history processed for user ${userId}: ${averageDays.toFixed(2)} days`);
+
 
         } else {
             // INCREMENTAL: Process only new transactions
-            console.log(`📈 Incremental processing for user ${userId} (${newTransactions.length} new txns)...`);
+
 
             const result = await processIncrementalFIFO(userId, walletAddress, newTransactions);
             averageDays = result.averageDays;
@@ -289,7 +282,7 @@ export const processUserRealtime = async (
                 hash: p.hash
             }));
 
-            console.log(`✅ Incremental update for user ${userId}: ${averageDays.toFixed(2)} days`);
+
         }
 
         // Handle edge case
@@ -316,9 +309,9 @@ export const processUserRealtime = async (
             hash: p.hash
         }));
 
-        console.log(`💾 Saving FIFO queue for user ${userId}: ${fifoQueueToSave.length} purchases`);
+
         await saveFIFOQueue(userId, fifoQueueToSave);
-        console.log(`✅ HoldDateHistory updated for user ${userId}`);
+
 
         // Update checkpoint
         const lastTransaction = newTransactions.length > 0
@@ -350,11 +343,11 @@ export const processUserRealtime = async (
 
         const processingTime = ((Date.now() - startTime) / 1000).toFixed(2);
 
-        console.log(`✅ User ${userId} processed in ${processingTime}s: ${safeAverageDays.toFixed(2)} days (tier ${oldTier} → ${newTier})`);
+
 
         // Check if tier changed
         if (oldTier !== newTier) {
-            console.log(`🎯 Tier changed for user ${userId}! Updating contract immediately...`);
+
             await updateUserContractTier(userId, 3, {
                 tokenBalance: currentBalance,
                 holdingDays: safeAverageDays
@@ -379,11 +372,7 @@ export const processUserRealtime = async (
                 newTier
             };
             io.emit('holding-date-updated', updateEventData);
-            console.log(`📡 WebSocket event emitted: holding-date-updated`);
-            console.log(`   User ID: ${userId}, Wallet: ${walletAddress.slice(0, 10)}...`);
-            console.log(`   Average Days: ${safeAverageDays}, Processing Time: ${processingTime}s`);
-            console.log(`   Tier Changed: ${oldTier !== newTier} (${oldTier} → ${newTier})`);
-            console.log(`   Connected clients: ${io.engine.clientsCount}`);
+
         } catch (error) {
             safeLogError('emit_holding_date_updated', error, { userId });
         }
@@ -399,7 +388,7 @@ export const processUserRealtime = async (
  * Process multiple users in batch (for background processing)
  */
 export const processUsersBatch = async (userIds: number[]): Promise<void> => {
-    console.log(`📦 Batch processing ${userIds.length} users...`);
+
 
     const results = {
         success: 0,
@@ -428,7 +417,7 @@ export const processUsersBatch = async (userIds: number[]): Promise<void> => {
         }
     }
 
-    console.log(`✅ Batch processing complete:`, results);
+
 };
 
 export default {

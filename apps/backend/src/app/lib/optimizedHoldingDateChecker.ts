@@ -41,28 +41,21 @@ const prisma = new PrismaClient();
  */
 export const checkingHoldingDateFromOnChain = async () => {
     try {
-        console.log('=== Starting Optimized Holding Date Check ===');
+
 
         // Get statistics about the system
         const stats = await getProcessingStats();
-        console.log('Processing Stats:', {
-            totalUsers: stats.totalUsers,
-            highPriority: stats.highPriority,
-            mediumPriority: stats.mediumPriority,
-            lowPriority: stats.lowPriority,
-            needsFullRecalc: stats.needsFullRecalc,
-            avgTransactionsPerUser: stats.avgTransactionsPerUser.toFixed(2)
-        });
+
 
         // Get users that need processing based on priority
         const usersToProcess = await getUsersForProcessing();
 
         if (usersToProcess.length === 0) {
-            console.log('No users need processing at this time.');
+
             return;
         }
 
-        console.log(`Processing ${usersToProcess.length} users (out of ${stats.totalUsers} total)`);
+
 
         const currentTimeMs = Date.now();
         let processedCount = 0;
@@ -75,7 +68,7 @@ export const checkingHoldingDateFromOnChain = async () => {
                 const startBlock = user.checkpoint?.lastProcessedBlock || 0;
                 const isFirstTime = !user.checkpoint;
 
-                console.log(`Processing user ${user.id} (${user.wallet_address.slice(0, 8)}...) - ${isFirstTime ? 'First time' : `Incremental from block ${startBlock}`}`);
+
 
                 // Fetch transactions incrementally
                 const newTransactions = await fetchIncrementalTransactions(
@@ -100,7 +93,7 @@ export const checkingHoldingDateFromOnChain = async () => {
                             user.checkpoint!.lastActivityDate
                         );
 
-                        console.log(`Skipped user ${user.id} - no new activity`);
+
                         return 'skipped';
                     }
                 }
@@ -111,7 +104,7 @@ export const checkingHoldingDateFromOnChain = async () => {
 
                 if (isFirstTime || user.checkpoint?.needsFullRecalc) {
                     // FIRST TIME: Process full history
-                    console.log(`Fetching full history for user ${user.id}`);
+
                     const allTransactions = await fetchIncrementalTransactions(
                         user.wallet_address,
                         TOKEN_CONTRACT_ADDRESS,
@@ -119,7 +112,7 @@ export const checkingHoldingDateFromOnChain = async () => {
                     );
 
                     if (allTransactions.length === 0) {
-                        console.log(`No transactions found for user ${user.id}`);
+
                         return 'skipped';
                     }
 
@@ -133,21 +126,15 @@ export const checkingHoldingDateFromOnChain = async () => {
                     averageDays = calcDays;
                     fifoAdjustedPurchases = purchases;
 
-                    console.log(`User ${user.id} full history processed:`, {
-                        purchases: report.summary.PURCHASE || 0,
-                        sales: report.summary.SALE || 0,
-                        swaps: (report.summary.SWAP_IN || 0) + (report.summary.SWAP_OUT || 0),
-                        lpOps: (report.summary.LP_ADD || 0) + (report.summary.LP_REMOVE || 0),
-                        ignored: report.fifoImpactSummary.IGNORE || 0
-                    });
+
                 } else {
                     // INCREMENTAL: Process only new transactions
                     if (newTransactions.length === 0) {
-                        console.log(`No new transactions for user ${user.id}`);
+
                         return 'skipped';
                     }
 
-                    console.log(`Processing ${newTransactions.length} new transactions incrementally for user ${user.id}`);
+
 
                     // Apply only new transactions to existing FIFO queue
                     const result = await processIncrementalFIFO(
@@ -163,13 +150,7 @@ export const checkingHoldingDateFromOnChain = async () => {
                         hash: p.hash
                     }));
 
-                    console.log(`User ${user.id} incremental update:`, {
-                        newTransactions: result.newTransactionsProcessed,
-                        newPurchases: result.classificationSummary.purchases,
-                        newSales: result.classificationSummary.sales,
-                        ignored: result.classificationSummary.ignored,
-                        updatedHoldingDays: averageDays.toFixed(2)
-                    });
+
                 }
 
                 // Handle edge case: user sold all tokens or has invalid data
@@ -220,7 +201,7 @@ export const checkingHoldingDateFromOnChain = async () => {
                     lastActivityDate
                 );
 
-                console.log(`✓ User ${user.id}: ${safeAverageDays.toFixed(2)} days (${fifoAdjustedPurchases.length} purchases remaining, ${newTransactions.length} new txns processed)`);
+
                 return 'processed';
                 });
 
@@ -228,17 +209,15 @@ export const checkingHoldingDateFromOnChain = async () => {
                 else if (result === 'processed') processedCount++;
 
             } catch (error) {
-                console.error(`Failed to process user ${user.id}:`, error);
+
                 errorCount++;
             }
         }
 
-        console.log('=== Holding Date Check Complete ===');
-        console.log(`Processed: ${processedCount}, Skipped: ${skippedCount}, Errors: ${errorCount}`);
-        console.log(`Total users checked: ${usersToProcess.length} / ${stats.totalUsers}`);
+
 
     } catch (error) {
-        console.error('Error in optimized holding date check:', error);
+
     }
 };
 
@@ -258,27 +237,27 @@ const getCurrentBalance = async (walletAddress: string): Promise<number> => {
  * Force full recalculation for all users (admin function)
  */
 export const forceFullRecalculation = async () => {
-    console.log('Marking all users for full recalculation...');
+
 
     await prisma.transactionCheckpoint.updateMany({
         data: { needsFullRecalc: true }
     });
 
-    console.log('All users marked. Run checkingHoldingDateFromOnChain to process.');
+
 };
 
 /**
  * Force full recalculation for specific users (admin function)
  */
 export const forceUserRecalculation = async (userIds: number[]) => {
-    console.log(`Marking ${userIds.length} users for full recalculation...`);
+
 
     await prisma.transactionCheckpoint.updateMany({
         where: { userId: { in: userIds } },
         data: { needsFullRecalc: true }
     });
 
-    console.log(`${userIds.length} users marked. Run checkingHoldingDateFromOnChain to process.`);
+
 };
 
 export default {

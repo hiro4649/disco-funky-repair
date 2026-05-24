@@ -43,7 +43,7 @@ export const calculateWeightedAverageWithClassification = (
     // Get only transactions that affect FIFO
     const { purchases, sales, ignored } = getTransactionsForFIFO(classifiedTransactions);
 
-    console.log(`Transaction breakdown: ${purchases.length} purchases, ${sales.length} sales, ${ignored.length} ignored`);
+
 
     if (purchases.length === 0) {
         return { averageDays: 0, fifoAdjustedPurchases: [], report };
@@ -201,9 +201,9 @@ async function saveTransactionAudit(userId: number, classifiedTransactions: Clas
             });
         }
 
-        console.log(`Saved ${auditRecords.length} transaction audit records for user ${userId}`);
+
     } catch (error) {
-        console.error(`Error saving transaction audit for user ${userId}:`, error);
+
         // Don't fail the entire process if audit logging fails
     }
 }

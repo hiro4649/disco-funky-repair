@@ -42,29 +42,29 @@ function calculateScarcityScore(circulatingSupply: number, maxSupply: number, ma
         if (maxSupply > 0 && circulatingSupply > 0) {
             // Basic scarcity: 1 - (circulating / max)
             const basicScarcity = 1 - (circulatingSupply / maxSupply);
-            
+
             // Additional factor: FDV vs Market Cap ratio (lower ratio = more scarcity)
             const fdvRatio = marketCap > 0 ? Math.min(fdv / marketCap, 10) : 1; // Cap at 10x
             const fdvScarcity = 1 / fdvRatio;
-            
+
             // Combine both factors (weighted average)
             const scarcityScore = (basicScarcity * 0.7) + (fdvScarcity * 0.3);
-            
+
             // Normalize to 0-1 range
             return Math.max(0, Math.min(1, scarcityScore));
         }
-        
+
         // If we only have market cap and FDV
         if (marketCap > 0 && fdv > 0) {
             // Use FDV/MarketCap ratio as scarcity indicator
             const ratio = fdv / marketCap;
             return Math.max(0, Math.min(1, 1 / ratio));
         }
-        
+
         // Default scarcity score for tokens with unlimited supply
         return 0.1; // Slight scarcity for uncapped tokens
     } catch (error) {
-        console.error('Error calculating scarcity score:', error);
+
         return 0.5; // Default fallback
     }
 }
@@ -75,8 +75,8 @@ async function getTokenPrice(token_address?: string): Promise<string | null> {
         const response = await axios.get<DexScreenerResponse>(
             `https://api.dexscreener.com/latest/dex/tokens/${address}`
         );
-        // console.log("response===========>",token_address, response.data.pairs[0].priceUsd);
-        
+        //
+
         if(response.status == 200) {
             const data: DexScreenerResponse = response.data;
             const pair = data.pairs.find(pair => pair.baseToken.address.toLowerCase() === address.toLowerCase());
@@ -94,11 +94,11 @@ async function getTokenMarketData(token_address?: string): Promise<TokenMarketDa
         const response = await axios.get<DexScreenerResponse>(
             `https://api.dexscreener.com/latest/dex/tokens/${address}`
         );
-        
+
         if(response.status == 200 && response.data.pairs  !== null) {
             const data: DexScreenerResponse = response.data;
             const pair = data.pairs.find(pair => pair.baseToken.address.toLowerCase() === address.toLowerCase());
-            
+
             if (pair) {
                 return {
                     price: pair.priceUsd,
@@ -110,7 +110,7 @@ async function getTokenMarketData(token_address?: string): Promise<TokenMarketDa
                 };
             }
         }
-        
+
         return {
             price: null,
             liquidity: 0,
@@ -120,7 +120,7 @@ async function getTokenMarketData(token_address?: string): Promise<TokenMarketDa
             fdv: 0
         };
     } catch (error) {
-        console.error('Error fetching token market data:', error);
+
         return {
             price: null,
             liquidity: 0,
