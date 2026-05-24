@@ -4,6 +4,7 @@ import moment from 'moment';
 import { generateRandomCode } from '../utils/ticketCodeGenerator';
 import { Authenticate, AuthAdmin } from '../config/passport';
 import { safeLogError } from '../utils/safeLogger';
+import { distributeReferralRewardOnce } from '../services/snapshot.service';
 
 const router = Router();
 const prisma = new PrismaClient();
@@ -385,57 +386,22 @@ router.post('/admin/distribute-rewards', AuthAdmin, async (req, res) => {
     });
 
     let distributedCount = 0;
+    let alreadyProcessedCount = 0;
 
     for (const referral of verifiedReferrals) {
-      // Award 100 fan points to both referrer and referred
-      const rewardAmount = 100;
-      
-      // Update referrer's fan_points
-      await prisma.user.update({
-        where: { wallet_address: referral.referrer_wallet.toLowerCase() },
-        data: { 
-          fan_points: { increment: rewardAmount }
-        }
-      });
-
-      // Update referred user's fan_points
-      await prisma.user.update({
-        where: { wallet_address: referral.referred_wallet.toLowerCase() },
-        data: { 
-          fan_points: { increment: rewardAmount }
-        }
-      });
-
-      // Create point history records
-      await prisma.pointHistory.createMany({
-        data: [
-          {
-            userId: (await prisma.user.findUnique({ where: { wallet_address: referral.referrer_wallet.toLowerCase() } }))?.id || 0,
-            reason: 4, // Referral bonus
-            point: rewardAmount,
-            receivedDate: moment.utc().toDate()
-          },
-          {
-            userId: (await prisma.user.findUnique({ where: { wallet_address: referral.referred_wallet.toLowerCase() } }))?.id || 0,
-            reason: 4, // Referral bonus
-            point: rewardAmount,
-            receivedDate: moment.utc().toDate()
-          }
-        ]
-      });
-
-      // Mark as rewarded
-      await prisma.referralRewards.update({
-        where: { id: referral.id },
-        data: { rewarded: true }
-      });
-
-      distributedCount++;
+      const result = await distributeReferralRewardOnce(referral.id);
+      if (result.status === 'distributed') {
+        distributedCount++;
+      } else {
+        alreadyProcessedCount++;
+      }
     }
 
     res.json({ 
       message: 'Rewards distributed successfully',
-      distributedCount 
+      distributedCount,
+      alreadyProcessedCount,
+      totalChecked: verifiedReferrals.length
     });
   } catch (error) {
     safeLogError('referral_rewards_distribute', error, { route: '/referral/admin/distribute-rewards' });

@@ -12,9 +12,11 @@ const mockPrisma = {
   referralRewards: {
     count: jest.fn(),
     findMany: jest.fn(),
+    findUnique: jest.fn(),
     findFirst: jest.fn(),
     create: jest.fn(),
-    update: jest.fn()
+    update: jest.fn(),
+    updateMany: jest.fn()
   },
   pointHistory: {
     createMany: jest.fn()
@@ -292,10 +294,13 @@ describe('referral user routes authorization', () => {
 describe('referral admin routes authorization', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    mockPrisma.$transaction.mockImplementation(async (callback: any) => callback(mockPrisma));
     mockPrisma.user.update.mockResolvedValue({});
     mockPrisma.user.findUnique.mockResolvedValue(null);
     mockPrisma.referralRewards.findMany.mockResolvedValue([]);
+    mockPrisma.referralRewards.findUnique.mockResolvedValue(null);
     mockPrisma.referralRewards.update.mockResolvedValue({});
+    mockPrisma.referralRewards.updateMany.mockResolvedValue({ count: 0 });
     mockPrisma.pointHistory.createMany.mockResolvedValue({});
   });
 
@@ -395,9 +400,12 @@ describe('referral admin routes authorization', () => {
         referred_wallet: '0xReferred'
       }
     ]);
-    mockPrisma.user.findUnique
-      .mockResolvedValueOnce({ id: 10 })
-      .mockResolvedValueOnce({ id: 11 });
+    mockPrisma.referralRewards.updateMany.mockResolvedValue({ count: 1 });
+    mockPrisma.referralRewards.findUnique.mockResolvedValue({
+      id: 201,
+      referrer: { id: 10 },
+      referred: { id: 11 }
+    });
 
     const response = await request(createApp())
       .post('/admin/distribute-rewards')
@@ -406,7 +414,9 @@ describe('referral admin routes authorization', () => {
     expect(response.status).toBe(200);
     expect(response.body).toEqual({
       message: 'Rewards distributed successfully',
-      distributedCount: 1
+      distributedCount: 1,
+      alreadyProcessedCount: 0,
+      totalChecked: 1
     });
     expect(mockPrisma.referralRewards.findMany).toHaveBeenCalledWith({
       where: {
@@ -414,14 +424,25 @@ describe('referral admin routes authorization', () => {
         rewarded: false
       }
     });
+    expect(mockPrisma.$transaction).toHaveBeenCalledTimes(1);
+    expect(mockPrisma.referralRewards.updateMany).toHaveBeenCalledWith({
+      where: {
+        id: 201,
+        snapshot_verified: true,
+        rewarded: false
+      },
+      data: expect.objectContaining({
+        rewarded: true
+      })
+    });
     expect(mockPrisma.user.update).toHaveBeenCalledWith({
-      where: { wallet_address: '0xreferrer' },
+      where: { id: 10 },
       data: {
         fan_points: { increment: 100 }
       }
     });
     expect(mockPrisma.user.update).toHaveBeenCalledWith({
-      where: { wallet_address: '0xreferred' },
+      where: { id: 11 },
       data: {
         fan_points: { increment: 100 }
       }
@@ -440,10 +461,100 @@ describe('referral admin routes authorization', () => {
         })
       ])
     });
-    expect(mockPrisma.referralRewards.update).toHaveBeenCalledWith({
-      where: { id: 201 },
-      data: { rewarded: true }
+    expect(mockPrisma.referralRewards.update).not.toHaveBeenCalled();
+  });
+
+  it('does not double distribute the same referral when claimed twice', async () => {
+    mockPrisma.referralRewards.findMany.mockResolvedValue([
+      {
+        id: 202,
+        referrer_wallet: '0xReferrer',
+        referred_wallet: '0xReferred'
+      }
+    ]);
+    mockPrisma.referralRewards.updateMany
+      .mockResolvedValueOnce({ count: 1 })
+      .mockResolvedValueOnce({ count: 0 });
+    mockPrisma.referralRewards.findUnique.mockResolvedValue({
+      id: 202,
+      referrer: { id: 10 },
+      referred: { id: 11 }
     });
+
+    const firstResponse = await request(createApp())
+      .post('/admin/distribute-rewards')
+      .set('Authorization', 'Bearer admin-token');
+    const secondResponse = await request(createApp())
+      .post('/admin/distribute-rewards')
+      .set('Authorization', 'Bearer admin-token');
+
+    expect(firstResponse.status).toBe(200);
+    expect(firstResponse.body).toEqual({
+      message: 'Rewards distributed successfully',
+      distributedCount: 1,
+      alreadyProcessedCount: 0,
+      totalChecked: 1
+    });
+    expect(secondResponse.status).toBe(200);
+    expect(secondResponse.body).toEqual({
+      message: 'Rewards distributed successfully',
+      distributedCount: 0,
+      alreadyProcessedCount: 1,
+      totalChecked: 1
+    });
+    expect(mockPrisma.user.update).toHaveBeenCalledTimes(2);
+    expect(mockPrisma.pointHistory.createMany).toHaveBeenCalledTimes(1);
+  });
+
+  it('uses a transaction so a failed reward write can be retried without marking rewarded', async () => {
+    const consoleErrorSpy = jest.spyOn(console, 'error').mockImplementation(() => undefined);
+    mockPrisma.referralRewards.findMany.mockResolvedValue([
+      {
+        id: 203,
+        referrer_wallet: '0xReferrer',
+        referred_wallet: '0xReferred'
+      }
+    ]);
+    mockPrisma.$transaction
+      .mockRejectedValueOnce(new Error('simulated transactional rollback'))
+      .mockImplementationOnce(async (callback: any) => callback(mockPrisma));
+    mockPrisma.referralRewards.updateMany.mockResolvedValue({ count: 1 });
+    mockPrisma.referralRewards.findUnique.mockResolvedValue({
+      id: 203,
+      referrer: { id: 10 },
+      referred: { id: 11 }
+      });
+
+    try {
+      const failedResponse = await request(createApp())
+        .post('/admin/distribute-rewards')
+        .set('Authorization', 'Bearer admin-token');
+      const retriedResponse = await request(createApp())
+        .post('/admin/distribute-rewards')
+        .set('Authorization', 'Bearer admin-token');
+
+      expect(failedResponse.status).toBe(500);
+      expect(failedResponse.body).toEqual({ error: 'Internal server error' });
+      expect(retriedResponse.status).toBe(200);
+      expect(retriedResponse.body).toEqual({
+        message: 'Rewards distributed successfully',
+        distributedCount: 1,
+        alreadyProcessedCount: 0,
+        totalChecked: 1
+      });
+      expect(mockPrisma.referralRewards.updateMany).toHaveBeenCalledWith({
+        where: {
+          id: 203,
+          snapshot_verified: true,
+          rewarded: false
+        },
+        data: expect.objectContaining({
+          rewarded: true
+        })
+      });
+    } finally {
+      consoleErrorSpy.mockRestore();
+    }
   });
 
   it('rejects debug referral status without admin authentication', async () => {
