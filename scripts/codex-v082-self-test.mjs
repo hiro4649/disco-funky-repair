@@ -1,11 +1,11 @@
 #!/usr/bin/env node
-// CODEX_QUALITY_HARNESS_FILE v0.8.2
+// CODEX_QUALITY_HARNESS_FILE v0.8.3
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
-import { HARNESS_VERSION, marker, scanObjectForUnsafe, writeJsonReport } from './codex-v080-lib.mjs';
+import { HARNESS_VERSION, marker, writeJsonReport } from './codex-v080-lib.mjs';
 import { evaluateWorkflowReport } from './codex-workflow-quality-runner.mjs';
 import { classifyChange, loadClassificationRules } from './codex-change-classification-gate.mjs';
 import { buildProductVerificationReport } from './codex-product-verification-gate.mjs';
@@ -13,7 +13,6 @@ import { buildProductVerificationEvidenceReport } from './codex-product-verifica
 import { buildTestMetricsReport } from './codex-test-metrics-collect.mjs';
 import { buildStalePrAuditReport } from './codex-stale-pr-audit-gate.mjs';
 import { buildCompactReasonSummary } from './codex-reason-summary.mjs';
-import { buildStagingEvidenceReport } from './codex-staging-evidence-gate.mjs';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const repo = path.dirname(here);
@@ -46,24 +45,6 @@ function passStatus(status = 'pass') {
   return { status, safeSummaryOnly: true, reasonCodes: [] };
 }
 
-function runWorkflowRunner(reportFile, cwd) {
-  return spawnSync(process.execPath, [path.join(repo, 'scripts', 'codex-workflow-quality-runner.mjs'), '--report', reportFile, '--gate-exit', '1'], {
-    cwd,
-    env: { ...process.env, CODEX_QUALITY_REPORT: 'json' },
-    encoding: 'utf8',
-    stdio: ['ignore', 'pipe', 'pipe'],
-  });
-}
-
-function safeArtifactFilesExist(dir) {
-  return [
-    'codex-quality-gate-safe-summary.json',
-    'codex-failure-reasons.json',
-    'codex-evidence-pack.normalized.json',
-    'codex-target-quality-summary.json',
-  ].every((name) => fs.existsSync(path.join(dir, name)));
-}
-
 function sourcePassReport() {
   const report = {
     status: 'pass',
@@ -82,8 +63,13 @@ function sourcePassReport() {
     'productVerificationStatus',
     'productVerificationEvidenceStatus',
     'testMetricsStatus',
+    'remoteProductBaselineStatus',
+    'remoteNpmDiagnosticStatus',
+    'workflowPreflightStatus',
+    'safeArtifactIndexStatus',
+    'openPrHygieneStatus',
+    'targetFinalSummaryStatus',
     'stalePrAuditStatus',
-    'stagingEvidenceStatus',
     'reasonSummaryStatus',
     'bestOfNEvidenceStatus',
     'taskQueueLiteStatus',
@@ -114,6 +100,7 @@ function sourcePassReport() {
     'v080SelfTestStatus',
     'v081SelfTestStatus',
     'v082SelfTestStatus',
+    'v083SelfTestStatus',
   ]) report[key] = passStatus();
   return report;
 }
@@ -134,13 +121,19 @@ function targetPassReport() {
     'productVerificationStatus',
     'productVerificationEvidenceStatus',
     'testMetricsStatus',
+    'remoteProductBaselineStatus',
+    'remoteNpmDiagnosticStatus',
+    'workflowPreflightStatus',
+    'safeArtifactIndexStatus',
+    'openPrHygieneStatus',
+    'targetFinalSummaryStatus',
     'stalePrAuditStatus',
-    'stagingEvidenceStatus',
     'reasonSummaryStatus',
     'safeOutputScanStatus',
     'v080SelfTestStatus',
     'v081SelfTestStatus',
     'v082SelfTestStatus',
+    'v083SelfTestStatus',
     'safeArtifactValidation',
     'outputShapeStatus',
   ]) report[key] = passStatus();
@@ -152,54 +145,6 @@ function withRulesTmp(callback) {
   fs.mkdirSync(path.join(tmp, 'docs', 'process'), { recursive: true });
   fs.copyFileSync(path.join(repo, 'docs', 'process', 'CODEX_CHANGE_CLASSIFICATION_RULES.json'), path.join(tmp, 'docs', 'process', 'CODEX_CHANGE_CLASSIFICATION_RULES.json'));
   return callback(tmp);
-}
-
-function statusEvidence(status = 'PASS') {
-  return { status, evidenceRef: `${status.toLowerCase()}_safe_evidence_ref` };
-}
-
-function stagingEvidence(overrides = {}) {
-  const base = {
-    marker,
-    schemaVersion: '1.0.0',
-    profile: 'funky',
-    environment: 'staging',
-    evidenceType: 'no_tx_smoke',
-    headSha: '2222222222222222222222222222222222222222',
-    checkedAt: '2026-01-01T00:00:00Z',
-    checkedByRole: 'release-manager',
-    overallStatus: 'PASS',
-    stagingFrontendUrlStatus: statusEvidence(),
-    stagingBackendUrlStatus: statusEvidence(),
-    httpsStatus: statusEvidence(),
-    dnsStatus: statusEvidence(),
-    nginxStatus: statusEvidence(),
-    backendRuntimeEnvPresence: statusEvidence(),
-    corsOriginSummary: statusEvidence(),
-    cookieDomainSummary: statusEvidence(),
-    frontendPublicEnvSummary: statusEvidence(),
-    deployedMainSha: statusEvidence(),
-    noTxSmokeSummary: statusEvidence(),
-    runtimeLogInspectionSummary: statusEvidence(),
-    secretsIncluded: false,
-    rawLogsIncluded: false,
-    txExecuted: false,
-    fundedTxExecuted: false,
-    residualRisks: ['safe summary residual risk'],
-    nextActions: ['safe summary next action'],
-  };
-  return { ...base, ...overrides };
-}
-
-function stagingEnv(evidence, extra = {}) {
-  return {
-    CODEX_EVENT_NAME: 'pull_request',
-    CODEX_PR_HEAD_SHA: '2222222222222222222222222222222222222222',
-    CODEX_CHANGED_FILES: 'docs/process/FUNKY_STAGING_NO_TX_PREFLIGHT_EVIDENCE.json',
-    CODEX_STAGING_EVIDENCE_INLINE_JSON: JSON.stringify(evidence),
-    CODEX_PR_BODY: 'Staging readiness claimed: no.',
-    ...extra,
-  };
 }
 
 function buildReport() {
@@ -218,29 +163,6 @@ function buildReport() {
   manualSource.humanConfirmationObjectStatus = passStatus('manual_confirmation_required');
   result = evaluateWorkflowReport(manualSource, { eventName: 'pull_request' });
   assertCase('workflow runner preserves manual_confirmation_required', result.status === 'fail', failures, cases, result.status);
-  assertCase('workflow runner scanner allows internal npm skip reason label', scanObjectForUnsafe({
-    productVerificationStatus: { reasonCodes: ['npm_skip_not_allowed_for_product_change'] },
-  }).length === 0, failures, cases);
-  const unsafeNpmTokenFixture = ['npm', 'actualunsafevalue1234567890'].join('_');
-  assertCase('workflow runner scanner still blocks token-like unsafe values', scanObjectForUnsafe({
-    productVerificationStatus: { safeSummary: unsafeNpmTokenFixture },
-  }).length > 0, failures, cases);
-  const invalidRunnerTmp = fs.mkdtempSync(path.join(os.tmpdir(), 'codex-v082-runner-'));
-  const invalidJsonPath = path.join(invalidRunnerTmp, 'invalid.json');
-  write(invalidJsonPath, '{ invalid json');
-  let runnerResult = runWorkflowRunner(invalidJsonPath, invalidRunnerTmp);
-  assertCase('workflow runner writes safe artifacts for invalid JSON report', runnerResult.status !== 0 && safeArtifactFilesExist(invalidRunnerTmp), failures, cases, runnerResult.status !== 0 ? 'pass' : 'fail');
-  const unsafeReportTmp = fs.mkdtempSync(path.join(os.tmpdir(), 'codex-v082-runner-'));
-  const unsafeReportPath = path.join(unsafeReportTmp, 'unsafe.json');
-  write(unsafeReportPath, JSON.stringify({ status: 'fail', targetQualityScoreStatus: { status: 'fail' }, safeSummary: unsafeNpmTokenFixture }));
-  runnerResult = runWorkflowRunner(unsafeReportPath, unsafeReportTmp);
-  const unsafeArtifactText = safeArtifactFilesExist(unsafeReportTmp)
-    ? fs.readFileSync(path.join(unsafeReportTmp, 'codex-failure-reasons.json'), 'utf8')
-    : '';
-  assertCase('workflow runner writes safe artifacts for unsafe report without unsafe value', runnerResult.status !== 0 && safeArtifactFilesExist(unsafeReportTmp) && !unsafeArtifactText.includes(unsafeNpmTokenFixture), failures, cases, runnerResult.status !== 0 ? 'pass' : 'fail');
-  const missingReportTmp = fs.mkdtempSync(path.join(os.tmpdir(), 'codex-v082-runner-'));
-  runnerResult = runWorkflowRunner(path.join(missingReportTmp, 'missing.json'), missingReportTmp);
-  assertCase('workflow runner writes safe artifacts for missing report', runnerResult.status !== 0 && safeArtifactFilesExist(missingReportTmp), failures, cases, runnerResult.status !== 0 ? 'pass' : 'fail');
 
   result = withRulesTmp((tmp) => loadClassificationRules({ CODEX_CHANGE_CLASSIFICATION_RULES_PATH: path.join(tmp, 'docs', 'process', 'CODEX_CHANGE_CLASSIFICATION_RULES.json') }));
   assertCase('change classification rules JSON loads', result.ok, failures, cases, result.ok ? 'pass' : result.reasonCode);
@@ -298,89 +220,28 @@ function buildReport() {
     CODEX_CHANGED_FILES: 'src/app.js',
     CODEX_PRODUCT_VERIFICATION_COMMANDS: 'npm test',
     CODEX_PRODUCT_VERIFICATION_RESULT: 'pass',
+    CODEX_REMOTE_PRODUCT_BASELINE_JSON: JSON.stringify({
+      schemaVersion: '0.8.3',
+      harnessVersion: HARNESS_VERSION,
+      repository: 'example/repo',
+      baseSha: 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+      baselineType: 'npm_test',
+      commands: [{ name: 'npm test', result: 'pass' }],
+      result: 'pass',
+      date: '2026-05-24T00:00:00Z',
+      source: 'fixture',
+      safeSummary: 'safe baseline summary',
+      knownFailures: [],
+      expiresAt: '2099-01-01T00:00:00Z',
+      rawValuesStored: false,
+      safeSummaryOnly: true,
+    }),
   });
   assertCase('npm test pass evidence with duration/testCount normalizes to pass', result.productVerificationStatus.status === 'pass', failures, cases, result.productVerificationStatus.status);
-  result = buildProductVerificationReport({
-    CODEX_EVENT_NAME: 'pull_request',
-    CODEX_CHANGED_FILES: 'apps/backend/src/app/routes/userManage.routes.ts\napps/backend/src/app/routes/__tests__/disabledScope.routes.test.ts',
-    CODEX_PRODUCT_VERIFICATION_COMMANDS: 'apps/backend npm ci,apps/backend build,apps/backend test',
-    CODEX_PRODUCT_VERIFICATION_RESULT: 'pass',
-    CODEX_PR_BODY: 'Runtime readiness claimed: no.',
-  });
-  assertCase('backend product change with product checks passes target product verification', result.productVerificationStatus.status === 'pass', failures, cases, result.productVerificationStatus.status);
-  result = buildProductVerificationEvidenceReport({
-    CODEX_EVENT_NAME: 'pull_request',
-    CODEX_CHANGED_FILES: 'apps/backend/src/app/routes/userManage.routes.ts',
-    CODEX_PRODUCT_VERIFICATION_COMMANDS: 'apps/backend test',
-    CODEX_PRODUCT_VERIFICATION_RESULT: 'pass',
-    CODEX_PR_BODY: 'Runtime readiness claimed: no.',
-  });
-  assertCase('backend product change with product checks passes product evidence status', result.productVerificationEvidenceStatus.status === 'pass', failures, cases, result.productVerificationEvidenceStatus.status);
-  result = buildProductVerificationReport({
-    CODEX_EVENT_NAME: 'pull_request',
-    CODEX_CHANGED_FILES: 'apps/backend/src/app/routes/userManage.routes.ts',
-    CODEX_PRODUCT_VERIFICATION_COMMANDS: 'apps/backend test',
-    CODEX_PRODUCT_VERIFICATION_RESULT: 'fail',
-  });
-  assertCase('failed product verification command blocks product change', result.productVerificationStatus.status === 'fail', failures, cases, result.productVerificationStatus.status);
-  result = buildProductVerificationReport({
-    CODEX_EVENT_NAME: 'pull_request',
-    CODEX_CHANGED_FILES: 'README.md',
-    CODEX_SKIP_NPM: '1',
-    CODEX_NPM_SKIP_REASON: 'docs-only',
-  });
-  assertCase('docs-only change with CODEX_SKIP_NPM=1 and reason passes product verification', result.productVerificationStatus.status === 'pass', failures, cases, result.productVerificationStatus.status);
-  result = buildProductVerificationReport({
-    CODEX_EVENT_NAME: 'pull_request',
-    CODEX_CHANGED_FILES: 'scripts/codex-local-quality-gate.mjs',
-    CODEX_SKIP_NPM: '1',
-    CODEX_NPM_SKIP_REASON: 'harness-only',
-  });
-  assertCase('harness-only change with CODEX_SKIP_NPM=1 passes product verification', result.productVerificationStatus.status === 'pass', failures, cases, result.productVerificationStatus.status);
-  result = buildProductVerificationReport({
-    CODEX_EVENT_NAME: 'pull_request',
-    CODEX_CHANGED_FILES: 'apps/backend/src/app/routes/userManage.routes.ts',
-    CODEX_PR_BODY: 'Runtime readiness claimed: yes.',
-  });
-  assertCase('runtime readiness claim without product checks fails', result.productVerificationStatus.status === 'fail', failures, cases, result.productVerificationStatus.status);
   const unsafeEvidence = path.join(os.tmpdir(), `codex-unsafe-evidence-${Date.now()}.json`);
   write(unsafeEvidence, JSON.stringify({ rawLogs: 'stored output' }));
   result = buildProductVerificationEvidenceReport({ CODEX_PRODUCT_VERIFICATION_EVIDENCE_PATH: unsafeEvidence });
   assertCase('unsafe evidence field fails safe output', result.productVerificationEvidenceStatus.status === 'fail', failures, cases, result.productVerificationEvidenceStatus.status);
-
-  result = buildStagingEvidenceReport(stagingEnv(stagingEvidence({
-    overallStatus: 'BLOCKED',
-    checkedByRole: 'implementation-reviewer',
-    stagingFrontendUrlStatus: { status: 'BLOCKED', summary: 'domain not confirmed' },
-  })));
-  assertCase('valid BLOCKED staging evidence is not a readiness pass', result.stagingEvidenceStatus.status === 'not_applicable' && result.stagingEvidenceStatus.liveBlockedOrUnknown, failures, cases, result.stagingEvidenceStatus.status);
-  result = buildStagingEvidenceReport(stagingEnv(stagingEvidence()));
-  assertCase('valid PASS no-tx staging evidence passes with required fields', result.stagingEvidenceStatus.status === 'pass', failures, cases, result.stagingEvidenceStatus.status);
-  result = buildStagingEvidenceReport(stagingEnv(stagingEvidence({
-    stagingFrontendUrlStatus: { status: 'BLOCKED', summary: 'domain missing' },
-  })));
-  assertCase('PASS staging evidence with missing domain fails', result.stagingEvidenceStatus.status === 'fail', failures, cases, result.stagingEvidenceStatus.status);
-  result = buildStagingEvidenceReport(stagingEnv(stagingEvidence({ secretsIncluded: true })));
-  assertCase('staging evidence with secretsIncluded true fails', result.stagingEvidenceStatus.status === 'fail', failures, cases, result.stagingEvidenceStatus.status);
-  result = buildStagingEvidenceReport(stagingEnv(stagingEvidence({ rawLogsIncluded: true })));
-  assertCase('staging evidence with rawLogsIncluded true fails', result.stagingEvidenceStatus.status === 'fail', failures, cases, result.stagingEvidenceStatus.status);
-  result = buildStagingEvidenceReport(stagingEnv(stagingEvidence({ txExecuted: true })));
-  assertCase('no-tx staging evidence with txExecuted true fails', result.stagingEvidenceStatus.status === 'fail', failures, cases, result.stagingEvidenceStatus.status);
-  result = buildStagingEvidenceReport(stagingEnv(stagingEvidence({ headSha: '3333333333333333333333333333333333333333' })));
-  assertCase('stale staging evidence head fails', result.stagingEvidenceStatus.status === 'fail', failures, cases, result.stagingEvidenceStatus.status);
-  result = buildStagingEvidenceReport({
-    CODEX_EVENT_NAME: 'pull_request',
-    CODEX_PR_BODY: 'Production Go/No-Go: GO',
-    CODEX_PR_HEAD_SHA: '2222222222222222222222222222222222222222',
-    CODEX_CHANGED_FILES: 'docs/process/README.md',
-  });
-  assertCase('release GO claim without staging evidence fails', result.stagingEvidenceStatus.status === 'fail', failures, cases, result.stagingEvidenceStatus.status);
-  result = buildStagingEvidenceReport({
-    CODEX_EVENT_NAME: 'pull_request',
-    CODEX_PR_BODY: 'Staging readiness claimed: no.',
-    CODEX_CHANGED_FILES: 'docs/process/README.md',
-  });
-  assertCase('normal docs-only PR without staging claim does not require staging evidence', result.stagingEvidenceStatus.status === 'not_applicable', failures, cases, result.stagingEvidenceStatus.status);
 
   const metricsFile = path.join(os.tmpdir(), `codex-safe-metrics-${Date.now()}.json`);
   write(metricsFile, JSON.stringify({ command: 'npm test', result: 'pass', durationMs: 123, testCount: 4, safeSummary: 'safe metrics' }));

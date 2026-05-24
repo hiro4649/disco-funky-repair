@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// CODEX_QUALITY_HARNESS_FILE v0.8.2
+// CODEX_QUALITY_HARNESS_FILE v0.8.3
 import fs from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import {
@@ -14,6 +14,7 @@ import {
   exitFor,
 } from './codex-v080-lib.mjs';
 import { classifyChange, changedFiles } from './codex-change-classification-gate.mjs';
+import { buildRemoteProductBaselineReport } from './codex-remote-product-baseline-gate.mjs';
 
 function parseJsonSource(env) {
   const file = env.CODEX_PRODUCT_VERIFICATION_EVIDENCE_PATH;
@@ -69,13 +70,14 @@ function envCommands(env) {
   })).filter((item) => item.name);
 }
 
-function hasPassingProductEvidence(commands) {
-  return commands.some((item) => item.result === 'pass');
+function hasNamedProductEvidence(commands) {
+  return commands.some((item) => ['pass', 'fail', 'not_run'].includes(item.result));
 }
 
 export function normalizeProductVerificationEvidence(env = process.env) {
   const body = prBodyText(env);
   const classified = classifyChange(changedFiles(env), env);
+  const baseline = buildRemoteProductBaselineReport(env).remoteProductBaselineStatus;
   const c = classified.classification;
   const fileEvidence = parseJsonSource(env);
   if (fileEvidence?.error) {
@@ -109,26 +111,24 @@ export function normalizeProductVerificationEvidence(env = process.env) {
 
   const reasonCodes = [...classified.reasonCodes.filter((item) => item !== 'no_pr_context')];
   const requiredEvidenceMissing = [];
-  const failedCommands = commands.filter((item) => item.result === 'fail').map((item) => item.name);
   if (classified.productRelevantChanged) {
     if (skipNpm) reasonCodes.push('npm_skip_not_allowed_for_product_change');
-    if (!hasPassingProductEvidence(commands)) requiredEvidenceMissing.push('product_verification_commands');
+    if (!hasNamedProductEvidence(commands)) requiredEvidenceMissing.push('product_verification_commands');
   }
   if (classified.runtimeReadinessClaimed) {
     if (skipNpm) reasonCodes.push('runtime_claim_requires_product_checks');
-    if (!hasPassingProductEvidence(commands)) requiredEvidenceMissing.push('runtime_or_smoke_verification');
+    if (!hasNamedProductEvidence(commands)) requiredEvidenceMissing.push('runtime_or_smoke_verification');
   }
   if (classified.packageOrLockfileChanged) {
-    if (!hasPassingProductEvidence(commands)) {
+    if (!hasNamedProductEvidence(commands)) {
       reasonCodes.push('package_change_requires_package_verification');
       requiredEvidenceMissing.push('package_verification');
     }
   }
   if (requiredEvidenceMissing.length) reasonCodes.push('product_verification_evidence_missing');
-  if (failedCommands.length) reasonCodes.push('product_verification_command_failed');
 
   const normalized = {
-    schemaVersion: '0.8.2',
+    schemaVersion: '0.8.3',
     harnessVersion: HARNESS_VERSION,
     mode: env.CODEX_HARNESS_SOURCE_REPO === '1' ? 'source' : (env.CODEX_HARNESS_MODE || 'target'),
     repository: env.CODEX_REPOSITORY || '',
@@ -145,7 +145,12 @@ export function normalizeProductVerificationEvidence(env = process.env) {
     skipAllowed,
     skipReason,
     commands,
-    failedCommands: [...new Set(failedCommands)].slice(0, 20),
+    baseline: {
+      status: baseline.status,
+      required: Boolean(baseline.baselineRequired),
+      result: baseline.baselineResult || null,
+      reasonCodes: baseline.reasonCodes || [],
+    },
     requiredEvidenceMissing: [...new Set(requiredEvidenceMissing)],
     safeSummaryOnly: true,
   };

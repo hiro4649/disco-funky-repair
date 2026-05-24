@@ -1,4 +1,4 @@
-<!-- CODEX_QUALITY_HARNESS_FILE v0.8.2 -->
+<!-- CODEX_QUALITY_HARNESS_FILE v0.8.3 -->
 ## Codex Method Compliance
 
 Code review status:
@@ -41,21 +41,15 @@ Human confirmation needed:
 
 ## Environment Readiness
 
-## Staging Evidence
-
-Staging readiness claimed: yes/no
-
-Evidence file:
-
-Overall status:
-
-Secrets/raw logs included: no
-
 ## Golden Set
 
 ## Workflow Runner
 
 Workflow runner artifact summary:
+
+## Workflow Preflight
+
+Preflight status:
 
 ## Change Classification
 
@@ -65,13 +59,31 @@ Product code changed: yes/no
 
 Product verification commands:
 
+## Remote Product Baseline
+
+Baseline required: yes/no
+
+Baseline status:
+
 ## Product Verification Evidence
 
 Normalized evidence source:
 
+## Remote NPM Diagnostic
+
+Diagnostic status:
+
 ## Test Metrics
 
 Test metrics artifact: present/not applicable
+
+## Safe Artifact Index
+
+Artifact index status:
+
+## Final Summary
+
+One-screen final summary status:
 
 ## Stale PR Audit
 
