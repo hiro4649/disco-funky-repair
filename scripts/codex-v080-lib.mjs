@@ -1,9 +1,9 @@
 #!/usr/bin/env node
-// CODEX_QUALITY_HARNESS_FILE v0.8.3
+// CODEX_QUALITY_HARNESS_FILE v0.8.4
 import fs from 'node:fs';
 import path from 'node:path';
 
-export const HARNESS_VERSION = '0.8.3';
+export const HARNESS_VERSION = '0.8.4';
 export const marker = `CODEX_QUALITY_HARNESS_FILE v${HARNESS_VERSION}`;
 
 export function readText(file) {
@@ -74,17 +74,6 @@ export function listFiles(dir) {
 export function concreteUnsafeFindings(value, pathLabel = 'value') {
   const text = String(value || '');
   if (!text) return [];
-  const safeInternalLabels = new Set([
-    'npm_skip_not_allowed_for_product_change',
-    'product_verification_evidence_missing',
-    'product_verification_required',
-    'remote_product_baseline_missing',
-    'remote_product_baseline_failing',
-    'remote_product_baseline_not_required',
-    'runtime_claim_requires_product_checks',
-  ]);
-  const internalLabelPath = /(?:^|\.)(?:reasonCodes\[\d+\]|reasonCode|status|id)$/.test(pathLabel);
-  if (internalLabelPath && safeInternalLabels.has(text)) return [];
   const rules = [
     ['unsafe_value_detected', /\b(?:https?|postgres(?:ql)?|mysql|mongodb):\/\/[^\s<>"'`]+/i],
     ['unsafe_value_detected', /\b(?:gh[pousr]_|sk-|AKIA|glpat-|npm_|xox[baprs]-)[A-Za-z0-9_-]{8,}\b/],
