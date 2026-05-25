@@ -482,7 +482,7 @@ export class TokenBalanceService {
     /**
      * Get token balance with automatic failover
      */
-    async getTokenBalance(walletAddress: string): Promise<number> {
+    async getTokenBalance(walletAddress: string): Promise<bigint> {
         // Try QuickNode first
         if (this.quickNode.isServiceAvailable() && this.failureCount < this.MAX_FAILURES) {
             try {
@@ -495,7 +495,10 @@ export class TokenBalanceService {
                     await alertQuickNodeRestored();
                 }
                 
-                return Number(balance);
+                if (balance === null) {
+                    throw new Error('QuickNode returned empty token balance');
+                }
+                return balance;
             } catch (error) {
                 safeLogWarn('quicknode_balance_fallback_to_etherscan', error, {
                     walletAddressPrefix: walletAddress.slice(0, 10)
@@ -531,7 +534,10 @@ export class TokenBalanceService {
         if (this.isInFallbackMode) {
         }
         const balance = await this.etherscan.getTokenBalance(walletAddress);
-        return Number(balance);
+        if (balance === null) {
+            throw new Error('Etherscan returned empty token balance');
+        }
+        return balance;
     }
 
     /**

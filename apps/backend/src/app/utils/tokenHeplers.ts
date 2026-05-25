@@ -88,20 +88,20 @@ export const calculateTokenQuantity = async (ca: string, price: number): Promise
     return 0;
 };
 
-export const fetchTokenBalance = async (ca: string): Promise<number> => {
+export const fetchTokenBalance = async (ca: string): Promise<bigint> => {
     try {
         // eslint-disable-next-line @typescript-eslint/no-unsafe-return
         if (!adminWalletAddress) {
             throw new Error('Admin wallet address is not defined');
         }
         const balance = await getTokenBalance(adminWalletAddress, ca);
-        if (typeof balance !== 'number') {
-            throw new Error('Token balance is not a number');
+        if (typeof balance !== 'bigint') {
+            throw new Error('Token balance is not an integer');
         }
         return balance;
     } catch (error) {
         safeLogError('fetch_token_balance', error);
-        return 0.0;
+        return 0n;
     }
 };
 

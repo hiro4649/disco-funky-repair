@@ -9,7 +9,7 @@ import { fetchJsonWithTimeout } from "../utils/externalCallTimeout";
 async function getTokenBalance(
   walletAddress: string,
   tokenAddress?: string
-): Promise<number> {
+): Promise<bigint> {
   if (!walletAddress) {
     throw new Error("Wallet address is required");
   }
@@ -32,8 +32,12 @@ async function getTokenBalance(
         throw new Error(data.result || "Etherscan returned error");
     }
 
-    // result is string (wei units)
-    return Number(data.result);
+    const rawBalance = typeof data.result === "string" ? data.result.trim() : String(data.result ?? "");
+    if (!/^\d+$/.test(rawBalance)) {
+      throw new Error("Etherscan returned invalid token balance");
+    }
+
+    return BigInt(rawBalance);
 
   } catch (err) {
     safeLogError("get_token_balance", err, {
