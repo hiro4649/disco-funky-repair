@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { PrismaClient } from '@prisma/client';
+import prisma from '../db/prisma_client';
 import moment from 'moment';
 import { generateRandomCode } from '../utils/ticketCodeGenerator';
 import { Authenticate, AuthAdmin } from '../config/passport';
@@ -7,7 +7,6 @@ import { safeLogError } from '../utils/safeLogger';
 import { distributeReferralRewardOnce } from '../services/snapshot.service';
 
 const router = Router();
-const prisma = new PrismaClient();
 
 type AuthenticatedUser = {
   user_id?: number;

@@ -13,13 +13,12 @@
  */
 
 import { ethers } from 'ethers';
-import { PrismaClient } from '@prisma/client';
+import prisma from '../db/prisma_client';
 import { processUserRealtime } from './realtimeHoldingDateUpdater';
 import { alertWebSocketDisconnected, alertWebSocketReconnected } from './discordAlerts';
 import { CHAIN_NAME, QUICKNODE_WS_RPC_URL, TOKEN_CONTRACT_ADDRESS } from '../config/env';
 import { safeLogError, safeLogWarn, sanitizeLogText } from '../utils/safeLogger';
 
-const prisma = new PrismaClient();
 
 // Minimal ERC20 ABI for Transfer event
 const TOKEN_ABI = [

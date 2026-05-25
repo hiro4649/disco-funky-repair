@@ -1,5 +1,5 @@
 import { Request, Response } from 'express';
-import { PrismaClient } from '@prisma/client';
+import prisma from '../db/prisma_client';
 import moment from 'moment';
 import fs from 'fs';
 import { promises as fsPromises } from 'fs';
@@ -7,7 +7,6 @@ import lighthouse from '@lighthouse-web3/sdk';
 import { NFT_STORAGE_ENDPOINT, NFT_STORAGE_API_KEY } from '../config/env';
 import { safeLogError } from '../utils/safeLogger';
 
-const prisma = new PrismaClient();
 
 export class TrialNftTemplateController {
     /**

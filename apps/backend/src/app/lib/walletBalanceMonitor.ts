@@ -12,7 +12,7 @@
  */
 
 import { ethers } from 'ethers';
-import { PrismaClient } from '@prisma/client';
+import prisma from '../db/prisma_client';
 import {
     alertBalanceCritical,
     alertBalanceWarning,
@@ -22,7 +22,6 @@ import {
 import { safeLogError, safeLogWarn } from '../utils/safeLogger';
 import { withRpcReadTimeout } from '../utils/externalCallTimeout';
 
-const prisma = new PrismaClient();
 
 const QUICKNODE_HTTP_RPC_URL = process.env.QUICKNODE_HTTP_RPC_URL || '';
 const ADMIN_PRIVATE_KEY = process.env.ADMIN_PRIVATE_KEY || '';

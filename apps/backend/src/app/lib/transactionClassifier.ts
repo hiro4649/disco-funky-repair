@@ -20,9 +20,8 @@
  * - Distinguishes between trading and liquidity provision
  */
 
-import { PrismaClient } from '@prisma/client';
+import prisma from '../db/prisma_client';
 
-const prisma = new PrismaClient();
 
 // Known contract addresses (lowercase)
 const KNOWN_ADDRESSES = {

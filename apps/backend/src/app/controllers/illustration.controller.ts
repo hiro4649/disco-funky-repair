@@ -1,12 +1,11 @@
 import { Request, Response } from 'express';
-import { PrismaClient } from '@prisma/client';
+import prisma from '../db/prisma_client';
 import { randomInt } from 'crypto';
 import moment from 'moment';
 import getDiscoNFTEVM from '../lib/getDiscoNFTEVM';
 import { getTrialNFTBonusPoints } from '../lib/trialNftService';
 import { safeLogError } from '../utils/safeLogger';
 
-const prisma = new PrismaClient();
 
 class DrawIllustrationError extends Error {
     constructor(public statusCode: number, message: string) {

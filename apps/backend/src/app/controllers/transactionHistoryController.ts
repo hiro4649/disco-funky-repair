@@ -6,14 +6,13 @@
  */
 
 import { Request, Response } from 'express';
-import { PrismaClient } from '@prisma/client';
+import prisma from '../db/prisma_client';
 import {
     getUserTransactionHistory,
     explainHoldingDateCalculation
 } from '../lib/enhancedHoldingDateProcessor';
 import { safeLogError } from '../utils/safeLogger';
 
-const prisma = new PrismaClient();
 
 type AuthenticatedUser = {
     user_id?: number;

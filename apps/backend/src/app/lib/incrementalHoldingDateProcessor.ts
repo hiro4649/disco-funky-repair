@@ -15,13 +15,12 @@
  * - Automatic priority adjustment based on usage patterns
  */
 
-import { PrismaClient } from '@prisma/client';
+import prisma from '../db/prisma_client';
 import moment from 'moment';
 import { ETHERSCAN_API_KEY, ETHERSCAN_API_URL as CONFIGURED_ETHERSCAN_API_URL, TOKEN_CONTRACT_ADDRESS } from '../config/env';
 import { safeLogError } from '../utils/safeLogger';
 import { fetchJsonWithTimeout } from '../utils/externalCallTimeout';
 
-const prisma = new PrismaClient();
 
 const ETHERSCAN_API_URL = CONFIGURED_ETHERSCAN_API_URL || (process.env.NODE_ENV === 'production' ? '' : 'https://api.bscscan.com/api?');
 

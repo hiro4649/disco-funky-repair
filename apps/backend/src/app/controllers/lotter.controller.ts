@@ -1,11 +1,10 @@
 import { Request, Response } from 'express';
-import { PrismaClient } from '@prisma/client';
+import prisma from '../db/prisma_client';
 import getDiscoNFTEVM from '../lib/getDiscoNFTEVM';
 import moment from 'moment';
 import { isSixHourUpdateRunning } from '../lib/trackingTokenBalanceEthereum';
 import { safeLogError, safeLogWarn } from '../utils/safeLogger';
 
-const prisma = new PrismaClient();
 
 type AuthenticatedLotteryUser = {
     user_id?: number;

@@ -1,8 +1,7 @@
 import { Request, Response } from 'express';
-import { PrismaClient } from '@prisma/client';
+import prisma from '../db/prisma_client';
 import { safeLogError } from '../utils/safeLogger';
 // import { setupDynamicCron } from '../services/trackingService';
-const prisma = new PrismaClient();
 
 export class SetTicketDistributeController {
     // Create new ticket distribution setting
