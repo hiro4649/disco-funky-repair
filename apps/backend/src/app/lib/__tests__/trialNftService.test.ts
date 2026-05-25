@@ -39,7 +39,7 @@ jest.mock('../../utils/safeLogger', () => ({
 }));
 
 import { Prisma } from '@prisma/client';
-import { claimTrialNFT, processDailyNFTHolderBonus } from '../trialNftService';
+import { claimTrialNFT, expireOldTrialNFTs, processDailyNFTHolderBonus } from '../trialNftService';
 import getDiscoNFTEVM from '../getDiscoNFTEVM';
 import { safeLogError } from '../../utils/safeLogger';
 
@@ -235,6 +235,8 @@ describe('trialNftService.claimTrialNFT claim safety', () => {
 
     expect(scheduler).toContain("safeLogError('trial_nft_daily_bonus_scheduler'");
     expect(scheduler).toContain("safeLogError('trial_nft_expiration_scheduler'");
+    expect(scheduler).toContain("withPostgresAdvisoryJobLock(");
+    expect(scheduler).toContain("'trial_nft_expiration_daily'");
   });
 });
 
@@ -414,5 +416,28 @@ describe('trialNftService.processDailyNFTHolderBonus idempotency', () => {
     expect(safeLogError).toHaveBeenCalledWith('trial_nft_daily_bonus_user', expect.any(Error), {
       userId: 1
     });
+  });
+});
+
+describe('trialNftService.expireOldTrialNFTs advisory lock transaction support', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+  });
+
+  it('uses the provided transaction client when expiring rows under a scheduler lock', async () => {
+    const transactionClient = {
+      trialNft: {
+        findMany: jest.fn().mockResolvedValue([{ id: 501 }]),
+        updateMany: jest.fn().mockResolvedValue({ count: 1 })
+      }
+    };
+
+    const result = await expireOldTrialNFTs(transactionClient as any);
+
+    expect(result).toBe(1);
+    expect(transactionClient.trialNft.findMany).toHaveBeenCalledTimes(1);
+    expect(transactionClient.trialNft.updateMany).toHaveBeenCalledTimes(1);
+    expect(mockPrisma.trialNft.findMany).not.toHaveBeenCalled();
+    expect(mockPrisma.trialNft.updateMany).not.toHaveBeenCalled();
   });
 });
