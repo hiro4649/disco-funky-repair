@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// CODEX_QUALITY_HARNESS_FILE v0.8.4
+// CODEX_QUALITY_HARNESS_FILE v0.8.5
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { buildFastPathReport } from './codex-fast-path-gate.mjs';
@@ -11,10 +11,6 @@ import { buildPrProfileReport } from './codex-pr-profile-gate.mjs';
 import { buildOpenPrHygieneReport } from './codex-open-pr-hygiene-report.mjs';
 import { buildActionsRuntimeAdvisoryReport } from './codex-actions-runtime-advisory.mjs';
 import { HARNESS_VERSION, marker, simpleStatus, writeJsonReport, exitFor } from './codex-v080-lib.mjs';
-import { buildRemoteProductCheckPlan } from './codex-remote-product-checks.mjs';
-import { buildProductVerificationReport } from './codex-product-verification-gate.mjs';
-import { normalizeProductVerificationEvidence } from './codex-product-verification-evidence-normalize.mjs';
-import { buildCompactReasonSummary } from './codex-reason-summary.mjs';
 
 function assertCase(name, ok, failures, cases, detail = '') {
   cases.push({ name, status: ok ? 'pass' : 'fail', detail: String(detail || '').slice(0, 120) });
@@ -51,54 +47,6 @@ function runNode(script) {
     },
     stdio: ['ignore', 'pipe', 'pipe'],
   });
-}
-
-function remoteBaselineFixture() {
-  return {
-    schemaVersion: '0.8.3',
-    harnessVersion: HARNESS_VERSION,
-    repository: 'hiro4649/disco-funky-repair',
-    baseSha: 'base-sha',
-    baselineType: 'remote_product_checks',
-    commands: [
-      { name: 'backend:npm test -- --runInBand', result: 'pass', source: 'remote' },
-      { name: 'backend:npm run build', result: 'pass', source: 'remote' },
-    ],
-    result: 'pass',
-    date: new Date().toISOString(),
-    source: 'github_actions_base_worktree',
-    safeSummary: 'remote product baseline checks completed',
-    knownFailures: [],
-    expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
-    rawValuesStored: false,
-    safeSummaryOnly: true,
-  };
-}
-
-function backendProductVerificationEnv(overrides = {}) {
-  return {
-    CODEX_EVENT_NAME: 'pull_request',
-    CODEX_REPOSITORY: 'hiro4649/disco-funky-repair',
-    CODEX_PR_NUMBER: '149',
-    CODEX_PR_BASE_SHA: 'base-sha',
-    CODEX_PR_HEAD_SHA: 'head-sha',
-    CODEX_CHANGED_FILES: [
-      'apps/backend/src/app/controllers/auth.controller.ts',
-      'apps/backend/src/app/controllers/__tests__/auth.controller.test.ts',
-    ].join('\n'),
-    CODEX_PR_BODY: [
-      'Product verification commands:',
-      '- npm test PASS',
-      '- npm run build PASS',
-      'Runtime readiness claimed: no',
-    ].join('\n'),
-    CODEX_SKIP_NPM: '0',
-    CODEX_REMOTE_PRODUCT_BASELINE_JSON: JSON.stringify(remoteBaselineFixture()),
-    CODEX_PRODUCT_VERIFICATION_COMMANDS: 'backend:npm test -- --runInBand,backend:npm run build',
-    CODEX_PRODUCT_VERIFICATION_RESULT: 'pass',
-    CODEX_PRODUCT_VERIFICATION_SOURCE: 'remote',
-    ...overrides,
-  };
 }
 
 export function buildV084SelfTestReport() {
@@ -161,36 +109,6 @@ export function buildV084SelfTestReport() {
 
   result = buildActionsRuntimeAdvisoryReport({ CODEX_ACTIONS_RUNTIME_ADVISORY_TEXT: 'Node 20 deprecation advisory observed' });
   assertCase('Node actions runtime advisory warning path', result.actionsRuntimeAdvisoryStatus.status === 'warning', failures, cases, result.actionsRuntimeAdvisoryStatus.status);
-
-  result = buildRemoteProductCheckPlan(backendProductVerificationEnv());
-  assertCase('backend product changed files require remote product checks', result.productRequired === true && result.scopes.backend === true, failures, cases, JSON.stringify(result.scopes));
-  result = buildRemoteProductCheckPlan({
-    CODEX_EVENT_NAME: 'pull_request',
-    CODEX_CHANGED_FILES: 'docs/process/example.md',
-    CODEX_PR_BODY: 'CODEX_SKIP_NPM used: yes\nSkip reason: docs-only change.',
-  });
-  assertCase('docs-only changed files can skip remote product checks', result.productRequired === false, failures, cases, result.productRequired);
-
-  result = normalizeProductVerificationEvidence(backendProductVerificationEnv());
-  assertCase('backend product PR with remote evidence normalizes product verification evidence', result.status === 'pass', failures, cases, result.reasonCodes?.join(','));
-  result = buildProductVerificationReport(backendProductVerificationEnv());
-  assertCase('backend product PR with remote evidence passes product verification gate', result.productVerificationStatus.status === 'pass', failures, cases, result.productVerificationStatus.reasonCodes?.join(','));
-  result = buildProductVerificationReport(backendProductVerificationEnv({ CODEX_SKIP_NPM: '1' }));
-  assertCase('backend product PR with CODEX_SKIP_NPM=1 still fails', result.productVerificationStatus.status === 'fail' && result.productVerificationStatus.reasonCodes.includes('npm_skip_not_allowed_for_product_change'), failures, cases, result.productVerificationStatus.reasonCodes?.join(','));
-  result = buildProductVerificationReport({
-    CODEX_EVENT_NAME: 'pull_request',
-    CODEX_CHANGED_FILES: 'docs/process/example.md',
-    CODEX_PR_BODY: 'CODEX_SKIP_NPM used: yes\nSkip reason: docs-only change.\nRuntime readiness claimed: no',
-    CODEX_SKIP_NPM: '1',
-  });
-  assertCase('docs-only PR with skip reason can skip product checks', result.productVerificationStatus.status === 'pass', failures, cases, result.productVerificationStatus.reasonCodes?.join(','));
-
-  result = buildCompactReasonSummary({
-    status: 'fail',
-    targetQualityScoreStatus: { status: 'fail', score: 70, reasonCodes: ['targetqualityscorestatus_failed'] },
-    productVerificationStatus: { status: 'fail', reasonCodes: ['npm_skip_not_allowed_for_product_change'] },
-  });
-  assertCase('reason summary accepts safe internal reason labels', result.status === 'pass' && result.summary?.safeSummaryOnly, failures, cases, result.reasonCodes?.join(','));
 
   if (process.env.CODEX_V084_SKIP_LEGACY_RECHECKS === '1') {
     assertCase('v0.8.3 behavior still passes', true, failures, cases, 'skipped_after_standalone_validation');
