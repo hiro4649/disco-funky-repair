@@ -7,6 +7,7 @@ import { safeLogError, safeLogWarn } from '../utils/safeLogger';
 
 const prisma = new PrismaClient();
 const REFERRAL_REWARD_POINTS = 100;
+const REFERRAL_MIN_TOKEN_BALANCE_BASE_UNITS = 10000n * (10n ** 9n);
 
 type ReferralRewardDistributionResult =
   | { status: 'distributed'; rewardAmount: number }
@@ -146,11 +147,10 @@ export class SnapshotService {
 
           // Get actual FUNKY token balance from the configured token contract.
           const tokenBalance = await getTokenBalance(user.wallet_address, TOKEN_CONTRACT_ADDRESS);
-          const balanceInTokens = Number(tokenBalance) / Math.pow(10, 9); // Convert from smallest unit to tokens (assuming 9 decimals)
           
           
           // Check if referred user has held 10k+ DISCO tokens for 24+ hours
-          if (balanceInTokens >= 10000 && user.holdingDate >= 1) {
+          if (tokenBalance >= REFERRAL_MIN_TOKEN_BALANCE_BASE_UNITS && user.holdingDate >= 1) {
             // Update as verified
             await prisma.referralRewards.update({
               where: { id: referral.id },

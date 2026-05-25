@@ -1,7 +1,6 @@
 ﻿import prisma from '../db/prisma_client';
 import { Prisma } from '@prisma/client';
 import moment from 'moment';
-import displayEthereumBalance from './displayEthereumBalance';
 import { TOKEN_CONTRACT_ADDRESS, ETHERSCAN_API_KEY, ETHERSCAN_API_URL } from '../config/env';
 import { etherscanRateLimiter } from '../utils/rateLimiter';
 import { tokenBalanceService } from './quicknodeRpcService';
@@ -120,6 +119,126 @@ const handleUserTickets = async (userId: number, ticketCount: number) => {
 };
 
 const MS_IN_DAY = 1000 * 60 * 60 * 24;
+const DEFAULT_TOKEN_DECIMALS = 18;
+const MAX_INT_FIELD_VALUE = 2147483647;
+
+type FifoPurchase = {
+    timestamp: number;
+    amountBaseUnits: bigint;
+    amount: string;
+    hash: string;
+    tokenDecimal: number;
+};
+
+type FifoSale = {
+    timestamp: number;
+    amountBaseUnits: bigint;
+    tokenDecimal: number;
+};
+
+const parseTokenDecimals = (rawDecimals: unknown): number => {
+    const decimals = parseInt(String(rawDecimals ?? DEFAULT_TOKEN_DECIMALS), 10);
+    if (!Number.isInteger(decimals) || decimals < 0 || decimals > 77) {
+        return DEFAULT_TOKEN_DECIMALS;
+    }
+    return decimals;
+};
+
+const parseBaseUnitValue = (rawValue: unknown): bigint => {
+    const normalized = String(rawValue ?? '0').trim();
+    if (!/^\d+$/.test(normalized)) {
+        return 0n;
+    }
+    return BigInt(normalized);
+};
+
+const tokenDecimalsFactor = (decimals: number): bigint => (
+    10n ** BigInt(parseTokenDecimals(decimals))
+);
+
+const tokenBaseUnitsToDecimalString = (
+    amountBaseUnits: bigint,
+    decimals: number = DEFAULT_TOKEN_DECIMALS
+): string => {
+    const safeDecimals = parseTokenDecimals(decimals);
+    const sign = amountBaseUnits < 0n ? '-' : '';
+    const absoluteAmount = amountBaseUnits < 0n ? -amountBaseUnits : amountBaseUnits;
+    const amountText = absoluteAmount.toString();
+
+    if (safeDecimals === 0) {
+        return `${sign}${amountText}`;
+    }
+
+    if (amountText.length <= safeDecimals) {
+        const fraction = amountText.padStart(safeDecimals, '0').replace(/0+$/, '');
+        return fraction ? `${sign}0.${fraction}` : '0';
+    }
+
+    const whole = amountText.slice(0, -safeDecimals);
+    const fraction = amountText.slice(-safeDecimals).replace(/0+$/, '');
+    return fraction ? `${sign}${whole}.${fraction}` : `${sign}${whole}`;
+};
+
+const tokenBaseUnitsToNumber = (
+    amountBaseUnits: bigint,
+    decimals: number = DEFAULT_TOKEN_DECIMALS
+): number => {
+    const decimalText = tokenBaseUnitsToDecimalString(amountBaseUnits, decimals);
+    return Number(decimalText);
+};
+
+const tokenWholeUnitsToBaseUnits = (
+    amountTokens: number,
+    decimals: number = DEFAULT_TOKEN_DECIMALS
+): bigint => {
+    if (!Number.isSafeInteger(amountTokens) || amountTokens <= 0) {
+        return 0n;
+    }
+    return BigInt(amountTokens) * tokenDecimalsFactor(decimals);
+};
+
+const tokenNumberToBaseUnits = (
+    amountTokens: number,
+    decimals: number = DEFAULT_TOKEN_DECIMALS
+): bigint => {
+    if (!Number.isFinite(amountTokens) || amountTokens <= 0) {
+        return 0n;
+    }
+
+    const fixed = amountTokens.toFixed(Math.min(parseTokenDecimals(decimals), 18));
+    const [whole, fraction = ''] = fixed.split('.');
+    const safeDecimals = parseTokenDecimals(decimals);
+    const paddedFraction = fraction.padEnd(safeDecimals, '0').slice(0, safeDecimals);
+    return BigInt(`${whole}${paddedFraction}`.replace(/^0+(?=\d)/, '') || '0');
+};
+
+const weightedAverageMinutesFromBaseUnits = (
+    weightedMinutesNumerator: bigint,
+    totalAmountBaseUnits: bigint
+): number => {
+    if (totalAmountBaseUnits <= 0n) {
+        return 0;
+    }
+
+    const wholeMinutes = weightedMinutesNumerator / totalAmountBaseUnits;
+    const remainder = weightedMinutesNumerator % totalAmountBaseUnits;
+    const fractionalMicros = (remainder * 1_000_000n) / totalAmountBaseUnits;
+    return Number(wholeMinutes) + Number(fractionalMicros) / 1_000_000;
+};
+
+const safeTicketCountFromBaseUnits = (
+    amountBaseUnits: bigint,
+    thresholdBaseUnits: bigint
+): number => {
+    if (thresholdBaseUnits <= 0n) {
+        return 0;
+    }
+
+    const ticketCount = amountBaseUnits / thresholdBaseUnits;
+    return ticketCount > BigInt(MAX_INT_FIELD_VALUE)
+        ? MAX_INT_FIELD_VALUE
+        : Number(ticketCount);
+};
 
 // Helper function to get token transactions using QuickNode RPC (with Etherscan fallback)
 const getTokenTransactions = async (walletAddress: string, tokenAddress: string, hours: number = 24) => {
@@ -224,20 +343,24 @@ const calculateHoldingDaysFromHistory = (transactions: any[], thresholdAmount: n
 };
 
 // Calculate minimum balance by analyzing transaction flow
-const calculateMinimumBalance = (currentBalance: number, transactions: any[], walletAddress: string) => {
-    let minBalance = currentBalance;
-    let runningBalance = currentBalance;
+export const calculateMinimumBalance = (
+    currentBalanceBaseUnits: bigint,
+    transactions: any[],
+    walletAddress: string
+): bigint => {
+    let minBalance = currentBalanceBaseUnits;
+    let runningBalance = currentBalanceBaseUnits;
 
     // Sort transactions by timestamp (newest first)
     const sortedTransactions = transactions.sort((a, b) => parseInt(b.timeStamp) - parseInt(a.timeStamp));
 
     // If no transactions, the minimum balance is the current balance at the current time
     if (sortedTransactions.length === 0) {
-        return Math.max(0, currentBalance);
+        return currentBalanceBaseUnits > 0n ? currentBalanceBaseUnits : 0n;
     }
 
     for (const tx of sortedTransactions) {
-        const value = parseFloat(tx.value) / Math.pow(10, parseInt(tx.tokenDecimal));
+        const value = parseBaseUnitValue(tx.value);
 
         if (tx.from.toLowerCase() === tx.to.toLowerCase()) {
             // Skip self-transfers
@@ -260,7 +383,7 @@ const calculateMinimumBalance = (currentBalance: number, transactions: any[], wa
         }
     }
 
-    return Math.max(0, minBalance);
+    return minBalance > 0n ? minBalance : 0n;
 };
 
 // Global flag to track if six-hour update is in progress
@@ -300,9 +423,8 @@ export const processSixHourTokenBalance = async () => {
             users.map(async (user: any, index: number) => {
                 try {
                     // Get current balance of user using QuickNode RPC (with Etherscan fallback)
-                    const tokenBalance = await tokenBalanceService.getTokenBalance(user.wallet_address);
-                    // Convert balance to human readable format with 18 decimals
-                    const currentBalance = Number(displayEthereumBalance(tokenBalance, 18));
+                    const tokenBalanceBaseUnits = await tokenBalanceService.getTokenBalance(user.wallet_address);
+                    const currentBalance = tokenBaseUnitsToNumber(tokenBalanceBaseUnits, DEFAULT_TOKEN_DECIMALS);
 
                     const holdData = await prisma.ownedToken.findUnique({
                         where: { userId: user.id },
@@ -317,15 +439,28 @@ export const processSixHourTokenBalance = async () => {
                         // 2. Get all transactions for last 24 hours
                         const transactions = await getTokenTransactions(user.wallet_address, TOKEN_CONTRACT_ADDRESS, 24);
                         // 3. Calculate minimum balance by analyzing transaction flow
-                        const minBalance = calculateMinimumBalance(currentBalance, transactions, user.wallet_address);
+                        const minBalanceBaseUnits = calculateMinimumBalance(
+                            tokenBalanceBaseUnits,
+                            transactions,
+                            user.wallet_address
+                        );
+                        const minBalance = tokenBaseUnitsToNumber(minBalanceBaseUnits, DEFAULT_TOKEN_DECIMALS);
+                        const requiredAirdropBaseUnits = tokenWholeUnitsToBaseUnits(
+                            airdropDiscoAmount,
+                            DEFAULT_TOKEN_DECIMALS
+                        );
 
                         let tallyTokenBalance = holdData?.tallyTokenBalance ?? 0;
 
                         // 5. Update user's holding date if they have minimum required balance
-                        if (minBalance >= airdropDiscoAmount) {
+                        if (requiredAirdropBaseUnits > 0n && minBalanceBaseUnits >= requiredAirdropBaseUnits) {
 
                             const heldAmount = user.held_amount + minBalance;
-                            if (tallyTokenBalance !== minBalance) {
+                            const tallyTokenBalanceBaseUnits = tokenNumberToBaseUnits(
+                                tallyTokenBalance,
+                                DEFAULT_TOKEN_DECIMALS
+                            );
+                            if (tallyTokenBalanceBaseUnits !== minBalanceBaseUnits) {
                                 await prisma.user.update({
                                     where: { id: user.id },
                                     data: {
@@ -366,8 +501,19 @@ export const processSixHourTokenBalance = async () => {
                         }
 
                         // 6. Calculate and distribute tickets based on minimum balance
-                        if (minBalance >= airdropDiscoAmount && tallyTokenBalance >= airdropDiscoAmount) {
-                            const ticketCount = Math.floor(minBalance / airdropDiscoAmount);
+                        const tallyTokenBalanceBaseUnits = tokenNumberToBaseUnits(
+                            tallyTokenBalance,
+                            DEFAULT_TOKEN_DECIMALS
+                        );
+                        if (
+                            requiredAirdropBaseUnits > 0n &&
+                            minBalanceBaseUnits >= requiredAirdropBaseUnits &&
+                            tallyTokenBalanceBaseUnits >= requiredAirdropBaseUnits
+                        ) {
+                            const ticketCount = safeTicketCountFromBaseUnits(
+                                minBalanceBaseUnits,
+                                requiredAirdropBaseUnits
+                            );
                             if (ticketCount > 0) {
                                 await handleUserTickets(user.id, ticketCount);
                                 const now = moment.utc().toDate();
@@ -536,8 +682,8 @@ export const processWeeklyBonus = async () => {
             users.map(async (user: any, index: number) => {
                 try {
                     // Get current balance using QuickNode RPC (with Etherscan fallback)
-                    const tokenBalance = await tokenBalanceService.getTokenBalance(user.wallet_address);
-                    const currentBalance = Number(displayEthereumBalance(tokenBalance, 18));
+                    const tokenBalanceBaseUnits = await tokenBalanceService.getTokenBalance(user.wallet_address);
+                    const currentBalance = tokenBaseUnitsToNumber(tokenBalanceBaseUnits, DEFAULT_TOKEN_DECIMALS);
 
                     // Get existing token record
                     const existingToken = await prisma.ownedToken.findFirst({
@@ -623,32 +769,38 @@ export const processWeeklyBonus = async () => {
 
 // Apply FIFO (First In First Out) method to reduce purchases by sales
 // Returns array of remaining purchases after applying all sales
-const applyFIFOReduction = (purchases: any[], sales: any[], walletAddress: string) => {
-    if (!purchases.length || !sales.length) {
-        return purchases; // No sales to apply
+export const applyFIFOReduction = (purchases: any[], sales: any[], walletAddress: string): FifoPurchase[] => {
+    if (!purchases.length) {
+        return [];
     }
 
-    const walletLower = walletAddress.toLowerCase();
-
     // Sort purchases by timestamp (oldest first)
-    const sortedPurchases = purchases
+    const sortedPurchases: FifoPurchase[] = purchases
         .map((tx: any) => {
-            const decimals = parseInt(tx.tokenDecimal || '18', 10);
+            const decimals = parseTokenDecimals(tx.tokenDecimal);
+            const amountBaseUnits = parseBaseUnitValue(tx.value);
             return {
                 ...tx,
-                amount: parseFloat(tx.value) / Math.pow(10, decimals),
+                amountBaseUnits,
+                amount: tokenBaseUnitsToDecimalString(amountBaseUnits, decimals),
+                tokenDecimal: decimals,
                 timestamp: parseInt(tx.timeStamp, 10)
             };
         })
         .sort((a: any, b: any) => a.timestamp - b.timestamp);
 
+    if (!sales.length) {
+        return sortedPurchases;
+    }
+
     // Sort sales by timestamp (oldest first)
-    const sortedSales = sales
+    const sortedSales: FifoSale[] = sales
         .map((tx: any) => {
-            const decimals = parseInt(tx.tokenDecimal || '18', 10);
+            const decimals = parseTokenDecimals(tx.tokenDecimal);
             return {
                 ...tx,
-                amount: parseFloat(tx.value) / Math.pow(10, decimals),
+                amountBaseUnits: parseBaseUnitValue(tx.value),
+                tokenDecimal: decimals,
                 timestamp: parseInt(tx.timeStamp, 10)
             };
         })
@@ -660,38 +812,43 @@ const applyFIFOReduction = (purchases: any[], sales: any[], walletAddress: strin
     let currentPurchase = { ...sortedPurchases[0] };
 
     for (const sale of sortedSales) {
-        let remainingSaleAmount = sale.amount;
+        let remainingSaleAmount = sale.amountBaseUnits;
 
-        while (remainingSaleAmount > 0 && purchaseIndex < sortedPurchases.length) {
-            if (!currentPurchase || currentPurchase.amount === 0) {
+        while (remainingSaleAmount > 0n && purchaseIndex < sortedPurchases.length) {
+            if (!currentPurchase || currentPurchase.amountBaseUnits === 0n) {
                 purchaseIndex++;
                 if (purchaseIndex >= sortedPurchases.length) break;
                 currentPurchase = { ...sortedPurchases[purchaseIndex] };
             }
 
-            if (currentPurchase.amount <= remainingSaleAmount) {
+            if (currentPurchase.amountBaseUnits <= remainingSaleAmount) {
                 // This purchase is fully consumed by the sale
-                remainingSaleAmount -= currentPurchase.amount;
-                currentPurchase.amount = 0;
+                remainingSaleAmount -= currentPurchase.amountBaseUnits;
+                currentPurchase.amountBaseUnits = 0n;
+                currentPurchase.amount = '0';
                 purchaseIndex++;
                 if (purchaseIndex < sortedPurchases.length) {
                     currentPurchase = { ...sortedPurchases[purchaseIndex] };
                 }
             } else {
                 // Partial reduction of this purchase
-                currentPurchase.amount -= remainingSaleAmount;
-                remainingSaleAmount = 0;
+                currentPurchase.amountBaseUnits -= remainingSaleAmount;
+                currentPurchase.amount = tokenBaseUnitsToDecimalString(
+                    currentPurchase.amountBaseUnits,
+                    currentPurchase.tokenDecimal
+                );
+                remainingSaleAmount = 0n;
             }
         }
     }
 
     // Collect remaining purchases (those not fully consumed)
-    if (currentPurchase && currentPurchase.amount > 0) {
+    if (currentPurchase && currentPurchase.amountBaseUnits > 0n) {
         remainingPurchases.push(currentPurchase);
     }
 
     for (let i = purchaseIndex + 1; i < sortedPurchases.length; i++) {
-        if (sortedPurchases[i].amount > 0) {
+        if (sortedPurchases[i].amountBaseUnits > 0n) {
             remainingPurchases.push(sortedPurchases[i]);
         }
     }
@@ -701,7 +858,7 @@ const applyFIFOReduction = (purchases: any[], sales: any[], walletAddress: strin
 
 // Calculate weighted average holding date (in days with decimal precision)
 // Now uses FIFO-adjusted purchases
-const calculateWeightedAverageHoldingDate = (
+export const calculateWeightedAverageHoldingDate = (
     allTransactions: any[],
     walletAddress: string,
     currentTimeMs: number
@@ -737,24 +894,27 @@ const calculateWeightedAverageHoldingDate = (
     }
 
     // Calculate weighted average on FIFO-adjusted amounts
-    let totalWeightedMinutes = 0;
-    let totalAmount = 0;
+    let totalWeightedMinutes = 0n;
+    let totalAmountBaseUnits = 0n;
 
     for (const purchase of fifoAdjustedPurchases) {
         const purchaseTimeMs = purchase.timestamp * 1000;
         const minutesHeld = Math.floor((currentTimeMs - purchaseTimeMs) / (1000 * 60));
-        const amount = purchase.amount; // FIFO-adjusted amount
+        const amountBaseUnits = purchase.amountBaseUnits; // FIFO-adjusted amount
 
-        totalWeightedMinutes += amount * minutesHeld;
-        totalAmount += amount;
+        totalWeightedMinutes += amountBaseUnits * BigInt(Math.max(0, minutesHeld));
+        totalAmountBaseUnits += amountBaseUnits;
     }
 
-    if (totalAmount === 0) {
+    if (totalAmountBaseUnits === 0n) {
         return { averageDays: 0, fifoAdjustedPurchases: [] };
     }
 
     // Calculate average in minutes, then convert to days with decimal precision
-    const averageMinutes = totalWeightedMinutes / totalAmount;
+    const averageMinutes = weightedAverageMinutesFromBaseUnits(
+        totalWeightedMinutes,
+        totalAmountBaseUnits
+    );
     const averageDays = averageMinutes / (60 * 24);
 
     return { averageDays, fifoAdjustedPurchases };

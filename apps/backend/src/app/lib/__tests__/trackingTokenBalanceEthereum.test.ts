@@ -66,6 +66,8 @@ jest.mock('../../utils/safeLogger', () => ({
 }));
 
 import {
+  calculateMinimumBalance,
+  calculateWeightedAverageHoldingDate,
   checkingHoldingDateFromOnChain,
   persistHoldDateRecalculation
 } from '../trackingTokenBalanceEthereum';
@@ -137,6 +139,56 @@ const makeHistoryRow = (tx_hash: string) => ({
   tx_hash,
   purchase_amount: new Prisma.Decimal('1.25'),
   purchase_date: new Date('2026-05-24T00:00:00.000Z')
+});
+
+describe('token amount precision helpers', () => {
+  it('keeps minimum-balance transaction flow in bigint base units above Number.MAX_SAFE_INTEGER', () => {
+    const walletAddress = '0xUserWallet';
+    const minimumBalance = calculateMinimumBalance(
+      9007199254740993n,
+      [
+        {
+          from: '0xsender',
+          to: '0xuserwallet',
+          value: '9007199254740993',
+          tokenDecimal: '0',
+          timeStamp: '1779580800'
+        }
+      ],
+      walletAddress
+    );
+
+    expect(minimumBalance).toBe(0n);
+  });
+
+  it('applies FIFO reductions without parseFloat rounding token values', () => {
+    const currentTimeMs = new Date('2026-05-25T00:00:00.000Z').getTime();
+    const result = calculateWeightedAverageHoldingDate(
+      [
+        {
+          hash: '0xbig',
+          from: '0xsender',
+          to: '0xuserwallet',
+          value: '9007199254740993',
+          tokenDecimal: '0',
+          timeStamp: '1779580800'
+        },
+        {
+          hash: '0xsale',
+          from: '0xuserwallet',
+          to: '0xreceiver',
+          value: '1',
+          tokenDecimal: '0',
+          timeStamp: '1779580900'
+        }
+      ],
+      '0xUserWallet',
+      currentTimeMs
+    );
+
+    expect(result.fifoAdjustedPurchases).toHaveLength(1);
+    expect(result.fifoAdjustedPurchases[0].amount).toBe('9007199254740992');
+  });
 });
 
 describe('persistHoldDateRecalculation transaction safety', () => {
