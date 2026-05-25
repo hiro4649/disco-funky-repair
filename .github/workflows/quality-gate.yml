@@ -1,4 +1,4 @@
-# CODEX_QUALITY_HARNESS_FILE v0.8.4
+# CODEX_QUALITY_HARNESS_FILE v0.8.5
 name: quality-gate
 
 on:
@@ -40,25 +40,6 @@ jobs:
               (cd "$dir" && npm install --no-package-lock)
             fi
           done
-      - name: Prepare target product verification
-        if: github.event_name == 'pull_request'
-        shell: bash
-        env:
-          CODEX_EVENT_NAME: ${{ github.event_name }}
-          CODEX_PR_NUMBER: ${{ github.event.pull_request.number || '' }}
-          CODEX_PR_HEAD_SHA: ${{ github.event.pull_request.head.sha || '' }}
-          CODEX_PR_BASE_SHA: ${{ github.event.pull_request.base.sha || '' }}
-          CODEX_REPOSITORY: ${{ github.repository }}
-          GITHUB_TOKEN: ${{ github.token }}
-        run: |
-          set -euo pipefail
-          if [ -f CODEX_SOURCE_HARNESS_MANIFEST.json ]; then
-            echo "source harness mode; target product verification preparation skipped"
-          else
-            export CODEX_HARNESS_MODE=target
-            export CODEX_PROFILE_COMPAT_MODE=off
-            node scripts/codex-remote-product-checks.mjs
-          fi
       - name: Run Codex quality gate
         shell: bash
         env:
@@ -141,7 +122,4 @@ jobs:
             codex-safe-artifact-index.json
             codex-workflow-preflight.safe.json
             codex-test-metrics.safe.json
-            ${{ runner.temp }}/codex-remote-product-checks.safe.json
-            ${{ runner.temp }}/codex-remote-product-baseline.json
-            ${{ runner.temp }}/codex-product-verification-evidence.remote.json
           if-no-files-found: ignore
