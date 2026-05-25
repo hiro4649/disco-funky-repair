@@ -32,12 +32,13 @@ const distributeReferralRewardInTransaction = async (
   options: ReferralRewardDistributionOptions
 ): Promise<ReferralRewardDistributionResult> => {
   const updatedAt = moment.utc().toDate();
+  const expiresAfter = options.expiresAfter ?? updatedAt;
   const reservedReward = await tx.referralRewards.updateMany({
     where: {
       id: referralId,
       snapshot_verified: true,
       rewarded: false,
-      ...(options.expiresAfter ? { expires_at: { gt: options.expiresAfter } } : {})
+      expires_at: { gt: expiresAfter }
     },
     data: {
       rewarded: true,
@@ -229,7 +230,8 @@ export class SnapshotService {
 
   /**
    * Clean up expired referrals
-   * This should be called daily to remove expired referral records
+   * This should be called daily to identify expired referral records without
+   * deleting the audit trail. Expiration is represented by expires_at <= now.
    */
   static async cleanupExpiredReferrals(): Promise<{
     cleanedCount: number;
@@ -237,27 +239,16 @@ export class SnapshotService {
     try {
 
       const now = moment.utc().toDate();
-      const expiredReferrals = await prisma.referralRewards.findMany({
+      const expiredReferralCount = await prisma.referralRewards.count({
         where: {
+          rewarded: false,
           expires_at: {
             lte: now // Referrals that have expired
           }
         }
       });
 
-      let cleanedCount = 0;
-
-      for (const referral of expiredReferrals) {
-        // Delete expired referral records
-        await prisma.referralRewards.delete({
-          where: { id: referral.id }
-        });
-        
-        cleanedCount++;
-      }
-
-
-      return { cleanedCount };
+      return { cleanedCount: expiredReferralCount };
     } catch (error) {
       safeLogError('snapshot_cleanup_expired_referrals', error);
       throw error;

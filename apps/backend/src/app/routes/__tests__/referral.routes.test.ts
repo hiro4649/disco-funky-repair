@@ -236,6 +236,7 @@ describe('referral user routes authorization', () => {
     mockPrisma.referralRewards.count
       .mockResolvedValueOnce(3)
       .mockResolvedValueOnce(2)
+      .mockResolvedValueOnce(1)
       .mockResolvedValueOnce(1);
 
     const response = await request(createApp())
@@ -249,7 +250,17 @@ describe('referral user routes authorization', () => {
       totalRewards: 1,
       pendingRewards: 1
     });
-    expect(mockPrisma.referralRewards.count).toHaveBeenCalledTimes(3);
+    expect(mockPrisma.referralRewards.count).toHaveBeenCalledTimes(4);
+    expect(mockPrisma.referralRewards.count).toHaveBeenNthCalledWith(4, {
+      where: {
+        referrer_wallet: '0xuser',
+        snapshot_verified: true,
+        rewarded: false,
+        expires_at: {
+          gt: expect.any(Date)
+        }
+      }
+    });
   });
 
   it('does not read referral rewards without authentication', async () => {
@@ -355,7 +366,10 @@ describe('referral admin routes authorization', () => {
     expect(mockPrisma.referralRewards.findMany).toHaveBeenCalledWith({
       where: {
         snapshot_verified: false,
-        rewarded: false
+        rewarded: false,
+        expires_at: {
+          gt: expect.any(Date)
+        }
       },
       include: {
         referred: true
@@ -421,7 +435,10 @@ describe('referral admin routes authorization', () => {
     expect(mockPrisma.referralRewards.findMany).toHaveBeenCalledWith({
       where: {
         snapshot_verified: true,
-        rewarded: false
+        rewarded: false,
+        expires_at: {
+          gt: expect.any(Date)
+        }
       }
     });
     expect(mockPrisma.$transaction).toHaveBeenCalledTimes(1);
@@ -429,7 +446,10 @@ describe('referral admin routes authorization', () => {
       where: {
         id: 201,
         snapshot_verified: true,
-        rewarded: false
+        rewarded: false,
+        expires_at: {
+          gt: expect.any(Date)
+        }
       },
       data: expect.objectContaining({
         rewarded: true
@@ -546,7 +566,10 @@ describe('referral admin routes authorization', () => {
         where: {
           id: 203,
           snapshot_verified: true,
-          rewarded: false
+          rewarded: false,
+          expires_at: {
+            gt: expect.any(Date)
+          }
         },
         data: expect.objectContaining({
           rewarded: true
