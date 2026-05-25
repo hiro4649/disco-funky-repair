@@ -1,5 +1,6 @@
 import cron from 'node-cron';
 import { expireOldTrialNFTs, processDailyNFTHolderBonus } from './trialNftService';
+import { withPostgresAdvisoryJobLock } from './distributedJobLock';
 import { safeLogError } from '../utils/safeLogger';
 
 /**
@@ -58,7 +59,10 @@ export const startTrialNFTExpirationScheduler = () => {
     expirationScheduler = cron.schedule('0 0 * * *', async () => {
 
         try {
-            const expiredCount = await expireOldTrialNFTs();
+            await withPostgresAdvisoryJobLock(
+                'trial_nft_expiration_daily',
+                (tx) => expireOldTrialNFTs(tx)
+            );
 
         } catch (error) {
             safeLogError('trial_nft_expiration_scheduler', error);

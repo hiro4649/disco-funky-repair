@@ -363,12 +363,12 @@ export const claimTrialNFT = async (userId: number, templateId?: number): Promis
 /**
  * Expire trial NFTs that have passed their expiration date
  */
-export const expireOldTrialNFTs = async () => {
+export const expireOldTrialNFTs = async (client: TrialNftPrismaClient = prisma) => {
     try {
         const now = moment.utc().toDate();
 
         // Find all active trial NFTs that have expired
-        const expiredTrialNFTs = await prisma.trialNft.findMany({
+        const expiredTrialNFTs = await client.trialNft.findMany({
             where: {
                 isActive: true,
                 expiresAt: {
@@ -382,7 +382,7 @@ export const expireOldTrialNFTs = async () => {
         }
 
         // Mark them as inactive
-        const result = await prisma.trialNft.updateMany({
+        const result = await client.trialNft.updateMany({
             where: {
                 isActive: true,
                 expiresAt: {
