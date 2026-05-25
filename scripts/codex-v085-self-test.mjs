@@ -5,6 +5,10 @@ import { spawnSync } from 'node:child_process';
 import { HARNESS_VERSION, marker, simpleStatus, writeJsonReport, exitFor } from './codex-v080-lib.mjs';
 import { buildV085StabilityReport } from './codex-v085-stability-gate.mjs';
 import { buildFastPathReport } from './codex-fast-path-gate.mjs';
+import { buildRemoteProductCheckPlan } from './codex-remote-product-checks.mjs';
+import { buildProductVerificationReport } from './codex-product-verification-gate.mjs';
+import { normalizeProductVerificationEvidence } from './codex-product-verification-evidence-normalize.mjs';
+import { buildCompactReasonSummary } from './codex-reason-summary.mjs';
 
 function assertCase(name, ok, failures, cases, detail = '') {
   cases.push({ name, status: ok ? 'pass' : 'fail', detail: String(detail || '').slice(0, 120) });
@@ -49,6 +53,54 @@ function runNode(script) {
   });
 }
 
+function remoteBaselineFixture() {
+  return {
+    schemaVersion: '0.8.3',
+    harnessVersion: HARNESS_VERSION,
+    repository: 'hiro4649/disco-funky-repair',
+    baseSha: 'base-sha',
+    baselineType: 'remote_product_checks',
+    commands: [
+      { name: 'backend:npm test -- --runInBand', result: 'pass', source: 'remote' },
+      { name: 'backend:npm run build', result: 'pass', source: 'remote' },
+    ],
+    result: 'pass',
+    date: new Date().toISOString(),
+    source: 'github_actions_base_worktree',
+    safeSummary: 'remote product baseline checks completed',
+    knownFailures: [],
+    expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
+    rawValuesStored: false,
+    safeSummaryOnly: true,
+  };
+}
+
+function backendProductVerificationEnv(overrides = {}) {
+  return {
+    CODEX_EVENT_NAME: 'pull_request',
+    CODEX_REPOSITORY: 'hiro4649/disco-funky-repair',
+    CODEX_PR_NUMBER: '157',
+    CODEX_PR_BASE_SHA: 'base-sha',
+    CODEX_PR_HEAD_SHA: 'head-sha',
+    CODEX_CHANGED_FILES: [
+      'apps/backend/src/app/controllers/prize.controller.ts',
+      'apps/backend/src/app/lib/__tests__/prismaClientUsage.test.ts',
+    ].join('\n'),
+    CODEX_PR_BODY: [
+      'Product verification commands:',
+      '- npm test PASS',
+      '- npm run build PASS',
+      'Runtime readiness claimed: no',
+    ].join('\n'),
+    CODEX_SKIP_NPM: '0',
+    CODEX_REMOTE_PRODUCT_BASELINE_JSON: JSON.stringify(remoteBaselineFixture()),
+    CODEX_PRODUCT_VERIFICATION_COMMANDS: 'backend:npm test -- --runInBand,backend:npm run build',
+    CODEX_PRODUCT_VERIFICATION_RESULT: 'pass',
+    CODEX_PRODUCT_VERIFICATION_SOURCE: 'remote',
+    ...overrides,
+  };
+}
+
 export async function buildV085SelfTestReport() {
   const failures = [];
   const cases = [];
@@ -60,6 +112,7 @@ export async function buildV085SelfTestReport() {
   result = await runV085({
     CODEX_EVENT_NAME: 'pull_request',
     CODEX_PR_BODY: 'PR profile: harness_workflow_r3\n\nTask mode: harness_change\n\nGoal:\nHarness.\n\nRisk level:\nR3\n\nFiles or scope:\nHarness files.\n\nEvidence Integrity:\nCurrent head evidence.\n\nValidation commands:\nSelf-test pass.\n\nResidual risks:\nNone.\n\nHuman confirmation needed:\nyes.',
+    CODEX_CHANGED_FILES: 'docs/process/CODEX_HARNESS_MANIFEST.json',
     CODEX_CHANGE_CLASSIFICATION_JSON: classification({ status: 'pass', classification: { harnessOnly: true }, productRelevantChanged: false }),
     CODEX_FAST_PATH_JSON: fastPath({ status: 'pass', fastPathAllowed: true, pathMode: 'target_harness_fast_path' }),
   });
@@ -167,6 +220,40 @@ export async function buildV085SelfTestReport() {
 
   const fast = buildFastPathReport({ CODEX_CHANGED_FILES: 'src/example.ts', CODEX_HARNESS_MODE: 'target' }).fastPathStatus;
   assertCase('fast path denied -> decision=denied_full_verification_required', fast.decision === 'denied_full_verification_required' && fast.mergeInterpretation === 'full_verification_required', failures, cases, fast.decision);
+
+  result = buildRemoteProductCheckPlan(backendProductVerificationEnv());
+  assertCase('backend product changed files require remote product checks', result.productRequired === true && result.scopes.backend === true, failures, cases, JSON.stringify(result.scopes));
+
+  result = buildRemoteProductCheckPlan({
+    CODEX_EVENT_NAME: 'pull_request',
+    CODEX_CHANGED_FILES: 'docs/process/example.md',
+    CODEX_PR_BODY: 'CODEX_SKIP_NPM used: yes\nSkip reason: docs-only change.',
+  });
+  assertCase('docs-only changed files can skip remote product checks', result.productRequired === false, failures, cases, result.productRequired);
+
+  result = normalizeProductVerificationEvidence(backendProductVerificationEnv());
+  assertCase('backend product PR with remote evidence normalizes product verification evidence', result.status === 'pass', failures, cases, result.reasonCodes?.join(','));
+
+  result = buildProductVerificationReport(backendProductVerificationEnv());
+  assertCase('backend product PR with remote evidence passes product verification gate', result.productVerificationStatus.status === 'pass', failures, cases, result.productVerificationStatus.reasonCodes?.join(','));
+
+  result = buildProductVerificationReport(backendProductVerificationEnv({ CODEX_SKIP_NPM: '1' }));
+  assertCase('backend product PR with CODEX_SKIP_NPM=1 still fails', result.productVerificationStatus.status === 'fail' && result.productVerificationStatus.reasonCodes.includes('npm_skip_not_allowed_for_product_change'), failures, cases, result.productVerificationStatus.reasonCodes?.join(','));
+
+  result = buildProductVerificationReport({
+    CODEX_EVENT_NAME: 'pull_request',
+    CODEX_CHANGED_FILES: 'docs/process/example.md',
+    CODEX_PR_BODY: 'CODEX_SKIP_NPM used: yes\nSkip reason: docs-only change.\nRuntime readiness claimed: no',
+    CODEX_SKIP_NPM: '1',
+  });
+  assertCase('docs-only PR with skip reason can skip product checks', result.productVerificationStatus.status === 'pass', failures, cases, result.productVerificationStatus.reasonCodes?.join(','));
+
+  result = buildCompactReasonSummary({
+    status: 'fail',
+    targetQualityScoreStatus: { status: 'fail', score: 70, reasonCodes: ['targetqualityscorestatus_failed'] },
+    productVerificationStatus: { status: 'fail', reasonCodes: ['npm_skip_not_allowed_for_product_change'] },
+  });
+  assertCase('reason summary accepts safe internal reason labels', result.status === 'pass' && result.summary?.safeSummaryOnly, failures, cases, result.reasonCodes?.join(','));
 
   if (process.env.CODEX_V085_SKIP_LEGACY_RECHECKS === '1') {
     assertCase('v0.8.4 behavior still passes', true, failures, cases, 'skipped_after_standalone_validation');
