@@ -136,6 +136,7 @@
                     ],
     "scriptNames":  [
                         "codex-actions-runtime-advisory.mjs",
+                        "codex-active-self-test-policy.mjs",
                         "codex-agents-context-gate.mjs",
                         "codex-best-of-n-evidence-gate.mjs",
                         "codex-change-classification-gate.mjs",
