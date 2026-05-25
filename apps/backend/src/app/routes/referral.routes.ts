@@ -124,16 +124,24 @@ router.get('/referral-stats/:walletAddress', Authenticate, async (req, res) => {
     }
 
     const walletAddress = authenticatedUser.user.wallet_address.toLowerCase();
+    const now = moment.utc().toDate();
+    const activeOrRewardedReferralWhere = {
+      referrer_wallet: walletAddress,
+      OR: [
+        { rewarded: true },
+        { expires_at: { gt: now } }
+      ]
+    };
 
     // Get total referrals
     const totalReferrals = await prisma.referralRewards.count({
-      where: { referrer_wallet: walletAddress }
+      where: activeOrRewardedReferralWhere
     });
 
     // Get verified referrals (those who met the 10k token requirement)
     const verifiedReferrals = await prisma.referralRewards.count({
       where: { 
-        referrer_wallet: walletAddress,
+        ...activeOrRewardedReferralWhere,
         snapshot_verified: true 
       }
     });
@@ -146,11 +154,22 @@ router.get('/referral-stats/:walletAddress', Authenticate, async (req, res) => {
       }
     });
 
+    const pendingRewards = await prisma.referralRewards.count({
+      where: {
+        referrer_wallet: walletAddress,
+        snapshot_verified: true,
+        rewarded: false,
+        expires_at: {
+          gt: now
+        }
+      }
+    });
+
     res.json({
       totalReferrals,
       verifiedReferrals,
       totalRewards,
-      pendingRewards: verifiedReferrals - totalRewards
+      pendingRewards
     });
   } catch (error) {
     safeLogError('referral_stats_get', error, { route: '/referral/referral-stats/:walletAddress' });
@@ -336,10 +355,14 @@ router.get('/debug/referral-status/:walletAddress', AuthAdmin, async (req, res) 
 router.post('/admin/run-snapshot', AuthAdmin, async (req, res) => {
   try {
     // Get all pending referrals
+    const now = moment.utc().toDate();
     const pendingReferrals = await prisma.referralRewards.findMany({
       where: { 
         snapshot_verified: false,
-        rewarded: false 
+        rewarded: false,
+        expires_at: {
+          gt: now
+        }
       },
       include: {
         referred: true
@@ -378,10 +401,14 @@ router.post('/admin/run-snapshot', AuthAdmin, async (req, res) => {
 router.post('/admin/distribute-rewards', AuthAdmin, async (req, res) => {
   try {
     // Get all verified but not rewarded referrals
+    const now = moment.utc().toDate();
     const verifiedReferrals = await prisma.referralRewards.findMany({
       where: { 
         snapshot_verified: true,
-        rewarded: false 
+        rewarded: false,
+        expires_at: {
+          gt: now
+        }
       }
     });
 
@@ -389,7 +416,7 @@ router.post('/admin/distribute-rewards', AuthAdmin, async (req, res) => {
     let alreadyProcessedCount = 0;
 
     for (const referral of verifiedReferrals) {
-      const result = await distributeReferralRewardOnce(referral.id);
+      const result = await distributeReferralRewardOnce(referral.id, { expiresAfter: now });
       if (result.status === 'distributed') {
         distributedCount++;
       } else {
