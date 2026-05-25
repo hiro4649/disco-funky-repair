@@ -13,7 +13,7 @@
  * Performance: QuickNode RPC (~5-10s) vs Etherscan API (~15-120s)
  */
 
-import { PrismaClient } from '@prisma/client';
+import prisma from '../db/prisma_client';
 import { ethers } from 'ethers';
 import apiKeyManager from './dualApiKeyManager';
 import { processIncrementalFIFO, saveFIFOQueue } from './incrementalFIFOProcessor';
@@ -26,7 +26,6 @@ import { ETHERSCAN_API_URL as CONFIGURED_ETHERSCAN_API_URL, TOKEN_CONTRACT_ADDRE
 import { safeLogError } from '../utils/safeLogger';
 import { fetchJsonWithTimeout } from '../utils/externalCallTimeout';
 
-const prisma = new PrismaClient();
 
 const ETHERSCAN_API_URL = CONFIGURED_ETHERSCAN_API_URL || (process.env.NODE_ENV === 'production' ? '' : 'https://api.bscscan.com/api');
 

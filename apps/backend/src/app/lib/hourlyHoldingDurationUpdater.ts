@@ -6,10 +6,9 @@
  * Emits WebSocket events to notify frontend of updates.
  */
 
-import { PrismaClient } from '@prisma/client';
+import prisma from '../db/prisma_client';
 import moment from 'moment';
 
-const prisma = new PrismaClient();
 
 /**
  * Calculate average holding duration for a user based on FIFO queue

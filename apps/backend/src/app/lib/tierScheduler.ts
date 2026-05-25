@@ -16,7 +16,7 @@
  * - Fair and predictable
  */
 
-import { PrismaClient } from '@prisma/client';
+import prisma from '../db/prisma_client';
 import { ethers } from 'ethers';
 import { walletBalanceMonitor } from './walletBalanceMonitor';
 import { alertContractUpdateFailed } from './discordAlerts';
@@ -35,7 +35,6 @@ import {
     TIER_UPDATER_ABI
 } from './tierSync';
 
-const prisma = new PrismaClient();
 
 export { getMilestoneTier, getNextTierDays };
 

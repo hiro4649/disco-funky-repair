@@ -1,5 +1,6 @@
 import { Request, Response } from 'express';
-import { Prisma, PrismaClient } from '@prisma/client';
+import { Prisma } from '@prisma/client';
+import prisma from '../db/prisma_client';
 import { z } from 'zod';
 import prizeSchema from '../validation/prizeValidate';
 import getTokenPrice from '../lib/getTokenPrice';
@@ -43,7 +44,6 @@ const PRIZE_TRANSFER_MANUAL_REVIEW_ELIGIBLE_STATUSES = [
     Status.MANUAL_REVIEW
 ];
 
-const prisma = new PrismaClient();
 
 const PRIZE_TRANSFER_AMOUNT_SCALE = 3;
 const MAX_INT_FIELD_VALUE = 2147483647;

@@ -15,7 +15,8 @@
  * All internal calculations use BigInt (wei) for zero precision loss.
  */
 
-import { PrismaClient, Prisma } from '@prisma/client';
+import { Prisma } from '@prisma/client';
+import prisma from '../db/prisma_client';
 import {
     classifyAllTransactions,
     getTransactionsForFIFO,
@@ -25,7 +26,6 @@ import {
 } from './transactionClassifier';
 import { TOKEN_CONTRACT_ADDRESS } from '../config/env';
 
-const prisma = new PrismaClient();
 const DECIMALS = 18;
 const DECIMALS_FACTOR = BigInt(10) ** BigInt(DECIMALS);
 

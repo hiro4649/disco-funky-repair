@@ -1,6 +1,6 @@
 ﻿import cron from 'node-cron';
 import moment from 'moment';
-import { PrismaClient } from '@prisma/client';
+import prisma from '../db/prisma_client';
 // import WebSocket from 'ws';
 import { processSixHourTokenBalance, processWeeklyBonus } from '../lib/trackingTokenBalanceEthereum';
 import { setProbability, registerAllEthereumTokens } from '../lib/trackingTokensEthereum';
@@ -12,7 +12,6 @@ import { updateAllUsersHoldingDuration } from '../lib/hourlyHoldingDurationUpdat
 import { walletBalanceMonitor } from '../lib/walletBalanceMonitor';
 import { safeLogError } from '../utils/safeLogger';
 
-const prisma = new PrismaClient();
 // const wss = new WebSocket.Server({ port: 5001 });
 
 // Six-hour token balance update - runs every 6 hours

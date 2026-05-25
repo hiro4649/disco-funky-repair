@@ -11,7 +11,7 @@
  * - DEX interaction awareness
  */
 
-import { PrismaClient } from '@prisma/client';
+import prisma from '../db/prisma_client';
 import {
     classifyAllTransactions,
     getTransactionsForFIFO,
@@ -22,7 +22,6 @@ import {
 } from './transactionClassifier';
 import { TOKEN_CONTRACT_ADDRESS } from '../config/env';
 
-const prisma = new PrismaClient();
 
 /**
  * Calculate weighted average holding date with classified transactions

@@ -1,11 +1,10 @@
-﻿import { PrismaClient } from '@prisma/client';
+﻿import prisma from '../db/prisma_client';
 import moment from 'moment';
 import { Prisma } from '@prisma/client';
 import getTokenBalance from '../lib/getToken';
 import { TOKEN_CONTRACT_ADDRESS } from '../config/env';
 import { safeLogError, safeLogWarn } from '../utils/safeLogger';
 
-const prisma = new PrismaClient();
 const REFERRAL_REWARD_POINTS = 100;
 const REFERRAL_MIN_TOKEN_BALANCE_BASE_UNITS = 10000n * (10n ** 9n);
 

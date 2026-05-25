@@ -1,5 +1,5 @@
 import { Request, Response } from 'express';
-import { PrismaClient } from '@prisma/client';
+import prisma from '../db/prisma_client';
 import {
     expireOldTrialNFTs,
     getActiveTrialNFTs,
@@ -11,7 +11,6 @@ import {
 import getDiscoNFTEVM from '../lib/getDiscoNFTEVM';
 import { safeLogError } from '../utils/safeLogger';
 
-const prisma = new PrismaClient();
 
 type AuthenticatedTrialNftUser = {
     user_id?: number;

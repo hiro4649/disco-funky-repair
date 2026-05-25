@@ -16,7 +16,7 @@
  * - Scales with activity, not total history
  */
 
-import { PrismaClient } from '@prisma/client';
+import prisma from '../db/prisma_client';
 import {
     fetchIncrementalTransactions,
     getUsersForProcessing,
@@ -34,7 +34,6 @@ import {
 import { withUserLock } from './userProcessingLock';
 import { TOKEN_CONTRACT_ADDRESS } from '../config/env';
 
-const prisma = new PrismaClient();
 
 /**
  * Optimized holding date checker - uses incremental processing
