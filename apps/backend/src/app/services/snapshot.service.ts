@@ -4,6 +4,7 @@ import { Prisma } from '@prisma/client';
 import getTokenBalance from '../lib/getToken';
 import { TOKEN_CONTRACT_ADDRESS } from '../config/env';
 import { safeLogError, safeLogWarn } from '../utils/safeLogger';
+import { withPostgresAdvisoryJobLock } from '../lib/distributedJobLock';
 
 const REFERRAL_REWARD_POINTS = 100;
 const REFERRAL_MIN_TOKEN_BALANCE_BASE_UNITS = 10000n * (10n ** 9n);
@@ -15,6 +16,8 @@ type ReferralRewardDistributionResult =
 type ReferralRewardDistributionOptions = {
   expiresAfter?: Date;
 };
+
+type SnapshotPrismaClient = typeof prisma | Prisma.TransactionClient;
 
 export const distributeReferralRewardOnce = async (
   referralId: number,
@@ -232,13 +235,13 @@ export class SnapshotService {
    * This should be called daily to identify expired referral records without
    * deleting the audit trail. Expiration is represented by expires_at <= now.
    */
-  static async cleanupExpiredReferrals(): Promise<{
+  static async cleanupExpiredReferrals(client: SnapshotPrismaClient = prisma): Promise<{
     cleanedCount: number;
   }> {
     try {
 
       const now = moment.utc().toDate();
-      const expiredReferralCount = await prisma.referralRewards.count({
+      const expiredReferralCount = await client.referralRewards.count({
         where: {
           rewarded: false,
           expires_at: {
@@ -266,7 +269,13 @@ export class SnapshotService {
     try {
 
       // Step 1: Clean up expired referrals
-      const cleanupResult = await this.cleanupExpiredReferrals();
+      const cleanupLockResult = await withPostgresAdvisoryJobLock(
+        'referral_cleanup_daily',
+        (tx) => this.cleanupExpiredReferrals(tx)
+      );
+      const cleanupResult = cleanupLockResult.status === 'acquired'
+        ? cleanupLockResult.result
+        : { cleanedCount: 0 };
 
       // Step 2: Run snapshot verification
       // const snapshotResult = await this.runDailySnapshot();

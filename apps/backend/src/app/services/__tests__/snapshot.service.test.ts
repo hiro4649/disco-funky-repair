@@ -1,5 +1,6 @@
 const mockPrisma = {
   $transaction: jest.fn(),
+  $queryRaw: jest.fn(),
   referralRewards: {
     count: jest.fn(),
     delete: jest.fn(),
@@ -33,6 +34,7 @@ describe('SnapshotService cleanupExpiredReferrals', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     mockPrisma.$transaction.mockImplementation(async (callback: any) => callback(mockPrisma));
+    mockPrisma.$queryRaw.mockResolvedValue([{ acquired: true }]);
     mockPrisma.referralRewards.count.mockResolvedValue(0);
     mockPrisma.referralRewards.updateMany.mockResolvedValue({ count: 0 });
   });
@@ -86,10 +88,51 @@ describe('SnapshotService cleanupExpiredReferrals', () => {
   });
 });
 
+describe('SnapshotService runDailyProcess advisory lock', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    mockPrisma.$transaction.mockImplementation(async (callback: any) => callback(mockPrisma));
+    mockPrisma.$queryRaw.mockResolvedValue([{ acquired: true }]);
+    mockPrisma.referralRewards.count.mockResolvedValue(3);
+  });
+
+  it('runs referral cleanup inside the transaction-scoped advisory lock when acquired', async () => {
+    const result = await SnapshotService.runDailyProcess();
+
+    expect(result).toEqual({ cleanedCount: 3 });
+    expect(mockPrisma.$transaction).toHaveBeenCalledTimes(1);
+    expect(mockPrisma.$queryRaw).toHaveBeenCalledTimes(1);
+    expect(mockPrisma.referralRewards.count).toHaveBeenCalledTimes(1);
+  });
+
+  it('skips referral cleanup when another process holds the same lock', async () => {
+    mockPrisma.$queryRaw.mockResolvedValueOnce([{ acquired: false }]);
+
+    const result = await SnapshotService.runDailyProcess();
+
+    expect(result).toEqual({ cleanedCount: 0 });
+    expect(mockPrisma.$transaction).toHaveBeenCalledTimes(1);
+    expect(mockPrisma.$queryRaw).toHaveBeenCalledTimes(1);
+    expect(mockPrisma.referralRewards.count).not.toHaveBeenCalled();
+  });
+
+  it('releases transaction-scoped lock by propagating cleanup failures through the transaction', async () => {
+    const error = new Error('cleanup_failed');
+    mockPrisma.referralRewards.count.mockRejectedValueOnce(error);
+
+    await expect(SnapshotService.runDailyProcess()).rejects.toThrow(error);
+
+    expect(mockPrisma.$transaction).toHaveBeenCalledTimes(1);
+    expect(mockPrisma.$queryRaw).toHaveBeenCalledTimes(1);
+    expect(mockPrisma.referralRewards.count).toHaveBeenCalledTimes(1);
+  });
+});
+
 describe('distributeReferralRewardOnce', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     mockPrisma.$transaction.mockImplementation(async (callback: any) => callback(mockPrisma));
+    mockPrisma.$queryRaw.mockResolvedValue([{ acquired: true }]);
     mockPrisma.referralRewards.updateMany.mockResolvedValue({ count: 0 });
   });
 
