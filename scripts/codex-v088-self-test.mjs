@@ -3,6 +3,12 @@
 import { fileURLToPath } from 'node:url';
 import { HARNESS_VERSION, marker, simpleStatus, writeJsonReport, exitFor } from './codex-v080-lib.mjs';
 import { buildComplexityGovernanceReport, buildComplexityEvalSuiteReport } from './codex-complexity-governance-gate.mjs';
+import {
+  activeSelfTestStatusKey,
+  buildLegacyCompatibilitySelfTestStatus,
+  effectiveSelfTestStatus,
+} from './codex-active-self-test-policy.mjs';
+import { evaluateWorkflowReport } from './codex-workflow-quality-runner.mjs';
 
 function assertCase(name, ok, failures, cases, detail = '') {
   cases.push({ name, status: ok ? 'pass' : 'fail', detail: String(detail || '').slice(0, 120), safeSummaryOnly: true });
@@ -64,6 +70,70 @@ No product runtime code.
 No package or lockfile changes.
 No runtime readiness claim.
 `;
+}
+
+function passStatus() {
+  return { status: 'pass', safeSummaryOnly: true };
+}
+
+function targetWorkflowFixture(overrides = {}) {
+  const keys = [
+    'targetManifestStatus',
+    'secretScan',
+    'agentsContextStatus',
+    'environmentReadinessStatus',
+    'changeClassificationStatus',
+    'productVerificationStatus',
+    'productVerificationEvidenceStatus',
+    'testMetricsStatus',
+    'remoteProductBaselineStatus',
+    'remoteNpmDiagnosticStatus',
+    'workflowPreflightStatus',
+    'fastPathStatus',
+    'safeArtifactIndexStatus',
+    'diagnosticConsolidationStatus',
+    'invalidReportRecoveryStatus',
+    'unsafeValueActionMatrixStatus',
+    'prProfileStatus',
+    'actionsRuntimeAdvisoryStatus',
+    'v085StabilityStatus',
+    'codeReviewMonitorStatus',
+    'promptGovernanceStatus',
+    'knowledgeGovernanceStatus',
+    'contractGovernanceStatus',
+    'complexityGovernanceStatus',
+    'openPrHygieneStatus',
+    'targetFinalSummaryStatus',
+    'stalePrAuditStatus',
+    'reasonSummaryStatus',
+    'safeOutputScanStatus',
+    'v080SelfTestStatus',
+    'v081SelfTestStatus',
+    'v082SelfTestStatus',
+    'v083SelfTestStatus',
+    'v084SelfTestStatus',
+    'v085SelfTestStatus',
+    'v086SelfTestStatus',
+    'v087SelfTestStatus',
+    'v088SelfTestStatus',
+    'safeArtifactValidation',
+    'outputShapeStatus',
+    'targetQualityScoreStatus',
+  ];
+  const report = Object.fromEntries(keys.map((key) => [key, passStatus()]));
+  report.marker = marker;
+  report.harnessVersion = '0.8.8';
+  report.status = 'pass';
+  report.mergeReady = true;
+  report.targetMergeReady = true;
+  report.humanReviewRequired = false;
+  report.targetManifestStatus = {
+    status: 'pass',
+    harnessVersion: '0.8.8',
+    activeSelfTestStatusKey: 'v088SelfTestStatus',
+    safeSummaryOnly: true,
+  };
+  return { ...report, ...overrides };
 }
 
 export function buildV088SelfTestReport() {
@@ -171,6 +241,34 @@ export function buildV088SelfTestReport() {
     CODEX_PR_BODY: sourceHarnessPrBody(),
   })).complexityGovernanceStatus;
   assertCase('source harness-only v0.8.8 PR fixture pass', result.status === 'pass' && result.regime === 'high', failures, cases, `${result.status}/${result.regime}/${result.reasonCodes?.join(',')}`);
+
+  assertCase('active self-test for v0.8.8 is v088', activeSelfTestStatusKey('0.8.8') === 'v088SelfTestStatus', failures, cases, activeSelfTestStatusKey('0.8.8'));
+  assertCase('active self-test for v0.8.5 is v085', activeSelfTestStatusKey('0.8.5') === 'v085SelfTestStatus', failures, cases, activeSelfTestStatusKey('0.8.5'));
+  assertCase('legacy v085 failure is advisory for v0.8.8', effectiveSelfTestStatus('v085SelfTestStatus', 'fail', '0.8.8') === 'pass_legacy_advisory', failures, cases, effectiveSelfTestStatus('v085SelfTestStatus', 'fail', '0.8.8'));
+  assertCase('active v088 failure remains blocking for v0.8.8', effectiveSelfTestStatus('v088SelfTestStatus', 'fail', '0.8.8') === 'fail', failures, cases, effectiveSelfTestStatus('v088SelfTestStatus', 'fail', '0.8.8'));
+  assertCase('active v088 missing remains blocking for v0.8.8', effectiveSelfTestStatus('v088SelfTestStatus', 'missing', '0.8.8') === 'missing', failures, cases, effectiveSelfTestStatus('v088SelfTestStatus', 'missing', '0.8.8'));
+
+  result = buildLegacyCompatibilitySelfTestStatus({
+    v085SelfTestStatus: { status: 'fail', safeSummaryOnly: true },
+    v088SelfTestStatus: { status: 'pass', safeSummaryOnly: true },
+  }, '0.8.8');
+  assertCase('legacy compatibility failure is retained as advisory artifact', result.status === 'pass' && result.legacyFailureCount === 1, failures, cases, `${result.status}/${result.legacyFailureCount}`);
+
+  result = evaluateWorkflowReport(targetWorkflowFixture({
+    v085SelfTestStatus: { status: 'fail', reasonCodes: ['legacy_fixture_failure'], safeSummaryOnly: true },
+    v088SelfTestStatus: { status: 'pass', safeSummaryOnly: true },
+  }), { eventName: 'pull_request' });
+  assertCase('target workflow passes with active v088 pass and legacy v085 fail', result.status === 'pass', failures, cases, result.failures.join(','));
+
+  result = evaluateWorkflowReport(targetWorkflowFixture({
+    v088SelfTestStatus: { status: 'fail', reasonCodes: ['active_self_test_failed'], safeSummaryOnly: true },
+  }), { eventName: 'pull_request' });
+  assertCase('target workflow fails when active v088 self-test fails', result.status === 'fail' && result.failures.includes('v088SelfTestStatus=fail'), failures, cases, result.failures.join(','));
+
+  const missingV088 = targetWorkflowFixture();
+  delete missingV088.v088SelfTestStatus;
+  result = evaluateWorkflowReport(missingV088, { eventName: 'pull_request' });
+  assertCase('target workflow fails when active v088 self-test is missing', result.status === 'fail' && result.failures.includes('v088SelfTestStatus=missing'), failures, cases, result.failures.join(','));
 
   return {
     marker,
