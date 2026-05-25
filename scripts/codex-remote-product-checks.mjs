@@ -229,21 +229,35 @@ export function buildRemoteProductCheckPlan(env = process.env) {
   return { files, scopes, classified, productRequired };
 }
 
+export function buildRemoteProductCheckDecision(env = process.env) {
+  const plan = buildRemoteProductCheckPlan(env);
+  return {
+    plan,
+    productRequired: plan.productRequired,
+    skipNpm: plan.productRequired ? '0' : '1',
+    willGenerateBaseline: plan.productRequired,
+    willGenerateEvidence: plan.productRequired,
+    reasonCode: plan.productRequired ? 'remote_product_checks_required' : 'remote_product_checks_not_required',
+    safeSummaryOnly: true,
+  };
+}
+
 export function runRemoteProductChecks(env = process.env) {
   const outDir = outputDir(env);
   fs.mkdirSync(outDir, { recursive: true });
-  const plan = buildRemoteProductCheckPlan(env);
+  const decision = buildRemoteProductCheckDecision(env);
+  const plan = decision.plan;
   appendGitHubEnv('CODEX_CHANGED_FILES', plan.files.join('\n'), env);
 
-  if (!plan.productRequired) {
-    appendGitHubEnv('CODEX_SKIP_NPM', '1', env);
+  if (!decision.productRequired) {
+    appendGitHubEnv('CODEX_SKIP_NPM', decision.skipNpm, env);
     appendGitHubEnv('CODEX_NPM_SKIP_REASON', 'non_product_change_without_runtime_claim', env);
     const report = safeReport({ status: 'not_applicable', files: plan.files, scopes: plan.scopes, reasonCodes: ['remote_product_checks_not_required'] });
     writeJson(path.join(outDir, 'codex-remote-product-checks.safe.json'), report);
     return report;
   }
 
-  appendGitHubEnv('CODEX_SKIP_NPM', '0', env);
+  appendGitHubEnv('CODEX_SKIP_NPM', decision.skipNpm, env);
   appendGitHubEnv('CODEX_NPM_SKIP_REASON', '', env);
 
   const baselinePath = path.join(outDir, 'codex-remote-product-baseline.json');

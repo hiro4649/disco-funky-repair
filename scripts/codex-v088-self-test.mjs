@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 // CODEX_QUALITY_HARNESS_FILE v0.8.8
+import fs from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { HARNESS_VERSION, marker, simpleStatus, writeJsonReport, exitFor } from './codex-v080-lib.mjs';
 import { buildComplexityGovernanceReport, buildComplexityEvalSuiteReport } from './codex-complexity-governance-gate.mjs';
@@ -8,6 +9,7 @@ import {
   buildLegacyCompatibilitySelfTestStatus,
   effectiveSelfTestStatus,
 } from './codex-active-self-test-policy.mjs';
+import { buildRemoteProductCheckDecision } from './codex-remote-product-checks.mjs';
 import { evaluateWorkflowReport } from './codex-workflow-quality-runner.mjs';
 
 function assertCase(name, ok, failures, cases, detail = '') {
@@ -241,6 +243,33 @@ export function buildV088SelfTestReport() {
     CODEX_PR_BODY: sourceHarnessPrBody(),
   })).complexityGovernanceStatus;
   assertCase('source harness-only v0.8.8 PR fixture pass', result.status === 'pass' && result.regime === 'high', failures, cases, `${result.status}/${result.regime}/${result.reasonCodes?.join(',')}`);
+
+  const workflowText = fs.readFileSync('.github/workflows/quality-gate.yml', 'utf8');
+  const prepareIndex = workflowText.indexOf('Prepare target product verification');
+  const gateIndex = workflowText.indexOf('Run Codex quality gate');
+  assertCase(
+    'target workflow prepares remote product checks before local gate',
+    prepareIndex >= 0 && gateIndex > prepareIndex && workflowText.includes('scripts/codex-remote-product-checks.mjs'),
+    failures,
+    cases,
+    `${prepareIndex}/${gateIndex}`,
+  );
+
+  result = buildRemoteProductCheckDecision(prEnv({
+    CODEX_CHANGED_FILES: 'apps/backend/prisma/schema.prisma\napps/backend/prisma/migrations/20260526090000_add_job_runs/migration.sql',
+  }));
+  assertCase('schema and migration files require remote product checks', result.productRequired === true && result.skipNpm === '0', failures, cases, `${result.productRequired}/${result.skipNpm}`);
+  assertCase('schema and migration checks generate baseline and evidence', result.willGenerateBaseline === true && result.willGenerateEvidence === true, failures, cases, `${result.willGenerateBaseline}/${result.willGenerateEvidence}`);
+
+  result = buildRemoteProductCheckDecision(prEnv({
+    CODEX_CHANGED_FILES: 'docs/audit/FUNKY_LONG_RUNNING_JOB_RUNS_DESIGN.md',
+  }));
+  assertCase('docs-only files may skip remote product checks', result.productRequired === false && result.skipNpm === '1', failures, cases, `${result.productRequired}/${result.skipNpm}`);
+
+  result = buildRemoteProductCheckDecision(prEnv({
+    CODEX_CHANGED_FILES: '.github/workflows/quality-gate.yml\nscripts/codex-v088-self-test.mjs',
+  }));
+  assertCase('harness-only files may skip remote product checks', result.productRequired === false && result.skipNpm === '1', failures, cases, `${result.productRequired}/${result.skipNpm}`);
 
   assertCase('active self-test for v0.8.8 is v088', activeSelfTestStatusKey('0.8.8') === 'v088SelfTestStatus', failures, cases, activeSelfTestStatusKey('0.8.8'));
   assertCase('active self-test for v0.8.5 is v085', activeSelfTestStatusKey('0.8.5') === 'v085SelfTestStatus', failures, cases, activeSelfTestStatusKey('0.8.5'));
