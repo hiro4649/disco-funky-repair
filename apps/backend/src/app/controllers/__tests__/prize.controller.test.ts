@@ -166,6 +166,155 @@ describe('PrizeController safe logging', () => {
   });
 });
 
+describe('PrizeController.editPrize validation', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+  });
+
+  it('updates only whitelisted admin prize fields with normalized values', async () => {
+    mockPrisma.prize.update.mockResolvedValue({ id: 7, token_name: 'FUNKY' });
+    const req = createRequest({
+      body: {
+        ranking: '2',
+        token_name: ' FUNKY ',
+        symbol: ' FUN ',
+        quantity: '10',
+        price: '0.5',
+        real_probability: '12.5',
+        probability: '13.5',
+        fake_probability: '14.5',
+        earned_pts: '250',
+        flag: 'false',
+        dance: 'true',
+        ca: VALID_ASSET_CONTRACT,
+        telegram: 'https://t.me/funky',
+        twitter: '',
+        discord: 'https://discord.gg/funky',
+        listed_dex: 'PancakeSwap',
+        default_image: 'chain-logo.svg'
+      }
+    });
+    const res = createResponse();
+
+    await PrizeController.editPrize(req, res);
+
+    expect(mockPrisma.prize.update).toHaveBeenCalledWith({
+      where: { id: 7 },
+      data: {
+        ranking: 2,
+        token_name: 'FUNKY',
+        symbol: 'FUN',
+        quantity: 10,
+        price: 0.5,
+        real_probability: 12.5,
+        probability: 13.5,
+        fake_probability: 14.5,
+        earned_pts: 250,
+        flag: false,
+        dance: true,
+        ca: VALID_ASSET_CONTRACT,
+        telegram: 'https://t.me/funky',
+        twitter: '',
+        discord: 'https://discord.gg/funky',
+        listed_DEX: 'PancakeSwap',
+        default_image: 'chain-logo.svg'
+      }
+    });
+    const updateData = mockPrisma.prize.update.mock.calls[0][0].data;
+    expect(updateData).not.toHaveProperty('listed_dex');
+    expect(res.status).toHaveBeenCalledWith(200);
+  });
+
+  it.each([
+    'id',
+    'createdAt',
+    'updatedAt',
+    'reserved_amount',
+    'balance_amount',
+    'balance',
+    'saved_probability',
+    'status',
+    'tx_hash',
+    'tx_receipt_status',
+    'userId',
+    'transfer_amount',
+    'localImagePath'
+  ])('rejects mass assignment field %s', async (fieldName) => {
+    const req = createRequest({
+      body: {
+        quantity: '1',
+        [fieldName]: 'unsafe'
+      }
+    });
+    const res = createResponse();
+
+    await PrizeController.editPrize(req, res);
+
+    expect(mockPrisma.prize.update).not.toHaveBeenCalled();
+    expect(res.status).toHaveBeenCalledWith(400);
+    expect(res.json).toHaveBeenCalledWith({
+      success: false,
+      message: 'Invalid prize update payload'
+    });
+  });
+
+  it.each([
+    ['negative integer', { quantity: '-1' }],
+    ['NaN integer', { earned_pts: Number.NaN }],
+    ['infinite decimal', { price: 'Infinity' }],
+    ['huge integer', { ranking: '2147483648' }],
+    ['probability over 100', { real_probability: '100.01' }]
+  ])('rejects invalid numeric update values: %s', async (_caseName, body) => {
+    const req = createRequest({ body });
+    const res = createResponse();
+
+    await PrizeController.editPrize(req, res);
+
+    expect(mockPrisma.prize.update).not.toHaveBeenCalled();
+    expect(res.status).toHaveBeenCalledWith(400);
+    expect(res.json).toHaveBeenCalledWith({
+      success: false,
+      message: 'Invalid prize update payload'
+    });
+  });
+
+  it.each([
+    ['invalid EVM address', { ca: 'not-an-address' }],
+    ['invalid URL', { twitter: 'not-a-url' }],
+    ['conflicting DEX aliases', { listed_dex: 'A', listed_DEX: 'B' }]
+  ])('rejects invalid structured field: %s', async (_caseName, body) => {
+    const req = createRequest({ body });
+    const res = createResponse();
+
+    await PrizeController.editPrize(req, res);
+
+    expect(mockPrisma.prize.update).not.toHaveBeenCalled();
+    expect(res.status).toHaveBeenCalledWith(400);
+    expect(res.json).toHaveBeenCalledWith({
+      success: false,
+      message: 'Invalid prize update payload'
+    });
+  });
+
+  it('does not expose raw database errors in the response', async () => {
+    const prizeUpdateConsoleErrorSpy = jest.spyOn(console, 'error').mockImplementation(() => undefined);
+    try {
+      mockPrisma.prize.update.mockRejectedValue(new Error('raw database failure detail'));
+      const req = createRequest({ body: { quantity: '1' } });
+      const res = createResponse();
+
+      await PrizeController.editPrize(req, res);
+
+      expect(res.status).toHaveBeenCalledWith(404);
+      expect(res.json).toHaveBeenCalledWith({ error: 'Prize not found or invalid data' });
+      expect(JSON.stringify(res.json.mock.calls)).not.toContain('raw database failure detail');
+      expect(JSON.stringify(prizeUpdateConsoleErrorSpy.mock.calls)).not.toContain('raw database failure detail');
+    } finally {
+      prizeUpdateConsoleErrorSpy.mockRestore();
+    }
+  });
+});
+
 describe('PrizeController.getPrize public catalog', () => {
   beforeEach(() => {
     jest.clearAllMocks();
