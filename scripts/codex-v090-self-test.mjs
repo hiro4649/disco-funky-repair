@@ -12,10 +12,15 @@ import { buildRemoteLocalParityReport } from './codex-remote-local-parity-gate.m
 import { compilePrTemplate } from './codex-pr-template-compiler.mjs';
 import { buildPrBodySurfaceNormalizerReport } from './codex-pr-body-surface-normalizer.mjs';
 import { buildGateDecisionTrace } from './codex-gate-decision-trace.mjs';
-import { filterSourceValidationChangedFiles } from './codex-local-quality-gate.mjs';
+import { computeTargetQualityScoreStatus, filterSourceValidationChangedFiles } from './codex-local-quality-gate.mjs';
 import { buildHumanConfirmationObjectReport } from './codex-human-confirmation-validate.mjs';
 import { buildEvidencePackReport } from './codex-evidence-pack-validate.mjs';
 import { buildRemoteProductCheckDecision } from './codex-remote-product-checks.mjs';
+import {
+  activeSelfTestStatusKey,
+  buildLegacyCompatibilitySelfTestStatus,
+  effectiveSelfTestStatus,
+} from './codex-active-self-test-policy.mjs';
 
 function assertCase(id, condition, failures, cases, actualStatus = 'pass', reasonCodes = []) {
   const status = condition ? 'pass' : 'fail';
@@ -39,6 +44,79 @@ function withTempFile(name, fn) {
   } finally {
     fs.rmSync(dir, { recursive: true, force: true });
   }
+}
+
+const targetQualityFixtureKeys = [
+  'targetManifestStatus',
+  'secretScan',
+  'agentsContextStatus',
+  'environmentReadinessStatus',
+  'changeClassificationStatus',
+  'productVerificationStatus',
+  'productVerificationEvidenceStatus',
+  'testMetricsStatus',
+  'remoteProductBaselineStatus',
+  'remoteNpmDiagnosticStatus',
+  'workflowPreflightStatus',
+  'artifactLifeboatStatus',
+  'classificationCoverageStatus',
+  'remoteLocalParityStatus',
+  'noArtifactFailureStatus',
+  'fastPathStatus',
+  'safeArtifactIndexStatus',
+  'diagnosticConsolidationStatus',
+  'invalidReportRecoveryStatus',
+  'unsafeValueActionMatrixStatus',
+  'prProfileStatus',
+  'actionsRuntimeAdvisoryStatus',
+  'v085StabilityStatus',
+  'codeReviewMonitorStatus',
+  'promptGovernanceStatus',
+  'knowledgeGovernanceStatus',
+  'contractGovernanceStatus',
+  'complexityGovernanceStatus',
+  'baselineHealthStatus',
+  'evidenceContinuityStatus',
+  'prBodySurfaceNormalizerStatus',
+  'prTemplateCompilerStatus',
+  'requiredHeadingHintStatus',
+  'selfTestCaseExportStatus',
+  'scoreDecompositionStatus',
+  'gateDecisionTraceStatus',
+  'selfTestProfileStatus',
+  'oldHarnessMarkerStatus',
+  'openPrHygieneStatus',
+  'targetFinalSummaryStatus',
+  'stalePrAuditStatus',
+  'reasonSummaryStatus',
+  'safeOutputScanStatus',
+  'goldenSetStatus',
+  'bestOfNEvidenceStatus',
+  'taskQueueLiteStatus',
+  'safeTraceSchemaStatus',
+  'curatorReportStatus',
+  'offlineEvolutionProposalStatus',
+  'testCoverageEvidenceStatus',
+  'performanceEvidenceStatus',
+  'v080SelfTestStatus',
+  'v081SelfTestStatus',
+  'v082SelfTestStatus',
+  'v083SelfTestStatus',
+  'v084SelfTestStatus',
+  'v085SelfTestStatus',
+  'v086SelfTestStatus',
+  'v087SelfTestStatus',
+  'v088SelfTestStatus',
+  'v089SelfTestStatus',
+  'v090SelfTestStatus',
+  'safeArtifactValidation',
+  'outputShapeStatus',
+];
+
+function targetQualityFixture(harnessVersion = HARNESS_VERSION, overrides = {}) {
+  const report = { harnessVersion };
+  for (const key of targetQualityFixtureKeys) report[key] = { status: 'pass' };
+  return { ...report, ...overrides };
 }
 
 function buildV090SelfTestReport() {
@@ -258,6 +336,40 @@ function buildV090SelfTestReport() {
   })).remoteLocalParityStatus.status;
   const compiler = compilePrTemplate({ CODEX_PR_TEMPLATE_WRITE: '0', CODEX_PR_TEMPLATE_PROFILE: 'harness_workflow_r3' }).prTemplateCompilerStatus.status;
   assertCase('source_harness_only_v090_pr_fixture_pass', coverage === 'pass' && ['pass', 'not_applicable'].includes(parity) && compiler === 'pass', failures, cases, `${coverage}/${parity}/${compiler}`, []);
+
+  assertCase('active_self_test_policy_selects_v090_for_v090', activeSelfTestStatusKey('0.9.0') === 'v090SelfTestStatus', failures, cases, activeSelfTestStatusKey('0.9.0') || 'missing', []);
+  assertCase('legacy_v085_failure_is_advisory_for_v090', effectiveSelfTestStatus('v085SelfTestStatus', 'fail', '0.9.0') === 'pass_legacy_advisory', failures, cases, effectiveSelfTestStatus('v085SelfTestStatus', 'fail', '0.9.0'), []);
+  assertCase('active_v090_failure_remains_blocking_for_v090', effectiveSelfTestStatus('v090SelfTestStatus', 'fail', '0.9.0') === 'fail', failures, cases, effectiveSelfTestStatus('v090SelfTestStatus', 'fail', '0.9.0'), []);
+  assertCase('active_v090_missing_remains_blocking_for_v090', effectiveSelfTestStatus('v090SelfTestStatus', 'not_applicable', '0.9.0') === 'missing', failures, cases, effectiveSelfTestStatus('v090SelfTestStatus', 'not_applicable', '0.9.0'), []);
+  assertCase('active_self_test_policy_selects_v085_for_v085', activeSelfTestStatusKey('0.8.5') === 'v085SelfTestStatus', failures, cases, activeSelfTestStatusKey('0.8.5') || 'missing', []);
+
+  let targetScore = computeTargetQualityScoreStatus(targetQualityFixture('0.9.0', {
+    v085SelfTestStatus: { status: 'fail' },
+    v090SelfTestStatus: { status: 'pass' },
+  }));
+  assertCase('target_quality_v090_passes_with_legacy_v085_failure', targetScore.status === 'pass' && targetScore.score === 100, failures, cases, `${targetScore.status}/${targetScore.score}`, targetScore.blockingStatuses?.map((item) => item.key) || []);
+
+  targetScore = computeTargetQualityScoreStatus(targetQualityFixture('0.9.0', {
+    v090SelfTestStatus: { status: 'fail' },
+  }));
+  assertCase('target_quality_v090_fails_when_active_v090_fails', targetScore.status === 'fail' && targetScore.blockingStatuses?.some((item) => item.key === 'v090SelfTestStatus'), failures, cases, `${targetScore.status}/${targetScore.score}`, targetScore.blockingStatuses?.map((item) => item.key) || []);
+
+  const missingActiveReport = targetQualityFixture('0.9.0');
+  delete missingActiveReport.v090SelfTestStatus;
+  targetScore = computeTargetQualityScoreStatus(missingActiveReport);
+  assertCase('target_quality_v090_fails_when_active_v090_missing', targetScore.status === 'fail' && targetScore.blockingStatuses?.some((item) => item.key === 'v090SelfTestStatus'), failures, cases, `${targetScore.status}/${targetScore.score}`, targetScore.blockingStatuses?.map((item) => item.key) || []);
+
+  targetScore = computeTargetQualityScoreStatus(targetQualityFixture('0.8.5', {
+    v085SelfTestStatus: { status: 'fail' },
+    v090SelfTestStatus: { status: 'pass' },
+  }));
+  assertCase('target_quality_v085_fails_when_active_v085_fails', targetScore.status === 'fail' && targetScore.blockingStatuses?.some((item) => item.key === 'v085SelfTestStatus'), failures, cases, `${targetScore.status}/${targetScore.score}`, targetScore.blockingStatuses?.map((item) => item.key) || []);
+
+  const legacyCompatibility = buildLegacyCompatibilitySelfTestStatus({
+    v085SelfTestStatus: { status: 'fail' },
+    v090SelfTestStatus: { status: 'pass' },
+  }, '0.9.0');
+  assertCase('legacy_self_test_failure_remains_advisory_in_safe_status', legacyCompatibility.status === 'pass' && legacyCompatibility.legacyFailureCount === 1 && legacyCompatibility.reasonCodes.includes('legacy_self_test_failure_advisory'), failures, cases, `${legacyCompatibility.status}/${legacyCompatibility.legacyFailureCount}`, legacyCompatibility.reasonCodes);
 
   const unsafe = scanObjectForUnsafe(cases);
   const status = failures.length || unsafe.length ? 'fail' : 'pass';

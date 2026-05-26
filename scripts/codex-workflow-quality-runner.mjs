@@ -9,6 +9,11 @@ import { buildSafeArtifactIndex } from './codex-safe-artifact-index.mjs';
 import { buildFinalSummary } from './codex-target-final-summary.mjs';
 import { buildDiagnosticConsolidatedSummary } from './codex-diagnostic-consolidation-runner.mjs';
 import { buildInvalidReportRecoverySummary } from './codex-invalid-report-recovery.mjs';
+import {
+  buildLegacyCompatibilitySelfTestStatus,
+  effectiveSelfTestStatus,
+  isSelfTestStatusKey,
+} from './codex-active-self-test-policy.mjs';
 
 const sourceRequiredPass = [
   'sourceHarnessValidationStatus',
@@ -223,10 +228,13 @@ function readReport(file) {
   }
 }
 
-function statusAllowed(key, status, eventName) {
-  if (status === 'pass') return true;
+function statusAllowed(key, status, eventName, harnessVersion = HARNESS_VERSION) {
+  const effectiveStatus = isSelfTestStatusKey(key)
+    ? effectiveSelfTestStatus(key, status, harnessVersion)
+    : status;
+  if (effectiveStatus === 'pass' || effectiveStatus === 'pass_legacy_advisory') return true;
   if (key === 'humanConfirmationObjectStatus' && status === 'not_required') return true;
-  if (status === 'not_applicable' && optionalNotApplicable.has(key)) {
+  if (effectiveStatus === 'not_applicable' && optionalNotApplicable.has(key)) {
     if (['evidencePackStatus', 'ciReplayStatus', 'prBodyLintStatus', 'productionReadinessStatus', 'evidenceIntegrityStatus', 'hermesInvariantStatus'].includes(key)) {
       return eventName !== 'pull_request';
     }
@@ -300,9 +308,10 @@ export function evaluateWorkflowReport(report, options = {}) {
     .filter((key) => hasV089Shape || !v089Fields.has(key))
     .filter((key) => hasV090Shape || !v090Fields.has(key));
   const failures = [];
+  const harnessVersion = report.harnessVersion || HARNESS_VERSION;
   for (const key of required) {
     const status = report[key]?.status || 'missing';
-    if (!statusAllowed(key, status, options.eventName || process.env.CODEX_EVENT_NAME)) failures.push(`${key}=${status}`);
+    if (!statusAllowed(key, status, options.eventName || process.env.CODEX_EVENT_NAME, harnessVersion)) failures.push(`${key}=${status}`);
   }
   if (options.gateExit && options.gateExit !== 0 && !['pass', 'manual_confirmation_required'].includes(report.status)) {
     failures.push(`report.status=${report.status || 'missing'}`);
@@ -345,6 +354,7 @@ export function evaluateWorkflowReport(report, options = {}) {
     scoreDecompositionStatus: report.scoreDecompositionStatus || { status: 'missing' },
     gateDecisionTraceStatus: report.gateDecisionTraceStatus || { status: 'missing' },
     oldHarnessMarkerStatus: report.oldHarnessMarkerStatus || { status: 'missing' },
+    legacyCompatibilitySelfTestStatus: report.legacyCompatibilitySelfTestStatus || buildLegacyCompatibilitySelfTestStatus(report, harnessVersion),
     v089SelfTestStatus: report.v089SelfTestStatus || { status: 'missing' },
     v090SelfTestStatus: report.v090SelfTestStatus || { status: 'missing' },
     failureCount: Array.isArray(report.failures) ? report.failures.length : 0,
