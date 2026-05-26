@@ -1,31 +1,33 @@
-FROM node:16-alpine as builder
+FROM node:20-alpine AS builder
 
 WORKDIR /app
 
-COPY ["package.json","yarn.lock","./"]
+COPY package.json package-lock.json ./
+COPY prisma ./prisma
 
-RUN yarn install
+RUN npm ci
 
-COPY ["./src","./src"]
+COPY tsconfig.json tsconfig.build.json ./
+COPY src ./src
 
-COPY ["tsconfig.json","tsconfig.build.json","./"]
+RUN npm run build
 
-RUN yarn build
-
-FROM node:16-alpine as final
+FROM node:20-alpine AS final
 
 WORKDIR /app
-
-COPY --from=builder /app/dist /app/dist/
-
-COPY --from=builder /app/package.json /app/
-
-COPY --from=builder /app/yarn.lock /app/
-
-RUN yarn install --production
 
 ENV PORT=5000
-
 ENV NODE_ENV=production
 
-CMD ["yarn","run","start:prod"]
+COPY package.json package-lock.json ./
+COPY prisma ./prisma
+
+RUN npm ci --omit=dev && npm cache clean --force
+
+COPY --from=builder /app/dist ./dist
+COPY --from=builder /app/node_modules/.prisma ./node_modules/.prisma
+COPY --from=builder /app/node_modules/@prisma/client ./node_modules/@prisma/client
+
+EXPOSE 5000
+
+CMD ["npm", "run", "start:prod"]
