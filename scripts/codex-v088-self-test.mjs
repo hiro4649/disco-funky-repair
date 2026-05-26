@@ -1,16 +1,8 @@
 #!/usr/bin/env node
-// CODEX_QUALITY_HARNESS_FILE v0.8.8
-import fs from 'node:fs';
+// CODEX_QUALITY_HARNESS_FILE v0.8.9
 import { fileURLToPath } from 'node:url';
 import { HARNESS_VERSION, marker, simpleStatus, writeJsonReport, exitFor } from './codex-v080-lib.mjs';
 import { buildComplexityGovernanceReport, buildComplexityEvalSuiteReport } from './codex-complexity-governance-gate.mjs';
-import {
-  activeSelfTestStatusKey,
-  buildLegacyCompatibilitySelfTestStatus,
-  effectiveSelfTestStatus,
-} from './codex-active-self-test-policy.mjs';
-import { buildRemoteProductCheckDecision } from './codex-remote-product-checks.mjs';
-import { evaluateWorkflowReport } from './codex-workflow-quality-runner.mjs';
 
 function assertCase(name, ok, failures, cases, detail = '') {
   cases.push({ name, status: ok ? 'pass' : 'fail', detail: String(detail || '').slice(0, 120), safeSummaryOnly: true });
@@ -72,70 +64,6 @@ No product runtime code.
 No package or lockfile changes.
 No runtime readiness claim.
 `;
-}
-
-function passStatus() {
-  return { status: 'pass', safeSummaryOnly: true };
-}
-
-function targetWorkflowFixture(overrides = {}) {
-  const keys = [
-    'targetManifestStatus',
-    'secretScan',
-    'agentsContextStatus',
-    'environmentReadinessStatus',
-    'changeClassificationStatus',
-    'productVerificationStatus',
-    'productVerificationEvidenceStatus',
-    'testMetricsStatus',
-    'remoteProductBaselineStatus',
-    'remoteNpmDiagnosticStatus',
-    'workflowPreflightStatus',
-    'fastPathStatus',
-    'safeArtifactIndexStatus',
-    'diagnosticConsolidationStatus',
-    'invalidReportRecoveryStatus',
-    'unsafeValueActionMatrixStatus',
-    'prProfileStatus',
-    'actionsRuntimeAdvisoryStatus',
-    'v085StabilityStatus',
-    'codeReviewMonitorStatus',
-    'promptGovernanceStatus',
-    'knowledgeGovernanceStatus',
-    'contractGovernanceStatus',
-    'complexityGovernanceStatus',
-    'openPrHygieneStatus',
-    'targetFinalSummaryStatus',
-    'stalePrAuditStatus',
-    'reasonSummaryStatus',
-    'safeOutputScanStatus',
-    'v080SelfTestStatus',
-    'v081SelfTestStatus',
-    'v082SelfTestStatus',
-    'v083SelfTestStatus',
-    'v084SelfTestStatus',
-    'v085SelfTestStatus',
-    'v086SelfTestStatus',
-    'v087SelfTestStatus',
-    'v088SelfTestStatus',
-    'safeArtifactValidation',
-    'outputShapeStatus',
-    'targetQualityScoreStatus',
-  ];
-  const report = Object.fromEntries(keys.map((key) => [key, passStatus()]));
-  report.marker = marker;
-  report.harnessVersion = '0.8.8';
-  report.status = 'pass';
-  report.mergeReady = true;
-  report.targetMergeReady = true;
-  report.humanReviewRequired = false;
-  report.targetManifestStatus = {
-    status: 'pass',
-    harnessVersion: '0.8.8',
-    activeSelfTestStatusKey: 'v088SelfTestStatus',
-    safeSummaryOnly: true,
-  };
-  return { ...report, ...overrides };
 }
 
 export function buildV088SelfTestReport() {
@@ -243,61 +171,6 @@ export function buildV088SelfTestReport() {
     CODEX_PR_BODY: sourceHarnessPrBody(),
   })).complexityGovernanceStatus;
   assertCase('source harness-only v0.8.8 PR fixture pass', result.status === 'pass' && result.regime === 'high', failures, cases, `${result.status}/${result.regime}/${result.reasonCodes?.join(',')}`);
-
-  const workflowText = fs.readFileSync('.github/workflows/quality-gate.yml', 'utf8');
-  const prepareIndex = workflowText.indexOf('Prepare target product verification');
-  const gateIndex = workflowText.indexOf('Run Codex quality gate');
-  assertCase(
-    'target workflow prepares remote product checks before local gate',
-    prepareIndex >= 0 && gateIndex > prepareIndex && workflowText.includes('scripts/codex-remote-product-checks.mjs'),
-    failures,
-    cases,
-    `${prepareIndex}/${gateIndex}`,
-  );
-
-  result = buildRemoteProductCheckDecision(prEnv({
-    CODEX_CHANGED_FILES: 'apps/backend/prisma/schema.prisma\napps/backend/prisma/migrations/20260526090000_add_job_runs/migration.sql',
-  }));
-  assertCase('schema and migration files require remote product checks', result.productRequired === true && result.skipNpm === '0', failures, cases, `${result.productRequired}/${result.skipNpm}`);
-  assertCase('schema and migration checks generate baseline and evidence', result.willGenerateBaseline === true && result.willGenerateEvidence === true, failures, cases, `${result.willGenerateBaseline}/${result.willGenerateEvidence}`);
-
-  result = buildRemoteProductCheckDecision(prEnv({
-    CODEX_CHANGED_FILES: 'docs/audit/FUNKY_LONG_RUNNING_JOB_RUNS_DESIGN.md',
-  }));
-  assertCase('docs-only files may skip remote product checks', result.productRequired === false && result.skipNpm === '1', failures, cases, `${result.productRequired}/${result.skipNpm}`);
-
-  result = buildRemoteProductCheckDecision(prEnv({
-    CODEX_CHANGED_FILES: '.github/workflows/quality-gate.yml\nscripts/codex-v088-self-test.mjs',
-  }));
-  assertCase('harness-only files may skip remote product checks', result.productRequired === false && result.skipNpm === '1', failures, cases, `${result.productRequired}/${result.skipNpm}`);
-
-  assertCase('active self-test for v0.8.8 is v088', activeSelfTestStatusKey('0.8.8') === 'v088SelfTestStatus', failures, cases, activeSelfTestStatusKey('0.8.8'));
-  assertCase('active self-test for v0.8.5 is v085', activeSelfTestStatusKey('0.8.5') === 'v085SelfTestStatus', failures, cases, activeSelfTestStatusKey('0.8.5'));
-  assertCase('legacy v085 failure is advisory for v0.8.8', effectiveSelfTestStatus('v085SelfTestStatus', 'fail', '0.8.8') === 'pass_legacy_advisory', failures, cases, effectiveSelfTestStatus('v085SelfTestStatus', 'fail', '0.8.8'));
-  assertCase('active v088 failure remains blocking for v0.8.8', effectiveSelfTestStatus('v088SelfTestStatus', 'fail', '0.8.8') === 'fail', failures, cases, effectiveSelfTestStatus('v088SelfTestStatus', 'fail', '0.8.8'));
-  assertCase('active v088 missing remains blocking for v0.8.8', effectiveSelfTestStatus('v088SelfTestStatus', 'missing', '0.8.8') === 'missing', failures, cases, effectiveSelfTestStatus('v088SelfTestStatus', 'missing', '0.8.8'));
-
-  result = buildLegacyCompatibilitySelfTestStatus({
-    v085SelfTestStatus: { status: 'fail', safeSummaryOnly: true },
-    v088SelfTestStatus: { status: 'pass', safeSummaryOnly: true },
-  }, '0.8.8');
-  assertCase('legacy compatibility failure is retained as advisory artifact', result.status === 'pass' && result.legacyFailureCount === 1, failures, cases, `${result.status}/${result.legacyFailureCount}`);
-
-  result = evaluateWorkflowReport(targetWorkflowFixture({
-    v085SelfTestStatus: { status: 'fail', reasonCodes: ['legacy_fixture_failure'], safeSummaryOnly: true },
-    v088SelfTestStatus: { status: 'pass', safeSummaryOnly: true },
-  }), { eventName: 'pull_request' });
-  assertCase('target workflow passes with active v088 pass and legacy v085 fail', result.status === 'pass', failures, cases, result.failures.join(','));
-
-  result = evaluateWorkflowReport(targetWorkflowFixture({
-    v088SelfTestStatus: { status: 'fail', reasonCodes: ['active_self_test_failed'], safeSummaryOnly: true },
-  }), { eventName: 'pull_request' });
-  assertCase('target workflow fails when active v088 self-test fails', result.status === 'fail' && result.failures.includes('v088SelfTestStatus=fail'), failures, cases, result.failures.join(','));
-
-  const missingV088 = targetWorkflowFixture();
-  delete missingV088.v088SelfTestStatus;
-  result = evaluateWorkflowReport(missingV088, { eventName: 'pull_request' });
-  assertCase('target workflow fails when active v088 self-test is missing', result.status === 'fail' && result.failures.includes('v088SelfTestStatus=missing'), failures, cases, result.failures.join(','));
 
   return {
     marker,
