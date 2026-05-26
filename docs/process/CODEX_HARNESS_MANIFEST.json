@@ -263,6 +263,7 @@
                         "codex-pr-template-compiler.mjs",
                         "codex-no-artifact-failure-classifier.mjs",
                         "codex-gate-decision-trace.mjs",
+                        "codex-backend-docker-smoke.mjs",
                         "codex-v090-self-test.mjs"
                     ],
     "forbiddenPaths":  [

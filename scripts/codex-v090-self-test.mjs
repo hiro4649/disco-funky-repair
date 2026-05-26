@@ -17,6 +17,11 @@ import { buildHumanConfirmationObjectReport } from './codex-human-confirmation-v
 import { buildEvidencePackReport } from './codex-evidence-pack-validate.mjs';
 import { buildRemoteProductCheckDecision } from './codex-remote-product-checks.mjs';
 import {
+  backendDockerSmokeRequiredForFiles,
+  buildBackendDockerSmokeUnavailableReport,
+  isAllowedBackendDockerHealthStatus,
+} from './codex-backend-docker-smoke.mjs';
+import {
   activeSelfTestStatusKey,
   buildLegacyCompatibilitySelfTestStatus,
   effectiveSelfTestStatus,
@@ -259,24 +264,31 @@ function buildV090SelfTestReport() {
   assertCase('remote_local_parity_pass_same_context', report.remoteLocalParityStatus.status === 'pass', failures, cases, report.remoteLocalParityStatus.status, report.remoteLocalParityStatus.reasonCodes);
 
   const dockerRuntimeProductDecision = buildRemoteProductCheckDecision(prEnv({
-    CODEX_CHANGED_FILES: JSON.stringify([
+    CODEX_CHANGED_FILES: [
       'apps/backend/Dockerfile',
       'apps/backend/Dockerfile.dev',
       'apps/backend/package.json',
       'apps/backend/src/app/lib/__tests__/dockerRuntimeArtifact.test.ts',
-    ]),
+    ].join('\n'),
   }));
   assertCase('docker_backend_product_pr_requires_remote_checks', dockerRuntimeProductDecision.productRequired === true && dockerRuntimeProductDecision.skipNpm === '0' && dockerRuntimeProductDecision.willGenerateBaseline === true && dockerRuntimeProductDecision.willGenerateEvidence === true, failures, cases, dockerRuntimeProductDecision.reasonCode, []);
+  assertCase('docker_backend_product_pr_requires_docker_smoke', dockerRuntimeProductDecision.dockerSmokeRequired === true, failures, cases, String(dockerRuntimeProductDecision.dockerSmokeRequired), []);
+  assertCase('dockerfile_change_requires_docker_smoke', backendDockerSmokeRequiredForFiles(['apps/backend/Dockerfile']) === true, failures, cases, 'pass', []);
+  assertCase('backend_package_script_change_requires_docker_smoke', backendDockerSmokeRequiredForFiles(['apps/backend/package.json']) === true, failures, cases, 'pass', []);
+  assertCase('backend_prisma_change_requires_docker_smoke', backendDockerSmokeRequiredForFiles(['apps/backend/prisma/schema.prisma']) === true, failures, cases, 'pass', []);
+  assertCase('backend_entrypoint_change_requires_docker_smoke', backendDockerSmokeRequiredForFiles(['apps/backend/src/main.ts']) === true, failures, cases, 'pass', []);
+  assertCase('docker_smoke_unavailable_fails_when_required', buildBackendDockerSmokeUnavailableReport().backendDockerSmokeStatus.status === 'fail', failures, cases, buildBackendDockerSmokeUnavailableReport().backendDockerSmokeStatus.status, buildBackendDockerSmokeUnavailableReport().backendDockerSmokeStatus.reasonCodes);
+  assertCase('docker_smoke_healthcheck_accepts_200_or_503', isAllowedBackendDockerHealthStatus(200) && isAllowedBackendDockerHealthStatus(503) && !isAllowedBackendDockerHealthStatus(500), failures, cases, 'pass', []);
 
   const docsOnlyProductDecision = buildRemoteProductCheckDecision(prEnv({
-    CODEX_CHANGED_FILES: JSON.stringify(['docs/audit/FUNKY_DOCKER_RUNTIME_AUDIT.md']),
+    CODEX_CHANGED_FILES: 'docs/audit/FUNKY_DOCKER_RUNTIME_AUDIT.md',
   }));
-  assertCase('docs_only_pr_allows_remote_product_check_skip', docsOnlyProductDecision.productRequired === false && docsOnlyProductDecision.skipNpm === '1', failures, cases, docsOnlyProductDecision.reasonCode, []);
+  assertCase('docs_only_pr_allows_remote_product_check_skip', docsOnlyProductDecision.productRequired === false && docsOnlyProductDecision.skipNpm === '1' && docsOnlyProductDecision.dockerSmokeRequired === false, failures, cases, docsOnlyProductDecision.reasonCode, []);
 
   const harnessOnlyProductDecision = buildRemoteProductCheckDecision(prEnv({
-    CODEX_CHANGED_FILES: JSON.stringify(['scripts/codex-local-quality-gate.mjs', 'docs/process/CODEX_HARNESS_MANIFEST.json']),
+    CODEX_CHANGED_FILES: 'scripts/codex-local-quality-gate.mjs\ndocs/process/CODEX_HARNESS_MANIFEST.json',
   }));
-  assertCase('harness_only_pr_allows_remote_product_check_skip', harnessOnlyProductDecision.productRequired === false && harnessOnlyProductDecision.skipNpm === '1', failures, cases, harnessOnlyProductDecision.reasonCode, []);
+  assertCase('harness_only_pr_allows_remote_product_check_skip', harnessOnlyProductDecision.productRequired === false && harnessOnlyProductDecision.skipNpm === '1' && harnessOnlyProductDecision.dockerSmokeRequired === false, failures, cases, harnessOnlyProductDecision.reasonCode, []);
 
   report = withTempFile('skeleton.md', (file) => compilePrTemplate({
     CODEX_PR_TEMPLATE_PROFILE: 'harness_workflow_r3',

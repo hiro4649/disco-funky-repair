@@ -371,6 +371,54 @@
       "canManualConfirmationOverride": false
     },
     {
+      "reasonCode": "docker_cli_unavailable",
+      "gate": "productVerification",
+      "severity": "error",
+      "safeMessage": "Docker CLI is unavailable for a required backend Docker smoke check.",
+      "nextBestFix": "Run the gate on a runner with Docker CLI available.",
+      "canManualConfirmationOverride": false
+    },
+    {
+      "reasonCode": "docker_daemon_unavailable",
+      "gate": "productVerification",
+      "severity": "error",
+      "safeMessage": "Docker daemon is unavailable for a required backend Docker smoke check.",
+      "nextBestFix": "Run the gate on a runner with Docker daemon access.",
+      "canManualConfirmationOverride": false
+    },
+    {
+      "reasonCode": "backend_docker_build_failed",
+      "gate": "productVerification",
+      "severity": "error",
+      "safeMessage": "Backend Docker image build failed.",
+      "nextBestFix": "Repair the backend Docker runtime artifact or Docker build context.",
+      "canManualConfirmationOverride": false
+    },
+    {
+      "reasonCode": "backend_docker_prisma_client_import_failed",
+      "gate": "productVerification",
+      "severity": "error",
+      "safeMessage": "Backend Docker image could not import the Prisma client.",
+      "nextBestFix": "Repair Prisma client generation or runtime image packaging.",
+      "canManualConfirmationOverride": false
+    },
+    {
+      "reasonCode": "backend_docker_container_start_failed",
+      "gate": "productVerification",
+      "severity": "error",
+      "safeMessage": "Backend Docker container did not start for smoke verification.",
+      "nextBestFix": "Repair the backend container start command or runtime artifact.",
+      "canManualConfirmationOverride": false
+    },
+    {
+      "reasonCode": "backend_docker_healthcheck_failed",
+      "gate": "productVerification",
+      "severity": "error",
+      "safeMessage": "Backend Docker container did not respond to the healthcheck smoke request.",
+      "nextBestFix": "Repair the backend runtime entrypoint or healthcheck route.",
+      "canManualConfirmationOverride": false
+    },
+    {
       "reasonCode": "target_quality_score_unavailable",
       "gate": "targetQualityScore",
       "severity": "error",

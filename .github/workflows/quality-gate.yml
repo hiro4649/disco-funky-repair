@@ -207,6 +207,7 @@ jobs:
             codex-workflow-preflight.safe.json
             codex-test-metrics.safe.json
             ${{ runner.temp }}/codex-remote-product-checks.safe.json
+            ${{ runner.temp }}/codex-backend-docker-smoke.*.safe.json
             ${{ runner.temp }}/codex-remote-product-baseline.json
             ${{ runner.temp }}/codex-product-verification-evidence.remote.json
           if-no-files-found: ignore

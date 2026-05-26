@@ -7,6 +7,7 @@ import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { HARNESS_VERSION, marker, normalizePath, writeJsonReport } from './codex-v080-lib.mjs';
 import { classifyChange, changedFiles } from './codex-change-classification-gate.mjs';
+import { backendDockerSmokeRequiredForFiles } from './codex-backend-docker-smoke.mjs';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const repo = path.dirname(here);
@@ -60,6 +61,7 @@ export function productScopesForFiles(files = []) {
     frontend: false,
     contracts: false,
     rootPackage: false,
+    backendDockerSmokeRequired: false,
     productRelevant: false,
     files: normalized,
   };
@@ -76,6 +78,7 @@ export function productScopesForFiles(files = []) {
       'tsconfig.json',
     ].includes(file)) scopes.rootPackage = true;
   }
+  scopes.backendDockerSmokeRequired = backendDockerSmokeRequiredForFiles(normalized);
   scopes.productRelevant = scopes.backend || scopes.frontend || scopes.contracts || scopes.rootPackage ||
     normalized.some((file) => /(^|\/)(__tests__|test|tests)\//.test(file) || /(^|\/)(src|lib|server|client|packages)\//.test(file));
   return scopes;
@@ -105,7 +108,7 @@ function runCommand({ cwd, name, command, args, env = {} }) {
   };
 }
 
-function runPackageChecks(root, scopes) {
+function runPackageChecks(root, scopes, options = {}) {
   const commands = [];
   const run = (relativeCwd, name, command, args, env = {}) => {
     const evidence = runCommand({ cwd: path.join(root, relativeCwd), name, command, args, env });
@@ -124,6 +127,14 @@ function runPackageChecks(root, scopes) {
     if (!run('apps/backend', 'backend:npm run prisma:validate', 'npm', ['run', 'prisma:validate'], dummyDbEnv)) return commands;
     if (!run('apps/backend', 'backend:npm run build', 'npm', ['run', 'build'], dummyDbEnv)) return commands;
     run('apps/backend', 'backend:npm test -- --runInBand', 'npm', ['test', '--', '--runInBand'], dummyDbEnv);
+    if (scopes.backendDockerSmokeRequired && fs.existsSync(path.join(root, 'scripts', 'codex-backend-docker-smoke.mjs'))) {
+      const phase = String(options.phase || 'candidate').replace(/[^a-z0-9_.-]/gi, '_');
+      const smokeReportPath = path.join(outputDir(), `codex-backend-docker-smoke.${phase}.safe.json`);
+      run('.', 'backend:docker build/run smoke', process.execPath, ['scripts/codex-backend-docker-smoke.mjs', '--json'], {
+        CODEX_BACKEND_DOCKER_SMOKE_PHASE: phase,
+        CODEX_BACKEND_DOCKER_SMOKE_REPORT_PATH: smokeReportPath,
+      });
+    }
   }
 
   if (scopes.frontend && fs.existsSync(path.join(root, 'apps', 'frontend', 'package.json'))) {
@@ -205,6 +216,7 @@ function safeReport({ status, files, scopes, baselineResult, candidateResult, re
         frontend: scopes.frontend,
         contracts: scopes.contracts,
         rootPackage: scopes.rootPackage,
+        backendDockerSmokeRequired: scopes.backendDockerSmokeRequired,
         productRelevant: scopes.productRelevant,
       },
       baselineResult: baselineResult || null,
@@ -234,6 +246,7 @@ export function buildRemoteProductCheckDecision(env = process.env) {
   return {
     plan,
     productRequired: plan.productRequired,
+    dockerSmokeRequired: plan.scopes.backendDockerSmokeRequired,
     skipNpm: plan.productRequired ? '0' : '1',
     willGenerateBaseline: plan.productRequired,
     willGenerateEvidence: plan.productRequired,
@@ -271,7 +284,7 @@ export function runRemoteProductChecks(env = process.env) {
     const added = git(['worktree', 'add', '--detach', baseWorktree, baseSha]);
     if (added.status === 0) {
       try {
-        baselineCommands = runPackageChecks(baseWorktree, plan.scopes);
+        baselineCommands = runPackageChecks(baseWorktree, plan.scopes, { phase: 'baseline' });
       } finally {
         removeWorktree(baseWorktree);
       }
@@ -299,7 +312,7 @@ export function runRemoteProductChecks(env = process.env) {
     }];
   }
 
-  const candidateCommands = runPackageChecks(repo, plan.scopes);
+  const candidateCommands = runPackageChecks(repo, plan.scopes, { phase: 'candidate' });
   const candidateResult = resultFor(candidateCommands);
   writeJson(baselinePath, baselineObject({ env, commands: baselineCommands }));
   writeJson(evidencePath, evidenceObject({ env, commands: candidateCommands, scopes: plan.scopes }));
