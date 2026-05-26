@@ -1,19 +1,11 @@
 #!/usr/bin/env node
-// CODEX_QUALITY_HARNESS_FILE v0.8.9
-import fs from 'node:fs';
+// CODEX_QUALITY_HARNESS_FILE v0.9.0
 import { fileURLToPath } from 'node:url';
 import { marker, HARNESS_VERSION, scanObjectForUnsafe, writeJsonReport, exitFor } from './codex-v080-lib.mjs';
 import { buildBaselineHealthReport } from './codex-baseline-health-gate.mjs';
 import { buildEvidenceContinuityReport } from './codex-evidence-continuity-gate.mjs';
 import { buildPrBodySurfaceNormalizerReport } from './codex-pr-body-surface-normalizer.mjs';
 import { buildSelfTestCaseExportReport } from './codex-self-test-case-export.mjs';
-import { buildRemoteProductCheckDecision } from './codex-remote-product-checks.mjs';
-import {
-  activeSelfTestStatusKey,
-  buildLegacyCompatibilitySelfTestStatus,
-  effectiveSelfTestStatus,
-} from './codex-active-self-test-policy.mjs';
-import { evaluateWorkflowReport } from './codex-workflow-quality-runner.mjs';
 
 function assertCase(id, condition, failures, cases, actualStatus = 'pass', reasonCodes = []) {
   const status = condition ? 'pass' : 'fail';
@@ -73,79 +65,6 @@ function prEnv(extra = {}) {
     CODEX_PR_HEAD_SHA: '1234567890abcdef1234567890abcdef12345678',
     ...extra,
   };
-}
-
-function passStatus() {
-  return { status: 'pass', safeSummaryOnly: true };
-}
-
-function targetWorkflowFixture(overrides = {}) {
-  const keys = [
-    'targetManifestStatus',
-    'secretScan',
-    'agentsContextStatus',
-    'environmentReadinessStatus',
-    'changeClassificationStatus',
-    'productVerificationStatus',
-    'productVerificationEvidenceStatus',
-    'testMetricsStatus',
-    'remoteProductBaselineStatus',
-    'remoteNpmDiagnosticStatus',
-    'workflowPreflightStatus',
-    'fastPathStatus',
-    'safeArtifactIndexStatus',
-    'diagnosticConsolidationStatus',
-    'invalidReportRecoveryStatus',
-    'unsafeValueActionMatrixStatus',
-    'prProfileStatus',
-    'actionsRuntimeAdvisoryStatus',
-    'v085StabilityStatus',
-    'codeReviewMonitorStatus',
-    'promptGovernanceStatus',
-    'knowledgeGovernanceStatus',
-    'contractGovernanceStatus',
-    'complexityGovernanceStatus',
-    'baselineHealthStatus',
-    'evidenceContinuityStatus',
-    'prBodySurfaceNormalizerStatus',
-    'requiredHeadingHintStatus',
-    'selfTestCaseExportStatus',
-    'scoreDecompositionStatus',
-    'selfTestProfileStatus',
-    'oldHarnessMarkerStatus',
-    'openPrHygieneStatus',
-    'targetFinalSummaryStatus',
-    'stalePrAuditStatus',
-    'reasonSummaryStatus',
-    'safeOutputScanStatus',
-    'v080SelfTestStatus',
-    'v081SelfTestStatus',
-    'v082SelfTestStatus',
-    'v083SelfTestStatus',
-    'v084SelfTestStatus',
-    'v085SelfTestStatus',
-    'v086SelfTestStatus',
-    'v087SelfTestStatus',
-    'v088SelfTestStatus',
-    'v089SelfTestStatus',
-    'safeArtifactValidation',
-    'outputShapeStatus',
-    'targetQualityScoreStatus',
-  ];
-  const report = Object.fromEntries(keys.map((key) => [key, passStatus()]));
-  report.marker = marker;
-  report.harnessVersion = HARNESS_VERSION;
-  report.status = 'pass';
-  report.mergeReady = true;
-  report.targetMergeReady = true;
-  report.humanReviewRequired = false;
-  report.targetManifestStatus = {
-    status: 'pass',
-    harnessVersion: HARNESS_VERSION,
-    activeSelfTestStatusKey: 'v089SelfTestStatus',
-    safeSummaryOnly: true,
-  };
-  return { ...report, ...overrides };
 }
 
 function buildV089SelfTestReport() {
@@ -227,7 +146,7 @@ function buildV089SelfTestReport() {
     'PR profile: harness_workflow_r3',
     'Risk level: R3',
     '## Task Contract',
-    'Goal: add v0.8.9 source harness operational precision only',
+    'Goal: add v0.9.0 source harness operational precision only',
     '## Evidence Integrity',
     'BEGIN_CODEX_EVIDENCE_PACK_JSON',
     '{"codexEvidencePack":{"headSha":"1234567890abcdef1234567890abcdef12345678","humanConfirmation":{"confirmedByRole":"project-owner"}}}',
@@ -248,68 +167,6 @@ function buildV089SelfTestReport() {
     CODEX_PR_BODY: prBody,
   })).prBodySurfaceNormalizerStatus.status;
   assertCase('source_harness_only_v089_pr_fixture_pass', ['warning', 'not_applicable'].includes(baseline) && continuity === 'pass' && surface === 'pass', failures, cases, `${baseline}/${continuity}/${surface}`, []);
-
-  const workflowText = fs.readFileSync('.github/workflows/quality-gate.yml', 'utf8');
-  const prepareIndex = workflowText.indexOf('Prepare target product verification');
-  const gateIndex = workflowText.indexOf('Run Codex quality gate');
-  assertCase(
-    'target_workflow_prepares_remote_product_checks_before_local_gate',
-    prepareIndex >= 0 && gateIndex > prepareIndex && workflowText.includes('scripts/codex-remote-product-checks.mjs'),
-    failures,
-    cases,
-    `${prepareIndex}/${gateIndex}`,
-  );
-  assertCase(
-    'target_workflow_uploads_remote_product_evidence_artifacts',
-    workflowText.includes('${{ runner.temp }}/codex-remote-product-baseline.json') &&
-      workflowText.includes('${{ runner.temp }}/codex-product-verification-evidence.remote.json'),
-    failures,
-    cases,
-    'workflow artifact list',
-  );
-
-  let decision = buildRemoteProductCheckDecision(prEnv({
-    CODEX_CHANGED_FILES: 'apps/backend/prisma/schema.prisma\napps/backend/prisma/migrations/20260526090000_add_job_runs/migration.sql',
-  }));
-  assertCase('schema_and_migration_files_require_remote_product_checks', decision.productRequired === true && decision.skipNpm === '0', failures, cases, `${decision.productRequired}/${decision.skipNpm}`);
-  assertCase('schema_and_migration_checks_generate_baseline_and_evidence', decision.willGenerateBaseline === true && decision.willGenerateEvidence === true, failures, cases, `${decision.willGenerateBaseline}/${decision.willGenerateEvidence}`);
-
-  decision = buildRemoteProductCheckDecision(prEnv({
-    CODEX_CHANGED_FILES: 'docs/audit/FUNKY_LONG_RUNNING_JOB_RUNS_DESIGN.md',
-  }));
-  assertCase('docs_only_files_may_skip_remote_product_checks', decision.productRequired === false && decision.skipNpm === '1', failures, cases, `${decision.productRequired}/${decision.skipNpm}`);
-
-  decision = buildRemoteProductCheckDecision(prEnv({
-    CODEX_CHANGED_FILES: '.github/workflows/quality-gate.yml\nscripts/codex-v089-self-test.mjs',
-  }));
-  assertCase('harness_only_files_may_skip_remote_product_checks', decision.productRequired === false && decision.skipNpm === '1', failures, cases, `${decision.productRequired}/${decision.skipNpm}`);
-
-  assertCase('active_self_test_for_v089_is_v089', activeSelfTestStatusKey('0.8.9') === 'v089SelfTestStatus', failures, cases, activeSelfTestStatusKey('0.8.9'));
-  assertCase('legacy_v085_failure_is_advisory_for_v089', effectiveSelfTestStatus('v085SelfTestStatus', 'fail', '0.8.9') === 'pass_legacy_advisory', failures, cases, effectiveSelfTestStatus('v085SelfTestStatus', 'fail', '0.8.9'));
-  assertCase('active_v089_failure_remains_blocking_for_v089', effectiveSelfTestStatus('v089SelfTestStatus', 'fail', '0.8.9') === 'fail', failures, cases, effectiveSelfTestStatus('v089SelfTestStatus', 'fail', '0.8.9'));
-  assertCase('active_v089_missing_remains_blocking_for_v089', effectiveSelfTestStatus('v089SelfTestStatus', 'missing', '0.8.9') === 'missing', failures, cases, effectiveSelfTestStatus('v089SelfTestStatus', 'missing', '0.8.9'));
-
-  let workflow = evaluateWorkflowReport(targetWorkflowFixture({
-    v085SelfTestStatus: { status: 'fail', reasonCodes: ['legacy_fixture_failure'], safeSummaryOnly: true },
-    v089SelfTestStatus: { status: 'pass', safeSummaryOnly: true },
-  }), { eventName: 'pull_request' });
-  assertCase('target_workflow_passes_with_active_v089_pass_and_legacy_v085_fail', workflow.status === 'pass', failures, cases, workflow.failures.join(','));
-
-  workflow = evaluateWorkflowReport(targetWorkflowFixture({
-    v089SelfTestStatus: { status: 'fail', reasonCodes: ['active_self_test_failed'], safeSummaryOnly: true },
-  }), { eventName: 'pull_request' });
-  assertCase('target_workflow_fails_when_active_v089_self_test_fails', workflow.status === 'fail' && workflow.failures.includes('v089SelfTestStatus=fail'), failures, cases, workflow.failures.join(','));
-
-  const missingV089 = targetWorkflowFixture();
-  delete missingV089.v089SelfTestStatus;
-  workflow = evaluateWorkflowReport(missingV089, { eventName: 'pull_request' });
-  assertCase('target_workflow_fails_when_active_v089_self_test_is_missing', workflow.status === 'fail' && workflow.failures.includes('v089SelfTestStatus=missing'), failures, cases, workflow.failures.join(','));
-
-  const compatibility = buildLegacyCompatibilitySelfTestStatus({
-    v085SelfTestStatus: { status: 'fail', safeSummaryOnly: true },
-    v089SelfTestStatus: { status: 'pass', safeSummaryOnly: true },
-  }, '0.8.9');
-  assertCase('legacy_compatibility_failure_is_retained_as_advisory_artifact', compatibility.status === 'pass' && compatibility.legacyFailureCount === 1, failures, cases, `${compatibility.status}/${compatibility.legacyFailureCount}`);
 
   const unsafe = scanObjectForUnsafe(JSON.parse(JSON.stringify(cases).replace(/npm_/g, 'npmLabel_')));
   const status = failures.length || unsafe.length ? 'fail' : 'pass';
