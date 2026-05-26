@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// CODEX_QUALITY_HARNESS_FILE v0.8.9
+// CODEX_QUALITY_HARNESS_FILE v0.9.0
 import fs from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { HARNESS_VERSION, marker, parseArgs, simpleStatus, writeJsonReport } from './codex-v080-lib.mjs';
@@ -9,11 +9,6 @@ import { buildSafeArtifactIndex } from './codex-safe-artifact-index.mjs';
 import { buildFinalSummary } from './codex-target-final-summary.mjs';
 import { buildDiagnosticConsolidatedSummary } from './codex-diagnostic-consolidation-runner.mjs';
 import { buildInvalidReportRecoverySummary } from './codex-invalid-report-recovery.mjs';
-import {
-  buildLegacyCompatibilitySelfTestStatus,
-  effectiveSelfTestStatus,
-  isSelfTestStatusKey,
-} from './codex-active-self-test-policy.mjs';
 
 const sourceRequiredPass = [
   'sourceHarnessValidationStatus',
@@ -29,6 +24,10 @@ const sourceRequiredPass = [
   'remoteProductBaselineStatus',
   'remoteNpmDiagnosticStatus',
   'workflowPreflightStatus',
+  'artifactLifeboatStatus',
+  'classificationCoverageStatus',
+  'remoteLocalParityStatus',
+  'noArtifactFailureStatus',
   'fastPathStatus',
   'safeArtifactIndexStatus',
   'diagnosticConsolidationStatus',
@@ -45,9 +44,11 @@ const sourceRequiredPass = [
   'baselineHealthStatus',
   'evidenceContinuityStatus',
   'prBodySurfaceNormalizerStatus',
+  'prTemplateCompilerStatus',
   'requiredHeadingHintStatus',
   'selfTestCaseExportStatus',
   'scoreDecompositionStatus',
+  'gateDecisionTraceStatus',
   'selfTestProfileStatus',
   'oldHarnessMarkerStatus',
   'openPrHygieneStatus',
@@ -90,6 +91,7 @@ const sourceRequiredPass = [
   'v087SelfTestStatus',
   'v088SelfTestStatus',
   'v089SelfTestStatus',
+  'v090SelfTestStatus',
   'qualityScoreStatus',
 ];
 
@@ -105,6 +107,10 @@ const targetRequiredPass = [
   'remoteProductBaselineStatus',
   'remoteNpmDiagnosticStatus',
   'workflowPreflightStatus',
+  'artifactLifeboatStatus',
+  'classificationCoverageStatus',
+  'remoteLocalParityStatus',
+  'noArtifactFailureStatus',
   'fastPathStatus',
   'safeArtifactIndexStatus',
   'diagnosticConsolidationStatus',
@@ -121,9 +127,11 @@ const targetRequiredPass = [
   'baselineHealthStatus',
   'evidenceContinuityStatus',
   'prBodySurfaceNormalizerStatus',
+  'prTemplateCompilerStatus',
   'requiredHeadingHintStatus',
   'selfTestCaseExportStatus',
   'scoreDecompositionStatus',
+  'gateDecisionTraceStatus',
   'selfTestProfileStatus',
   'oldHarnessMarkerStatus',
   'openPrHygieneStatus',
@@ -141,6 +149,7 @@ const targetRequiredPass = [
   'v087SelfTestStatus',
   'v088SelfTestStatus',
   'v089SelfTestStatus',
+  'v090SelfTestStatus',
   'safeArtifactValidation',
   'outputShapeStatus',
   'targetQualityScoreStatus',
@@ -164,6 +173,8 @@ const optionalNotApplicable = new Set([
   'testMetricsStatus',
   'remoteProductBaselineStatus',
   'remoteNpmDiagnosticStatus',
+  'remoteLocalParityStatus',
+  'noArtifactFailureStatus',
   'fastPathStatus',
   'safeArtifactIndexStatus',
   'diagnosticConsolidationStatus',
@@ -177,6 +188,7 @@ const optionalNotApplicable = new Set([
   'contractGovernanceStatus',
   'complexityGovernanceStatus',
   'baselineHealthStatus',
+  'prTemplateCompilerStatus',
   'openPrHygieneStatus',
   'targetFinalSummaryStatus',
   'stalePrAuditStatus',
@@ -188,6 +200,7 @@ const optionalNotApplicable = new Set([
   'productionReadinessStatus',
   'evidenceIntegrityStatus',
   'hermesInvariantStatus',
+  'v090SelfTestStatus',
 ]);
 
 function readReport(file) {
@@ -210,10 +223,7 @@ function readReport(file) {
   }
 }
 
-function statusAllowed(key, status, eventName, activeHarnessVersion) {
-  if (isSelfTestStatusKey(key)) {
-    return ['pass', 'pass_legacy_advisory'].includes(effectiveSelfTestStatus(key, status, activeHarnessVersion));
-  }
+function statusAllowed(key, status, eventName) {
   if (status === 'pass') return true;
   if (key === 'humanConfirmationObjectStatus' && status === 'not_required') return true;
   if (status === 'not_applicable' && optionalNotApplicable.has(key)) {
@@ -227,9 +237,6 @@ function statusAllowed(key, status, eventName, activeHarnessVersion) {
 
 export function evaluateWorkflowReport(report, options = {}) {
   const mode = report.targetQualityScoreStatus && !report.sourceHarnessValidationStatus ? 'target' : 'source';
-  const activeHarnessVersion = mode === 'target'
-    ? (report.targetManifestStatus?.harnessVersion || report.harnessVersion || HARNESS_VERSION)
-    : (report.sourceHarnessValidationStatus?.sourceHarnessVersion || report.sourceHarnessValidationStatus?.harnessVersion || report.harnessVersion || HARNESS_VERSION);
   const v084Fields = new Set([
     'fastPathStatus',
     'diagnosticConsolidationStatus',
@@ -268,23 +275,34 @@ export function evaluateWorkflowReport(report, options = {}) {
     'oldHarnessMarkerStatus',
     'v089SelfTestStatus',
   ]);
+  const v090Fields = new Set([
+    'artifactLifeboatStatus',
+    'classificationCoverageStatus',
+    'remoteLocalParityStatus',
+    'noArtifactFailureStatus',
+    'prTemplateCompilerStatus',
+    'gateDecisionTraceStatus',
+    'v090SelfTestStatus',
+  ]);
   const hasV084Shape = report.harnessVersion === HARNESS_VERSION || [...v084Fields].some((key) => report[key]);
   const hasV085Shape = report.harnessVersion === HARNESS_VERSION || [...v085Fields].some((key) => report[key]);
   const hasV086Shape = report.harnessVersion === HARNESS_VERSION || [...v086Fields].some((key) => report[key]);
   const hasV087Shape = report.harnessVersion === HARNESS_VERSION || [...v087Fields].some((key) => report[key]);
   const hasV088Shape = report.harnessVersion === HARNESS_VERSION || [...v088Fields].some((key) => report[key]);
   const hasV089Shape = report.harnessVersion === HARNESS_VERSION || [...v089Fields].some((key) => report[key]);
+  const hasV090Shape = report.harnessVersion === HARNESS_VERSION || [...v090Fields].some((key) => report[key]);
   const required = (mode === 'target' ? targetRequiredPass : sourceRequiredPass)
     .filter((key) => hasV084Shape || !v084Fields.has(key))
     .filter((key) => hasV085Shape || !v085Fields.has(key))
     .filter((key) => hasV086Shape || !v086Fields.has(key))
     .filter((key) => hasV087Shape || !v087Fields.has(key))
     .filter((key) => hasV088Shape || !v088Fields.has(key))
-    .filter((key) => hasV089Shape || !v089Fields.has(key));
+    .filter((key) => hasV089Shape || !v089Fields.has(key))
+    .filter((key) => hasV090Shape || !v090Fields.has(key));
   const failures = [];
   for (const key of required) {
     const status = report[key]?.status || 'missing';
-    if (!statusAllowed(key, status, options.eventName || process.env.CODEX_EVENT_NAME, activeHarnessVersion)) failures.push(`${key}=${status}`);
+    if (!statusAllowed(key, status, options.eventName || process.env.CODEX_EVENT_NAME)) failures.push(`${key}=${status}`);
   }
   if (options.gateExit && options.gateExit !== 0 && !['pass', 'manual_confirmation_required'].includes(report.status)) {
     failures.push(`report.status=${report.status || 'missing'}`);
@@ -315,14 +333,20 @@ export function evaluateWorkflowReport(report, options = {}) {
     knowledgeGovernanceStatus: report.knowledgeGovernanceStatus || { status: 'missing' },
     contractGovernanceStatus: report.contractGovernanceStatus || { status: 'missing' },
     complexityGovernanceStatus: report.complexityGovernanceStatus || { status: 'missing' },
-    legacyCompatibilitySelfTestStatus: report.legacyCompatibilitySelfTestStatus || buildLegacyCompatibilitySelfTestStatus(report, activeHarnessVersion),
+    artifactLifeboatStatus: report.artifactLifeboatStatus || { status: 'missing' },
+    classificationCoverageStatus: report.classificationCoverageStatus || { status: 'missing' },
+    remoteLocalParityStatus: report.remoteLocalParityStatus || { status: 'missing' },
+    noArtifactFailureStatus: report.noArtifactFailureStatus || { status: 'missing' },
     baselineHealthStatus: report.baselineHealthStatus || { status: 'missing' },
     evidenceContinuityStatus: report.evidenceContinuityStatus || { status: 'missing' },
     prBodySurfaceNormalizerStatus: report.prBodySurfaceNormalizerStatus || { status: 'missing' },
+    prTemplateCompilerStatus: report.prTemplateCompilerStatus || { status: 'missing' },
     selfTestCaseExportStatus: report.selfTestCaseExportStatus || { status: 'missing' },
     scoreDecompositionStatus: report.scoreDecompositionStatus || { status: 'missing' },
+    gateDecisionTraceStatus: report.gateDecisionTraceStatus || { status: 'missing' },
     oldHarnessMarkerStatus: report.oldHarnessMarkerStatus || { status: 'missing' },
     v089SelfTestStatus: report.v089SelfTestStatus || { status: 'missing' },
+    v090SelfTestStatus: report.v090SelfTestStatus || { status: 'missing' },
     failureCount: Array.isArray(report.failures) ? report.failures.length : 0,
     warningCount: Array.isArray(report.warnings) ? report.warnings.length : 0,
     safeSummaryOnly: true,
@@ -383,6 +407,7 @@ function writeArtifacts(result, report) {
     { artifactName: 'codex-diagnostic-consolidated-summary.json', path: 'codex-diagnostic-consolidated-summary.json', status: 'present' },
     { artifactName: 'codex-quality-gate-safe-summary.json', path: 'codex-quality-gate-safe-summary.json', status: 'present' },
     { artifactName: 'codex-failure-reasons.json', path: 'codex-failure-reasons.json', status: 'present' },
+    { artifactName: 'codex-minimal-safe-failure.json', path: 'codex-minimal-safe-failure.json', status: fs.existsSync('codex-minimal-safe-failure.json') ? 'present' : 'missing', reasonCodes: fs.existsSync('codex-minimal-safe-failure.json') ? [] : ['artifact_lifeboat_missing'] },
     { artifactName: 'codex-evidence-pack.normalized.json', path: 'codex-evidence-pack.normalized.json', status: 'present' },
     { artifactName: 'codex-self-test-cases.safe.json', path: 'codex-self-test-cases.safe.json', status: 'present' },
     { artifactName: `codex-${result.mode}-final-summary.json`, path: `codex-${result.mode}-final-summary.json`, status: 'present' },
@@ -428,6 +453,7 @@ function writeInvalidReportArtifacts(loaded) {
     { artifactName: 'codex-diagnostic-consolidated-summary.json', path: 'codex-diagnostic-consolidated-summary.json', status: 'present' },
     { artifactName: 'codex-quality-gate-safe-summary.json', path: 'codex-quality-gate-safe-summary.json', status: 'present' },
     { artifactName: 'codex-failure-reasons.json', path: 'codex-failure-reasons.json', status: 'present' },
+    { artifactName: 'codex-minimal-safe-failure.json', path: 'codex-minimal-safe-failure.json', status: fs.existsSync('codex-minimal-safe-failure.json') ? 'present' : 'missing', reasonCodes: fs.existsSync('codex-minimal-safe-failure.json') ? [] : ['artifact_lifeboat_missing'] },
     { artifactName: 'codex-invalid-report-recovery-summary.json', path: 'codex-invalid-report-recovery-summary.json', status: 'present' },
     { artifactName: 'codex-safe-artifact-index.json', path: 'codex-safe-artifact-index.json', status: 'present' },
   ], 'unknown', { enforceRequired: true });

@@ -1,28 +1,56 @@
 ﻿{
-    "marker":  "CODEX_QUALITY_HARNESS_FILE v0.8.9",
-    "harnessVersion":  "0.8.9",
-    "profileTemplateVersion":  "0.7.0",
-    "targetRepoMode":  true,
-    "sourceRepoMode":  false,
-    "safeSummaryOnly":  true,
-    "managedFiles":  [
-                         ".agents/skills/codex-bugfix/SKILL.md",
-                         ".github/pull_request_template.md",
-                         ".github/workflows/quality-gate.yml",
-                         "AGENTS.md",
-                         "docs/codex/AI_DRIVEN_DEVELOPMENT_WORKFLOW.md",
-                         "docs/codex/AUTHORITY_POLICY.md",
-                         "docs/codex/CODEX_REQUEST_BRIEF_TEMPLATE.md",
-                         "docs/codex/PR_ACCEPTANCE_CHECKLIST.md",
-                         "docs/codex/PREVIEW_SMOKE_CHECK_STANDARD.md",
-                         "docs/codex/QUESTIONS.md",
-                         "docs/codex/SUBAGENT_REVIEW_STANDARD.md",
-                         "docs/codex/TEAM_USAGE_GUIDE.md",
-                         "docs/codex/TEST_PLANNING_STANDARD.md",
-                         "docs/codex/WEEKLY_REFACTOR_STANDARD.md",
-                         "docs/process/CODEX_HARNESS_MANIFEST.json"
-                     ],
+    "profileTemplateVersion":  "0.7.0 compatible",
+    "compatibleProfileTemplateVersions":  [
+                                              "0.7.0"
+                                          ],
+    "targetQualityScore":  {
+                               "enabled":  true,
+                               "required":  true,
+                               "productVerificationRequiredForProductChanges":  true,
+                               "skipNpmAllowedForHarnessOnly":  true
+                           },
+    "workflowRunner":  {
+                           "enabled":  true,
+                           "safeArtifactsOnly":  true,
+                           "compactReasonSummary":  true
+                       },
+    "workflowPreflight":  {
+                              "enabled":  true,
+                              "safeArtifact":  "codex-workflow-preflight.safe.json"
+                          },
+    "remoteProductBaseline":  {
+                                  "enabled":  true,
+                                  "requiredForProductRelevantChanges":  true,
+                                  "notRequiredForHarnessOnly":  true
+                              },
+    "remoteNpmDiagnostic":  {
+                                "enabled":  true,
+                                "safeSummaryOnly":  true
+                            },
+    "safeArtifactIndex":  {
+                              "enabled":  true,
+                              "artifact":  "codex-safe-artifact-index.json"
+                          },
+    "openPrHygiene":  {
+                          "enabled":  true,
+                          "reportOnly":  true
+                      },
+    "finalSummary":  {
+                         "enabled":  true,
+                         "targetArtifact":  "codex-target-final-summary.json"
+                     },
+    "evidenceNormalization":  {
+                                  "productVerificationEvidence":  true,
+                                  "testMetricsSafeArtifact":  true,
+                                  "stalePrAudit":  true
+                              },
+    "coreProfileSeparation":  {
+                                  "sourceHarnessVersion":  "0.9.0",
+                                  "targetMode":  "target",
+                                  "profilesRequired":  false
+                              },
     "policyFiles":  [
+                        "docs/process/CODEX_HARNESS_MANIFEST.json",
                         "docs/process/CODEX_OPENAI_CODEX_METHOD_POLICY.md",
                         "docs/process/CODEX_OPENAI_CODEX_METHOD_POLICY.json",
                         "docs/process/CODEX_GENERIC_HARNESS_CORE_POLICY.md",
@@ -140,7 +168,21 @@
                         "docs/process/CODEX_PR_BODY_SURFACE_NORMALIZER_POLICY.json",
                         "docs/process/CODEX_SELF_TEST_CASE_EXPORT_SCHEMA.json",
                         "docs/process/CODEX_COMPLEXITY_FALSE_POSITIVE_CASES.json",
-                        "docs/process/CODEX_SCORE_DECOMPOSITION_SCHEMA.json"
+                        "docs/process/CODEX_SCORE_DECOMPOSITION_SCHEMA.json",
+                        "docs/process/CODEX_ARTIFACT_LIFEBOAT_POLICY.md",
+                        "docs/process/CODEX_ARTIFACT_LIFEBOAT_POLICY.json",
+                        "docs/process/CODEX_CLASSIFICATION_REGISTRY_POLICY.md",
+                        "docs/process/CODEX_CLASSIFICATION_REGISTRY_POLICY.json",
+                        "docs/process/CODEX_CLASSIFICATION_REGISTRY_SCHEMA.json",
+                        "docs/process/CODEX_CLASSIFICATION_REGISTRY.json",
+                        "docs/process/CODEX_REMOTE_LOCAL_PARITY_POLICY.md",
+                        "docs/process/CODEX_REMOTE_LOCAL_PARITY_POLICY.json",
+                        "docs/process/CODEX_PR_TEMPLATE_COMPILER_POLICY.md",
+                        "docs/process/CODEX_PR_TEMPLATE_COMPILER_POLICY.json",
+                        "docs/process/CODEX_GATE_DECISION_TRACE_SCHEMA.json",
+                        "docs/process/CODEX_NO_ARTIFACT_FAILURE_SCHEMA.json",
+                        "docs/process/CODEX_OPERATIONAL_RECOVERY_HINTS_SCHEMA.json",
+                        "docs/process/CODEX_V090_EVAL_CASES.json"
                     ],
     "scriptNames":  [
                         "codex-local-quality-gate.mjs",
@@ -214,6 +256,59 @@
                         "codex-evidence-continuity-gate.mjs",
                         "codex-pr-body-surface-normalizer.mjs",
                         "codex-self-test-case-export.mjs",
-                        "codex-v089-self-test.mjs"
-                    ]
+                        "codex-v089-self-test.mjs",
+                        "codex-artifact-lifeboat.mjs",
+                        "codex-classification-coverage-gate.mjs",
+                        "codex-remote-local-parity-gate.mjs",
+                        "codex-pr-template-compiler.mjs",
+                        "codex-no-artifact-failure-classifier.mjs",
+                        "codex-gate-decision-trace.mjs",
+                        "codex-v090-self-test.mjs"
+                    ],
+    "forbiddenPaths":  [
+                           "src/",
+                           "apps/",
+                           "contracts/",
+                           "test/",
+                           "tests/",
+                           "runtime product code",
+                           "product tests",
+                           "runtime assets",
+                           "package.json",
+                           "package-lock.json",
+                           "npm-shrinkwrap.json",
+                           "yarn.lock",
+                           "pnpm-lock.yaml",
+                           "profiles/*",
+                           "product config not owned by harness",
+                           "scripts/run-tests.js"
+                       ],
+    "v085Stability":  {
+                          "enabled":  true,
+                          "safeSummaryOnly":  true,
+                          "productFastPathForbidden":  true,
+                          "importSmokeConfigGated":  true,
+                          "runtimeRiskRegisterGeneric":  true
+                      },
+    "marker":  "CODEX_QUALITY_HARNESS_FILE v0.9.0",
+    "harnessVersion":  "0.9.0",
+    "sourceHarnessVersion":  "0.9.0",
+    "targetRepoMode":  true,
+    "projectName":  "FUNKY",
+    "repository":  "hiro4649/disco-funky-repair",
+    "profileCompatibility":  "off",
+    "safeSummaryOnly":  true,
+    "managedFiles":  [
+                         ".agents/skills/codex-bugfix/SKILL.md",
+                         ".github/pull_request_template.md",
+                         ".github/workflows/quality-gate.yml",
+                         "AGENTS.md",
+                         "docs/codex/*.md",
+                         "docs/process/*.md",
+                         "docs/process/*.json",
+                         "docs/process/golden/*.json",
+                         "docs/process/skills/*.md",
+                         "docs/process/CODEX_HARNESS_MANIFEST.json",
+                         "scripts/codex-*"
+                     ]
 }
