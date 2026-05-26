@@ -1,4 +1,4 @@
-# CODEX_QUALITY_HARNESS_FILE v0.8.8
+# CODEX_QUALITY_HARNESS_FILE v0.8.9
 name: quality-gate
 
 on:
@@ -40,21 +40,6 @@ jobs:
               (cd "$dir" && npm install --no-package-lock)
             fi
           done
-      - name: Prepare target product verification
-        shell: bash
-        env:
-          CODEX_QUALITY_REPORT: "json"
-          CODEX_EVENT_NAME: ${{ github.event_name }}
-          CODEX_PR_NUMBER: ${{ github.event.pull_request.number || '' }}
-          CODEX_PR_HEAD_SHA: ${{ github.event.pull_request.head.sha || '' }}
-          CODEX_PR_BASE_SHA: ${{ github.event.pull_request.base.sha || '' }}
-          CODEX_REPOSITORY: ${{ github.repository }}
-          GITHUB_TOKEN: ${{ github.token }}
-        run: |
-          set -euo pipefail
-          if [ ! -f CODEX_SOURCE_HARNESS_MANIFEST.json ]; then
-            node scripts/codex-remote-product-checks.mjs > "$RUNNER_TEMP/codex-remote-product-checks.json"
-          fi
       - name: Run Codex quality gate
         shell: bash
         env:
@@ -108,6 +93,13 @@ jobs:
             console.log(`- humanReviewRequired: ${summary.humanReviewRequired}`);
             console.log(`- qualityScoreStatus: ${summary.qualityScoreStatus?.status || 'missing'}`);
             console.log(`- qualityScore: ${summary.qualityScoreStatus?.score ?? 'missing'}`);
+            console.log(`- baselineHealthStatus: ${summary.baselineHealthStatus?.status || 'missing'}`);
+            console.log(`- evidenceContinuityStatus: ${summary.evidenceContinuityStatus?.status || 'missing'}`);
+            console.log(`- prBodySurfaceNormalizerStatus: ${summary.prBodySurfaceNormalizerStatus?.status || 'missing'}`);
+            console.log(`- selfTestCaseExportStatus: ${summary.selfTestCaseExportStatus?.status || 'missing'}`);
+            console.log(`- scoreDecompositionStatus: ${summary.scoreDecompositionStatus?.status || 'missing'}`);
+            console.log(`- oldHarnessMarkerStatus: ${summary.oldHarnessMarkerStatus?.status || 'missing'}`);
+            console.log(`- v089SelfTestStatus: ${summary.v089SelfTestStatus?.status || 'missing'}`);
             console.log(`- pathMode: ${diagnostic?.pathMode || 'missing'}`);
             console.log(`- topNextAction: ${diagnostic?.nextActions?.[0] || 'missing'}`);
           } else {
@@ -129,6 +121,7 @@ jobs:
             codex-quality-gate-safe-summary.json
             codex-diagnostic-consolidated-summary.json
             codex-evidence-pack.normalized.json
+            codex-self-test-cases.safe.json
             codex-failure-reasons.json
             codex-invalid-report-recovery-summary.json
             codex-target-quality-summary.json
@@ -137,7 +130,4 @@ jobs:
             codex-safe-artifact-index.json
             codex-workflow-preflight.safe.json
             codex-test-metrics.safe.json
-            ${{ runner.temp }}/codex-remote-product-checks.safe.json
-            ${{ runner.temp }}/codex-remote-product-baseline.json
-            ${{ runner.temp }}/codex-product-verification-evidence.remote.json
           if-no-files-found: ignore
