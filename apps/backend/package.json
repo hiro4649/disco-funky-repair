@@ -20,8 +20,10 @@
     "build": "rimraf ./dist && tsc -p tsconfig.build.json",
     "check-formatting": "prettier --check src/**/*.ts",
     "test": "jest",
+    "start:dev": "cross-env NODE_ENV=development rimraf ./dist && tsc-watch -p tsconfig.build.json --onSuccess \"nodemon ./dist/src/main.js\"",
+    "start:prod": "node ./dist/src/main.js",
     "dev": "cross-env NODE_ENV=development rimraf ./dist && tsc-watch -p tsconfig.build.json --onSuccess \"nodemon ./dist/src/main.js\"",
-    "prod": "cross-env NODE_ENV=production rimraf ./dist && tsc-watch -p tsconfig.build.json --onSuccess \"node ./dist/src/main.js\"",
+    "prod": "npm run start:prod",
     "test-cov": "jest --coverage",
     "seed": "npx ts-node prisma/seed/seed.ts"
   },
