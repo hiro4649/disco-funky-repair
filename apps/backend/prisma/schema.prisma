@@ -317,6 +317,31 @@ model TransactionCheckpoint {
   @@index([needsFullRecalc])
 }
 
+model JobRun {
+  id            Int          @id @default(autoincrement())
+  jobName       String       @map("job_name") @db.VarChar(128)
+  runKey        String       @map("run_key") @db.VarChar(255)
+  status        JobRunStatus @default(PENDING)
+  startedAt     DateTime?    @map("started_at") @db.Timestamp(6)
+  finishedAt    DateTime?    @map("finished_at") @db.Timestamp(6)
+  heartbeatAt   DateTime?    @map("heartbeat_at") @db.Timestamp(6)
+  attempt       Int          @default(0) @db.Integer
+  maxAttempts   Int          @default(3) @map("max_attempts") @db.Integer
+  lockedBy      String?      @map("locked_by") @db.VarChar(128)
+  checkpoint    Json?        @db.Json
+  safeErrorKind String?      @map("safe_error_kind") @db.VarChar(100)
+  safeSummary   Json?        @map("safe_summary") @db.Json
+  createdAt     DateTime     @default(now()) @map("created_at") @db.Timestamp(6)
+  updatedAt     DateTime     @default(now()) @updatedAt @map("updated_at") @db.Timestamp(6)
+
+  @@unique([jobName, runKey], map: "job_runs_job_name_run_key_key")
+  @@index([status], map: "job_runs_status_idx")
+  @@index([heartbeatAt], map: "job_runs_heartbeat_at_idx")
+  @@index([jobName], map: "job_runs_job_name_idx")
+  @@index([createdAt], map: "job_runs_created_at_idx")
+  @@map("job_runs")
+}
+
 // Transaction classification audit log for transparency
 model TransactionAudit {
   id                    Int      @id @default(autoincrement())
@@ -398,6 +423,16 @@ enum TicketCodeStatus {
   PENDING
   CLAIMED
   EXPIRED
+}
+
+enum JobRunStatus {
+  PENDING
+  RUNNING
+  SUCCEEDED
+  FAILED
+  TIMED_OUT
+  MANUAL_REVIEW
+  CANCELED
 }
 
 model DexList {
