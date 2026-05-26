@@ -11,6 +11,7 @@ tier transaction flow to JobRun.
 
 - Current main SHA audited: `765d84d8ce87253dbcb48825e56db3e61eb53007`
 - PR #165 merge commit: `765d84d8ce87253dbcb48825e56db3e61eb53007`
+- Post-merge audit PR: `#169`
 - Active harness marker observed: `CODEX_QUALITY_HARNESS_FILE v0.8.9`
 - Active self-test script observed: `scripts/codex-v089-self-test.mjs`
 - Runtime readiness claimed: no
@@ -246,4 +247,3 @@ claims, heartbeat, checkpoint, retry, and explicit resume behavior.
 - No deploy, mint, sendToWallet execution, governance transaction, TierUpdater
   transaction, funded transaction, or staging rollout.
 - No secrets or raw payloads.
-
