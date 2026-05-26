@@ -15,6 +15,7 @@ import { buildGateDecisionTrace } from './codex-gate-decision-trace.mjs';
 import { filterSourceValidationChangedFiles } from './codex-local-quality-gate.mjs';
 import { buildHumanConfirmationObjectReport } from './codex-human-confirmation-validate.mjs';
 import { buildEvidencePackReport } from './codex-evidence-pack-validate.mjs';
+import { buildRemoteProductCheckDecision } from './codex-remote-product-checks.mjs';
 
 function assertCase(id, condition, failures, cases, actualStatus = 'pass', reasonCodes = []) {
   const status = condition ? 'pass' : 'fail';
@@ -118,10 +119,14 @@ function buildV090SelfTestReport() {
   const setupNodeStep = workflowText.indexOf('- name: Setup Node');
   const installRootStep = workflowText.indexOf('- name: Install root dependencies if present');
   const installMonorepoStep = workflowText.indexOf('- name: Install monorepo dependencies if present');
+  const prepareProductVerificationStep = workflowText.indexOf('- name: Prepare target product verification');
+  const qualityGateStep = workflowText.indexOf('- name: Run Codex quality gate');
   assertCase('upload_artifact_path_includes_runner_temp_lifeboat', workflowText.includes('${{ runner.temp }}/codex-minimal-safe-failure.json'), failures, cases, 'pass', []);
   assertCase('workflow_lifeboat_step_before_checkout', preCheckoutStep >= 0 && checkoutStep > preCheckoutStep, failures, cases, 'pass', []);
   assertCase('workflow_lifeboat_step_before_setup_node', preCheckoutStep >= 0 && setupNodeStep > preCheckoutStep, failures, cases, 'pass', []);
   assertCase('workflow_lifeboat_step_before_install_dependencies', preCheckoutStep >= 0 && installRootStep > preCheckoutStep && installMonorepoStep > preCheckoutStep, failures, cases, 'pass', []);
+  assertCase('workflow_prepares_target_product_verification_before_quality_gate', prepareProductVerificationStep >= 0 && qualityGateStep > prepareProductVerificationStep && workflowText.includes('node scripts/codex-remote-product-checks.mjs'), failures, cases, 'pass', []);
+  assertCase('workflow_uploads_remote_product_check_artifacts', workflowText.includes('${{ runner.temp }}/codex-remote-product-checks.safe.json') && workflowText.includes('${{ runner.temp }}/codex-remote-product-baseline.json') && workflowText.includes('${{ runner.temp }}/codex-product-verification-evidence.remote.json'), failures, cases, 'pass', []);
 
   const filteredSafeArtifacts = filterSourceValidationChangedFiles([
     'codex-minimal-safe-failure.json',
@@ -174,6 +179,26 @@ function buildV090SelfTestReport() {
     CODEX_LOCAL_REGISTRY_HASH: 'same',
   }));
   assertCase('remote_local_parity_pass_same_context', report.remoteLocalParityStatus.status === 'pass', failures, cases, report.remoteLocalParityStatus.status, report.remoteLocalParityStatus.reasonCodes);
+
+  const dockerRuntimeProductDecision = buildRemoteProductCheckDecision(prEnv({
+    CODEX_CHANGED_FILES: JSON.stringify([
+      'apps/backend/Dockerfile',
+      'apps/backend/Dockerfile.dev',
+      'apps/backend/package.json',
+      'apps/backend/src/app/lib/__tests__/dockerRuntimeArtifact.test.ts',
+    ]),
+  }));
+  assertCase('docker_backend_product_pr_requires_remote_checks', dockerRuntimeProductDecision.productRequired === true && dockerRuntimeProductDecision.skipNpm === '0' && dockerRuntimeProductDecision.willGenerateBaseline === true && dockerRuntimeProductDecision.willGenerateEvidence === true, failures, cases, dockerRuntimeProductDecision.reasonCode, []);
+
+  const docsOnlyProductDecision = buildRemoteProductCheckDecision(prEnv({
+    CODEX_CHANGED_FILES: JSON.stringify(['docs/audit/FUNKY_DOCKER_RUNTIME_AUDIT.md']),
+  }));
+  assertCase('docs_only_pr_allows_remote_product_check_skip', docsOnlyProductDecision.productRequired === false && docsOnlyProductDecision.skipNpm === '1', failures, cases, docsOnlyProductDecision.reasonCode, []);
+
+  const harnessOnlyProductDecision = buildRemoteProductCheckDecision(prEnv({
+    CODEX_CHANGED_FILES: JSON.stringify(['scripts/codex-local-quality-gate.mjs', 'docs/process/CODEX_HARNESS_MANIFEST.json']),
+  }));
+  assertCase('harness_only_pr_allows_remote_product_check_skip', harnessOnlyProductDecision.productRequired === false && harnessOnlyProductDecision.skipNpm === '1', failures, cases, harnessOnlyProductDecision.reasonCode, []);
 
   report = withTempFile('skeleton.md', (file) => compilePrTemplate({
     CODEX_PR_TEMPLATE_PROFILE: 'harness_workflow_r3',
