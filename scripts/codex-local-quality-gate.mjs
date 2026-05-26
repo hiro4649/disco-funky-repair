@@ -9,6 +9,11 @@ import { buildHumanConfirmationStatus } from './codex-production-readiness-gate.
 import { scanSafeOutput } from './codex-safe-output-scan.mjs';
 import { buildGithubReplayContextAsync } from './codex-ci-replay.mjs';
 import { buildCompactReasonSummary } from './codex-reason-summary.mjs';
+import {
+  buildLegacyCompatibilitySelfTestStatus,
+  effectiveSelfTestStatus,
+  isSelfTestStatusKey,
+} from './codex-active-self-test-policy.mjs';
 
 const HARNESS_VERSION = '0.9.0';
 const PROFILE_TEMPLATE_VERSION = '0.7.0';
@@ -675,8 +680,10 @@ function computeQualityScoreStatus(report) {
   ];
   const statuses = scored.map((key) => {
     const status = report[key]?.status || 'missing';
-    let effectiveStatus = status;
-    if (allowedNotApplicable.has(key) && status === 'not_applicable') effectiveStatus = 'pass';
+    let effectiveStatus = isSelfTestStatusKey(key)
+      ? effectiveSelfTestStatus(key, status, report.harnessVersion || HARNESS_VERSION)
+      : status;
+    if (!isSelfTestStatusKey(key) && allowedNotApplicable.has(key) && status === 'not_applicable') effectiveStatus = 'pass';
     if (key === 'humanConfirmationStatus' && status === 'not_required') effectiveStatus = 'pass';
     if (key === 'humanConfirmationObjectStatus' && status === 'not_required') effectiveStatus = 'pass';
     return { key, status, effectiveStatus };
@@ -778,7 +785,7 @@ function computeTargetOutputShapeStatus(report) {
     safeSummaryOnly: true,
   };
 }
-function computeTargetQualityScoreStatus(report) {
+export function computeTargetQualityScoreStatus(report) {
   const scored = [
     'targetManifestStatus',
     'secretScan',
@@ -888,8 +895,10 @@ function computeTargetQualityScoreStatus(report) {
   ]);
   const statuses = scored.map((key) => {
     const status = report[key]?.status || 'missing';
-    let effectiveStatus = status;
-    if (allowedNotApplicable.has(key) && status === 'not_applicable') effectiveStatus = 'pass_optional';
+    let effectiveStatus = isSelfTestStatusKey(key)
+      ? effectiveSelfTestStatus(key, status, report.harnessVersion || HARNESS_VERSION)
+      : status;
+    if (!isSelfTestStatusKey(key) && allowedNotApplicable.has(key) && status === 'not_applicable') effectiveStatus = 'pass_optional';
     return { key, status, effectiveStatus };
   });
   const blocking = statuses.filter((item) => ['fail', 'missing', 'not_run'].includes(item.effectiveStatus));
@@ -1195,9 +1204,12 @@ function computeOldHarnessMarkerStatus(sourceMode = true) {
     safeSummaryOnly: true,
   };
 }
-function applyStatusOutcome(key, value, failures, warnings) {
-  if (value?.status === 'fail') failures.push({ id: `${key}.failed`, message: `${key} failed` });
-  else if (value?.status === 'manual_confirmation_required' || value?.status === 'warning') {
+function applyStatusOutcome(key, value, failures, warnings, harnessVersion = HARNESS_VERSION) {
+  const status = isSelfTestStatusKey(key)
+    ? effectiveSelfTestStatus(key, value?.status || 'missing', harnessVersion)
+    : value?.status;
+  if (['fail', 'missing', 'not_run'].includes(status)) failures.push({ id: `${key}.failed`, message: `${key} failed` });
+  else if (status === 'manual_confirmation_required' || status === 'warning') {
     warnings.push({ id: `${key}.manual`, message: `${key} requires manual confirmation` });
   }
 }
@@ -1468,6 +1480,7 @@ async function runSourceHarnessGate() {
   report.v090SelfTestStatus = process.env.CODEX_SKIP_V090_SELF_TEST === '1'
     ? { status: 'not_applicable', reasonCodes: ['self_test_recursion_guard'], safeSummaryOnly: true }
     : runGateScript('scripts/codex-v090-self-test.mjs', 'v090SelfTestStatus', 'CODEX_V090_SELF_TEST_REPORT', { ...gateEnv, CODEX_V090_SKIP_LEGACY_RECHECKS: '1' });
+  report.legacyCompatibilitySelfTestStatus = buildLegacyCompatibilitySelfTestStatus(report, report.harnessVersion || HARNESS_VERSION);
   report.selfTestProfileStatus = computeSelfTestProfileStatus(report, gateEnv, true);
   report.oldHarnessMarkerStatus = computeOldHarnessMarkerStatus(true);
   report.selfTestCaseExportStatus = runGateScript('scripts/codex-self-test-case-export.mjs', 'selfTestCaseExportStatus', 'CODEX_SELF_TEST_CASE_EXPORT_REPORT', {
@@ -1892,6 +1905,7 @@ async function runTargetHarnessGate() {
   report.v090SelfTestStatus = process.env.CODEX_SKIP_V090_SELF_TEST === '1'
     ? { status: 'not_applicable', reasonCodes: ['self_test_recursion_guard'], safeSummaryOnly: true }
     : runGateScript('scripts/codex-v090-self-test.mjs', 'v090SelfTestStatus', 'CODEX_V090_SELF_TEST_REPORT', { ...gateEnv, CODEX_V090_SKIP_LEGACY_RECHECKS: '1' });
+  report.legacyCompatibilitySelfTestStatus = buildLegacyCompatibilitySelfTestStatus(report, report.harnessVersion || HARNESS_VERSION);
   report.selfTestProfileStatus = computeSelfTestProfileStatus(report, gateEnv, false);
   report.oldHarnessMarkerStatus = computeOldHarnessMarkerStatus(false);
   report.selfTestCaseExportStatus = runGateScript('scripts/codex-self-test-case-export.mjs', 'selfTestCaseExportStatus', 'CODEX_SELF_TEST_CASE_EXPORT_REPORT', {
