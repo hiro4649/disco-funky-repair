@@ -20,6 +20,11 @@ describe('backend runtime entrypoint hardening', () => {
     expect(mainSource).toMatch(/listenAsync\(server/);
   });
 
+  it('keeps tracking schedulers on the explicit main startup path', () => {
+    expect(appIndexSource).not.toContain("import './services/trackingService'");
+    expect(mainSource).toContain('startTrackingSchedulers()');
+  });
+
   it('uses env-driven CORS origins and a bounded global body parser limit', () => {
     expect(appIndexSource).toContain('getCorsOrigins()');
     expect(appIndexSource).toContain('getRequestBodyLimit()');
