@@ -13,7 +13,6 @@ import { rejectNonImageStaticAsset } from './middlewares/publicImageAssets';
 import { getCorsOrigins, getRequestBodyLimit } from './config/runtime';
 import { safeLogError } from './utils/safeLogger';
 import './lib/validateEnvs';
-import './services/trackingService';
 
 export const app = express();
 export const server = http.createServer(app);

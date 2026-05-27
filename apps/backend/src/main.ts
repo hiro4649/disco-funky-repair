@@ -3,6 +3,7 @@ import { Server } from "http";
 import { server } from "./app";
 import { CronService } from "./app/services/cron.service";
 import { startTrialNFTSchedulers } from "./app/lib/trialNftScheduler";
+import { startTrackingSchedulers } from "./app/services/trackingService";
 
 function listenAsync(server: Server, port: number) {
     return new Promise((resolve, reject) => {
@@ -22,6 +23,7 @@ async function main() {
     // Start cron jobs after the single runtime entrypoint is listening.
     CronService.startAllCronJobs();
     startTrialNFTSchedulers();
+    startTrackingSchedulers();
 }
 
 main().catch((err) => {
