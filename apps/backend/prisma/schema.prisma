@@ -369,18 +369,45 @@ model TransactionAudit {
 
 // Scheduled tier updates for predictive contract updates
 model ScheduledTierUpdate {
-  id           Int      @id @default(autoincrement())
-  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  userId       Int      @unique
-  scheduledAt  DateTime @db.Timestamp(6) // When user will cross tier boundary
-  expectedTier Int // Expected tier value (0, 30, 180, 360, 720)
-  currentTier  Int // Current tier value
-  processed    Boolean  @default(false)
-  createdAt    DateTime @default(now()) @db.Timestamp(6)
-  updatedAt    DateTime @default(now()) @db.Timestamp(6)
+  id                 Int                       @id @default(autoincrement())
+  user               User                      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId             Int                       @unique
+  scheduledAt        DateTime                  @db.Timestamp(6) // When user will cross tier boundary
+  expectedTier       Int // Expected tier value (0, 30, 180, 360, 720)
+  currentTier        Int // Current tier value
+  processed          Boolean                   @default(false)
+  status             ScheduledTierUpdateStatus @default(PENDING)
+  attempt            Int                       @default(0)
+  maxAttempts        Int                       @default(3)
+  lockedBy           String?                   @db.VarChar(128)
+  lockedAt           DateTime?                 @db.Timestamp(6)
+  heartbeatAt        DateTime?                 @db.Timestamp(6)
+  lockExpiresAt      DateTime?                 @db.Timestamp(6)
+  batchId            String?                   @db.VarChar(255)
+  txHash             String?                   @db.VarChar(255)
+  txChainId          Int?
+  txContractAddress  String?                   @db.VarChar(255)
+  txFrom             String?                   @db.VarChar(255)
+  txTo               String?                   @db.VarChar(255)
+  txBlockNumber      BigInt?
+  txReceiptStatus    Int?
+  txReceiptTimestamp DateTime?                 @db.Timestamp(6)
+  txGasUsed          String?                   @db.VarChar(255)
+  sentAt             DateTime?                 @db.Timestamp(6)
+  confirmedAt        DateTime?                 @db.Timestamp(6)
+  failedAt           DateTime?                 @db.Timestamp(6)
+  safeErrorKind      String?                   @db.VarChar(100)
+  safeSummary        Json?                     @db.Json
+  createdAt          DateTime                  @default(now()) @db.Timestamp(6)
+  updatedAt          DateTime                  @default(now()) @db.Timestamp(6)
 
   @@index([scheduledAt, processed])
   @@index([processed])
+  @@index([status, scheduledAt])
+  @@index([lockExpiresAt])
+  @@index([txHash])
+  @@index([batchId])
+  @@index([status, heartbeatAt])
 }
 
 model TicketCode {
@@ -429,6 +456,17 @@ enum JobRunStatus {
   PENDING
   RUNNING
   SUCCEEDED
+  FAILED
+  TIMED_OUT
+  MANUAL_REVIEW
+  CANCELED
+}
+
+enum ScheduledTierUpdateStatus {
+  PENDING
+  CLAIMED
+  TX_SENT
+  CONFIRMED
   FAILED
   TIMED_OUT
   MANUAL_REVIEW
