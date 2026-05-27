@@ -127,14 +127,15 @@ function runPackageChecks(root, scopes, options = {}) {
     if (!run('apps/backend', 'backend:npm run prisma:validate', 'npm', ['run', 'prisma:validate'], dummyDbEnv)) return commands;
     if (!run('apps/backend', 'backend:npm run build', 'npm', ['run', 'build'], dummyDbEnv)) return commands;
     run('apps/backend', 'backend:npm test -- --runInBand', 'npm', ['test', '--', '--runInBand'], dummyDbEnv);
-    if (scopes.backendDockerSmokeRequired && fs.existsSync(path.join(root, 'scripts', 'codex-backend-docker-smoke.mjs'))) {
-      const phase = String(options.phase || 'candidate').replace(/[^a-z0-9_.-]/gi, '_');
-      const smokeReportPath = path.join(outputDir(), `codex-backend-docker-smoke.${phase}.safe.json`);
-      run('.', 'backend:docker build/run smoke', process.execPath, ['scripts/codex-backend-docker-smoke.mjs', '--json'], {
-        CODEX_BACKEND_DOCKER_SMOKE_PHASE: phase,
-        CODEX_BACKEND_DOCKER_SMOKE_REPORT_PATH: smokeReportPath,
-      });
-    }
+  }
+
+  if (scopes.backendDockerSmokeRequired && fs.existsSync(path.join(root, 'scripts', 'codex-backend-docker-smoke.mjs'))) {
+    const phase = String(options.phase || 'candidate').replace(/[^a-z0-9_.-]/gi, '_');
+    const smokeReportPath = path.join(outputDir(), `codex-backend-docker-smoke.${phase}.safe.json`);
+    run('.', 'backend:docker build/run smoke', process.execPath, ['scripts/codex-backend-docker-smoke.mjs', '--json'], {
+      CODEX_BACKEND_DOCKER_SMOKE_PHASE: phase,
+      CODEX_BACKEND_DOCKER_SMOKE_REPORT_PATH: smokeReportPath,
+    });
   }
 
   if (scopes.frontend && fs.existsSync(path.join(root, 'apps', 'frontend', 'package.json'))) {
@@ -237,7 +238,7 @@ export function buildRemoteProductCheckPlan(env = process.env) {
   const files = changedFilesForPr(env);
   const classified = classifyChange(files, { ...env, CODEX_CHANGED_FILES: files.join('\n') });
   const scopes = productScopesForFiles(files);
-  const productRequired = Boolean(scopes.productRelevant || classified.productRelevantChanged || classified.packageOrLockfileChanged || classified.runtimeReadinessClaimed);
+  const productRequired = Boolean(scopes.productRelevant || scopes.backendDockerSmokeRequired || classified.productRelevantChanged || classified.packageOrLockfileChanged || classified.runtimeReadinessClaimed);
   return { files, scopes, classified, productRequired };
 }
 

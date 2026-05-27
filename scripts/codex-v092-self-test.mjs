@@ -13,6 +13,12 @@ import { buildBestOfNDecisionReport } from './codex-best-of-n-decision-record.mj
 import { buildEnvironmentProfileReport } from './codex-environment-profile-gate.mjs';
 import { buildAgentsContextBudgetReport } from './codex-agents-context-budget-gate.mjs';
 import { buildEvidenceAutoRepairHintReport } from './codex-evidence-auto-repair-hint.mjs';
+import { buildRemoteProductCheckDecision } from './codex-remote-product-checks.mjs';
+import {
+  backendDockerSmokeRequiredForFiles,
+  buildBackendDockerSmokeUnavailableReport,
+  isAllowedBackendDockerHealthStatus,
+} from './codex-backend-docker-smoke.mjs';
 
 function assertCase(id, condition, failures, cases, actualStatus = 'pass', reasonCodes = []) {
   cases.push({ id, status: condition ? 'pass' : 'fail', expectedStatus: 'pass', actualStatus, reasonCodes, safeSummaryOnly: true });
@@ -128,6 +134,26 @@ function buildV092SelfTestReport() {
 
   report = buildEvidenceAutoRepairHintReport({ expectedFieldName: 'Runtime readiness claimed', wouldWeakenGate: true });
   assertCase('evidence_auto_repair_hint_does_not_weaken_gate', report.evidenceAutoRepairHintStatus.status === 'fail', failures, cases, report.evidenceAutoRepairHintStatus.status, report.evidenceAutoRepairHintStatus.reasonCodes);
+
+  const dockerRuntimeProductDecision = buildRemoteProductCheckDecision(prEnv({
+    CODEX_CHANGED_FILES: [
+      'apps/backend/Dockerfile',
+      'apps/backend/Dockerfile.dev',
+      'apps/backend/package.json',
+      'apps/backend/src/app/lib/__tests__/dockerRuntimeArtifact.test.ts',
+    ].join('\n'),
+  }));
+  assertCase('docker_backend_product_pr_requires_remote_checks', dockerRuntimeProductDecision.productRequired === true && dockerRuntimeProductDecision.skipNpm === '0' && dockerRuntimeProductDecision.willGenerateBaseline === true && dockerRuntimeProductDecision.willGenerateEvidence === true, failures, cases, dockerRuntimeProductDecision.reasonCode, []);
+  assertCase('docker_backend_product_pr_requires_docker_smoke', dockerRuntimeProductDecision.dockerSmokeRequired === true, failures, cases, String(dockerRuntimeProductDecision.dockerSmokeRequired), []);
+  assertCase('dockerfile_dev_change_requires_docker_smoke', backendDockerSmokeRequiredForFiles(['apps/backend/Dockerfile.dev']) === true, failures, cases, 'pass', []);
+  assertCase('docker_smoke_script_change_requires_docker_smoke', backendDockerSmokeRequiredForFiles(['scripts/codex-backend-docker-smoke.mjs']) === true, failures, cases, 'pass', []);
+  assertCase('quality_gate_workflow_change_requires_docker_smoke', backendDockerSmokeRequiredForFiles(['.github/workflows/quality-gate.yml']) === true, failures, cases, 'pass', []);
+  const smokeScriptDecision = buildRemoteProductCheckDecision(prEnv({
+    CODEX_CHANGED_FILES: 'scripts/codex-backend-docker-smoke.mjs',
+  }));
+  assertCase('docker_smoke_script_pr_requires_remote_checks', smokeScriptDecision.productRequired === true && smokeScriptDecision.skipNpm === '0' && smokeScriptDecision.dockerSmokeRequired === true, failures, cases, smokeScriptDecision.reasonCode, []);
+  assertCase('docker_smoke_unavailable_fails_when_required', buildBackendDockerSmokeUnavailableReport().backendDockerSmokeStatus.status === 'fail', failures, cases, buildBackendDockerSmokeUnavailableReport().backendDockerSmokeStatus.status, buildBackendDockerSmokeUnavailableReport().backendDockerSmokeStatus.reasonCodes);
+  assertCase('docker_smoke_healthcheck_accepts_200_or_503', isAllowedBackendDockerHealthStatus(200) && isAllowedBackendDockerHealthStatus(503) && !isAllowedBackendDockerHealthStatus(500), failures, cases, 'pass', []);
 
   report = renderPrEvidenceBlocks({
     repository: 'owner/repo',

@@ -22,6 +22,8 @@ export function backendDockerSmokeRequiredForFiles(files = []) {
     file === 'apps/backend/src/main.ts' ||
     file === 'apps/backend/src/app/index.ts' ||
     file === 'apps/backend/src/app/middlewares/security.ts' ||
+    file === 'scripts/codex-backend-docker-smoke.mjs' ||
+    file === '.github/workflows/quality-gate.yml' ||
     file.startsWith('apps/backend/prisma/')
   ));
 }
@@ -122,6 +124,9 @@ function smokeEnv() {
   return {
     NODE_ENV: 'development',
     PORT: '5000',
+    JWT_SECRET: 'codex-smoke-jwt-secret',
+    SESSION_SECRET: 'codex-smoke-session-secret',
+    ETHERSCAN_API_KEY: 'codex-smoke-explorer-key',
     DATABASE_URL: smokeDatabaseUrl(),
   };
 }
@@ -167,6 +172,26 @@ async function waitForHealthcheck(port, timeoutMs = 30_000) {
     await new Promise((resolve) => setTimeout(resolve, 1000));
   }
   return { ok: false, statusCode: lastStatus };
+}
+
+function runContainerHealthcheck(containerName) {
+  const accepted = JSON.stringify([...HEALTHCHECK_ACCEPTED_STATUSES]);
+  return runCommand(
+    'backend:docker in-container healthcheck',
+    'docker',
+    [
+      'exec',
+      containerName,
+      'node',
+      '-e',
+      [
+        "fetch('http://127.0.0.1:5000/api/monitoring/healthcheck')",
+        `.then((response) => process.exit(${accepted}.includes(response.status) ? 0 : 1))`,
+        '.catch(() => process.exit(1))',
+      ].join(''),
+    ],
+    { timeoutMs: 10_000 }
+  );
 }
 
 export async function runBackendDockerSmoke(env = process.env) {
@@ -235,6 +260,8 @@ export async function runBackendDockerSmoke(env = process.env) {
           `127.0.0.1:${port}:5000`,
           ...dockerEnvArgs(smokeEnv()),
           imageName,
+          'node',
+          './dist/src/main.js',
         ],
         { timeoutMs: 120_000 }
       );
@@ -244,13 +271,27 @@ export async function runBackendDockerSmoke(env = process.env) {
       if (start.ok) {
         const healthStarted = Date.now();
         const health = await waitForHealthcheck(port);
+        let healthOk = health.ok;
+        let healthSummary = health.ok
+          ? 'backend Docker container responded to published healthcheck'
+          : 'backend Docker container did not respond to published healthcheck';
+
+        if (!health.ok) {
+          const containerHealth = runContainerHealthcheck(containerName);
+          commands.push(containerHealth.evidence);
+          healthOk = containerHealth.ok;
+          healthSummary = containerHealth.ok
+            ? 'backend Docker container responded to in-container healthcheck'
+            : 'backend Docker container did not respond to healthcheck';
+        }
+
         commands.push(evidence(
           'backend:docker healthcheck',
-          health.ok ? 'pass' : 'fail',
+          healthOk ? 'pass' : 'fail',
           Date.now() - healthStarted,
-          health.ok ? 'backend Docker container responded to healthcheck' : 'backend Docker container did not respond to healthcheck'
+          healthSummary
         ));
-        if (!health.ok) reasonCodes.push('backend_docker_healthcheck_failed');
+        if (!healthOk) reasonCodes.push('backend_docker_healthcheck_failed');
       }
     }
   } finally {
