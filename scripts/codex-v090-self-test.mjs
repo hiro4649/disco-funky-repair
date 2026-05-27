@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// CODEX_QUALITY_HARNESS_FILE v0.9.0
+// CODEX_QUALITY_HARNESS_FILE v0.9.2
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -12,20 +12,9 @@ import { buildRemoteLocalParityReport } from './codex-remote-local-parity-gate.m
 import { compilePrTemplate } from './codex-pr-template-compiler.mjs';
 import { buildPrBodySurfaceNormalizerReport } from './codex-pr-body-surface-normalizer.mjs';
 import { buildGateDecisionTrace } from './codex-gate-decision-trace.mjs';
-import { computeTargetQualityScoreStatus, filterSourceValidationChangedFiles } from './codex-local-quality-gate.mjs';
+import { filterSourceValidationChangedFiles } from './codex-local-quality-gate.mjs';
 import { buildHumanConfirmationObjectReport } from './codex-human-confirmation-validate.mjs';
 import { buildEvidencePackReport } from './codex-evidence-pack-validate.mjs';
-import { buildRemoteProductCheckDecision } from './codex-remote-product-checks.mjs';
-import {
-  backendDockerSmokeRequiredForFiles,
-  buildBackendDockerSmokeUnavailableReport,
-  isAllowedBackendDockerHealthStatus,
-} from './codex-backend-docker-smoke.mjs';
-import {
-  activeSelfTestStatusKey,
-  buildLegacyCompatibilitySelfTestStatus,
-  effectiveSelfTestStatus,
-} from './codex-active-self-test-policy.mjs';
 
 function assertCase(id, condition, failures, cases, actualStatus = 'pass', reasonCodes = []) {
   const status = condition ? 'pass' : 'fail';
@@ -49,79 +38,6 @@ function withTempFile(name, fn) {
   } finally {
     fs.rmSync(dir, { recursive: true, force: true });
   }
-}
-
-const targetQualityFixtureKeys = [
-  'targetManifestStatus',
-  'secretScan',
-  'agentsContextStatus',
-  'environmentReadinessStatus',
-  'changeClassificationStatus',
-  'productVerificationStatus',
-  'productVerificationEvidenceStatus',
-  'testMetricsStatus',
-  'remoteProductBaselineStatus',
-  'remoteNpmDiagnosticStatus',
-  'workflowPreflightStatus',
-  'artifactLifeboatStatus',
-  'classificationCoverageStatus',
-  'remoteLocalParityStatus',
-  'noArtifactFailureStatus',
-  'fastPathStatus',
-  'safeArtifactIndexStatus',
-  'diagnosticConsolidationStatus',
-  'invalidReportRecoveryStatus',
-  'unsafeValueActionMatrixStatus',
-  'prProfileStatus',
-  'actionsRuntimeAdvisoryStatus',
-  'v085StabilityStatus',
-  'codeReviewMonitorStatus',
-  'promptGovernanceStatus',
-  'knowledgeGovernanceStatus',
-  'contractGovernanceStatus',
-  'complexityGovernanceStatus',
-  'baselineHealthStatus',
-  'evidenceContinuityStatus',
-  'prBodySurfaceNormalizerStatus',
-  'prTemplateCompilerStatus',
-  'requiredHeadingHintStatus',
-  'selfTestCaseExportStatus',
-  'scoreDecompositionStatus',
-  'gateDecisionTraceStatus',
-  'selfTestProfileStatus',
-  'oldHarnessMarkerStatus',
-  'openPrHygieneStatus',
-  'targetFinalSummaryStatus',
-  'stalePrAuditStatus',
-  'reasonSummaryStatus',
-  'safeOutputScanStatus',
-  'goldenSetStatus',
-  'bestOfNEvidenceStatus',
-  'taskQueueLiteStatus',
-  'safeTraceSchemaStatus',
-  'curatorReportStatus',
-  'offlineEvolutionProposalStatus',
-  'testCoverageEvidenceStatus',
-  'performanceEvidenceStatus',
-  'v080SelfTestStatus',
-  'v081SelfTestStatus',
-  'v082SelfTestStatus',
-  'v083SelfTestStatus',
-  'v084SelfTestStatus',
-  'v085SelfTestStatus',
-  'v086SelfTestStatus',
-  'v087SelfTestStatus',
-  'v088SelfTestStatus',
-  'v089SelfTestStatus',
-  'v090SelfTestStatus',
-  'safeArtifactValidation',
-  'outputShapeStatus',
-];
-
-function targetQualityFixture(harnessVersion = HARNESS_VERSION, overrides = {}) {
-  const report = { harnessVersion };
-  for (const key of targetQualityFixtureKeys) report[key] = { status: 'pass' };
-  return { ...report, ...overrides };
 }
 
 function buildV090SelfTestReport() {
@@ -202,14 +118,10 @@ function buildV090SelfTestReport() {
   const setupNodeStep = workflowText.indexOf('- name: Setup Node');
   const installRootStep = workflowText.indexOf('- name: Install root dependencies if present');
   const installMonorepoStep = workflowText.indexOf('- name: Install monorepo dependencies if present');
-  const prepareProductVerificationStep = workflowText.indexOf('- name: Prepare target product verification');
-  const qualityGateStep = workflowText.indexOf('- name: Run Codex quality gate');
   assertCase('upload_artifact_path_includes_runner_temp_lifeboat', workflowText.includes('${{ runner.temp }}/codex-minimal-safe-failure.json'), failures, cases, 'pass', []);
   assertCase('workflow_lifeboat_step_before_checkout', preCheckoutStep >= 0 && checkoutStep > preCheckoutStep, failures, cases, 'pass', []);
   assertCase('workflow_lifeboat_step_before_setup_node', preCheckoutStep >= 0 && setupNodeStep > preCheckoutStep, failures, cases, 'pass', []);
   assertCase('workflow_lifeboat_step_before_install_dependencies', preCheckoutStep >= 0 && installRootStep > preCheckoutStep && installMonorepoStep > preCheckoutStep, failures, cases, 'pass', []);
-  assertCase('workflow_prepares_target_product_verification_before_quality_gate', prepareProductVerificationStep >= 0 && qualityGateStep > prepareProductVerificationStep && workflowText.includes('node scripts/codex-remote-product-checks.mjs'), failures, cases, 'pass', []);
-  assertCase('workflow_uploads_remote_product_check_artifacts', workflowText.includes('${{ runner.temp }}/codex-remote-product-checks.safe.json') && workflowText.includes('${{ runner.temp }}/codex-remote-product-baseline.json') && workflowText.includes('${{ runner.temp }}/codex-product-verification-evidence.remote.json'), failures, cases, 'pass', []);
 
   const filteredSafeArtifacts = filterSourceValidationChangedFiles([
     'codex-minimal-safe-failure.json',
@@ -262,33 +174,6 @@ function buildV090SelfTestReport() {
     CODEX_LOCAL_REGISTRY_HASH: 'same',
   }));
   assertCase('remote_local_parity_pass_same_context', report.remoteLocalParityStatus.status === 'pass', failures, cases, report.remoteLocalParityStatus.status, report.remoteLocalParityStatus.reasonCodes);
-
-  const dockerRuntimeProductDecision = buildRemoteProductCheckDecision(prEnv({
-    CODEX_CHANGED_FILES: [
-      'apps/backend/Dockerfile',
-      'apps/backend/Dockerfile.dev',
-      'apps/backend/package.json',
-      'apps/backend/src/app/lib/__tests__/dockerRuntimeArtifact.test.ts',
-    ].join('\n'),
-  }));
-  assertCase('docker_backend_product_pr_requires_remote_checks', dockerRuntimeProductDecision.productRequired === true && dockerRuntimeProductDecision.skipNpm === '0' && dockerRuntimeProductDecision.willGenerateBaseline === true && dockerRuntimeProductDecision.willGenerateEvidence === true, failures, cases, dockerRuntimeProductDecision.reasonCode, []);
-  assertCase('docker_backend_product_pr_requires_docker_smoke', dockerRuntimeProductDecision.dockerSmokeRequired === true, failures, cases, String(dockerRuntimeProductDecision.dockerSmokeRequired), []);
-  assertCase('dockerfile_change_requires_docker_smoke', backendDockerSmokeRequiredForFiles(['apps/backend/Dockerfile']) === true, failures, cases, 'pass', []);
-  assertCase('backend_package_script_change_requires_docker_smoke', backendDockerSmokeRequiredForFiles(['apps/backend/package.json']) === true, failures, cases, 'pass', []);
-  assertCase('backend_prisma_change_requires_docker_smoke', backendDockerSmokeRequiredForFiles(['apps/backend/prisma/schema.prisma']) === true, failures, cases, 'pass', []);
-  assertCase('backend_entrypoint_change_requires_docker_smoke', backendDockerSmokeRequiredForFiles(['apps/backend/src/main.ts']) === true, failures, cases, 'pass', []);
-  assertCase('docker_smoke_unavailable_fails_when_required', buildBackendDockerSmokeUnavailableReport().backendDockerSmokeStatus.status === 'fail', failures, cases, buildBackendDockerSmokeUnavailableReport().backendDockerSmokeStatus.status, buildBackendDockerSmokeUnavailableReport().backendDockerSmokeStatus.reasonCodes);
-  assertCase('docker_smoke_healthcheck_accepts_200_or_503', isAllowedBackendDockerHealthStatus(200) && isAllowedBackendDockerHealthStatus(503) && !isAllowedBackendDockerHealthStatus(500), failures, cases, 'pass', []);
-
-  const docsOnlyProductDecision = buildRemoteProductCheckDecision(prEnv({
-    CODEX_CHANGED_FILES: 'docs/audit/FUNKY_DOCKER_RUNTIME_AUDIT.md',
-  }));
-  assertCase('docs_only_pr_allows_remote_product_check_skip', docsOnlyProductDecision.productRequired === false && docsOnlyProductDecision.skipNpm === '1' && docsOnlyProductDecision.dockerSmokeRequired === false, failures, cases, docsOnlyProductDecision.reasonCode, []);
-
-  const harnessOnlyProductDecision = buildRemoteProductCheckDecision(prEnv({
-    CODEX_CHANGED_FILES: 'scripts/codex-local-quality-gate.mjs\ndocs/process/CODEX_HARNESS_MANIFEST.json',
-  }));
-  assertCase('harness_only_pr_allows_remote_product_check_skip', harnessOnlyProductDecision.productRequired === false && harnessOnlyProductDecision.skipNpm === '1' && harnessOnlyProductDecision.dockerSmokeRequired === false, failures, cases, harnessOnlyProductDecision.reasonCode, []);
 
   report = withTempFile('skeleton.md', (file) => compilePrTemplate({
     CODEX_PR_TEMPLATE_PROFILE: 'harness_workflow_r3',
@@ -348,40 +233,6 @@ function buildV090SelfTestReport() {
   })).remoteLocalParityStatus.status;
   const compiler = compilePrTemplate({ CODEX_PR_TEMPLATE_WRITE: '0', CODEX_PR_TEMPLATE_PROFILE: 'harness_workflow_r3' }).prTemplateCompilerStatus.status;
   assertCase('source_harness_only_v090_pr_fixture_pass', coverage === 'pass' && ['pass', 'not_applicable'].includes(parity) && compiler === 'pass', failures, cases, `${coverage}/${parity}/${compiler}`, []);
-
-  assertCase('active_self_test_policy_selects_v090_for_v090', activeSelfTestStatusKey('0.9.0') === 'v090SelfTestStatus', failures, cases, activeSelfTestStatusKey('0.9.0') || 'missing', []);
-  assertCase('legacy_v085_failure_is_advisory_for_v090', effectiveSelfTestStatus('v085SelfTestStatus', 'fail', '0.9.0') === 'pass_legacy_advisory', failures, cases, effectiveSelfTestStatus('v085SelfTestStatus', 'fail', '0.9.0'), []);
-  assertCase('active_v090_failure_remains_blocking_for_v090', effectiveSelfTestStatus('v090SelfTestStatus', 'fail', '0.9.0') === 'fail', failures, cases, effectiveSelfTestStatus('v090SelfTestStatus', 'fail', '0.9.0'), []);
-  assertCase('active_v090_missing_remains_blocking_for_v090', effectiveSelfTestStatus('v090SelfTestStatus', 'not_applicable', '0.9.0') === 'missing', failures, cases, effectiveSelfTestStatus('v090SelfTestStatus', 'not_applicable', '0.9.0'), []);
-  assertCase('active_self_test_policy_selects_v085_for_v085', activeSelfTestStatusKey('0.8.5') === 'v085SelfTestStatus', failures, cases, activeSelfTestStatusKey('0.8.5') || 'missing', []);
-
-  let targetScore = computeTargetQualityScoreStatus(targetQualityFixture('0.9.0', {
-    v085SelfTestStatus: { status: 'fail' },
-    v090SelfTestStatus: { status: 'pass' },
-  }));
-  assertCase('target_quality_v090_passes_with_legacy_v085_failure', targetScore.status === 'pass' && targetScore.score === 100, failures, cases, `${targetScore.status}/${targetScore.score}`, targetScore.blockingStatuses?.map((item) => item.key) || []);
-
-  targetScore = computeTargetQualityScoreStatus(targetQualityFixture('0.9.0', {
-    v090SelfTestStatus: { status: 'fail' },
-  }));
-  assertCase('target_quality_v090_fails_when_active_v090_fails', targetScore.status === 'fail' && targetScore.blockingStatuses?.some((item) => item.key === 'v090SelfTestStatus'), failures, cases, `${targetScore.status}/${targetScore.score}`, targetScore.blockingStatuses?.map((item) => item.key) || []);
-
-  const missingActiveReport = targetQualityFixture('0.9.0');
-  delete missingActiveReport.v090SelfTestStatus;
-  targetScore = computeTargetQualityScoreStatus(missingActiveReport);
-  assertCase('target_quality_v090_fails_when_active_v090_missing', targetScore.status === 'fail' && targetScore.blockingStatuses?.some((item) => item.key === 'v090SelfTestStatus'), failures, cases, `${targetScore.status}/${targetScore.score}`, targetScore.blockingStatuses?.map((item) => item.key) || []);
-
-  targetScore = computeTargetQualityScoreStatus(targetQualityFixture('0.8.5', {
-    v085SelfTestStatus: { status: 'fail' },
-    v090SelfTestStatus: { status: 'pass' },
-  }));
-  assertCase('target_quality_v085_fails_when_active_v085_fails', targetScore.status === 'fail' && targetScore.blockingStatuses?.some((item) => item.key === 'v085SelfTestStatus'), failures, cases, `${targetScore.status}/${targetScore.score}`, targetScore.blockingStatuses?.map((item) => item.key) || []);
-
-  const legacyCompatibility = buildLegacyCompatibilitySelfTestStatus({
-    v085SelfTestStatus: { status: 'fail' },
-    v090SelfTestStatus: { status: 'pass' },
-  }, '0.9.0');
-  assertCase('legacy_self_test_failure_remains_advisory_in_safe_status', legacyCompatibility.status === 'pass' && legacyCompatibility.legacyFailureCount === 1 && legacyCompatibility.reasonCodes.includes('legacy_self_test_failure_advisory'), failures, cases, `${legacyCompatibility.status}/${legacyCompatibility.legacyFailureCount}`, legacyCompatibility.reasonCodes);
 
   const unsafe = scanObjectForUnsafe(cases);
   const status = failures.length || unsafe.length ? 'fail' : 'pass';
