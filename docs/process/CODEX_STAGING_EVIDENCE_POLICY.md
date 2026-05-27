@@ -1,4 +1,4 @@
-﻿<!-- CODEX_QUALITY_HARNESS_FILE v0.9.2 -->
+<!-- CODEX_QUALITY_HARNESS_FILE v0.9.3 -->
 # Codex Staging Evidence Policy
 
 This policy defines the FUNKY staging evidence gate for Codex Harness v0.8.2.
