@@ -256,6 +256,10 @@ export function buildRemoteProductCheckDecision(env = process.env) {
   };
 }
 
+export function securityOracleForRemoteProductResult({ baselineResult, candidateResult } = {}) {
+  return baselineResult === 'pass' && candidateResult === 'pass' ? '1' : '';
+}
+
 export function runRemoteProductChecks(env = process.env) {
   const outDir = outputDir(env);
   fs.mkdirSync(outDir, { recursive: true });
@@ -322,6 +326,8 @@ export function runRemoteProductChecks(env = process.env) {
   appendGitHubEnv('CODEX_PRODUCT_VERIFICATION_COMMANDS', candidateCommands.map((item) => item.name).join(','), env);
   appendGitHubEnv('CODEX_PRODUCT_VERIFICATION_RESULT', candidateResult, env);
   appendGitHubEnv('CODEX_PRODUCT_VERIFICATION_SOURCE', 'remote', env);
+  const securityOracle = securityOracleForRemoteProductResult({ baselineResult, candidateResult });
+  if (securityOracle) appendGitHubEnv('CODEX_SECURITY_ORACLE_PRESENT', securityOracle, env);
 
   const status = candidateResult === 'pass' && baselineResult === 'pass' ? 'pass' : 'fail';
   const reasonCodes = [];

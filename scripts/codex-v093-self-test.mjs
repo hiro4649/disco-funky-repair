@@ -14,6 +14,8 @@ import { buildTargetSkipNpmProductOverrideReport } from './codex-target-skip-npm
 import { buildGoalConditionReport } from './codex-goal-condition-gate.mjs';
 import { buildReviewPolicyClassifierReport } from './codex-review-policy-classifier.mjs';
 import { buildPrEvidenceCompactReport } from './codex-pr-evidence-compact-gate.mjs';
+import { buildRemoteProductCheckDecision, securityOracleForRemoteProductResult } from './codex-remote-product-checks.mjs';
+import fs from 'node:fs';
 
 const HEAD = '1234567890abcdef1234567890abcdef12345678';
 const OTHER = 'abcdef1234567890abcdef1234567890abcdef12';
@@ -45,6 +47,19 @@ export function buildV093SelfTestReport() {
 
   report = buildRemoteProductPrContextFixtureReport({ workflowDispatchTreatedAsPrCheck: true });
   assertCase('remote_product_pr_context_workflow_dispatch_not_substitute', report.remoteProductPrContextFixtureStatus.status === 'fail', failures, cases, report.remoteProductPrContextFixtureStatus.status, report.remoteProductPrContextFixtureStatus.reasonCodes);
+
+  const workflow = fs.readFileSync('.github/workflows/quality-gate.yml', 'utf8');
+  assertCase('workflow_prepare_target_product_verification_step_present', /Prepare target product verification/.test(workflow) && /codex-remote-product-checks\.mjs/.test(workflow), failures, cases);
+  assertCase('workflow_uploads_remote_product_artifacts', /codex-remote-product-checks\.safe\.json/.test(workflow) && /codex-remote-product-baseline\.json/.test(workflow) && /codex-product-verification-evidence\.remote\.json/.test(workflow), failures, cases);
+
+  report = buildRemoteProductCheckDecision({
+    CODEX_CHANGED_FILES: 'apps/backend/src/main.ts\napps/backend/src/app/index.ts',
+    CODEX_PR_BASE_SHA: OTHER,
+    CODEX_PR_HEAD_SHA: HEAD,
+  });
+  assertCase('backend_entrypoint_product_change_requires_remote_checks', report.productRequired === true && report.skipNpm === '0' && report.willGenerateBaseline === true && report.willGenerateEvidence === true, failures, cases, report.reasonCode, []);
+  assertCase('remote_product_pass_sets_security_oracle', securityOracleForRemoteProductResult({ baselineResult: 'pass', candidateResult: 'pass' }) === '1', failures, cases);
+  assertCase('remote_product_fail_does_not_set_security_oracle', securityOracleForRemoteProductResult({ baselineResult: 'pass', candidateResult: 'fail' }) === '', failures, cases);
 
   report = buildTargetScriptClassificationFixtureReport({ manifest: { runTestsClassification: 'product_relevant', devServerClassification: 'dev_server_entrypoint' } });
   assertCase('scripts_run_tests_product_relevant_fixture_pass', report.targetScriptClassificationFixtureStatus.status === 'pass' && classifyTargetScript('scripts/run-tests.js', { runTestsClassification: 'product_relevant' }) === 'product_relevant', failures, cases, report.targetScriptClassificationFixtureStatus.status, report.targetScriptClassificationFixtureStatus.reasonCodes);
