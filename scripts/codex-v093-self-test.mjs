@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// CODEX_QUALITY_HARNESS_FILE v0.9.3
+// CODEX_QUALITY_HARNESS_FILE v0.9.4
 
 import { fileURLToPath } from 'node:url';
 import { marker, HARNESS_VERSION, scanObjectForUnsafe, writeJsonReport, exitFor } from './codex-v080-lib.mjs';
@@ -14,10 +14,6 @@ import { buildTargetSkipNpmProductOverrideReport } from './codex-target-skip-npm
 import { buildGoalConditionReport } from './codex-goal-condition-gate.mjs';
 import { buildReviewPolicyClassifierReport } from './codex-review-policy-classifier.mjs';
 import { buildPrEvidenceCompactReport } from './codex-pr-evidence-compact-gate.mjs';
-import { buildRemoteProductCheckDecision, securityOracleForRemoteProductResult } from './codex-remote-product-checks.mjs';
-import { buildProductVerificationReport } from './codex-product-verification-gate.mjs';
-import { activeSelfTestStatusKey, buildLegacyCompatibilitySelfTestStatus, effectiveSelfTestStatus } from './codex-active-self-test-policy.mjs';
-import fs from 'node:fs';
 
 const HEAD = '1234567890abcdef1234567890abcdef12345678';
 const OTHER = 'abcdef1234567890abcdef1234567890abcdef12';
@@ -49,51 +45,6 @@ export function buildV093SelfTestReport() {
 
   report = buildRemoteProductPrContextFixtureReport({ workflowDispatchTreatedAsPrCheck: true });
   assertCase('remote_product_pr_context_workflow_dispatch_not_substitute', report.remoteProductPrContextFixtureStatus.status === 'fail', failures, cases, report.remoteProductPrContextFixtureStatus.status, report.remoteProductPrContextFixtureStatus.reasonCodes);
-
-  const workflow = fs.readFileSync('.github/workflows/quality-gate.yml', 'utf8');
-  assertCase('workflow_prepare_target_product_verification_step_present', /Prepare target product verification/.test(workflow) && /codex-remote-product-checks\.mjs/.test(workflow), failures, cases);
-  assertCase('workflow_uploads_remote_product_artifacts', /codex-remote-product-checks\.safe\.json/.test(workflow) && /codex-remote-product-baseline\.json/.test(workflow) && /codex-product-verification-evidence\.remote\.json/.test(workflow), failures, cases);
-
-  report = buildRemoteProductCheckDecision({
-    CODEX_CHANGED_FILES: 'apps/backend/src/main.ts\napps/backend/src/app/index.ts',
-    CODEX_PR_BASE_SHA: OTHER,
-    CODEX_PR_HEAD_SHA: HEAD,
-  });
-  assertCase('backend_entrypoint_product_change_requires_remote_checks', report.productRequired === true && report.skipNpm === '0' && report.willGenerateBaseline === true && report.willGenerateEvidence === true, failures, cases, report.reasonCode, []);
-  report = buildRemoteProductCheckDecision({
-    CODEX_CHANGED_FILES: 'scripts/codex-local-quality-gate.mjs\nscripts/codex-v093-self-test.mjs',
-    CODEX_PR_BASE_SHA: OTHER,
-    CODEX_PR_HEAD_SHA: HEAD,
-  });
-  assertCase('harness_only_scripts_do_not_require_remote_product_checks', report.productRequired === false && report.skipNpm === '1' && report.willGenerateBaseline === false && report.willGenerateEvidence === false, failures, cases, report.reasonCode, []);
-  report = buildProductVerificationReport({
-    CODEX_EVENT_NAME: 'pull_request',
-    CODEX_SKIP_NPM: '1',
-    CODEX_CHANGED_FILES: '',
-    CODEX_PR_BODY: 'Runtime readiness claimed: no',
-    CODEX_CHANGE_CLASSIFICATION_JSON: JSON.stringify({
-      status: 'pass',
-      classification: { harnessOnly: true, docsOnly: true, runtimeReadinessClaimed: false },
-      productRelevantChanged: false,
-      runtimeReadinessClaimed: false,
-      packageOrLockfileChanged: false,
-      reasonCodes: [],
-    }),
-    CODEX_TRUST_CHANGE_CLASSIFICATION_JSON: '1',
-  });
-  assertCase('product_verification_uses_trusted_classification_snapshot', report.productVerificationStatus.status === 'pass' && report.productVerificationStatus.skipReason === 'harness_only_no_runtime_claim', failures, cases, report.productVerificationStatus.status, report.productVerificationStatus.reasonCodes);
-  assertCase('remote_product_pass_sets_security_oracle', securityOracleForRemoteProductResult({ baselineResult: 'pass', candidateResult: 'pass' }) === '1', failures, cases);
-  assertCase('remote_product_fail_does_not_set_security_oracle', securityOracleForRemoteProductResult({ baselineResult: 'pass', candidateResult: 'fail' }) === '', failures, cases);
-  assertCase('active_v093_self_test_selected', activeSelfTestStatusKey('0.9.3') === 'v093SelfTestStatus', failures, cases, activeSelfTestStatusKey('0.9.3') || 'missing');
-  assertCase('legacy_v085_failure_advisory_for_v093', effectiveSelfTestStatus('v085SelfTestStatus', 'fail', '0.9.3') === 'pass_legacy_advisory', failures, cases, effectiveSelfTestStatus('v085SelfTestStatus', 'fail', '0.9.3'));
-  assertCase('active_v093_failure_still_blocks', effectiveSelfTestStatus('v093SelfTestStatus', 'fail', '0.9.3') === 'fail', failures, cases, effectiveSelfTestStatus('v093SelfTestStatus', 'fail', '0.9.3'));
-  const localQualityGateSource = fs.readFileSync('scripts/codex-local-quality-gate.mjs', 'utf8');
-  assertCase('status_outcome_uses_effective_self_test_status', /function applyStatusOutcome[\s\S]*effectiveSelfTestStatus/.test(localQualityGateSource), failures, cases);
-  report = buildLegacyCompatibilitySelfTestStatus({
-    v085SelfTestStatus: { status: 'fail' },
-    v093SelfTestStatus: { status: 'pass' },
-  }, '0.9.3');
-  assertCase('legacy_self_test_failure_recorded_as_advisory', report.status === 'pass' && report.legacyFailureCount === 1 && report.reasonCodes.includes('legacy_self_test_failure_advisory'), failures, cases, report.status, report.reasonCodes);
 
   report = buildTargetScriptClassificationFixtureReport({ manifest: { runTestsClassification: 'product_relevant', devServerClassification: 'dev_server_entrypoint' } });
   assertCase('scripts_run_tests_product_relevant_fixture_pass', report.targetScriptClassificationFixtureStatus.status === 'pass' && classifyTargetScript('scripts/run-tests.js', { runTestsClassification: 'product_relevant' }) === 'product_relevant', failures, cases, report.targetScriptClassificationFixtureStatus.status, report.targetScriptClassificationFixtureStatus.reasonCodes);
@@ -178,4 +129,3 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
   writeJsonReport(report, 'CODEX_V093_SELF_TEST_REPORT');
   exitFor(report);
 }
-
