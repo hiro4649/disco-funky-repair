@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// CODEX_QUALITY_HARNESS_FILE v0.9.3
+// CODEX_QUALITY_HARNESS_FILE v0.9.4
 import { fileURLToPath } from 'node:url';
 import { isPrContext, normalizePath, prBodyText, simpleStatus, writeJsonReport, exitFor } from './codex-v080-lib.mjs';
 
@@ -38,4 +38,3 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
   writeJsonReport(report, 'CODEX_TARGET_SCRIPT_CLASSIFICATION_REPORT');
   exitFor(report);
 }
-

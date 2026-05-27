@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// CODEX_QUALITY_HARNESS_FILE v0.9.3
+// CODEX_QUALITY_HARNESS_FILE v0.9.4
 import fs from 'node:fs';
 import path from 'node:path';
 import process from 'node:process';
@@ -9,9 +9,8 @@ import { buildHumanConfirmationStatus } from './codex-production-readiness-gate.
 import { scanSafeOutput } from './codex-safe-output-scan.mjs';
 import { buildGithubReplayContextAsync } from './codex-ci-replay.mjs';
 import { buildCompactReasonSummary } from './codex-reason-summary.mjs';
-import { buildLegacyCompatibilitySelfTestStatus, effectiveSelfTestStatus } from './codex-active-self-test-policy.mjs';
 
-const HARNESS_VERSION = '0.9.3';
+const HARNESS_VERSION = '0.9.4';
 const PROFILE_TEMPLATE_VERSION = '0.7.0';
 const MARKER = `CODEX_QUALITY_HARNESS_FILE v${HARNESS_VERSION}`;
 
@@ -34,6 +33,35 @@ const V093_OPTIONAL_NOT_APPLICABLE_STATUS_KEYS = [
   'targetPatchManifestStatus',
   'targetRolloutConflictStatus',
   'dockerSmokeCurrentHeadArtifactStatus',
+];
+const V094_STATUS_KEYS = [
+  'remoteProductContextRestoreStatus',
+  'productRelevantEvidenceLockStatus',
+  'productBaselineContinuityStatus',
+  'skipNpmProductBypassStatus',
+  'pullRequestContextFidelityStatus',
+  'productVerificationContextStatus',
+  'productEvidencePropagationStatus',
+  'productContextSafeArtifactStatus',
+  'runtimeJobSafetyStatus',
+  'txPathStateEvidenceStatus',
+  'envConsistencyStatus',
+  'stagingNoTxPreflightStatus',
+  'runtimeLogSecretScanStatus',
+  'chainScopeStatus',
+  'falsePositiveBudgetStatus',
+  'v094SelfTestStatus',
+];
+const V094_OPTIONAL_NOT_APPLICABLE_STATUS_KEYS = [
+  'remoteProductContextRestoreStatus',
+  'productRelevantEvidenceLockStatus',
+  'pullRequestContextFidelityStatus',
+  'runtimeJobSafetyStatus',
+  'txPathStateEvidenceStatus',
+  'envConsistencyStatus',
+  'stagingNoTxPreflightStatus',
+  'runtimeLogSecretScanStatus',
+  'chainScopeStatus',
 ];
 const SOURCE_MANIFEST = 'CODEX_SOURCE_HARNESS_MANIFEST.json';
 const forbiddenSourcePaths = [
@@ -72,6 +100,9 @@ export const sourceValidationIgnoredSafeArtifacts = new Set([
   'codex-target-rollout-conflict.safe.json',
   'codex-pr-evidence-compact.safe.json',
   'codex-docker-smoke-artifact.safe.json',
+  'codex-product-context-safe-artifact.safe.json',
+  'codex-product-baseline-continuity.safe.json',
+  'codex-false-positive-budget.safe.json',
 ]);
 
 function npmCliPath() {
@@ -260,6 +291,52 @@ function runV093Gates(report, gateEnv) {
 }
 function initializeV093Statuses(report) {
   for (const key of V093_STATUS_KEYS) if (!report[key]) report[key] = { status: 'not_run' };
+}
+function deriveProductVerificationContextStatus(report) {
+  const upstream = [
+    report.remoteProductContextRestoreStatus,
+    report.productRelevantEvidenceLockStatus,
+    report.pullRequestContextFidelityStatus,
+  ];
+  const blocking = upstream.filter((item) => item?.status === 'fail');
+  return {
+    status: blocking.length ? 'fail' : 'pass',
+    reasonCodes: blocking.length ? ['product_relevant_evidence_missing'] : [],
+    safeSummaryOnly: true,
+  };
+}
+function deriveProductEvidencePropagationStatus(report) {
+  const upstream = [
+    report.productRelevantEvidenceLockStatus,
+    report.productBaselineContinuityStatus,
+    report.productContextSafeArtifactStatus,
+  ];
+  const blocking = upstream.filter((item) => item?.status === 'fail');
+  return {
+    status: blocking.length ? 'fail' : 'pass',
+    reasonCodes: blocking.length ? ['product_relevant_evidence_missing'] : [],
+    safeSummaryOnly: true,
+  };
+}
+function runV094Gates(report, gateEnv) {
+  report.remoteProductContextRestoreStatus = runGateScript('scripts/codex-remote-product-context-restore-gate.mjs', 'remoteProductContextRestoreStatus', 'CODEX_REMOTE_PRODUCT_CONTEXT_RESTORE_REPORT', gateEnv);
+  report.productRelevantEvidenceLockStatus = runGateScript('scripts/codex-product-relevant-evidence-lock-gate.mjs', 'productRelevantEvidenceLockStatus', 'CODEX_PRODUCT_RELEVANT_EVIDENCE_LOCK_REPORT', gateEnv);
+  report.productBaselineContinuityStatus = runGateScript('scripts/codex-product-baseline-continuity-gate.mjs', 'productBaselineContinuityStatus', 'CODEX_PRODUCT_BASELINE_CONTINUITY_REPORT', gateEnv);
+  report.skipNpmProductBypassStatus = runGateScript('scripts/codex-skip-npm-product-bypass-gate.mjs', 'skipNpmProductBypassStatus', 'CODEX_SKIP_NPM_PRODUCT_BYPASS_REPORT', gateEnv);
+  report.pullRequestContextFidelityStatus = runGateScript('scripts/codex-pull-request-context-fidelity-gate.mjs', 'pullRequestContextFidelityStatus', 'CODEX_PULL_REQUEST_CONTEXT_FIDELITY_REPORT', gateEnv);
+  report.productContextSafeArtifactStatus = runGateScript('scripts/codex-product-context-safe-artifact-gate.mjs', 'productContextSafeArtifactStatus', 'CODEX_PRODUCT_CONTEXT_SAFE_ARTIFACT_REPORT', gateEnv);
+  report.runtimeJobSafetyStatus = runGateScript('scripts/codex-runtime-job-safety-gate.mjs', 'runtimeJobSafetyStatus', 'CODEX_RUNTIME_JOB_SAFETY_REPORT', gateEnv);
+  report.txPathStateEvidenceStatus = runGateScript('scripts/codex-tx-path-state-evidence-gate.mjs', 'txPathStateEvidenceStatus', 'CODEX_TX_PATH_STATE_EVIDENCE_REPORT', gateEnv);
+  report.envConsistencyStatus = runGateScript('scripts/codex-env-consistency-gate.mjs', 'envConsistencyStatus', 'CODEX_ENV_CONSISTENCY_REPORT', gateEnv);
+  report.stagingNoTxPreflightStatus = runGateScript('scripts/codex-staging-no-tx-preflight-gate.mjs', 'stagingNoTxPreflightStatus', 'CODEX_STAGING_NO_TX_PREFLIGHT_REPORT', gateEnv);
+  report.runtimeLogSecretScanStatus = runGateScript('scripts/codex-runtime-log-secret-scan-gate.mjs', 'runtimeLogSecretScanStatus', 'CODEX_RUNTIME_LOG_SECRET_SCAN_REPORT', gateEnv);
+  report.chainScopeStatus = runGateScript('scripts/codex-chain-scope-gate.mjs', 'chainScopeStatus', 'CODEX_CHAIN_SCOPE_REPORT', gateEnv);
+  report.falsePositiveBudgetStatus = runGateScript('scripts/codex-false-positive-budget-gate.mjs', 'falsePositiveBudgetStatus', 'CODEX_FALSE_POSITIVE_BUDGET_REPORT', gateEnv);
+  report.productVerificationContextStatus = deriveProductVerificationContextStatus(report);
+  report.productEvidencePropagationStatus = deriveProductEvidencePropagationStatus(report);
+}
+function initializeV094Statuses(report) {
+  for (const key of V094_STATUS_KEYS) if (!report[key]) report[key] = { status: 'not_run' };
 }
 
 function runJsonScript(script, cwd, failures, warnings) {
@@ -503,6 +580,7 @@ function computeOutputShapeStatus(report) {
     'classificationCoverageStatus',
     'versionLineageStatus',
     ...V093_STATUS_KEYS,
+    ...V094_STATUS_KEYS,
     'remoteLocalParityStatus',
     'noArtifactFailureStatus',
     'prEvidenceRendererStatus',
@@ -594,6 +672,7 @@ function computeQualityScoreStatus(report) {
     Boolean(process.env.GITHUB_REF && process.env.GITHUB_REF.includes('/pull/'));
   const allowedNotApplicable = new Set([
     ...V093_OPTIONAL_NOT_APPLICABLE_STATUS_KEYS,
+    ...V094_OPTIONAL_NOT_APPLICABLE_STATUS_KEYS,
     'agentMemoryPolicyStatus',
     'skillLifecyclePolicyStatus',
     'curatorSuggestionStatus',
@@ -613,6 +692,7 @@ function computeQualityScoreStatus(report) {
     'classificationCoverageStatus',
     'versionLineageStatus',
     ...V093_STATUS_KEYS,
+    ...V094_STATUS_KEYS,
     'remoteLocalParityStatus',
     'noArtifactFailureStatus',
     'prEvidenceRendererStatus',
@@ -680,6 +760,7 @@ function computeQualityScoreStatus(report) {
     'classificationCoverageStatus',
     'versionLineageStatus',
     ...V093_STATUS_KEYS,
+    ...V094_STATUS_KEYS,
     'remoteLocalParityStatus',
     'noArtifactFailureStatus',
     'prEvidenceRendererStatus',
@@ -807,6 +888,7 @@ function computeTargetOutputShapeStatus(report) {
     'classificationCoverageStatus',
     'versionLineageStatus',
     ...V093_STATUS_KEYS,
+    ...V094_STATUS_KEYS,
     'remoteLocalParityStatus',
     'noArtifactFailureStatus',
     'prEvidenceRendererStatus',
@@ -894,6 +976,7 @@ function computeTargetQualityScoreStatus(report) {
     'classificationCoverageStatus',
     'versionLineageStatus',
     ...V093_STATUS_KEYS,
+    ...V094_STATUS_KEYS,
     'remoteLocalParityStatus',
     'noArtifactFailureStatus',
     'prEvidenceRendererStatus',
@@ -958,6 +1041,7 @@ function computeTargetQualityScoreStatus(report) {
   ];
   const allowedNotApplicable = new Set([
     ...V093_OPTIONAL_NOT_APPLICABLE_STATUS_KEYS,
+    ...V094_OPTIONAL_NOT_APPLICABLE_STATUS_KEYS,
     'changeClassificationStatus',
     'productVerificationStatus',
     'productVerificationEvidenceStatus',
@@ -1001,7 +1085,7 @@ function computeTargetQualityScoreStatus(report) {
   ]);
   const statuses = scored.map((key) => {
     const status = report[key]?.status || 'missing';
-    let effectiveStatus = effectiveSelfTestStatus(key, status, HARNESS_VERSION);
+    let effectiveStatus = status;
     if (allowedNotApplicable.has(key) && status === 'not_applicable') effectiveStatus = 'pass_optional';
     return { key, status, effectiveStatus };
   });
@@ -1222,6 +1306,24 @@ function computeFailureReasonCatalogStatus() {
     'agents_context_budget_exceeded',
     'evidence_auto_repair_hint_available',
     'evidence_auto_repair_unsafe',
+    'remote_product_context_missing',
+    'product_relevant_evidence_missing',
+    'product_baseline_lost',
+    'skip_npm_product_bypass',
+    'pull_request_context_missing',
+    'workflow_dispatch_not_pr_substitute',
+    'product_context_artifact_classification_failed',
+    'runtime_job_safety_failed',
+    'runtime_job_ownership_missing',
+    'tx_path_state_evidence_missing',
+    'tx_hash_receipt_policy_missing',
+    'double_send_risk_unaddressed',
+    'env_consistency_failed',
+    'staging_no_tx_preflight_missing',
+    'runtime_log_secret_scan_missing',
+    'raw_runtime_log_forbidden',
+    'chain_scope_conflict',
+    'false_positive_budget_failed',
   ];
   if (!fs.existsSync(file)) return { status: 'fail', missingReasonCodes: required, safeSummaryOnly: true };
   try {
@@ -1330,10 +1432,8 @@ function computeOldHarnessMarkerStatus(sourceMode = true) {
   };
 }
 function applyStatusOutcome(key, value, failures, warnings) {
-  if (!value?.status) return;
-  const effectiveStatus = effectiveSelfTestStatus(key, value.status, HARNESS_VERSION);
-  if (['fail', 'missing', 'not_run'].includes(effectiveStatus)) failures.push({ id: `${key}.failed`, message: `${key} failed` });
-  else if (effectiveStatus === 'manual_confirmation_required' || effectiveStatus === 'warning') {
+  if (value?.status === 'fail') failures.push({ id: `${key}.failed`, message: `${key} failed` });
+  else if (value?.status === 'manual_confirmation_required' || value?.status === 'warning') {
     warnings.push({ id: `${key}.manual`, message: `${key} requires manual confirmation` });
   }
 }
@@ -1497,6 +1597,7 @@ async function runSourceHarnessGate() {
     qualityScoreStatus: { status: 'not_run' },
   };
   initializeV093Statuses(report);
+  initializeV094Statuses(report);
   report.profileTemplateCompatibilityStatus = report.sourceHarnessValidationStatus.profileTemplateCompatibilityStatus || { status: 'missing' };
   if (report.sourceHarnessValidationStatus.status === 'fail') failures.push(...report.sourceHarnessValidationStatus.failures);
   if (report.sourceHarnessValidationStatus.status === 'warning') warnings.push(...report.sourceHarnessValidationStatus.warnings);
@@ -1507,6 +1608,7 @@ async function runSourceHarnessGate() {
   report.methodSupportStatus = report.openaiCodexMethodStatus.methodSupportStatus || { status: 'missing' };
   report.genericHarnessCoreStatus = runGateScript('scripts/codex-generic-harness-core-gate.mjs', 'genericHarnessCoreStatus', 'CODEX_GENERIC_CORE_REPORT', gateEnv);
   initializeV093Statuses(report);
+  initializeV094Statuses(report);
   report.agentsContextStatus = runGateScript('scripts/codex-agents-context-gate.mjs', 'agentsContextStatus', 'CODEX_AGENTS_CONTEXT_REPORT', gateEnv);
   report.environmentReadinessStatus = runGateScript('scripts/codex-environment-readiness-gate.mjs', 'environmentReadinessStatus', 'CODEX_ENVIRONMENT_READINESS_REPORT', gateEnv);
   report.goldenSetStatus = runGateScript('scripts/codex-golden-set-gate.mjs', 'goldenSetStatus', 'CODEX_GOLDEN_SET_REPORT', gateEnv);
@@ -1519,19 +1621,14 @@ async function runSourceHarnessGate() {
   report.versionLineageStatus = runGateScript('scripts/codex-version-lineage-gate.mjs', 'versionLineageStatus', 'CODEX_VERSION_LINEAGE_REPORT', gateEnv);
   runV093Gates(report, gateEnv);
   report.changeClassificationStatus = runGateScript('scripts/codex-change-classification-gate.mjs', 'changeClassificationStatus', 'CODEX_CHANGE_CLASSIFICATION_REPORT', gateEnv);
-  const classifiedGateEnv = {
-    ...gateEnv,
-    CODEX_CHANGE_CLASSIFICATION_JSON: JSON.stringify(report.changeClassificationStatus),
-    CODEX_TRUST_CHANGE_CLASSIFICATION_JSON: '1',
-  };
   report.remoteLocalParityStatus = runGateScript('scripts/codex-remote-local-parity-gate.mjs', 'remoteLocalParityStatus', 'CODEX_REMOTE_LOCAL_PARITY_REPORT', {
     ...gateEnv,
     CODEX_CLASSIFICATION_COVERAGE_JSON: JSON.stringify(report.classificationCoverageStatus),
   });
-  report.productVerificationStatus = runGateScript('scripts/codex-product-verification-gate.mjs', 'productVerificationStatus', 'CODEX_PRODUCT_VERIFICATION_REPORT', classifiedGateEnv);
-  report.productVerificationEvidenceStatus = runGateScript('scripts/codex-product-verification-evidence-normalize.mjs', 'productVerificationEvidenceStatus', 'CODEX_PRODUCT_VERIFICATION_EVIDENCE_REPORT', classifiedGateEnv);
+  report.productVerificationStatus = runGateScript('scripts/codex-product-verification-gate.mjs', 'productVerificationStatus', 'CODEX_PRODUCT_VERIFICATION_REPORT', gateEnv);
+  report.productVerificationEvidenceStatus = runGateScript('scripts/codex-product-verification-evidence-normalize.mjs', 'productVerificationEvidenceStatus', 'CODEX_PRODUCT_VERIFICATION_EVIDENCE_REPORT', gateEnv);
   report.testMetricsStatus = runGateScript('scripts/codex-test-metrics-collect.mjs', 'testMetricsStatus', 'CODEX_TEST_METRICS_REPORT', gateEnv);
-  report.remoteProductBaselineStatus = runGateScript('scripts/codex-remote-product-baseline-gate.mjs', 'remoteProductBaselineStatus', 'CODEX_REMOTE_PRODUCT_BASELINE_REPORT', classifiedGateEnv);
+  report.remoteProductBaselineStatus = runGateScript('scripts/codex-remote-product-baseline-gate.mjs', 'remoteProductBaselineStatus', 'CODEX_REMOTE_PRODUCT_BASELINE_REPORT', gateEnv);
   report.remoteNpmDiagnosticStatus = runGateScript('scripts/codex-remote-npm-diagnostic-classify.mjs', 'remoteNpmDiagnosticStatus', 'CODEX_REMOTE_NPM_DIAGNOSTIC_REPORT', gateEnv);
   const baselineEnv = {
     ...gateEnv,
@@ -1540,6 +1637,13 @@ async function runSourceHarnessGate() {
     CODEX_REMOTE_NPM_DIAGNOSTIC_JSON: JSON.stringify(report.remoteNpmDiagnosticStatus),
   };
   report.baselineHealthStatus = runGateScript('scripts/codex-baseline-health-gate.mjs', 'baselineHealthStatus', 'CODEX_BASELINE_HEALTH_REPORT', baselineEnv);
+  runV094Gates(report, {
+    ...gateEnv,
+    CODEX_CHANGE_CLASSIFICATION_JSON: JSON.stringify(report.changeClassificationStatus),
+    CODEX_PRODUCT_VERIFICATION_JSON: JSON.stringify(report.productVerificationStatus),
+    CODEX_REMOTE_PRODUCT_BASELINE_JSON: JSON.stringify(report.remoteProductBaselineStatus),
+    CODEX_REMOTE_NPM_DIAGNOSTIC_JSON: JSON.stringify(report.remoteNpmDiagnosticStatus),
+  });
   report.workflowPreflightStatus = runGateScript('scripts/codex-workflow-preflight.mjs', 'workflowPreflightStatus', 'CODEX_WORKFLOW_PREFLIGHT_REPORT', gateEnv);
   report.securityLifecycleStatus = runGateScript('scripts/codex-security-lifecycle-gate.mjs', 'securityLifecycleStatus', 'CODEX_SECURITY_LIFECYCLE_REPORT', {
     ...gateEnv,
@@ -1664,7 +1768,9 @@ async function runSourceHarnessGate() {
   report.v093SelfTestStatus = process.env.CODEX_SKIP_V093_SELF_TEST === '1'
     ? { status: 'not_applicable', reasonCodes: ['self_test_recursion_guard'], safeSummaryOnly: true }
     : runGateScript('scripts/codex-v093-self-test.mjs', 'v093SelfTestStatus', 'CODEX_V093_SELF_TEST_REPORT', { ...gateEnv, CODEX_V093_SKIP_LEGACY_RECHECKS: '1' });
-  report.legacyCompatibilitySelfTestStatus = buildLegacyCompatibilitySelfTestStatus(report, HARNESS_VERSION);
+  report.v094SelfTestStatus = process.env.CODEX_SKIP_V094_SELF_TEST === '1'
+    ? { status: 'not_applicable', reasonCodes: ['self_test_recursion_guard'], safeSummaryOnly: true }
+    : runGateScript('scripts/codex-v094-self-test.mjs', 'v094SelfTestStatus', 'CODEX_V094_SELF_TEST_REPORT', { ...gateEnv, CODEX_V094_SKIP_LEGACY_RECHECKS: '1' });
   report.selfTestProfileStatus = computeSelfTestProfileStatus(report, gateEnv, true);
   report.oldHarnessMarkerStatus = computeOldHarnessMarkerStatus(true);
   report.selfTestCaseExportStatus = runGateScript('scripts/codex-self-test-case-export.mjs', 'selfTestCaseExportStatus', 'CODEX_SELF_TEST_CASE_EXPORT_REPORT', {
@@ -1718,6 +1824,7 @@ async function runSourceHarnessGate() {
     classificationCoverageStatus: report.classificationCoverageStatus,
     versionLineageStatus: report.versionLineageStatus,
     ...Object.fromEntries(V093_STATUS_KEYS.map((key) => [key, report[key]])),
+    ...Object.fromEntries(V094_STATUS_KEYS.map((key) => [key, report[key]])),
     remoteLocalParityStatus: report.remoteLocalParityStatus,
     noArtifactFailureStatus: report.noArtifactFailureStatus,
     prEvidenceRendererStatus: report.prEvidenceRendererStatus,
@@ -1780,6 +1887,8 @@ async function runSourceHarnessGate() {
     v089SelfTestStatus: report.v089SelfTestStatus,
     v090SelfTestStatus: report.v090SelfTestStatus,
     v092SelfTestStatus: report.v092SelfTestStatus,
+    v093SelfTestStatus: report.v093SelfTestStatus,
+    v094SelfTestStatus: report.v094SelfTestStatus,
     bestOfNEvidenceStatus: report.bestOfNEvidenceStatus,
     taskQueueLiteStatus: report.taskQueueLiteStatus,
     safeTraceSchemaStatus: report.safeTraceSchemaStatus,
@@ -1827,6 +1936,7 @@ async function runSourceHarnessGate() {
     console.log(`workflowPreflightStatus: ${report.workflowPreflightStatus.status}`);
     console.log(`versionLineageStatus: ${report.versionLineageStatus.status}`);
     for (const key of V093_STATUS_KEYS) console.log(`${key}: ${report[key].status}`);
+    for (const key of V094_STATUS_KEYS) console.log(`${key}: ${report[key].status}`);
     console.log(`prEvidenceRendererStatus: ${report.prEvidenceRendererStatus.status}`);
     console.log(`safeArtifactClassifierStatus: ${report.safeArtifactClassifierStatus.status}`);
     console.log(`securityLifecycleStatus: ${report.securityLifecycleStatus.status}`);
@@ -2005,6 +2115,8 @@ async function runTargetHarnessGate() {
     warnings,
     humanReviewRequired: false,
   };
+  initializeV093Statuses(report);
+  initializeV094Statuses(report);
 
   report.agentsContextStatus = runGateScript('scripts/codex-agents-context-gate.mjs', 'agentsContextStatus', 'CODEX_AGENTS_CONTEXT_REPORT', gateEnv);
   report.environmentReadinessStatus = runGateScript('scripts/codex-environment-readiness-gate.mjs', 'environmentReadinessStatus', 'CODEX_ENVIRONMENT_READINESS_REPORT', gateEnv);
@@ -2017,19 +2129,14 @@ async function runTargetHarnessGate() {
   report.versionLineageStatus = runGateScript('scripts/codex-version-lineage-gate.mjs', 'versionLineageStatus', 'CODEX_VERSION_LINEAGE_REPORT', gateEnv);
   runV093Gates(report, gateEnv);
   report.changeClassificationStatus = runGateScript('scripts/codex-change-classification-gate.mjs', 'changeClassificationStatus', 'CODEX_CHANGE_CLASSIFICATION_REPORT', gateEnv);
-  const classifiedGateEnv = {
-    ...gateEnv,
-    CODEX_CHANGE_CLASSIFICATION_JSON: JSON.stringify(report.changeClassificationStatus),
-    CODEX_TRUST_CHANGE_CLASSIFICATION_JSON: '1',
-  };
   report.remoteLocalParityStatus = runGateScript('scripts/codex-remote-local-parity-gate.mjs', 'remoteLocalParityStatus', 'CODEX_REMOTE_LOCAL_PARITY_REPORT', {
     ...gateEnv,
     CODEX_CLASSIFICATION_COVERAGE_JSON: JSON.stringify(report.classificationCoverageStatus),
   });
-  report.productVerificationStatus = runGateScript('scripts/codex-product-verification-gate.mjs', 'productVerificationStatus', 'CODEX_PRODUCT_VERIFICATION_REPORT', classifiedGateEnv);
-  report.productVerificationEvidenceStatus = runGateScript('scripts/codex-product-verification-evidence-normalize.mjs', 'productVerificationEvidenceStatus', 'CODEX_PRODUCT_VERIFICATION_EVIDENCE_REPORT', classifiedGateEnv);
+  report.productVerificationStatus = runGateScript('scripts/codex-product-verification-gate.mjs', 'productVerificationStatus', 'CODEX_PRODUCT_VERIFICATION_REPORT', gateEnv);
+  report.productVerificationEvidenceStatus = runGateScript('scripts/codex-product-verification-evidence-normalize.mjs', 'productVerificationEvidenceStatus', 'CODEX_PRODUCT_VERIFICATION_EVIDENCE_REPORT', gateEnv);
   report.testMetricsStatus = runGateScript('scripts/codex-test-metrics-collect.mjs', 'testMetricsStatus', 'CODEX_TEST_METRICS_REPORT', gateEnv);
-  report.remoteProductBaselineStatus = runGateScript('scripts/codex-remote-product-baseline-gate.mjs', 'remoteProductBaselineStatus', 'CODEX_REMOTE_PRODUCT_BASELINE_REPORT', classifiedGateEnv);
+  report.remoteProductBaselineStatus = runGateScript('scripts/codex-remote-product-baseline-gate.mjs', 'remoteProductBaselineStatus', 'CODEX_REMOTE_PRODUCT_BASELINE_REPORT', gateEnv);
   report.remoteNpmDiagnosticStatus = runGateScript('scripts/codex-remote-npm-diagnostic-classify.mjs', 'remoteNpmDiagnosticStatus', 'CODEX_REMOTE_NPM_DIAGNOSTIC_REPORT', gateEnv);
   const baselineEnv = {
     ...gateEnv,
@@ -2038,6 +2145,13 @@ async function runTargetHarnessGate() {
     CODEX_REMOTE_NPM_DIAGNOSTIC_JSON: JSON.stringify(report.remoteNpmDiagnosticStatus),
   };
   report.baselineHealthStatus = runGateScript('scripts/codex-baseline-health-gate.mjs', 'baselineHealthStatus', 'CODEX_BASELINE_HEALTH_REPORT', baselineEnv);
+  runV094Gates(report, {
+    ...gateEnv,
+    CODEX_CHANGE_CLASSIFICATION_JSON: JSON.stringify(report.changeClassificationStatus),
+    CODEX_PRODUCT_VERIFICATION_JSON: JSON.stringify(report.productVerificationStatus),
+    CODEX_REMOTE_PRODUCT_BASELINE_JSON: JSON.stringify(report.remoteProductBaselineStatus),
+    CODEX_REMOTE_NPM_DIAGNOSTIC_JSON: JSON.stringify(report.remoteNpmDiagnosticStatus),
+  });
   report.workflowPreflightStatus = runGateScript('scripts/codex-workflow-preflight.mjs', 'workflowPreflightStatus', 'CODEX_WORKFLOW_PREFLIGHT_REPORT', gateEnv);
   report.securityLifecycleStatus = runGateScript('scripts/codex-security-lifecycle-gate.mjs', 'securityLifecycleStatus', 'CODEX_SECURITY_LIFECYCLE_REPORT', {
     ...gateEnv,
@@ -2154,7 +2268,9 @@ async function runTargetHarnessGate() {
   report.v093SelfTestStatus = process.env.CODEX_SKIP_V093_SELF_TEST === '1'
     ? { status: 'not_applicable', reasonCodes: ['self_test_recursion_guard'], safeSummaryOnly: true }
     : runGateScript('scripts/codex-v093-self-test.mjs', 'v093SelfTestStatus', 'CODEX_V093_SELF_TEST_REPORT', { ...gateEnv, CODEX_V093_SKIP_LEGACY_RECHECKS: '1' });
-  report.legacyCompatibilitySelfTestStatus = buildLegacyCompatibilitySelfTestStatus(report, HARNESS_VERSION);
+  report.v094SelfTestStatus = process.env.CODEX_SKIP_V094_SELF_TEST === '1'
+    ? { status: 'not_applicable', reasonCodes: ['self_test_recursion_guard'], safeSummaryOnly: true }
+    : runGateScript('scripts/codex-v094-self-test.mjs', 'v094SelfTestStatus', 'CODEX_V094_SELF_TEST_REPORT', { ...gateEnv, CODEX_V094_SKIP_LEGACY_RECHECKS: '1' });
   report.selfTestProfileStatus = computeSelfTestProfileStatus(report, gateEnv, false);
   report.oldHarnessMarkerStatus = computeOldHarnessMarkerStatus(false);
   report.selfTestCaseExportStatus = runGateScript('scripts/codex-self-test-case-export.mjs', 'selfTestCaseExportStatus', 'CODEX_SELF_TEST_CASE_EXPORT_REPORT', {
@@ -2201,6 +2317,7 @@ async function runTargetHarnessGate() {
     classificationCoverageStatus: report.classificationCoverageStatus,
     versionLineageStatus: report.versionLineageStatus,
     ...Object.fromEntries(V093_STATUS_KEYS.map((key) => [key, report[key]])),
+    ...Object.fromEntries(V094_STATUS_KEYS.map((key) => [key, report[key]])),
     remoteLocalParityStatus: report.remoteLocalParityStatus,
     noArtifactFailureStatus: report.noArtifactFailureStatus,
     prEvidenceRendererStatus: report.prEvidenceRendererStatus,
@@ -2282,6 +2399,7 @@ async function runTargetHarnessGate() {
     console.log(`targetQualityScoreStatus: ${report.targetQualityScoreStatus.status}`);
     console.log(`versionLineageStatus: ${report.versionLineageStatus.status}`);
     for (const key of V093_STATUS_KEYS) console.log(`${key}: ${report[key].status}`);
+    for (const key of V094_STATUS_KEYS) console.log(`${key}: ${report[key].status}`);
     console.log(`prEvidenceRendererStatus: ${report.prEvidenceRendererStatus.status}`);
     console.log(`safeArtifactClassifierStatus: ${report.safeArtifactClassifierStatus.status}`);
     console.log(`securityLifecycleStatus: ${report.securityLifecycleStatus.status}`);

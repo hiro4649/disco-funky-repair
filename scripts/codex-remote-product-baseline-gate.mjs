@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// CODEX_QUALITY_HARNESS_FILE v0.9.3
+// CODEX_QUALITY_HARNESS_FILE v0.9.4
 import { fileURLToPath } from 'node:url';
 import {
   HARNESS_VERSION,
@@ -13,17 +13,6 @@ import {
 import { classifyChange, changedFiles } from './codex-change-classification-gate.mjs';
 
 const MAX_BASELINE_AGE_DAYS = 14;
-
-function trustedClassification(env) {
-  if (env.CODEX_TRUST_CHANGE_CLASSIFICATION_JSON !== '1' || !env.CODEX_CHANGE_CLASSIFICATION_JSON) return null;
-  try {
-    const parsed = JSON.parse(env.CODEX_CHANGE_CLASSIFICATION_JSON);
-    const report = parsed?.changeClassificationStatus || parsed;
-    return report && typeof report === 'object' && report.classification ? report : null;
-  } catch {
-    return null;
-  }
-}
 
 function parseInlineJson(value) {
   if (!value) return null;
@@ -96,7 +85,7 @@ function validateBaseline(input, env = process.env) {
 }
 
 export function buildRemoteProductBaselineReport(env = process.env) {
-  const classified = trustedClassification(env) || classifyChange(changedFiles(env), env);
+  const classified = classifyChange(changedFiles(env), env);
   const c = classified.classification || {};
   const required = Boolean(
     classified.productRelevantChanged ||
