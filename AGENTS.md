@@ -1,4 +1,4 @@
-﻿# AGENTS.md
+# AGENTS.md
 
 ## FUNKY Authority Boundary
 
@@ -45,11 +45,11 @@ Low-priority findings may be ignored when they do not affect correctness,
 security, maintainability, or user-facing behavior. After fixing review
 findings, rerun the relevant tests.
 <!-- CODEX_QUALITY_HARNESS_BEGIN -->
-CODEX_QUALITY_HARNESS_FILE v0.9.2
+CODEX_QUALITY_HARNESS_FILE v0.9.3
 
 ## Codex Target Harness Boundary
 
-Source harness boundary: this target repository consumes Codex Development Harness v0.9.2 through docs/process/CODEX_HARNESS_MANIFEST.json, not CODEX_SOURCE_HARNESS_MANIFEST.json.
+Source harness boundary: this target repository consumes Codex Development Harness v0.9.3 through docs/process/CODEX_HARNESS_MANIFEST.json, not CODEX_SOURCE_HARNESS_MANIFEST.json.
 Method reference: use docs/process/CODEX_OPENAI_CODEX_METHOD_POLICY.md and docs/process/code_review.md for Codex method and review evidence expectations.
 Plan-first: use a short plan for R3, workflow, product-relevant, security, release, or ambiguous changes before editing.
 Safe output: reports and artifacts must be safe-summary only. Do not print raw logs, raw diffs, raw payloads, raw PR body, comments, endpoint values, private paths, production data, personal data, tokens, or secrets.
@@ -64,14 +64,17 @@ Current target-mode requirements:
 - keep exactly one current harness block;
 - preserve project authority outside this block;
 - run target quality gates with CODEX_HARNESS_MODE=target, CODEX_PROFILE_COMPAT_MODE=off, and CODEX_QUALITY_REPORT=json;
+- preserve target hotfixes, target-specific adaptations, and target patch manifest entries during rollouts;
+- treat workflow_dispatch as diagnostic only, not as a pull_request check substitute;
+- require same-head evidence for PR evidence packs, manual confirmation, remote runs, artifacts, and safe summaries when applicable;
 - allow CODEX_SKIP_NPM=1 only when change classification and product verification policy allow it;
-- require product verification when product-relevant files, package files, runtime readiness claims, or performance claims are present.
+- require product verification when product-relevant files, package files, runtime readiness claims, performance claims, or Docker smoke requirements are present.
 
-v0.9.2 preserves v0.9.0 remote reliability and adds Security Lifecycle, Evidence Automation, and Review Independence:
-- pre-checkout safe artifact lifeboat and no-artifact failure classification;
-- registry-backed classification coverage and remote/local parity checks;
-- PR template compiler hints and gate decision trace;
-- version lineage, PR evidence rendering, safe artifact classification, security lifecycle, review independence, task brief compiler, environment profile, AGENTS context budget, evidence repair hints, and v092 self-test.
+v0.9.3 preserves v0.9.2 evidence automation and security lifecycle while adding Target Hotfix Preservation, Product Context Fidelity, and Runtime Artifact Assurance:
+- target patch manifest, previous target hotfix preservation, and rollout conflict gates;
+- remote product PR context and target script classification fixtures;
+- same-head artifact evidence and Docker smoke current-head artifact checks;
+- CODEX_SKIP_NPM product override protection, goal condition checks, review policy classifier, compact PR evidence, and v093 self-test.
 
 Do not add Agentmemory, Hermes runtime, GEPA, DSPy, MCP, SQLite memory, LLM judge, hidden chain-of-thought inspection, automatic skill rewriting, auto commit, auto push, or prompt auto-apply as part of this harness block.
 Do not treat targetQualityScoreStatus or a passing harness gate as product runtime readiness.
