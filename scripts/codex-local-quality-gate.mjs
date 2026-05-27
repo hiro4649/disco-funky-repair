@@ -1330,8 +1330,10 @@ function computeOldHarnessMarkerStatus(sourceMode = true) {
   };
 }
 function applyStatusOutcome(key, value, failures, warnings) {
-  if (value?.status === 'fail') failures.push({ id: `${key}.failed`, message: `${key} failed` });
-  else if (value?.status === 'manual_confirmation_required' || value?.status === 'warning') {
+  if (!value?.status) return;
+  const effectiveStatus = effectiveSelfTestStatus(key, value.status, HARNESS_VERSION);
+  if (['fail', 'missing', 'not_run'].includes(effectiveStatus)) failures.push({ id: `${key}.failed`, message: `${key} failed` });
+  else if (effectiveStatus === 'manual_confirmation_required' || effectiveStatus === 'warning') {
     warnings.push({ id: `${key}.manual`, message: `${key} requires manual confirmation` });
   }
 }
@@ -1517,14 +1519,19 @@ async function runSourceHarnessGate() {
   report.versionLineageStatus = runGateScript('scripts/codex-version-lineage-gate.mjs', 'versionLineageStatus', 'CODEX_VERSION_LINEAGE_REPORT', gateEnv);
   runV093Gates(report, gateEnv);
   report.changeClassificationStatus = runGateScript('scripts/codex-change-classification-gate.mjs', 'changeClassificationStatus', 'CODEX_CHANGE_CLASSIFICATION_REPORT', gateEnv);
+  const classifiedGateEnv = {
+    ...gateEnv,
+    CODEX_CHANGE_CLASSIFICATION_JSON: JSON.stringify(report.changeClassificationStatus),
+    CODEX_TRUST_CHANGE_CLASSIFICATION_JSON: '1',
+  };
   report.remoteLocalParityStatus = runGateScript('scripts/codex-remote-local-parity-gate.mjs', 'remoteLocalParityStatus', 'CODEX_REMOTE_LOCAL_PARITY_REPORT', {
     ...gateEnv,
     CODEX_CLASSIFICATION_COVERAGE_JSON: JSON.stringify(report.classificationCoverageStatus),
   });
-  report.productVerificationStatus = runGateScript('scripts/codex-product-verification-gate.mjs', 'productVerificationStatus', 'CODEX_PRODUCT_VERIFICATION_REPORT', gateEnv);
-  report.productVerificationEvidenceStatus = runGateScript('scripts/codex-product-verification-evidence-normalize.mjs', 'productVerificationEvidenceStatus', 'CODEX_PRODUCT_VERIFICATION_EVIDENCE_REPORT', gateEnv);
+  report.productVerificationStatus = runGateScript('scripts/codex-product-verification-gate.mjs', 'productVerificationStatus', 'CODEX_PRODUCT_VERIFICATION_REPORT', classifiedGateEnv);
+  report.productVerificationEvidenceStatus = runGateScript('scripts/codex-product-verification-evidence-normalize.mjs', 'productVerificationEvidenceStatus', 'CODEX_PRODUCT_VERIFICATION_EVIDENCE_REPORT', classifiedGateEnv);
   report.testMetricsStatus = runGateScript('scripts/codex-test-metrics-collect.mjs', 'testMetricsStatus', 'CODEX_TEST_METRICS_REPORT', gateEnv);
-  report.remoteProductBaselineStatus = runGateScript('scripts/codex-remote-product-baseline-gate.mjs', 'remoteProductBaselineStatus', 'CODEX_REMOTE_PRODUCT_BASELINE_REPORT', gateEnv);
+  report.remoteProductBaselineStatus = runGateScript('scripts/codex-remote-product-baseline-gate.mjs', 'remoteProductBaselineStatus', 'CODEX_REMOTE_PRODUCT_BASELINE_REPORT', classifiedGateEnv);
   report.remoteNpmDiagnosticStatus = runGateScript('scripts/codex-remote-npm-diagnostic-classify.mjs', 'remoteNpmDiagnosticStatus', 'CODEX_REMOTE_NPM_DIAGNOSTIC_REPORT', gateEnv);
   const baselineEnv = {
     ...gateEnv,
@@ -2010,14 +2017,19 @@ async function runTargetHarnessGate() {
   report.versionLineageStatus = runGateScript('scripts/codex-version-lineage-gate.mjs', 'versionLineageStatus', 'CODEX_VERSION_LINEAGE_REPORT', gateEnv);
   runV093Gates(report, gateEnv);
   report.changeClassificationStatus = runGateScript('scripts/codex-change-classification-gate.mjs', 'changeClassificationStatus', 'CODEX_CHANGE_CLASSIFICATION_REPORT', gateEnv);
+  const classifiedGateEnv = {
+    ...gateEnv,
+    CODEX_CHANGE_CLASSIFICATION_JSON: JSON.stringify(report.changeClassificationStatus),
+    CODEX_TRUST_CHANGE_CLASSIFICATION_JSON: '1',
+  };
   report.remoteLocalParityStatus = runGateScript('scripts/codex-remote-local-parity-gate.mjs', 'remoteLocalParityStatus', 'CODEX_REMOTE_LOCAL_PARITY_REPORT', {
     ...gateEnv,
     CODEX_CLASSIFICATION_COVERAGE_JSON: JSON.stringify(report.classificationCoverageStatus),
   });
-  report.productVerificationStatus = runGateScript('scripts/codex-product-verification-gate.mjs', 'productVerificationStatus', 'CODEX_PRODUCT_VERIFICATION_REPORT', gateEnv);
-  report.productVerificationEvidenceStatus = runGateScript('scripts/codex-product-verification-evidence-normalize.mjs', 'productVerificationEvidenceStatus', 'CODEX_PRODUCT_VERIFICATION_EVIDENCE_REPORT', gateEnv);
+  report.productVerificationStatus = runGateScript('scripts/codex-product-verification-gate.mjs', 'productVerificationStatus', 'CODEX_PRODUCT_VERIFICATION_REPORT', classifiedGateEnv);
+  report.productVerificationEvidenceStatus = runGateScript('scripts/codex-product-verification-evidence-normalize.mjs', 'productVerificationEvidenceStatus', 'CODEX_PRODUCT_VERIFICATION_EVIDENCE_REPORT', classifiedGateEnv);
   report.testMetricsStatus = runGateScript('scripts/codex-test-metrics-collect.mjs', 'testMetricsStatus', 'CODEX_TEST_METRICS_REPORT', gateEnv);
-  report.remoteProductBaselineStatus = runGateScript('scripts/codex-remote-product-baseline-gate.mjs', 'remoteProductBaselineStatus', 'CODEX_REMOTE_PRODUCT_BASELINE_REPORT', gateEnv);
+  report.remoteProductBaselineStatus = runGateScript('scripts/codex-remote-product-baseline-gate.mjs', 'remoteProductBaselineStatus', 'CODEX_REMOTE_PRODUCT_BASELINE_REPORT', classifiedGateEnv);
   report.remoteNpmDiagnosticStatus = runGateScript('scripts/codex-remote-npm-diagnostic-classify.mjs', 'remoteNpmDiagnosticStatus', 'CODEX_REMOTE_NPM_DIAGNOSTIC_REPORT', gateEnv);
   const baselineEnv = {
     ...gateEnv,

@@ -16,6 +16,17 @@ import {
 import { classifyChange, changedFiles } from './codex-change-classification-gate.mjs';
 import { buildRemoteProductBaselineReport } from './codex-remote-product-baseline-gate.mjs';
 
+function trustedClassification(env) {
+  if (env.CODEX_TRUST_CHANGE_CLASSIFICATION_JSON !== '1' || !env.CODEX_CHANGE_CLASSIFICATION_JSON) return null;
+  try {
+    const parsed = JSON.parse(env.CODEX_CHANGE_CLASSIFICATION_JSON);
+    const report = parsed?.changeClassificationStatus || parsed;
+    return report && typeof report === 'object' && report.classification ? report : null;
+  } catch {
+    return null;
+  }
+}
+
 function parseJsonSource(env) {
   const file = env.CODEX_PRODUCT_VERIFICATION_EVIDENCE_PATH;
   if (!file) return null;
@@ -76,7 +87,7 @@ function hasNamedProductEvidence(commands) {
 
 export function normalizeProductVerificationEvidence(env = process.env) {
   const body = prBodyText(env);
-  const classified = classifyChange(changedFiles(env), env);
+  const classified = trustedClassification(env) || classifyChange(changedFiles(env), env);
   const baseline = buildRemoteProductBaselineReport(env).remoteProductBaselineStatus;
   const c = classified.classification;
   const fileEvidence = parseJsonSource(env);

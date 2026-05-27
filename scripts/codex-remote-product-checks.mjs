@@ -238,7 +238,8 @@ export function buildRemoteProductCheckPlan(env = process.env) {
   const files = changedFilesForPr(env);
   const classified = classifyChange(files, { ...env, CODEX_CHANGED_FILES: files.join('\n') });
   const scopes = productScopesForFiles(files);
-  const productRequired = Boolean(scopes.productRelevant || scopes.backendDockerSmokeRequired || classified.productRelevantChanged || classified.packageOrLockfileChanged || classified.runtimeReadinessClaimed);
+  const harnessOnly = Boolean(classified.classification?.harnessOnly);
+  const productRequired = !harnessOnly && Boolean(scopes.productRelevant || scopes.backendDockerSmokeRequired || classified.productRelevantChanged || classified.packageOrLockfileChanged || classified.runtimeReadinessClaimed);
   return { files, scopes, classified, productRequired };
 }
 

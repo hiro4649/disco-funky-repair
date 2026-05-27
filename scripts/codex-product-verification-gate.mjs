@@ -6,6 +6,17 @@ import { classifyChange, changedFiles } from './codex-change-classification-gate
 import { normalizeProductVerificationEvidence } from './codex-product-verification-evidence-normalize.mjs';
 import { buildRemoteProductBaselineReport } from './codex-remote-product-baseline-gate.mjs';
 
+function trustedClassification(env) {
+  if (env.CODEX_TRUST_CHANGE_CLASSIFICATION_JSON !== '1' || !env.CODEX_CHANGE_CLASSIFICATION_JSON) return null;
+  try {
+    const parsed = JSON.parse(env.CODEX_CHANGE_CLASSIFICATION_JSON);
+    const report = parsed?.changeClassificationStatus || parsed;
+    return report && typeof report === 'object' && report.classification ? report : null;
+  } catch {
+    return null;
+  }
+}
+
 function hasSkipReason(body, env) {
   return Boolean(env.CODEX_NPM_SKIP_REASON) || /\bskip reason\s*:\s*\S+/i.test(body) ||
     /\bCODEX_SKIP_NPM\b[\s\S]{0,100}\b(reason|harness-only|docs-only|not applicable)\b/i.test(body);
@@ -21,7 +32,7 @@ function verificationEvidence(body) {
 
 export function buildProductVerificationReport(env = process.env) {
   const body = prBodyText(env);
-  const classified = classifyChange(changedFiles(env), env);
+  const classified = trustedClassification(env) || classifyChange(changedFiles(env), env);
   const normalized = normalizeProductVerificationEvidence(env);
   const baseline = buildRemoteProductBaselineReport(env).remoteProductBaselineStatus;
   const c = classified.classification;
