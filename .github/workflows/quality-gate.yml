@@ -1,4 +1,4 @@
-# CODEX_QUALITY_HARNESS_FILE v0.9.0
+# CODEX_QUALITY_HARNESS_FILE v0.9.2
 name: quality-gate
 
 on:
@@ -32,7 +32,7 @@ jobs:
           safe_head="$(printf '%s' "${CODEX_PRECHECKOUT_HEAD_SHA:-}" | tr -cd 'A-Fa-f0-9' | cut -c1-64)"
           cat > "$RUNNER_TEMP/codex-minimal-safe-failure.json" <<JSON
           {
-            "schemaVersion": "0.9.0",
+            "schemaVersion": "0.9.2",
             "phase": "pre_checkout",
             "status": "fail",
             "safeSummaryOnly": true,
@@ -82,22 +82,6 @@ jobs:
           CODEX_LIFEBOAT_PATH: ${{ runner.temp }}/codex-minimal-safe-failure.json
         run: |
           node scripts/codex-artifact-lifeboat.mjs > "$RUNNER_TEMP/codex-artifact-lifeboat.json" || true
-      - name: Prepare target product verification
-        if: github.event_name == 'pull_request'
-        shell: bash
-        env:
-          CODEX_EVENT_NAME: ${{ github.event_name }}
-          CODEX_PR_NUMBER: ${{ github.event.pull_request.number || '' }}
-          CODEX_PR_HEAD_SHA: ${{ github.event.pull_request.head.sha || '' }}
-          CODEX_PR_BASE_SHA: ${{ github.event.pull_request.base.sha || '' }}
-          CODEX_REPOSITORY: ${{ github.repository }}
-        run: |
-          set -euo pipefail
-          if [ -f CODEX_SOURCE_HARNESS_MANIFEST.json ]; then
-            echo "CODEX_SKIP_NPM=0" >> "$GITHUB_ENV"
-          else
-            node scripts/codex-remote-product-checks.mjs > "$RUNNER_TEMP/codex-remote-product-checks.json"
-          fi
       - name: Run Codex quality gate
         shell: bash
         env:
@@ -164,6 +148,16 @@ jobs:
             console.log(`- classificationCoverageStatus: ${summary.classificationCoverageStatus?.status || 'missing'}`);
             console.log(`- remoteLocalParityStatus: ${summary.remoteLocalParityStatus?.status || 'missing'}`);
             console.log(`- noArtifactFailureStatus: ${summary.noArtifactFailureStatus?.status || 'missing'}`);
+            console.log(`- versionLineageStatus: ${summary.versionLineageStatus?.status || 'missing'}`);
+            console.log(`- prEvidenceRendererStatus: ${summary.prEvidenceRendererStatus?.status || 'missing'}`);
+            console.log(`- safeArtifactClassifierStatus: ${summary.safeArtifactClassifierStatus?.status || 'missing'}`);
+            console.log(`- securityLifecycleStatus: ${summary.securityLifecycleStatus?.status || 'missing'}`);
+            console.log(`- reviewIndependenceStatus: ${summary.reviewIndependenceStatus?.status || 'missing'}`);
+            console.log(`- taskBriefCompilerStatus: ${summary.taskBriefCompilerStatus?.status || 'missing'}`);
+            console.log(`- bestOfNDecisionStatus: ${summary.bestOfNDecisionStatus?.status || 'missing'}`);
+            console.log(`- environmentProfileStatus: ${summary.environmentProfileStatus?.status || 'missing'}`);
+            console.log(`- agentsContextBudgetStatus: ${summary.agentsContextBudgetStatus?.status || 'missing'}`);
+            console.log(`- evidenceAutoRepairHintStatus: ${summary.evidenceAutoRepairHintStatus?.status || 'missing'}`);
             console.log(`- baselineHealthStatus: ${summary.baselineHealthStatus?.status || 'missing'}`);
             console.log(`- evidenceContinuityStatus: ${summary.evidenceContinuityStatus?.status || 'missing'}`);
             console.log(`- prBodySurfaceNormalizerStatus: ${summary.prBodySurfaceNormalizerStatus?.status || 'missing'}`);
@@ -174,6 +168,7 @@ jobs:
             console.log(`- oldHarnessMarkerStatus: ${summary.oldHarnessMarkerStatus?.status || 'missing'}`);
             console.log(`- v089SelfTestStatus: ${summary.v089SelfTestStatus?.status || 'missing'}`);
             console.log(`- v090SelfTestStatus: ${summary.v090SelfTestStatus?.status || 'missing'}`);
+            console.log(`- v092SelfTestStatus: ${summary.v092SelfTestStatus?.status || 'missing'}`);
             console.log(`- pathMode: ${diagnostic?.pathMode || 'missing'}`);
             console.log(`- topNextAction: ${diagnostic?.nextActions?.[0] || 'missing'}`);
           } else {
@@ -204,10 +199,9 @@ jobs:
             codex-source-final-summary.json
             codex-target-final-summary.json
             codex-safe-artifact-index.json
+            codex-safe-artifact-classification.safe.json
+            codex-pr-evidence-rendered.safe.json
+            codex-evidence-auto-repair-hint.safe.json
             codex-workflow-preflight.safe.json
             codex-test-metrics.safe.json
-            ${{ runner.temp }}/codex-remote-product-checks.safe.json
-            ${{ runner.temp }}/codex-backend-docker-smoke.*.safe.json
-            ${{ runner.temp }}/codex-remote-product-baseline.json
-            ${{ runner.temp }}/codex-product-verification-evidence.remote.json
           if-no-files-found: ignore
