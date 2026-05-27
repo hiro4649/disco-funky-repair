@@ -22,6 +22,28 @@ Harness-only work must stay in harness-managed files. Do not modify FUNKY apps,
 contracts, product source, tests, specs, package files, lockfiles, runtime
 files, or `scripts/run-tests.js` unless the project owner explicitly requests
 product work and required verification evidence is available.
+
+## Review Policy
+
+Do not run Codex review after every small edit. Use Codex review at meaningful
+change boundaries: commit-sized changes, before opening a pull request, and for
+risky changes.
+
+Risky changes include authentication, authorization, permissions, billing,
+payments, database migrations, data deletion, external API calls,
+security-sensitive logic, concurrency, background jobs, shared core logic,
+public API changes, error handling, workflow changes, harness changes, release
+changes, product-relevant changes, external audit findings, and quality-gate
+fixes.
+
+Before running review, run the relevant formatter, linter, typecheck, and tests
+when available. Treat high-priority review findings as blockers unless there is
+a clear reason not to fix them. If a high-priority finding is not fixed, explain
+why.
+
+Low-priority findings may be ignored when they do not affect correctness,
+security, maintainability, or user-facing behavior. After fixing review
+findings, rerun the relevant tests.
 <!-- CODEX_QUALITY_HARNESS_BEGIN -->
 CODEX_QUALITY_HARNESS_FILE v0.9.2
 
