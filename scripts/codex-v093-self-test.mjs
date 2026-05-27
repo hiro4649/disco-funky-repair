@@ -15,6 +15,7 @@ import { buildGoalConditionReport } from './codex-goal-condition-gate.mjs';
 import { buildReviewPolicyClassifierReport } from './codex-review-policy-classifier.mjs';
 import { buildPrEvidenceCompactReport } from './codex-pr-evidence-compact-gate.mjs';
 import { buildRemoteProductCheckDecision, securityOracleForRemoteProductResult } from './codex-remote-product-checks.mjs';
+import { activeSelfTestStatusKey, buildLegacyCompatibilitySelfTestStatus, effectiveSelfTestStatus } from './codex-active-self-test-policy.mjs';
 import fs from 'node:fs';
 
 const HEAD = '1234567890abcdef1234567890abcdef12345678';
@@ -60,6 +61,14 @@ export function buildV093SelfTestReport() {
   assertCase('backend_entrypoint_product_change_requires_remote_checks', report.productRequired === true && report.skipNpm === '0' && report.willGenerateBaseline === true && report.willGenerateEvidence === true, failures, cases, report.reasonCode, []);
   assertCase('remote_product_pass_sets_security_oracle', securityOracleForRemoteProductResult({ baselineResult: 'pass', candidateResult: 'pass' }) === '1', failures, cases);
   assertCase('remote_product_fail_does_not_set_security_oracle', securityOracleForRemoteProductResult({ baselineResult: 'pass', candidateResult: 'fail' }) === '', failures, cases);
+  assertCase('active_v093_self_test_selected', activeSelfTestStatusKey('0.9.3') === 'v093SelfTestStatus', failures, cases, activeSelfTestStatusKey('0.9.3') || 'missing');
+  assertCase('legacy_v085_failure_advisory_for_v093', effectiveSelfTestStatus('v085SelfTestStatus', 'fail', '0.9.3') === 'pass_legacy_advisory', failures, cases, effectiveSelfTestStatus('v085SelfTestStatus', 'fail', '0.9.3'));
+  assertCase('active_v093_failure_still_blocks', effectiveSelfTestStatus('v093SelfTestStatus', 'fail', '0.9.3') === 'fail', failures, cases, effectiveSelfTestStatus('v093SelfTestStatus', 'fail', '0.9.3'));
+  report = buildLegacyCompatibilitySelfTestStatus({
+    v085SelfTestStatus: { status: 'fail' },
+    v093SelfTestStatus: { status: 'pass' },
+  }, '0.9.3');
+  assertCase('legacy_self_test_failure_recorded_as_advisory', report.status === 'pass' && report.legacyFailureCount === 1 && report.reasonCodes.includes('legacy_self_test_failure_advisory'), failures, cases, report.status, report.reasonCodes);
 
   report = buildTargetScriptClassificationFixtureReport({ manifest: { runTestsClassification: 'product_relevant', devServerClassification: 'dev_server_entrypoint' } });
   assertCase('scripts_run_tests_product_relevant_fixture_pass', report.targetScriptClassificationFixtureStatus.status === 'pass' && classifyTargetScript('scripts/run-tests.js', { runTestsClassification: 'product_relevant' }) === 'product_relevant', failures, cases, report.targetScriptClassificationFixtureStatus.status, report.targetScriptClassificationFixtureStatus.reasonCodes);

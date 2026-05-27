@@ -9,6 +9,7 @@ import { buildHumanConfirmationStatus } from './codex-production-readiness-gate.
 import { scanSafeOutput } from './codex-safe-output-scan.mjs';
 import { buildGithubReplayContextAsync } from './codex-ci-replay.mjs';
 import { buildCompactReasonSummary } from './codex-reason-summary.mjs';
+import { buildLegacyCompatibilitySelfTestStatus, effectiveSelfTestStatus } from './codex-active-self-test-policy.mjs';
 
 const HARNESS_VERSION = '0.9.3';
 const PROFILE_TEMPLATE_VERSION = '0.7.0';
@@ -1000,7 +1001,7 @@ function computeTargetQualityScoreStatus(report) {
   ]);
   const statuses = scored.map((key) => {
     const status = report[key]?.status || 'missing';
-    let effectiveStatus = status;
+    let effectiveStatus = effectiveSelfTestStatus(key, status, HARNESS_VERSION);
     if (allowedNotApplicable.has(key) && status === 'not_applicable') effectiveStatus = 'pass_optional';
     return { key, status, effectiveStatus };
   });
@@ -1656,6 +1657,7 @@ async function runSourceHarnessGate() {
   report.v093SelfTestStatus = process.env.CODEX_SKIP_V093_SELF_TEST === '1'
     ? { status: 'not_applicable', reasonCodes: ['self_test_recursion_guard'], safeSummaryOnly: true }
     : runGateScript('scripts/codex-v093-self-test.mjs', 'v093SelfTestStatus', 'CODEX_V093_SELF_TEST_REPORT', { ...gateEnv, CODEX_V093_SKIP_LEGACY_RECHECKS: '1' });
+  report.legacyCompatibilitySelfTestStatus = buildLegacyCompatibilitySelfTestStatus(report, HARNESS_VERSION);
   report.selfTestProfileStatus = computeSelfTestProfileStatus(report, gateEnv, true);
   report.oldHarnessMarkerStatus = computeOldHarnessMarkerStatus(true);
   report.selfTestCaseExportStatus = runGateScript('scripts/codex-self-test-case-export.mjs', 'selfTestCaseExportStatus', 'CODEX_SELF_TEST_CASE_EXPORT_REPORT', {
@@ -2140,6 +2142,7 @@ async function runTargetHarnessGate() {
   report.v093SelfTestStatus = process.env.CODEX_SKIP_V093_SELF_TEST === '1'
     ? { status: 'not_applicable', reasonCodes: ['self_test_recursion_guard'], safeSummaryOnly: true }
     : runGateScript('scripts/codex-v093-self-test.mjs', 'v093SelfTestStatus', 'CODEX_V093_SELF_TEST_REPORT', { ...gateEnv, CODEX_V093_SKIP_LEGACY_RECHECKS: '1' });
+  report.legacyCompatibilitySelfTestStatus = buildLegacyCompatibilitySelfTestStatus(report, HARNESS_VERSION);
   report.selfTestProfileStatus = computeSelfTestProfileStatus(report, gateEnv, false);
   report.oldHarnessMarkerStatus = computeOldHarnessMarkerStatus(false);
   report.selfTestCaseExportStatus = runGateScript('scripts/codex-self-test-case-export.mjs', 'selfTestCaseExportStatus', 'CODEX_SELF_TEST_CASE_EXPORT_REPORT', {
