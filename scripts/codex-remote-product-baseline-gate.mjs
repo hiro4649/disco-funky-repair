@@ -14,6 +14,17 @@ import { classifyChange, changedFiles } from './codex-change-classification-gate
 
 const MAX_BASELINE_AGE_DAYS = 14;
 
+function trustedClassification(env) {
+  if (env.CODEX_TRUST_CHANGE_CLASSIFICATION_JSON !== '1' || !env.CODEX_CHANGE_CLASSIFICATION_JSON) return null;
+  try {
+    const parsed = JSON.parse(env.CODEX_CHANGE_CLASSIFICATION_JSON);
+    const report = parsed?.changeClassificationStatus || parsed;
+    return report && typeof report === 'object' && report.classification ? report : null;
+  } catch {
+    return null;
+  }
+}
+
 function parseInlineJson(value) {
   if (!value) return null;
   try {
@@ -85,7 +96,7 @@ function validateBaseline(input, env = process.env) {
 }
 
 export function buildRemoteProductBaselineReport(env = process.env) {
-  const classified = classifyChange(changedFiles(env), env);
+  const classified = trustedClassification(env) || classifyChange(changedFiles(env), env);
   const c = classified.classification || {};
   const required = Boolean(
     classified.productRelevantChanged ||

@@ -15,6 +15,7 @@ import { buildGoalConditionReport } from './codex-goal-condition-gate.mjs';
 import { buildReviewPolicyClassifierReport } from './codex-review-policy-classifier.mjs';
 import { buildPrEvidenceCompactReport } from './codex-pr-evidence-compact-gate.mjs';
 import { buildRemoteProductCheckDecision, securityOracleForRemoteProductResult } from './codex-remote-product-checks.mjs';
+import { buildProductVerificationReport } from './codex-product-verification-gate.mjs';
 import { activeSelfTestStatusKey, buildLegacyCompatibilitySelfTestStatus, effectiveSelfTestStatus } from './codex-active-self-test-policy.mjs';
 import fs from 'node:fs';
 
@@ -59,11 +60,35 @@ export function buildV093SelfTestReport() {
     CODEX_PR_HEAD_SHA: HEAD,
   });
   assertCase('backend_entrypoint_product_change_requires_remote_checks', report.productRequired === true && report.skipNpm === '0' && report.willGenerateBaseline === true && report.willGenerateEvidence === true, failures, cases, report.reasonCode, []);
+  report = buildRemoteProductCheckDecision({
+    CODEX_CHANGED_FILES: 'scripts/codex-local-quality-gate.mjs\nscripts/codex-v093-self-test.mjs',
+    CODEX_PR_BASE_SHA: OTHER,
+    CODEX_PR_HEAD_SHA: HEAD,
+  });
+  assertCase('harness_only_scripts_do_not_require_remote_product_checks', report.productRequired === false && report.skipNpm === '1' && report.willGenerateBaseline === false && report.willGenerateEvidence === false, failures, cases, report.reasonCode, []);
+  report = buildProductVerificationReport({
+    CODEX_EVENT_NAME: 'pull_request',
+    CODEX_SKIP_NPM: '1',
+    CODEX_CHANGED_FILES: '',
+    CODEX_PR_BODY: 'Runtime readiness claimed: no',
+    CODEX_CHANGE_CLASSIFICATION_JSON: JSON.stringify({
+      status: 'pass',
+      classification: { harnessOnly: true, docsOnly: true, runtimeReadinessClaimed: false },
+      productRelevantChanged: false,
+      runtimeReadinessClaimed: false,
+      packageOrLockfileChanged: false,
+      reasonCodes: [],
+    }),
+    CODEX_TRUST_CHANGE_CLASSIFICATION_JSON: '1',
+  });
+  assertCase('product_verification_uses_trusted_classification_snapshot', report.productVerificationStatus.status === 'pass' && report.productVerificationStatus.skipReason === 'harness_only_no_runtime_claim', failures, cases, report.productVerificationStatus.status, report.productVerificationStatus.reasonCodes);
   assertCase('remote_product_pass_sets_security_oracle', securityOracleForRemoteProductResult({ baselineResult: 'pass', candidateResult: 'pass' }) === '1', failures, cases);
   assertCase('remote_product_fail_does_not_set_security_oracle', securityOracleForRemoteProductResult({ baselineResult: 'pass', candidateResult: 'fail' }) === '', failures, cases);
   assertCase('active_v093_self_test_selected', activeSelfTestStatusKey('0.9.3') === 'v093SelfTestStatus', failures, cases, activeSelfTestStatusKey('0.9.3') || 'missing');
   assertCase('legacy_v085_failure_advisory_for_v093', effectiveSelfTestStatus('v085SelfTestStatus', 'fail', '0.9.3') === 'pass_legacy_advisory', failures, cases, effectiveSelfTestStatus('v085SelfTestStatus', 'fail', '0.9.3'));
   assertCase('active_v093_failure_still_blocks', effectiveSelfTestStatus('v093SelfTestStatus', 'fail', '0.9.3') === 'fail', failures, cases, effectiveSelfTestStatus('v093SelfTestStatus', 'fail', '0.9.3'));
+  const localQualityGateSource = fs.readFileSync('scripts/codex-local-quality-gate.mjs', 'utf8');
+  assertCase('status_outcome_uses_effective_self_test_status', /function applyStatusOutcome[\s\S]*effectiveSelfTestStatus/.test(localQualityGateSource), failures, cases);
   report = buildLegacyCompatibilitySelfTestStatus({
     v085SelfTestStatus: { status: 'fail' },
     v093SelfTestStatus: { status: 'pass' },
