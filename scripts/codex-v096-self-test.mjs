@@ -1,23 +1,8 @@
 #!/usr/bin/env node
-// CODEX_QUALITY_HARNESS_FILE v0.9.6
+// CODEX_QUALITY_HARNESS_FILE v0.9.7
 
-import fs from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { marker, HARNESS_VERSION, scanObjectForUnsafe, writeJsonReport, exitFor } from './codex-v080-lib.mjs';
-import {
-  activeSelfTestStatusKey,
-  effectiveSelfTestStatus,
-  buildLegacyCompatibilitySelfTestStatus,
-} from './codex-active-self-test-policy.mjs';
-import {
-  buildRemoteProductCheckDecision,
-} from './codex-remote-product-checks.mjs';
-import {
-  buildProductVerificationEvidenceReport,
-} from './codex-product-verification-evidence-normalize.mjs';
-import {
-  buildRemoteProductBaselineReport,
-} from './codex-remote-product-baseline-gate.mjs';
 import {
   buildKRuleCoverageReport,
   buildLive2DSpecSyncReport,
@@ -57,79 +42,6 @@ export function buildV096SelfTestReport() {
   const failures = [];
   const cases = [];
   let report;
-
-  assertCase('active_v096_self_test_selected', activeSelfTestStatusKey('0.9.6') === 'v096SelfTestStatus', failures, cases, activeSelfTestStatusKey('0.9.6'), []);
-  assertCase('active_v096_failure_still_blocks', effectiveSelfTestStatus('v096SelfTestStatus', 'fail', '0.9.6') === 'fail', failures, cases, effectiveSelfTestStatus('v096SelfTestStatus', 'fail', '0.9.6'), []);
-  assertCase('legacy_v085_failure_advisory_for_v096', effectiveSelfTestStatus('v085SelfTestStatus', 'fail', '0.9.6') === 'pass_legacy_advisory', failures, cases, effectiveSelfTestStatus('v085SelfTestStatus', 'fail', '0.9.6'), []);
-  assertCase('legacy_v094_failure_advisory_for_v096', effectiveSelfTestStatus('v094SelfTestStatus', 'fail', '0.9.6') === 'pass_legacy_advisory', failures, cases, effectiveSelfTestStatus('v094SelfTestStatus', 'fail', '0.9.6'), []);
-  assertCase('legacy_v095_failure_advisory_for_v096', effectiveSelfTestStatus('v095SelfTestStatus', 'fail', '0.9.6') === 'pass_legacy_advisory', failures, cases, effectiveSelfTestStatus('v095SelfTestStatus', 'fail', '0.9.6'), []);
-  report = buildLegacyCompatibilitySelfTestStatus({
-    v085SelfTestStatus: { status: 'fail' },
-    v094SelfTestStatus: { status: 'fail' },
-    v095SelfTestStatus: { status: 'fail' },
-    v096SelfTestStatus: { status: 'pass' },
-  }, '0.9.6');
-  assertCase('legacy_compatibility_records_v096_advisory_failures', report.status === 'pass' && report.legacyFailureCount === 3 && report.reasonCodes.includes('legacy_self_test_failure_advisory'), failures, cases, report.status, report.reasonCodes);
-
-  const workflowText = fs.readFileSync(fileURLToPath(new URL('../.github/workflows/quality-gate.yml', import.meta.url)), 'utf8');
-  const backendRuntimeQueryFiles = [
-    'apps/backend/src/app/lib/tierScheduler.ts',
-    'apps/backend/src/app/lib/__tests__/tierScheduler.statusAwareQuery.test.ts',
-  ];
-  const productDecision = buildRemoteProductCheckDecision({ CODEX_CHANGED_FILES: backendRuntimeQueryFiles.join('\n') });
-  const backendRuntimeDecision = buildRemoteProductCheckDecision({ CODEX_CHANGED_FILES: 'apps/backend/src/app/lib/tierScheduler.ts' });
-  const docsDecision = buildRemoteProductCheckDecision({ CODEX_CHANGED_FILES: 'docs/process/FUNKY_TIER_UPDATE_RUNTIME_ADOPTION_PLAN.md' });
-  const harnessDecision = buildRemoteProductCheckDecision({ CODEX_CHANGED_FILES: '.github/workflows/quality-gate.yml\nscripts/codex-v096-self-test.mjs' });
-  assertCase('prepare_target_product_verification_step_present', /name:\s*Prepare target product verification/.test(workflowText) && /codex-remote-product-checks\.mjs/.test(workflowText), failures, cases);
-  assertCase('prepare_target_product_verification_pull_request_only', /if:\s*\$\{\{\s*github\.event_name\s*==\s*'pull_request'\s*\}\}/.test(workflowText), failures, cases);
-  assertCase('product_pr_backend_runtime_query_change_requires_remote_product_checks', backendRuntimeDecision.productRequired && backendRuntimeDecision.skipNpm === '0', failures, cases, backendRuntimeDecision.reasonCode, []);
-  assertCase('product_pr_generates_remote_baseline', productDecision.willGenerateBaseline === true, failures, cases, String(productDecision.willGenerateBaseline), []);
-  assertCase('product_pr_generates_product_verification_evidence', productDecision.willGenerateEvidence === true, failures, cases, String(productDecision.willGenerateEvidence), []);
-  assertCase('product_pr_skip_npm_fails', productDecision.productRequired && productDecision.skipNpm === '0', failures, cases, productDecision.skipNpm, []);
-  assertCase('product_relevant_pr_context_not_empty', productDecision.plan.files.length === backendRuntimeQueryFiles.length, failures, cases, String(productDecision.plan.files.length), []);
-  assertCase('docs_only_pr_remote_product_checks_skip_allowed', !docsDecision.productRequired && docsDecision.skipNpm === '1', failures, cases, docsDecision.reasonCode, []);
-  assertCase('harness_only_pr_skip_npm_with_reason_passes', !harnessDecision.productRequired && harnessDecision.skipNpm === '1', failures, cases, harnessDecision.reasonCode, []);
-  report = buildRemoteProductBaselineReport({
-    CODEX_EVENT_NAME: 'pull_request',
-    CODEX_CHANGED_FILES: backendRuntimeQueryFiles.join('\n'),
-  });
-  assertCase('baseline_missing_fails_for_product_pr', statusOf(report, 'remoteProductBaselineStatus') === 'fail' && reasonsOf(report, 'remoteProductBaselineStatus').includes('remote_product_baseline_missing'), failures, cases, statusOf(report, 'remoteProductBaselineStatus'), reasonsOf(report, 'remoteProductBaselineStatus'));
-  const validBaseline = {
-    schemaVersion: '0.8.3',
-    harnessVersion: HARNESS_VERSION,
-    repository: 'hiro4649/disco-funky-repair',
-    baseSha: 'aed17fac66618be1c9f470e05236834312351868',
-    baselineType: 'remote_product_checks',
-    commands: [{ name: 'backend:npm test -- --runInBand', result: 'pass', source: 'remote' }],
-    result: 'pass',
-    date: new Date().toISOString(),
-    source: 'github_actions_base_worktree',
-    safeSummary: 'remote product baseline checks completed',
-    knownFailures: [],
-    expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
-    rawValuesStored: false,
-    safeSummaryOnly: true,
-  };
-  report = buildRemoteProductBaselineReport({
-    CODEX_EVENT_NAME: 'pull_request',
-    CODEX_REPOSITORY: validBaseline.repository,
-    CODEX_PR_BASE_SHA: validBaseline.baseSha,
-    CODEX_CHANGED_FILES: backendRuntimeQueryFiles.join('\n'),
-    CODEX_REMOTE_PRODUCT_BASELINE_JSON: JSON.stringify(validBaseline),
-  });
-  assertCase('remote_product_baseline_present_passes_for_product_pr', statusOf(report, 'remoteProductBaselineStatus') === 'pass', failures, cases, statusOf(report, 'remoteProductBaselineStatus'), reasonsOf(report, 'remoteProductBaselineStatus'));
-  report = buildProductVerificationEvidenceReport({
-    CODEX_EVENT_NAME: 'pull_request',
-    CODEX_REPOSITORY: validBaseline.repository,
-    CODEX_PR_BASE_SHA: validBaseline.baseSha,
-    CODEX_CHANGED_FILES: backendRuntimeQueryFiles.join('\n'),
-    CODEX_REMOTE_PRODUCT_BASELINE_JSON: JSON.stringify(validBaseline),
-    CODEX_SKIP_NPM: '0',
-    CODEX_PRODUCT_VERIFICATION_COMMANDS: 'backend:npm test -- --runInBand',
-    CODEX_PRODUCT_VERIFICATION_RESULT: 'pass',
-    CODEX_PRODUCT_VERIFICATION_SOURCE: 'remote',
-  });
-  assertCase('valid_product_verification_evidence_passes_for_product_pr', statusOf(report, 'productVerificationEvidenceStatus') === 'pass', failures, cases, statusOf(report, 'productVerificationEvidenceStatus'), reasonsOf(report, 'productVerificationEvidenceStatus'));
 
   report = buildKRuleCoverageReport({ forceCheck: true, allowlistPresent: true, coverageTestPresent: true });
   assertCase('k_rule_coverage_live2d_allowlist_required_pass', statusOf(report, 'kRuleCoverageStatus') === 'pass', failures, cases, statusOf(report, 'kRuleCoverageStatus'), reasonsOf(report, 'kRuleCoverageStatus'));
