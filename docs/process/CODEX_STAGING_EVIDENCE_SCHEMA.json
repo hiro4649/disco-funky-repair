@@ -1,5 +1,5 @@
 {
-  "marker": "CODEX_QUALITY_HARNESS_FILE v0.9.4",
+  "marker": "CODEX_QUALITY_HARNESS_FILE v0.9.5",
   "schemaName": "CODEX_STAGING_EVIDENCE_SCHEMA",
   "schemaVersion": "1.0.0",
   "type": "object",
@@ -35,7 +35,7 @@
   ],
   "properties": {
     "marker": {
-      "const": "CODEX_QUALITY_HARNESS_FILE v0.9.4"
+      "const": "CODEX_QUALITY_HARNESS_FILE v0.9.5"
     },
     "schemaVersion": {
       "const": "1.0.0"
