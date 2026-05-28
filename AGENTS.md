@@ -45,11 +45,11 @@ Low-priority findings may be ignored when they do not affect correctness,
 security, maintainability, or user-facing behavior. After fixing review
 findings, rerun the relevant tests.
 <!-- CODEX_QUALITY_HARNESS_BEGIN -->
-CODEX_QUALITY_HARNESS_FILE v0.9.5
+CODEX_QUALITY_HARNESS_FILE v0.9.6
 
 ## Codex Target Harness Boundary
 
-This target repository consumes Codex Development Harness v0.9.5 through
+This target repository consumes Codex Development Harness v0.9.6 through
 `docs/process/CODEX_HARNESS_MANIFEST.json`; do not copy or create
 `CODEX_SOURCE_HARNESS_MANIFEST.json` here. Keep product authority outside this
 block intact.
@@ -60,8 +60,8 @@ Keep AGENTS.md compact: doctrine, routing map, and links only. Put detailed
 policy in `docs/process`. Load only task-needed skills, normally four or fewer
 and never more than five. Use `docs/process/CODEX_AGENTS_DOCTRINE_POLICY.md`,
 `docs/process/CODEX_SKILL_ROUTING_POLICY.md`,
-`docs/process/CODEX_SUBAGENT_GOVERNANCE_POLICY.md`, and related v0.9.5 files
-for detailed rules.
+`docs/process/CODEX_SUBAGENT_GOVERNANCE_POLICY.md`, and related v0.9.5/v0.9.6
+files for detailed rules.
 
 ## Target Safety Rules
 
@@ -72,8 +72,16 @@ product work and required verification evidence is available.
 
 Maintain the source harness boundary and profile/core separation. Use a
 plan-first workflow for nontrivial work, keep safe output in evidence artifacts,
-and require manual confirmation before any merge-ready claim. Do not print raw logs.
-Manual confirmation cannot override non-overridable failures.
+and require manual confirmation before any merge-ready claim. Manual
+confirmation cannot override non-overridable harness failures. Do not print raw
+logs, raw diffs, raw runtime data, raw model paths, secrets, endpoints, private
+paths, production data, or personal data. Do not print raw logs.
+Manual confirmation cannot override non-overridable harness failures.
+
+Do not treat targetQualityScoreStatus or a passing harness gate as product
+runtime readiness. Fixture pass, browser smoke pass, dataset audit readiness,
+Game/Tool Adapter fixture pass, and beloved avatar audit readiness are not
+runtime readiness.
 
 Run target quality gates with `CODEX_HARNESS_MODE=target`,
 `CODEX_PROFILE_COMPAT_MODE=off`, and `CODEX_QUALITY_REPORT=json`. Preserve target
