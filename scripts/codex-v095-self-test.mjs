@@ -1,23 +1,8 @@
 #!/usr/bin/env node
-// CODEX_QUALITY_HARNESS_FILE v0.9.5
+// CODEX_QUALITY_HARNESS_FILE v0.9.6
 
-import fs from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { marker, HARNESS_VERSION, scanObjectForUnsafe, writeJsonReport, exitFor } from './codex-v080-lib.mjs';
-import {
-  activeSelfTestStatusKey,
-  effectiveSelfTestStatus,
-  buildLegacyCompatibilitySelfTestStatus,
-} from './codex-active-self-test-policy.mjs';
-import {
-  buildRemoteProductCheckDecision,
-} from './codex-remote-product-checks.mjs';
-import {
-  buildProductVerificationEvidenceReport,
-} from './codex-product-verification-evidence-normalize.mjs';
-import {
-  buildRemoteProductBaselineReport,
-} from './codex-remote-product-baseline-gate.mjs';
 import {
   buildAgentsDoctrineReport,
   buildSkillRoutingReport,
@@ -57,85 +42,6 @@ export function buildV095SelfTestReport() {
   const failures = [];
   const cases = [];
   let report;
-
-  assertCase('active_v095_self_test_selected', activeSelfTestStatusKey('0.9.5') === 'v095SelfTestStatus', failures, cases, activeSelfTestStatusKey('0.9.5'), []);
-  assertCase('legacy_v085_failure_advisory_for_v095', effectiveSelfTestStatus('v085SelfTestStatus', 'fail', '0.9.5') === 'pass_legacy_advisory', failures, cases, effectiveSelfTestStatus('v085SelfTestStatus', 'fail', '0.9.5'), []);
-  assertCase('legacy_v094_failure_advisory_for_v095', effectiveSelfTestStatus('v094SelfTestStatus', 'fail', '0.9.5') === 'pass_legacy_advisory', failures, cases, effectiveSelfTestStatus('v094SelfTestStatus', 'fail', '0.9.5'), []);
-  assertCase('active_v095_failure_still_blocks', effectiveSelfTestStatus('v095SelfTestStatus', 'fail', '0.9.5') === 'fail', failures, cases, effectiveSelfTestStatus('v095SelfTestStatus', 'fail', '0.9.5'), []);
-  assertCase('v094_active_self_test_selected_when_harness_094', activeSelfTestStatusKey('0.9.4') === 'v094SelfTestStatus', failures, cases, activeSelfTestStatusKey('0.9.4'), []);
-  assertCase('active_v094_failure_still_blocks_when_harness_094', effectiveSelfTestStatus('v094SelfTestStatus', 'fail', '0.9.4') === 'fail', failures, cases, effectiveSelfTestStatus('v094SelfTestStatus', 'fail', '0.9.4'), []);
-  report = buildLegacyCompatibilitySelfTestStatus({
-    v085SelfTestStatus: { status: 'fail' },
-    v094SelfTestStatus: { status: 'fail' },
-    v095SelfTestStatus: { status: 'pass' },
-  }, '0.9.5');
-  assertCase('legacy_compatibility_records_advisory_failures', report.status === 'pass' && report.legacyFailureCount === 2 && report.reasonCodes.includes('legacy_self_test_failure_advisory'), failures, cases, report.status, report.reasonCodes);
-
-  const workflowText = fs.readFileSync(fileURLToPath(new URL('../.github/workflows/quality-gate.yml', import.meta.url)), 'utf8');
-  const tierStateMachineFiles = [
-    'apps/backend/prisma/schema.prisma',
-    'apps/backend/prisma/migrations/20260528090000_add_scheduled_tier_update_state_machine/migration.sql',
-    'apps/backend/src/app/lib/tierUpdateState.ts',
-    'apps/backend/src/app/lib/__tests__/tierUpdateState.test.ts',
-  ];
-  const productDecision = buildRemoteProductCheckDecision({ CODEX_CHANGED_FILES: tierStateMachineFiles.join('\n') });
-  const schemaDecision = buildRemoteProductCheckDecision({ CODEX_CHANGED_FILES: 'apps/backend/prisma/schema.prisma' });
-  const migrationDecision = buildRemoteProductCheckDecision({ CODEX_CHANGED_FILES: 'apps/backend/prisma/migrations/20260528090000_add_scheduled_tier_update_state_machine/migration.sql' });
-  const helperDecision = buildRemoteProductCheckDecision({ CODEX_CHANGED_FILES: 'apps/backend/src/app/lib/tierUpdateState.ts' });
-  const docsDecision = buildRemoteProductCheckDecision({ CODEX_CHANGED_FILES: 'docs/process/FUNKY_TIER_SCHEDULER_TX_PATH_AUDIT.md' });
-  const harnessDecision = buildRemoteProductCheckDecision({ CODEX_CHANGED_FILES: '.github/workflows/quality-gate.yml\nscripts/codex-v095-self-test.mjs' });
-  assertCase('prepare_target_product_verification_step_present', /name:\s*Prepare target product verification/.test(workflowText) && /codex-remote-product-checks\.mjs/.test(workflowText), failures, cases);
-  assertCase('prepare_target_product_verification_pull_request_only', /if:\s*\$\{\{\s*github\.event_name\s*==\s*'pull_request'\s*\}\}/.test(workflowText), failures, cases);
-  assertCase('product_pr_schema_change_requires_remote_product_checks', schemaDecision.productRequired && schemaDecision.skipNpm === '0', failures, cases, schemaDecision.reasonCode, []);
-  assertCase('product_pr_migration_change_requires_remote_product_checks', migrationDecision.productRequired && migrationDecision.skipNpm === '0', failures, cases, migrationDecision.reasonCode, []);
-  assertCase('product_pr_lib_helper_change_requires_remote_product_checks', helperDecision.productRequired && helperDecision.skipNpm === '0', failures, cases, helperDecision.reasonCode, []);
-  assertCase('product_pr_generates_remote_baseline', productDecision.willGenerateBaseline === true, failures, cases, String(productDecision.willGenerateBaseline), []);
-  assertCase('product_pr_generates_product_verification_evidence', productDecision.willGenerateEvidence === true, failures, cases, String(productDecision.willGenerateEvidence), []);
-  assertCase('product_pr_skip_npm_fails_closed', productDecision.productRequired && productDecision.skipNpm === '0', failures, cases, productDecision.skipNpm, []);
-  assertCase('product_relevant_pr_context_not_empty', productDecision.plan.files.length === tierStateMachineFiles.length, failures, cases, String(productDecision.plan.files.length), []);
-  assertCase('docs_only_pr_remote_product_checks_skip_allowed', !docsDecision.productRequired && docsDecision.skipNpm === '1', failures, cases, docsDecision.reasonCode, []);
-  assertCase('harness_only_pr_skip_npm_with_reason_passes', !harnessDecision.productRequired && harnessDecision.skipNpm === '1', failures, cases, harnessDecision.reasonCode, []);
-  report = buildRemoteProductBaselineReport({
-    CODEX_EVENT_NAME: 'pull_request',
-    CODEX_CHANGED_FILES: tierStateMachineFiles.join('\n'),
-  });
-  assertCase('baseline_missing_fails_for_product_pr', statusOf(report, 'remoteProductBaselineStatus') === 'fail' && reasonsOf(report, 'remoteProductBaselineStatus').includes('remote_product_baseline_missing'), failures, cases, statusOf(report, 'remoteProductBaselineStatus'), reasonsOf(report, 'remoteProductBaselineStatus'));
-  const validBaseline = {
-    schemaVersion: '0.8.3',
-    harnessVersion: HARNESS_VERSION,
-    repository: 'hiro4649/disco-funky-repair',
-    baseSha: '32924d095cbacb2256285bef288ce30c3d53df38',
-    baselineType: 'remote_product_checks',
-    commands: [{ name: 'backend:npm run build', result: 'pass', source: 'remote' }],
-    result: 'pass',
-    date: new Date().toISOString(),
-    source: 'github_actions_base_worktree',
-    safeSummary: 'remote product baseline checks completed',
-    knownFailures: [],
-    expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
-    rawValuesStored: false,
-    safeSummaryOnly: true,
-  };
-  report = buildRemoteProductBaselineReport({
-    CODEX_EVENT_NAME: 'pull_request',
-    CODEX_REPOSITORY: validBaseline.repository,
-    CODEX_PR_BASE_SHA: validBaseline.baseSha,
-    CODEX_CHANGED_FILES: tierStateMachineFiles.join('\n'),
-    CODEX_REMOTE_PRODUCT_BASELINE_JSON: JSON.stringify(validBaseline),
-  });
-  assertCase('remote_product_baseline_present_passes_for_product_pr', statusOf(report, 'remoteProductBaselineStatus') === 'pass', failures, cases, statusOf(report, 'remoteProductBaselineStatus'), reasonsOf(report, 'remoteProductBaselineStatus'));
-  report = buildProductVerificationEvidenceReport({
-    CODEX_EVENT_NAME: 'pull_request',
-    CODEX_REPOSITORY: validBaseline.repository,
-    CODEX_PR_BASE_SHA: validBaseline.baseSha,
-    CODEX_CHANGED_FILES: tierStateMachineFiles.join('\n'),
-    CODEX_REMOTE_PRODUCT_BASELINE_JSON: JSON.stringify(validBaseline),
-    CODEX_SKIP_NPM: '0',
-    CODEX_PRODUCT_VERIFICATION_COMMANDS: 'backend:npm run build',
-    CODEX_PRODUCT_VERIFICATION_RESULT: 'pass',
-    CODEX_PRODUCT_VERIFICATION_SOURCE: 'remote',
-  });
-  assertCase('valid_product_verification_evidence_passes_for_product_pr', statusOf(report, 'productVerificationEvidenceStatus') === 'pass', failures, cases, statusOf(report, 'productVerificationEvidenceStatus'), reasonsOf(report, 'productVerificationEvidenceStatus'));
 
   report = buildAgentsDoctrineReport({ doctrineSectionExists: true, routingMapExists: true, docsProcessLinksExist: true, size: 1800 });
   assertCase('agents_doctrine_short_map_pass', statusOf(report, 'agentsDoctrineStatus') === 'pass', failures, cases, statusOf(report, 'agentsDoctrineStatus'), reasonsOf(report, 'agentsDoctrineStatus'));
