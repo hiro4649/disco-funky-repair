@@ -9,6 +9,10 @@ import { buildSafeArtifactIndex } from './codex-safe-artifact-index.mjs';
 import { buildFinalSummary } from './codex-target-final-summary.mjs';
 import { buildDiagnosticConsolidatedSummary } from './codex-diagnostic-consolidation-runner.mjs';
 import { buildInvalidReportRecoverySummary } from './codex-invalid-report-recovery.mjs';
+import {
+  buildLegacyCompatibilitySelfTestStatus,
+  effectiveSelfTestStatus,
+} from './codex-active-self-test-policy.mjs';
 
 const v093StatusKeys = [
   'previousTargetHotfixPreservationStatus',
@@ -424,6 +428,8 @@ function readReport(file) {
 }
 
 function statusAllowed(key, status, eventName) {
+  status = effectiveSelfTestStatus(key, status, HARNESS_VERSION);
+  if (status === 'pass_legacy_advisory') return true;
   if (status === 'pass') return true;
   if (key === 'humanConfirmationObjectStatus' && status === 'not_required') return true;
   if (status === 'not_applicable' && optionalNotApplicable.has(key)) {
@@ -436,6 +442,7 @@ function statusAllowed(key, status, eventName) {
 }
 
 export function evaluateWorkflowReport(report, options = {}) {
+  report.legacyCompatibilitySelfTestStatus ||= buildLegacyCompatibilitySelfTestStatus(report, HARNESS_VERSION);
   const mode = report.targetQualityScoreStatus && !report.sourceHarnessValidationStatus ? 'target' : 'source';
   const v084Fields = new Set([
     'fastPathStatus',
@@ -643,6 +650,7 @@ export function evaluateWorkflowReport(report, options = {}) {
     gameToolAdapterContractFixtureStatus: report.gameToolAdapterContractFixtureStatus || { status: 'missing' },
     belovedAvatarSafetyAuditStatus: report.belovedAvatarSafetyAuditStatus || { status: 'missing' },
     v096SelfTestStatus: report.v096SelfTestStatus || { status: 'missing' },
+    legacyCompatibilitySelfTestStatus: report.legacyCompatibilitySelfTestStatus || { status: 'missing' },
     activeSelfTestRegistryStatus: report.activeSelfTestRegistryStatus || { status: 'missing' },
     workflowProductVerificationInvariantStatus: report.workflowProductVerificationInvariantStatus || { status: 'missing' },
     targetHotfixRegressionStatus: report.targetHotfixRegressionStatus || { status: 'missing' },

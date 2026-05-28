@@ -50,6 +50,8 @@ export function buildWorkflowProductVerificationInvariantReport(input = parseJso
   const missingSteps = parseList(input.missingSteps);
   for (const step of REQUIRED_WORKFLOW_PRODUCT_STEPS) if (missingSteps.includes(step)) reasonCodes.push('workflow_product_verification_step_missing');
   if (parseBool(input.stepRemoved) || parseBool(input.prepareStepMissing) || (parseBool(input.forceWorkflowTextCheck) && !workflowText.includes('Prepare target product verification'))) reasonCodes.push('workflow_product_verification_step_missing');
+  if (parseBool(input.forceWorkflowTextCheck) && !workflowText.includes('node scripts/codex-remote-product-checks.mjs')) reasonCodes.push('workflow_product_verification_step_missing');
+  if (parseBool(input.forceWorkflowTextCheck) && !workflowText.includes('CODEX_REMOTE_VERIFICATION_MODE: pull_request')) reasonCodes.push('workflow_dispatch_not_pr_substitute');
   if (parseBool(input.remoteChecksBeforeGateMissing)) reasonCodes.push('workflow_product_verification_step_missing');
   const removedArtifacts = parseList(input.removedArtifacts);
   for (const artifact of REQUIRED_REMOTE_PRODUCT_ARTIFACTS) if (removedArtifacts.includes(artifact)) reasonCodes.push('remote_product_artifact_upload_missing');

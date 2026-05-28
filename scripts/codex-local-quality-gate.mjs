@@ -19,6 +19,10 @@ import { scanSafeOutput } from './codex-safe-output-scan.mjs';
 import { buildGithubReplayContextAsync } from './codex-ci-replay.mjs';
 
 import { buildCompactReasonSummary } from './codex-reason-summary.mjs';
+import {
+  buildLegacyCompatibilitySelfTestStatus,
+  effectiveSelfTestStatus,
+} from './codex-active-self-test-policy.mjs';
 
 
 
@@ -27,6 +31,14 @@ const HARNESS_VERSION = '0.9.7';
 const PROFILE_TEMPLATE_VERSION = '0.7.0';
 
 const MARKER = `CODEX_QUALITY_HARNESS_FILE v${HARNESS_VERSION}`;
+
+function effectiveGateStatus(key, status) {
+  return effectiveSelfTestStatus(key, status, HARNESS_VERSION);
+}
+
+function isEffectivePass(status) {
+  return status === 'pass' || status === 'pass_legacy_advisory';
+}
 
 
 
@@ -2078,6 +2090,8 @@ function computeQualityScoreStatus(report) {
 
     if (key === 'humanConfirmationObjectStatus' && status === 'not_required') effectiveStatus = 'pass';
 
+    effectiveStatus = effectiveGateStatus(key, effectiveStatus);
+
     return { key, status, effectiveStatus };
 
   });
@@ -2088,7 +2102,7 @@ function computeQualityScoreStatus(report) {
 
   const notApplicable = statuses.filter((item) => item.effectiveStatus === 'not_applicable' || item.effectiveStatus === 'not_run');
 
-  const passCount = statuses.filter((item) => item.effectiveStatus === 'pass').length;
+  const passCount = statuses.filter((item) => isEffectivePass(item.effectiveStatus)).length;
 
   let score = Math.floor((passCount / statuses.length) * 99);
 
@@ -2486,6 +2500,8 @@ function computeTargetQualityScoreStatus(report) {
 
     ...V096_OPTIONAL_NOT_APPLICABLE_STATUS_KEYS,
 
+    ...V097_OPTIONAL_NOT_APPLICABLE_STATUS_KEYS,
+
     'changeClassificationStatus',
 
     'productVerificationStatus',
@@ -2575,6 +2591,8 @@ function computeTargetQualityScoreStatus(report) {
     let effectiveStatus = status;
 
     if (allowedNotApplicable.has(key) && status === 'not_applicable') effectiveStatus = 'pass_optional';
+
+    effectiveStatus = effectiveGateStatus(key, effectiveStatus);
 
     return { key, status, effectiveStatus };
 
@@ -3150,15 +3168,17 @@ function computeScoreDecompositionStatus(report, scoreStatus) {
 
     .filter(([key, value]) => key.endsWith('Status') && value && typeof value === 'object')
 
-    .filter(([, value]) => ['fail', 'manual_confirmation_required', 'warning', 'not_run'].includes(value.status))
+    .map(([key, value]) => ({ key, value, effectiveStatus: effectiveGateStatus(key, value.status) }))
+
+    .filter(({ effectiveStatus }) => ['fail', 'manual_confirmation_required', 'warning', 'not_run'].includes(effectiveStatus))
 
     .slice(0, 5)
 
-    .map(([key, value]) => ({
+    .map(({ key, value, effectiveStatus }) => ({
 
       gate: key,
 
-      status: value.status,
+      status: effectiveStatus,
 
       reasonCodes: statusReasonCodes(value),
 
@@ -3316,9 +3336,11 @@ function computeOldHarnessMarkerStatus(sourceMode = true) {
 
 function applyStatusOutcome(key, value, failures, warnings) {
 
-  if (value?.status === 'fail') failures.push({ id: `${key}.failed`, message: `${key} failed` });
+  const effectiveStatus = effectiveGateStatus(key, value?.status);
 
-  else if (value?.status === 'manual_confirmation_required' || value?.status === 'warning') {
+  if (effectiveStatus === 'fail') failures.push({ id: `${key}.failed`, message: `${key} failed` });
+
+  else if (effectiveStatus === 'manual_confirmation_required' || effectiveStatus === 'warning') {
 
     warnings.push({ id: `${key}.manual`, message: `${key} requires manual confirmation` });
 
@@ -4019,6 +4041,8 @@ async function runSourceHarnessGate() {
     ? { status: 'not_applicable', reasonCodes: ['self_test_recursion_guard'], safeSummaryOnly: true }
 
     : runGateScript('scripts/codex-v097-self-test.mjs', 'v097SelfTestStatus', 'CODEX_V097_SELF_TEST_REPORT', { ...gateEnv, CODEX_V097_SKIP_LEGACY_RECHECKS: '1' });
+
+  report.legacyCompatibilitySelfTestStatus = buildLegacyCompatibilitySelfTestStatus(report, HARNESS_VERSION);
 
   report.selfTestProfileStatus = computeSelfTestProfileStatus(report, gateEnv, true);
 
@@ -5059,6 +5083,8 @@ async function runTargetHarnessGate() {
     ? { status: 'not_applicable', reasonCodes: ['self_test_recursion_guard'], safeSummaryOnly: true }
 
     : runGateScript('scripts/codex-v097-self-test.mjs', 'v097SelfTestStatus', 'CODEX_V097_SELF_TEST_REPORT', { ...gateEnv, CODEX_V097_SKIP_LEGACY_RECHECKS: '1' });
+
+  report.legacyCompatibilitySelfTestStatus = buildLegacyCompatibilitySelfTestStatus(report, HARNESS_VERSION);
 
   report.selfTestProfileStatus = computeSelfTestProfileStatus(report, gateEnv, false);
 
