@@ -9,6 +9,7 @@ import { buildSafeArtifactIndex } from './codex-safe-artifact-index.mjs';
 import { buildFinalSummary } from './codex-target-final-summary.mjs';
 import { buildDiagnosticConsolidatedSummary } from './codex-diagnostic-consolidation-runner.mjs';
 import { buildInvalidReportRecoverySummary } from './codex-invalid-report-recovery.mjs';
+import { effectiveSelfTestStatus } from './codex-active-self-test-policy.mjs';
 
 const v093StatusKeys = [
   'previousTargetHotfixPreservationStatus',
@@ -382,6 +383,9 @@ function readReport(file) {
 }
 
 function statusAllowed(key, status, eventName) {
+  const effectiveStatus = effectiveSelfTestStatus(key, status, HARNESS_VERSION);
+  if (effectiveStatus === 'pass_legacy_advisory') return true;
+  if (effectiveStatus !== status) status = effectiveStatus;
   if (status === 'pass') return true;
   if (key === 'humanConfirmationObjectStatus' && status === 'not_required') return true;
   if (status === 'not_applicable' && optionalNotApplicable.has(key)) {
@@ -598,6 +602,7 @@ export function evaluateWorkflowReport(report, options = {}) {
     gameToolAdapterContractFixtureStatus: report.gameToolAdapterContractFixtureStatus || { status: 'missing' },
     belovedAvatarSafetyAuditStatus: report.belovedAvatarSafetyAuditStatus || { status: 'missing' },
     v096SelfTestStatus: report.v096SelfTestStatus || { status: 'missing' },
+    legacyCompatibilitySelfTestStatus: report.legacyCompatibilitySelfTestStatus || { status: 'missing' },
     failureCount: Array.isArray(report.failures) ? report.failures.length : 0,
     warningCount: Array.isArray(report.warnings) ? report.warnings.length : 0,
     safeSummaryOnly: true,
