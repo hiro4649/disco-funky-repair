@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// CODEX_QUALITY_HARNESS_FILE v0.9.4
+// CODEX_QUALITY_HARNESS_FILE v0.9.5
 
 export const SELF_TEST_STATUS_KEYS = [
   'v080SelfTestStatus',
@@ -15,6 +15,8 @@ export const SELF_TEST_STATUS_KEYS = [
   'v090SelfTestStatus',
   'v092SelfTestStatus',
   'v093SelfTestStatus',
+  'v094SelfTestStatus',
+  'v095SelfTestStatus',
 ];
 
 const ACTIVE_SELF_TEST_BY_VERSION = {
@@ -31,6 +33,8 @@ const ACTIVE_SELF_TEST_BY_VERSION = {
   '0.9.0': 'v090SelfTestStatus',
   '0.9.2': 'v092SelfTestStatus',
   '0.9.3': 'v093SelfTestStatus',
+  '0.9.4': 'v094SelfTestStatus',
+  '0.9.5': 'v095SelfTestStatus',
 };
 
 export function activeSelfTestStatusKey(harnessVersion) {
