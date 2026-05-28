@@ -4,6 +4,13 @@
 import { fileURLToPath } from 'node:url';
 import { marker, HARNESS_VERSION, scanObjectForUnsafe, writeJsonReport, exitFor } from './codex-v080-lib.mjs';
 import {
+  activeSelfTestStatusKey,
+  effectiveSelfTestStatus,
+} from './codex-active-self-test-policy.mjs';
+import { buildRemoteProductCheckDecision } from './codex-remote-product-checks.mjs';
+import { buildProductVerificationEvidenceReport } from './codex-product-verification-evidence-normalize.mjs';
+import { buildRemoteProductBaselineReport } from './codex-remote-product-baseline-gate.mjs';
+import {
   buildActiveSelfTestRegistryReport,
   buildWorkflowProductVerificationInvariantReport,
   buildTargetHotfixRegressionReport,
@@ -32,6 +39,25 @@ function assertCase(id, condition, failures, cases, actualStatus = 'pass', reaso
   if (!condition) failures.push(id);
 }
 
+function safeBaselineJson() {
+  return JSON.stringify({
+    schemaVersion: '0.8.3',
+    harnessVersion: HARNESS_VERSION,
+    repository: 'hiro4649/disco-funky-repair',
+    baseSha: 'a'.repeat(40),
+    baselineType: 'remote_product_checks',
+    commands: [{ name: 'backend:npm test', result: 'pass', source: 'remote' }],
+    result: 'pass',
+    date: new Date().toISOString(),
+    source: 'github_actions_base_worktree',
+    safeSummary: 'remote product baseline checks completed',
+    knownFailures: [],
+    expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
+    rawValuesStored: false,
+    safeSummaryOnly: true,
+  });
+}
+
 export function buildV097SelfTestReport() {
   const failures = [];
   const cases = [];
@@ -39,15 +65,54 @@ export function buildV097SelfTestReport() {
 
   report = buildActiveSelfTestRegistryReport({ harnessVersion: '0.9.7', activeStatusKey: 'v097SelfTestStatus', selfTestFilePresent: true, manifestHasSelfTest: true, localGateHasStatus: true });
   assertCase('active_self_test_registry_v097_pass', statusOf(report, 'activeSelfTestRegistryStatus') === 'pass', failures, cases, statusOf(report, 'activeSelfTestRegistryStatus'), reasonsOf(report, 'activeSelfTestRegistryStatus'));
+  assertCase('active_v097_self_test_selected', activeSelfTestStatusKey('0.9.7') === 'v097SelfTestStatus', failures, cases, activeSelfTestStatusKey('0.9.7') || 'missing', []);
+  assertCase('active_v097_failure_still_blocks', effectiveSelfTestStatus('v097SelfTestStatus', 'fail', '0.9.7') === 'fail', failures, cases, effectiveSelfTestStatus('v097SelfTestStatus', 'fail', '0.9.7'), []);
+  assertCase('legacy_v085_failure_advisory_for_v097', effectiveSelfTestStatus('v085SelfTestStatus', 'fail', '0.9.7') === 'pass_legacy_advisory', failures, cases, effectiveSelfTestStatus('v085SelfTestStatus', 'fail', '0.9.7'), []);
+  assertCase('legacy_v094_failure_advisory_for_v097', effectiveSelfTestStatus('v094SelfTestStatus', 'fail', '0.9.7') === 'pass_legacy_advisory', failures, cases, effectiveSelfTestStatus('v094SelfTestStatus', 'fail', '0.9.7'), []);
+  assertCase('legacy_v095_failure_advisory_for_v097', effectiveSelfTestStatus('v095SelfTestStatus', 'fail', '0.9.7') === 'pass_legacy_advisory', failures, cases, effectiveSelfTestStatus('v095SelfTestStatus', 'fail', '0.9.7'), []);
+  assertCase('legacy_v096_failure_advisory_for_v097', effectiveSelfTestStatus('v096SelfTestStatus', 'fail', '0.9.7') === 'pass_legacy_advisory', failures, cases, effectiveSelfTestStatus('v096SelfTestStatus', 'fail', '0.9.7'), []);
   report = buildActiveSelfTestRegistryReport({ harnessVersion: '0.9.7', activeStatusKey: 'v096SelfTestStatus', selfTestFilePresent: false, manifestHasSelfTest: false, localGateHasStatus: false });
   assertCase('active_self_test_registry_missing_fails', statusOf(report, 'activeSelfTestRegistryStatus') === 'fail', failures, cases, statusOf(report, 'activeSelfTestRegistryStatus'), reasonsOf(report, 'activeSelfTestRegistryStatus'));
 
-  report = buildWorkflowProductVerificationInvariantReport({});
+  report = buildWorkflowProductVerificationInvariantReport({ forceWorkflowTextCheck: true });
   assertCase('workflow_product_verification_step_present_pass', statusOf(report, 'workflowProductVerificationInvariantStatus') === 'pass', failures, cases, statusOf(report, 'workflowProductVerificationInvariantStatus'), reasonsOf(report, 'workflowProductVerificationInvariantStatus'));
+  assertCase('prepare_target_product_verification_step_present', statusOf(report, 'workflowProductVerificationInvariantStatus') === 'pass', failures, cases, statusOf(report, 'workflowProductVerificationInvariantStatus'), reasonsOf(report, 'workflowProductVerificationInvariantStatus'));
+  assertCase('prepare_target_product_verification_executes_remote_product_checks', statusOf(report, 'workflowProductVerificationInvariantStatus') === 'pass', failures, cases, statusOf(report, 'workflowProductVerificationInvariantStatus'), reasonsOf(report, 'workflowProductVerificationInvariantStatus'));
   report = buildWorkflowProductVerificationInvariantReport({ stepRemoved: true });
   assertCase('workflow_product_verification_step_removed_fails', statusOf(report, 'workflowProductVerificationInvariantStatus') === 'fail', failures, cases, statusOf(report, 'workflowProductVerificationInvariantStatus'), reasonsOf(report, 'workflowProductVerificationInvariantStatus'));
+  report = buildWorkflowProductVerificationInvariantReport({ forceWorkflowTextCheck: true, workflowText: 'Prepare target product verification\nstatus pending\n' });
+  assertCase('product_pr_pending_placeholder_not_enough', statusOf(report, 'workflowProductVerificationInvariantStatus') === 'fail', failures, cases, statusOf(report, 'workflowProductVerificationInvariantStatus'), reasonsOf(report, 'workflowProductVerificationInvariantStatus'));
+  report = buildWorkflowProductVerificationInvariantReport({ workflowDispatchSubstitute: true });
+  assertCase('workflow_dispatch_not_pr_substitute', statusOf(report, 'workflowProductVerificationInvariantStatus') === 'fail', failures, cases, statusOf(report, 'workflowProductVerificationInvariantStatus'), reasonsOf(report, 'workflowProductVerificationInvariantStatus'));
   report = buildWorkflowProductVerificationInvariantReport({ remoteProductArtifactUploadRemoved: true });
   assertCase('remote_product_artifact_upload_removed_fails', statusOf(report, 'workflowProductVerificationInvariantStatus') === 'fail', failures, cases, statusOf(report, 'workflowProductVerificationInvariantStatus'), reasonsOf(report, 'workflowProductVerificationInvariantStatus'));
+
+  const productEnv = {
+    CODEX_EVENT_NAME: 'pull_request',
+    CODEX_REPOSITORY: 'hiro4649/disco-funky-repair',
+    CODEX_PR_NUMBER: '195',
+    CODEX_PR_BASE_SHA: 'a'.repeat(40),
+    CODEX_PR_HEAD_SHA: 'b'.repeat(40),
+    CODEX_CHANGED_FILES: 'apps/backend/src/app/lib/tierScheduler.ts\napps/backend/src/app/lib/__tests__/tierScheduler.statusAwareQuery.test.ts',
+    CODEX_SKIP_NPM: '0',
+    CODEX_PRODUCT_VERIFICATION_COMMANDS: 'backend:npm test',
+    CODEX_PRODUCT_VERIFICATION_RESULT: 'pass',
+    CODEX_PRODUCT_VERIFICATION_SOURCE: 'remote',
+    CODEX_REMOTE_PRODUCT_BASELINE_JSON: safeBaselineJson(),
+  };
+  const productDecision = buildRemoteProductCheckDecision(productEnv);
+  assertCase('product_pr_generates_remote_baseline', productDecision.willGenerateBaseline === true, failures, cases, productDecision.reasonCode, []);
+  assertCase('product_pr_generates_product_verification_evidence', productDecision.willGenerateEvidence === true, failures, cases, productDecision.reasonCode, []);
+  assertCase('valid_product_verification_evidence_passes_for_product_pr', statusOf(buildProductVerificationEvidenceReport(productEnv), 'productVerificationEvidenceStatus') === 'pass', failures, cases, statusOf(buildProductVerificationEvidenceReport(productEnv), 'productVerificationEvidenceStatus'), reasonsOf(buildProductVerificationEvidenceReport(productEnv), 'productVerificationEvidenceStatus'));
+  const skippedProductEnv = { ...productEnv, CODEX_SKIP_NPM: '1' };
+  assertCase('product_pr_skip_npm_fails', statusOf(buildProductVerificationEvidenceReport(skippedProductEnv), 'productVerificationEvidenceStatus') === 'fail', failures, cases, statusOf(buildProductVerificationEvidenceReport(skippedProductEnv), 'productVerificationEvidenceStatus'), []);
+  assertCase('remote_product_baseline_present_passes_for_product_pr', statusOf(buildRemoteProductBaselineReport(productEnv), 'remoteProductBaselineStatus') === 'pass', failures, cases, statusOf(buildRemoteProductBaselineReport(productEnv), 'remoteProductBaselineStatus'), reasonsOf(buildRemoteProductBaselineReport(productEnv), 'remoteProductBaselineStatus'));
+  const missingBaselineEnv = { ...productEnv, CODEX_REMOTE_PRODUCT_BASELINE_JSON: '' };
+  assertCase('baseline_missing_fails_for_product_pr', statusOf(buildRemoteProductBaselineReport(missingBaselineEnv), 'remoteProductBaselineStatus') === 'fail', failures, cases, statusOf(buildRemoteProductBaselineReport(missingBaselineEnv), 'remoteProductBaselineStatus'), reasonsOf(buildRemoteProductBaselineReport(missingBaselineEnv), 'remoteProductBaselineStatus'));
+  const harnessOnlyDecision = buildRemoteProductCheckDecision({ CODEX_CHANGED_FILES: 'scripts/codex-v097-self-test.mjs' });
+  assertCase('harness_only_pr_skip_npm_with_reason_passes', harnessOnlyDecision.skipNpm === '1' && harnessOnlyDecision.reasonCode === 'remote_product_checks_not_required', failures, cases, harnessOnlyDecision.reasonCode, []);
+  const docsOnlyDecision = buildRemoteProductCheckDecision({ CODEX_CHANGED_FILES: 'docs/process/CODEX_V097_EVAL_CASES.json' });
+  assertCase('docs_only_pr_remote_product_checks_skip_allowed', docsOnlyDecision.productRequired === false, failures, cases, docsOnlyDecision.reasonCode, []);
 
   report = buildTargetHotfixRegressionReport({ forceCheck: true });
   assertCase('target_hotfix_regression_preserved_pass', statusOf(report, 'targetHotfixRegressionStatus') === 'pass', failures, cases, statusOf(report, 'targetHotfixRegressionStatus'), reasonsOf(report, 'targetHotfixRegressionStatus'));

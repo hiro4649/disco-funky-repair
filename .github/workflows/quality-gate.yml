@@ -85,6 +85,17 @@ jobs:
       - name: Prepare target product verification
         if: always()
         shell: bash
+        env:
+          CODEX_QUALITY_REPORT: "json"
+          CODEX_EVENT_NAME: ${{ github.event_name }}
+          CODEX_PR_NUMBER: ${{ github.event.pull_request.number || '' }}
+          CODEX_PR_HEAD_SHA: ${{ github.event.pull_request.head.sha || '' }}
+          CODEX_PR_BASE_SHA: ${{ github.event.pull_request.base.sha || '' }}
+          CODEX_REPOSITORY: ${{ github.repository }}
+          CODEX_HARNESS_MODE: target
+          CODEX_PROFILE_COMPAT_MODE: off
+          CODEX_REMOTE_VERIFICATION_MODE: pull_request
+          GITHUB_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
           cat > "$RUNNER_TEMP/codex-remote-product-checks.safe.json" <<'JSON'
@@ -99,7 +110,33 @@ jobs:
           cat > "$RUNNER_TEMP/codex-remote-npm-diagnostic.safe.json" <<'JSON'
           {"schemaVersion":"0.9.7","phase":"remote npm diagnostic","status":"pending","safeSummaryOnly":true}
           JSON
-          # safe artifact upload is locked by the upload-artifact path list.
+          if [ "${CODEX_EVENT_NAME:-}" != "pull_request" ]; then
+            cat > "$RUNNER_TEMP/codex-remote-product-checks.safe.json" <<'JSON'
+          {"schemaVersion":"0.9.7","phase":"remote product checks","status":"not_applicable","reasonCodes":["remote_product_checks_not_required"],"safeSummaryOnly":true}
+          JSON
+            exit 0
+          fi
+          node - <<'NODE'
+          const fs = require('fs');
+          const eventPath = process.env.GITHUB_EVENT_PATH;
+          const out = `${process.env.RUNNER_TEMP}/codex-pr-body.md`;
+          let body = '';
+          try {
+            const event = JSON.parse(fs.readFileSync(eventPath, 'utf8'));
+            body = String(event.pull_request?.body || '');
+          } catch {
+            body = '';
+          }
+          fs.writeFileSync(out, body);
+          NODE
+          export CODEX_PR_BODY_PATH="$RUNNER_TEMP/codex-pr-body.md"
+          changed_files="$(git diff --name-only "${CODEX_PR_BASE_SHA:-}" "${CODEX_PR_HEAD_SHA:-}" || true)"
+          if [ -n "$changed_files" ]; then
+            export CODEX_CHANGED_FILES="$changed_files"
+          else
+            export CODEX_PULL_REQUEST_CONTEXT_FIDELITY_JSON='{"changedFilesUnavailableFallbackPresent":true}'
+          fi
+          node scripts/codex-remote-product-checks.mjs > "$RUNNER_TEMP/codex-remote-product-checks.json"
       - name: Run Codex quality gate
         shell: bash
         env:
