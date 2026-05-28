@@ -82,6 +82,36 @@ jobs:
           CODEX_LIFEBOAT_PATH: ${{ runner.temp }}/codex-minimal-safe-failure.json
         run: |
           node scripts/codex-artifact-lifeboat.mjs > "$RUNNER_TEMP/codex-artifact-lifeboat.json" || true
+      - name: Prepare target product verification
+        if: ${{ github.event_name == 'pull_request' }}
+        shell: bash
+        env:
+          CODEX_QUALITY_REPORT: "json"
+          CODEX_EVENT_NAME: ${{ github.event_name }}
+          CODEX_PR_NUMBER: ${{ github.event.pull_request.number || '' }}
+          CODEX_PR_HEAD_SHA: ${{ github.event.pull_request.head.sha || '' }}
+          CODEX_PR_BASE_SHA: ${{ github.event.pull_request.base.sha || '' }}
+          CODEX_REPOSITORY: ${{ github.repository }}
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          if [ -f CODEX_SOURCE_HARNESS_MANIFEST.json ]; then
+            echo "source harness repository; target product verification not required"
+            exit 0
+          fi
+          changed_files="$(git diff --name-only "${CODEX_PR_BASE_SHA:-origin/main}" "${CODEX_PR_HEAD_SHA:-HEAD}" 2>/dev/null || git diff --name-only origin/main...HEAD 2>/dev/null || true)"
+          export CODEX_CHANGED_FILES="$changed_files"
+          pr_body_file="$RUNNER_TEMP/codex-pr-body.md"
+          if command -v gh >/dev/null 2>&1 && [ -n "${CODEX_PR_NUMBER:-}" ]; then
+            GH_TOKEN="${GITHUB_TOKEN:-}" gh pr view "$CODEX_PR_NUMBER" --repo "${CODEX_REPOSITORY:-}" --json body --jq '.body // ""' > "$pr_body_file" 2>/dev/null || true
+          fi
+          if [ -s "$pr_body_file" ]; then
+            export CODEX_PR_BODY_PATH="$pr_body_file"
+          fi
+          export CODEX_HARNESS_MODE=target
+          export CODEX_PROFILE_COMPAT_MODE=off
+          export CODEX_REMOTE_VERIFICATION_MODE=pull_request
+          node scripts/codex-remote-product-checks.mjs > "$RUNNER_TEMP/codex-remote-product-checks.json"
       - name: Run Codex quality gate
         shell: bash
         env:
@@ -260,4 +290,8 @@ jobs:
             codex-skill-evidence-link.safe.json
             codex-workflow-preflight.safe.json
             codex-test-metrics.safe.json
+            ${{ runner.temp }}/codex-remote-product-checks.json
+            ${{ runner.temp }}/codex-remote-product-checks.safe.json
+            ${{ runner.temp }}/codex-remote-product-baseline.json
+            ${{ runner.temp }}/codex-product-verification-evidence.remote.json
           if-no-files-found: ignore
