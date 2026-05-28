@@ -25,6 +25,7 @@ export const TIER_UPDATE_SAFE_ERROR_KINDS = [
   'insufficient_balance',
   'chain_mismatch',
   'invalid_wallet',
+  'lock_timeout',
   'max_attempts_exceeded',
   'manual_review_required',
   'unknown'
