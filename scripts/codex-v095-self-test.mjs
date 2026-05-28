@@ -4,6 +4,11 @@
 import { fileURLToPath } from 'node:url';
 import { marker, HARNESS_VERSION, scanObjectForUnsafe, writeJsonReport, exitFor } from './codex-v080-lib.mjs';
 import {
+  activeSelfTestStatusKey,
+  effectiveSelfTestStatus,
+  buildLegacyCompatibilitySelfTestStatus,
+} from './codex-active-self-test-policy.mjs';
+import {
   buildAgentsDoctrineReport,
   buildSkillRoutingReport,
   buildSkillLoadBudgetReport,
@@ -42,6 +47,19 @@ export function buildV095SelfTestReport() {
   const failures = [];
   const cases = [];
   let report;
+
+  assertCase('active_v095_self_test_selected', activeSelfTestStatusKey('0.9.5') === 'v095SelfTestStatus', failures, cases, activeSelfTestStatusKey('0.9.5'), []);
+  assertCase('legacy_v085_failure_advisory_for_v095', effectiveSelfTestStatus('v085SelfTestStatus', 'fail', '0.9.5') === 'pass_legacy_advisory', failures, cases, effectiveSelfTestStatus('v085SelfTestStatus', 'fail', '0.9.5'), []);
+  assertCase('legacy_v094_failure_advisory_for_v095', effectiveSelfTestStatus('v094SelfTestStatus', 'fail', '0.9.5') === 'pass_legacy_advisory', failures, cases, effectiveSelfTestStatus('v094SelfTestStatus', 'fail', '0.9.5'), []);
+  assertCase('active_v095_failure_still_blocks', effectiveSelfTestStatus('v095SelfTestStatus', 'fail', '0.9.5') === 'fail', failures, cases, effectiveSelfTestStatus('v095SelfTestStatus', 'fail', '0.9.5'), []);
+  assertCase('v094_active_self_test_selected_when_harness_094', activeSelfTestStatusKey('0.9.4') === 'v094SelfTestStatus', failures, cases, activeSelfTestStatusKey('0.9.4'), []);
+  assertCase('active_v094_failure_still_blocks_when_harness_094', effectiveSelfTestStatus('v094SelfTestStatus', 'fail', '0.9.4') === 'fail', failures, cases, effectiveSelfTestStatus('v094SelfTestStatus', 'fail', '0.9.4'), []);
+  report = buildLegacyCompatibilitySelfTestStatus({
+    v085SelfTestStatus: { status: 'fail' },
+    v094SelfTestStatus: { status: 'fail' },
+    v095SelfTestStatus: { status: 'pass' },
+  }, '0.9.5');
+  assertCase('legacy_compatibility_records_advisory_failures', report.status === 'pass' && report.legacyFailureCount === 2 && report.reasonCodes.includes('legacy_self_test_failure_advisory'), failures, cases, report.status, report.reasonCodes);
 
   report = buildAgentsDoctrineReport({ doctrineSectionExists: true, routingMapExists: true, docsProcessLinksExist: true, size: 1800 });
   assertCase('agents_doctrine_short_map_pass', statusOf(report, 'agentsDoctrineStatus') === 'pass', failures, cases, statusOf(report, 'agentsDoctrineStatus'), reasonsOf(report, 'agentsDoctrineStatus'));
