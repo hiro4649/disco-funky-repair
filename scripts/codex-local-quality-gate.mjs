@@ -9,6 +9,10 @@ import { buildHumanConfirmationStatus } from './codex-production-readiness-gate.
 import { scanSafeOutput } from './codex-safe-output-scan.mjs';
 import { buildGithubReplayContextAsync } from './codex-ci-replay.mjs';
 import { buildCompactReasonSummary } from './codex-reason-summary.mjs';
+import {
+  buildLegacyCompatibilitySelfTestStatus,
+  effectiveSelfTestStatus,
+} from './codex-active-self-test-policy.mjs';
 
 const HARNESS_VERSION = '0.9.5';
 const PROFILE_TEMPLATE_VERSION = '0.7.0';
@@ -308,6 +312,12 @@ function runGateScript(script, field, envName, baseEnv = process.env) {
   } catch {
     return { status: 'fail', failures: [`${field}=invalid_json`], safeSummaryOnly: true };
   }
+}
+function effectiveGateStatus(key, status) {
+  return effectiveSelfTestStatus(key, status, HARNESS_VERSION);
+}
+function isEffectivePass(status) {
+  return status === 'pass' || status === 'pass_legacy_advisory';
 }
 
 function runV093Gates(report, gateEnv) {
@@ -904,8 +914,8 @@ function computeQualityScoreStatus(report) {
   ];
   const statuses = scored.map((key) => {
     const status = report[key]?.status || 'missing';
-    let effectiveStatus = status;
-    if (allowedNotApplicable.has(key) && status === 'not_applicable') effectiveStatus = 'pass';
+    let effectiveStatus = effectiveGateStatus(key, status);
+    if (effectiveStatus === status && allowedNotApplicable.has(key) && status === 'not_applicable') effectiveStatus = 'pass';
     if (key === 'humanConfirmationStatus' && status === 'not_required') effectiveStatus = 'pass';
     if (key === 'humanConfirmationObjectStatus' && status === 'not_required') effectiveStatus = 'pass';
     return { key, status, effectiveStatus };
@@ -913,7 +923,7 @@ function computeQualityScoreStatus(report) {
   const fail = statuses.filter((item) => item.effectiveStatus === 'fail' || item.effectiveStatus === 'missing');
   const manual = statuses.filter((item) => item.effectiveStatus === 'manual_confirmation_required' || item.effectiveStatus === 'warning');
   const notApplicable = statuses.filter((item) => item.effectiveStatus === 'not_applicable' || item.effectiveStatus === 'not_run');
-  const passCount = statuses.filter((item) => item.effectiveStatus === 'pass').length;
+  const passCount = statuses.filter((item) => isEffectivePass(item.effectiveStatus)).length;
   let score = Math.floor((passCount / statuses.length) * 99);
   if (fail.length) score = Math.min(score, 70);
   else if (manual.length) score = Math.min(score, 89);
@@ -1150,8 +1160,8 @@ function computeTargetQualityScoreStatus(report) {
   ]);
   const statuses = scored.map((key) => {
     const status = report[key]?.status || 'missing';
-    let effectiveStatus = status;
-    if (allowedNotApplicable.has(key) && status === 'not_applicable') effectiveStatus = 'pass_optional';
+    let effectiveStatus = effectiveGateStatus(key, status);
+    if (effectiveStatus === status && allowedNotApplicable.has(key) && status === 'not_applicable') effectiveStatus = 'pass_optional';
     return { key, status, effectiveStatus };
   });
   const blocking = statuses.filter((item) => ['fail', 'missing', 'not_run'].includes(item.effectiveStatus));
@@ -1414,11 +1424,13 @@ function statusReasonCodes(value) {
 function computeScoreDecompositionStatus(report, scoreStatus) {
   const entries = Object.entries(report)
     .filter(([key, value]) => key.endsWith('Status') && value && typeof value === 'object')
-    .filter(([, value]) => ['fail', 'manual_confirmation_required', 'warning', 'not_run'].includes(value.status))
+    .map(([key, value]) => ({ key, value, effectiveStatus: effectiveGateStatus(key, value.status) }))
+    .filter(({ effectiveStatus }) => ['fail', 'missing', 'manual_confirmation_required', 'warning', 'not_run'].includes(effectiveStatus))
     .slice(0, 5)
-    .map(([key, value]) => ({
+    .map(({ key, value, effectiveStatus }) => ({
       gate: key,
       status: value.status,
+      effectiveStatus,
       reasonCodes: statusReasonCodes(value),
     }));
   return {
@@ -1497,8 +1509,9 @@ function computeOldHarnessMarkerStatus(sourceMode = true) {
   };
 }
 function applyStatusOutcome(key, value, failures, warnings) {
-  if (value?.status === 'fail') failures.push({ id: `${key}.failed`, message: `${key} failed` });
-  else if (value?.status === 'manual_confirmation_required' || value?.status === 'warning') {
+  const effectiveStatus = effectiveGateStatus(key, value?.status);
+  if (effectiveStatus === 'fail' || effectiveStatus === 'missing') failures.push({ id: `${key}.failed`, message: `${key} failed` });
+  else if (effectiveStatus === 'manual_confirmation_required' || effectiveStatus === 'warning') {
     warnings.push({ id: `${key}.manual`, message: `${key} requires manual confirmation` });
   }
 }
@@ -1842,6 +1855,7 @@ async function runSourceHarnessGate() {
   report.v095SelfTestStatus = process.env.CODEX_SKIP_V095_SELF_TEST === '1'
     ? { status: 'not_applicable', reasonCodes: ['self_test_recursion_guard'], safeSummaryOnly: true }
     : runGateScript('scripts/codex-v095-self-test.mjs', 'v095SelfTestStatus', 'CODEX_V095_SELF_TEST_REPORT', { ...gateEnv, CODEX_V095_SKIP_LEGACY_RECHECKS: '1' });
+  report.legacyCompatibilitySelfTestStatus = buildLegacyCompatibilitySelfTestStatus(report, HARNESS_VERSION);
   report.selfTestProfileStatus = computeSelfTestProfileStatus(report, gateEnv, true);
   report.oldHarnessMarkerStatus = computeOldHarnessMarkerStatus(true);
   report.selfTestCaseExportStatus = runGateScript('scripts/codex-self-test-case-export.mjs', 'selfTestCaseExportStatus', 'CODEX_SELF_TEST_CASE_EXPORT_REPORT', {
@@ -2349,6 +2363,7 @@ async function runTargetHarnessGate() {
   report.v095SelfTestStatus = process.env.CODEX_SKIP_V095_SELF_TEST === '1'
     ? { status: 'not_applicable', reasonCodes: ['self_test_recursion_guard'], safeSummaryOnly: true }
     : runGateScript('scripts/codex-v095-self-test.mjs', 'v095SelfTestStatus', 'CODEX_V095_SELF_TEST_REPORT', { ...gateEnv, CODEX_V095_SKIP_LEGACY_RECHECKS: '1' });
+  report.legacyCompatibilitySelfTestStatus = buildLegacyCompatibilitySelfTestStatus(report, HARNESS_VERSION);
   report.selfTestProfileStatus = computeSelfTestProfileStatus(report, gateEnv, false);
   report.oldHarnessMarkerStatus = computeOldHarnessMarkerStatus(false);
   report.selfTestCaseExportStatus = runGateScript('scripts/codex-self-test-case-export.mjs', 'selfTestCaseExportStatus', 'CODEX_SELF_TEST_CASE_EXPORT_REPORT', {
