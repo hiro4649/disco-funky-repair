@@ -1,9 +1,8 @@
 #!/usr/bin/env node
-// CODEX_QUALITY_HARNESS_FILE v0.9.7
+// CODEX_QUALITY_HARNESS_FILE v0.9.8
 import fs from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { HARNESS_VERSION, marker, readJson, scanObjectForUnsafe, simpleStatus, writeJsonReport, exitFor } from './codex-v080-lib.mjs';
-import { effectiveSelfTestStatus } from './codex-active-self-test-policy.mjs';
 
 function loadCatalog() {
   const parsed = readJson('docs/process/CODEX_FAILURE_REASON_CATALOG.json');
@@ -24,13 +23,12 @@ export function buildCompactReasonSummary(report = {}, options = {}) {
   const manualReasons = [];
   const optionalNotApplicable = [];
   for (const [gate, value] of statusEntries) {
-    const status = effectiveSelfTestStatus(gate, value.status, HARNESS_VERSION);
     const reasonCodes = value.reasonCodes?.length ? value.reasonCodes : [gate];
-    if (status === 'fail' || status === 'missing') {
+    if (value.status === 'fail' || value.status === 'missing') {
       for (const code of reasonCodes) blockingReasons.push({ reasonCode: safeCode(code), gate });
-    } else if (['manual_confirmation_required', 'warning'].includes(status)) {
+    } else if (['manual_confirmation_required', 'warning'].includes(value.status)) {
       for (const code of reasonCodes) manualReasons.push({ reasonCode: safeCode(code), gate });
-    } else if (status === 'not_applicable') {
+    } else if (value.status === 'not_applicable') {
       optionalNotApplicable.push(gate);
     }
   }
