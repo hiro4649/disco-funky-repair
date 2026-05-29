@@ -4759,6 +4759,13 @@ export function evaluateWorkflowReport(report, options = {}) {
 
 
 
+    v098SelfTestStatus: report.v098SelfTestStatus || { status: 'missing' },
+
+
+
+
+
+
     v097SelfTestStatus: report.v097SelfTestStatus || { status: 'missing' },
 
 
