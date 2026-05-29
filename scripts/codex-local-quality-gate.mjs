@@ -56,6 +56,14 @@ const PROFILE_TEMPLATE_VERSION = '0.7.0';
 
 const MARKER = `CODEX_QUALITY_HARNESS_FILE v${HARNESS_VERSION}`;
 
+function activeSelfTestStatusKey(version = HARNESS_VERSION) {
+  return `v${String(version).replace(/\./g, '')}SelfTestStatus`;
+}
+
+function isLegacySelfTestStatusKey(key, version = HARNESS_VERSION) {
+  return /^v\d{3}SelfTestStatus$/.test(String(key || '')) && key !== activeSelfTestStatusKey(version);
+}
+
 
 
 
@@ -5252,6 +5260,8 @@ function computeTargetQualityScoreStatus(report) {
 
     if (allowedNotApplicable.has(key) && status === 'not_applicable') effectiveStatus = 'pass_optional';
 
+    if (isLegacySelfTestStatusKey(key) && ['fail', 'missing', 'not_run'].includes(status)) effectiveStatus = 'pass_legacy_advisory';
+
 
 
     return { key, status, effectiveStatus };
@@ -5271,6 +5281,8 @@ function computeTargetQualityScoreStatus(report) {
 
 
   const notApplicable = statuses.filter((item) => item.effectiveStatus === 'pass_optional');
+
+  const legacyAdvisory = statuses.filter((item) => item.effectiveStatus === 'pass_legacy_advisory');
 
 
 
@@ -5316,6 +5328,8 @@ function computeTargetQualityScoreStatus(report) {
 
       ...(notApplicable.length ? ['optional_not_applicable_allowed'] : []),
 
+      ...(legacyAdvisory.length ? ['legacy_self_test_advisory_allowed'] : []),
+
 
 
       ...(score === 100 ? ['all_required_target_gates_passed'] : []),
@@ -5335,6 +5349,8 @@ function computeTargetQualityScoreStatus(report) {
 
 
     notApplicableStatuses: notApplicable,
+
+    legacyAdvisoryStatuses: legacyAdvisory,
 
 
 
