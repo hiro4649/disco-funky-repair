@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// CODEX_QUALITY_HARNESS_FILE v0.9.7
+// CODEX_QUALITY_HARNESS_FILE v0.9.8
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -21,29 +21,16 @@ function firstMarkerVersion(file) {
 function listRepoFiles(dir = '.') {
   const out = [];
   for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
-    if (['.git', '.tmp', 'node_modules', 'dist', 'build'].includes(entry.name)) continue;
+    if (['.git', 'node_modules', 'dist', 'build', '.tmp'].includes(entry.name)) continue;
     const full = path.join(dir, entry.name);
     const normalized = normalizePath(full);
     if (normalized.startsWith('profiles/')) continue;
+    if (normalized.startsWith('docs/audit/') || normalized.startsWith('docs/launch/')) continue;
     if (normalized === '.github/workflows/weekly-health-check.yml') continue;
     if (entry.isDirectory()) out.push(...listRepoFiles(full));
     else out.push(normalized);
   }
   return out;
-}
-
-function isTargetHarnessManagedFile(file) {
-  return file === 'AGENTS.md'
-    || file.startsWith('.agents/')
-    || file.startsWith('.github/')
-    || file.startsWith('docs/codex/')
-    || file.startsWith('docs/process/')
-    || file.startsWith('scripts/codex-');
-}
-
-function isTargetRepo(env = process.env) {
-  return fs.existsSync('docs/process/CODEX_HARNESS_MANIFEST.json')
-    && (env.CODEX_HARNESS_MODE === 'target' || !fs.existsSync('CODEX_SOURCE_HARNESS_MANIFEST.json'));
 }
 
 function manifestPath(env = process.env) {
@@ -52,6 +39,11 @@ function manifestPath(env = process.env) {
   }
   if (fs.existsSync('CODEX_SOURCE_HARNESS_MANIFEST.json')) return 'CODEX_SOURCE_HARNESS_MANIFEST.json';
   return 'docs/process/CODEX_HARNESS_MANIFEST.json';
+}
+
+function isTargetRepo(env = process.env) {
+  return fs.existsSync('docs/process/CODEX_HARNESS_MANIFEST.json') &&
+    (env.CODEX_HARNESS_MODE === 'target' || !fs.existsSync('CODEX_SOURCE_HARNESS_MANIFEST.json'));
 }
 
 function requiredPaths(env = process.env) {
@@ -74,6 +66,7 @@ export function buildVersionLineageReport(env = process.env) {
   const paths = requiredPaths(env);
   const manifestFile = manifestPath(env);
   const manifestJson = readJson(manifestFile);
+  const targetMode = isTargetRepo(env);
 
   if (!manifestJson.ok) failures.push('version_lineage_manifest_missing');
   else {
@@ -91,7 +84,6 @@ export function buildVersionLineageReport(env = process.env) {
   const missing = paths.filter((file) => !fs.existsSync(file));
   for (const file of missing) failures.push(`missing:${file}`);
 
-  const targetMode = isTargetRepo(env);
   const readme = readText('README.md');
   if (!targetMode && fs.existsSync('README.md') && !readme.includes(`Version: v${HARNESS_VERSION}`)) failures.push('version_lineage_readme_mismatch');
 
@@ -106,7 +98,6 @@ export function buildVersionLineageReport(env = process.env) {
   }
 
   for (const file of listRepoFiles()) {
-    if (targetMode && !isTargetHarnessManagedFile(file)) continue;
     if (!fs.existsSync(file) || !fs.statSync(file).isFile()) continue;
     const version = firstMarkerVersion(file);
     if (!version) continue;

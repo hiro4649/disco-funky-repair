@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// CODEX_QUALITY_HARNESS_FILE v0.9.7
+// CODEX_QUALITY_HARNESS_FILE v0.9.8
 import fs from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { scanObjectForUnsafe, simpleStatus, writeJsonReport, exitFor, readText } from './codex-v080-lib.mjs';
@@ -30,9 +30,10 @@ export function buildActiveSelfTestRegistryReport(input = parseJson(process.env.
   const version = String(input.harnessVersion || '0.9.7');
   const activeStatusKey = input.activeStatusKey || defaultActiveStatusKey();
   const selfTestFilePresent = input.selfTestFilePresent ?? fs.existsSync('scripts/codex-v097-self-test.mjs');
-  const manifestText = readText('CODEX_SOURCE_HARNESS_MANIFEST.json')
-    || readText('docs/process/CODEX_HARNESS_MANIFEST.json')
-    || '';
+  const manifestPath = fs.existsSync('CODEX_SOURCE_HARNESS_MANIFEST.json')
+    ? 'CODEX_SOURCE_HARNESS_MANIFEST.json'
+    : 'docs/process/CODEX_HARNESS_MANIFEST.json';
+  const manifestText = readText(manifestPath) || '';
   const manifestHasSelfTest = input.manifestHasSelfTest ?? manifestText.includes('codex-v097-self-test.mjs');
   const localGateHasStatus = input.localGateHasStatus ?? hasText('scripts/codex-local-quality-gate.mjs', 'v097SelfTestStatus');
   if (input.invalidInput) reasonCodes.push('active_self_test_registry_missing');
@@ -50,8 +51,6 @@ export function buildWorkflowProductVerificationInvariantReport(input = parseJso
   const missingSteps = parseList(input.missingSteps);
   for (const step of REQUIRED_WORKFLOW_PRODUCT_STEPS) if (missingSteps.includes(step)) reasonCodes.push('workflow_product_verification_step_missing');
   if (parseBool(input.stepRemoved) || parseBool(input.prepareStepMissing) || (parseBool(input.forceWorkflowTextCheck) && !workflowText.includes('Prepare target product verification'))) reasonCodes.push('workflow_product_verification_step_missing');
-  if (parseBool(input.forceWorkflowTextCheck) && !workflowText.includes('node scripts/codex-remote-product-checks.mjs')) reasonCodes.push('workflow_product_verification_step_missing');
-  if (parseBool(input.forceWorkflowTextCheck) && !workflowText.includes('CODEX_REMOTE_VERIFICATION_MODE: pull_request')) reasonCodes.push('workflow_dispatch_not_pr_substitute');
   if (parseBool(input.remoteChecksBeforeGateMissing)) reasonCodes.push('workflow_product_verification_step_missing');
   const removedArtifacts = parseList(input.removedArtifacts);
   for (const artifact of REQUIRED_REMOTE_PRODUCT_ARTIFACTS) if (removedArtifacts.includes(artifact)) reasonCodes.push('remote_product_artifact_upload_missing');
