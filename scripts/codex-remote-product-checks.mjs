@@ -271,6 +271,63 @@ export function runRemoteProductChecks(env = process.env) {
   if (!decision.productRequired) {
     appendGitHubEnv('CODEX_SKIP_NPM', decision.skipNpm, env);
     appendGitHubEnv('CODEX_NPM_SKIP_REASON', 'non_product_change_without_runtime_claim', env);
+    const baselinePath = path.join(outDir, 'codex-remote-product-baseline.json');
+    const evidencePath = path.join(outDir, 'codex-product-verification-evidence.remote.json');
+    const diagnosticPath = path.join(outDir, 'codex-remote-npm-diagnostic.safe.json');
+    writeJson(evidencePath, {
+      schemaVersion: '0.8.3',
+      harnessVersion: HARNESS_VERSION,
+      repository: env.CODEX_REPOSITORY || '',
+      prNumber: env.CODEX_PR_NUMBER || '',
+      headSha: env.CODEX_PR_HEAD_SHA || '',
+      classification: {
+        productRelevantChanged: false,
+        backend: false,
+        frontend: false,
+        contracts: false,
+        rootPackage: false,
+      },
+      status: 'not_applicable',
+      evidenceType: 'not_applicable',
+      commands: [],
+      rawLogsIncluded: false,
+      safeSummaryOnly: true,
+    });
+    writeJson(baselinePath, {
+      schemaVersion: '0.8.3',
+      harnessVersion: HARNESS_VERSION,
+      repository: env.CODEX_REPOSITORY || '',
+      baseSha: env.CODEX_PR_BASE_SHA || '',
+      baselineType: 'not_applicable',
+      commands: [],
+      result: 'pass',
+      date: safeNow(),
+      source: 'remote_workflow',
+      safeSummary: 'remote product baseline not required for non-product change',
+      knownFailures: [],
+      expiresAt: expiresAt(),
+      rawValuesStored: false,
+      safeSummaryOnly: true,
+    });
+    writeJson(diagnosticPath, {
+      schemaVersion: '0.8.3',
+      harnessVersion: HARNESS_VERSION,
+      npmExitCode: null,
+      nodeMajor: Number(process.versions.node.split('.')[0]),
+      platform: env.RUNNER_OS || process.platform || 'unknown',
+      os: process.platform || 'unknown',
+      packageManager: 'npm',
+      commandClass: 'not_applicable',
+      safeFailureCategory: 'test_assertion_failure',
+      diagnosticType: 'not_applicable',
+      rawLogUploaded: false,
+      rawValuesStored: false,
+      safeSummaryOnly: true,
+    });
+    appendGitHubEnv('CODEX_PRODUCT_VERIFICATION_EVIDENCE_PATH', evidencePath, env);
+    appendGitHubEnv('CODEX_REMOTE_PRODUCT_BASELINE_PATH', baselinePath, env);
+    appendGitHubEnv('CODEX_NPM_TEST_SAFE_SUMMARY_PATH', diagnosticPath, env);
+    appendGitHubEnv('CODEX_REMOTE_NPM_EXECUTED', '0', env);
     const report = safeReport({ status: 'not_applicable', files: plan.files, scopes: plan.scopes, reasonCodes: ['remote_product_checks_not_required'] });
     writeJson(path.join(outDir, 'codex-remote-product-checks.safe.json'), report);
     return report;
