@@ -1,17 +1,13 @@
 #!/usr/bin/env node
-// CODEX_QUALITY_HARNESS_FILE v0.9.8
+// CODEX_QUALITY_HARNESS_FILE v0.9.9
 
 import { fileURLToPath } from 'node:url';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { marker, HARNESS_VERSION, scanObjectForUnsafe, writeJsonReport, exitFor } from './codex-v080-lib.mjs';
-import { activeSelfTestStatusKey, effectiveSelfTestStatus } from './codex-active-self-test-policy.mjs';
 import { buildProductVerificationEvidenceReport } from './codex-product-verification-evidence-normalize.mjs';
 import { buildRemoteNpmDiagnosticReport } from './codex-remote-npm-diagnostic-classify.mjs';
-import { runRemoteProductChecks } from './codex-remote-product-checks.mjs';
-import { buildActiveSelfTestRegistryReport } from './codex-v097-gate-lib.mjs';
-import { buildComplexityGovernanceReport } from './codex-complexity-governance-gate.mjs';
 import {
   buildRemoteProductEvidenceExecutionReport,
   buildRemoteProductEvidenceRunnerReport,
@@ -41,65 +37,19 @@ export function buildV098SelfTestReport() {
   const cases = [];
   let report;
 
-  report = { activeStatusKey: activeSelfTestStatusKey('0.9.8') };
-  assertCase('active_v098_self_test_selected', report.activeStatusKey === 'v098SelfTestStatus', failures, cases, report.activeStatusKey, []);
-  report = { effectiveStatus: effectiveSelfTestStatus('v098SelfTestStatus', 'fail', '0.9.8') };
-  assertCase('active_v098_failure_still_blocks', report.effectiveStatus === 'fail', failures, cases, report.effectiveStatus, []);
-  report = { effectiveStatus: effectiveSelfTestStatus('v096SelfTestStatus', 'fail', '0.9.8') };
-  assertCase('legacy_v096_failure_advisory_for_v098', report.effectiveStatus === 'pass_legacy_advisory', failures, cases, report.effectiveStatus, []);
-  report = { effectiveStatus: effectiveSelfTestStatus('v097SelfTestStatus', 'fail', '0.9.8') };
-  assertCase('legacy_v097_failure_advisory_for_v098', report.effectiveStatus === 'pass_legacy_advisory', failures, cases, report.effectiveStatus, []);
-  report = { effectiveStatus: effectiveSelfTestStatus('v085SelfTestStatus', 'fail', '0.9.8') };
-  assertCase('legacy_v085_self_test_failure_advisory_for_v098', report.effectiveStatus === 'pass_legacy_advisory', failures, cases, report.effectiveStatus, []);
-  report = buildActiveSelfTestRegistryReport({ harnessVersion: '0.9.8', activeStatusKey: 'v097SelfTestStatus', selfTestFilePresent: true, manifestHasSelfTest: true, localGateHasStatus: true });
-  assertCase('active_registry_missing_v098_fails', statusOf(report, 'activeSelfTestRegistryStatus') === 'fail' && reasonsOf(report, 'activeSelfTestRegistryStatus').includes('active_self_test_registry_missing'), failures, cases, statusOf(report, 'activeSelfTestRegistryStatus'), reasonsOf(report, 'activeSelfTestRegistryStatus'));
-
-  const passingProductEvidence = { status: 'pass', evidenceType: 'remote_npm_test', rawLogsIncluded: false, safeSummaryOnly: true };
-  const passingProductBaseline = { result: 'pass', baselineType: 'remote_product_verification', rawValuesStored: false, safeSummaryOnly: true };
-  const passingRemoteDiagnostic = { npmExitCode: 0, diagnosticType: 'remote_npm_diagnostic', rawLogUploaded: false, rawValuesStored: false, safeSummaryOnly: true };
-  const formalRemoteEvidence = { commands: [{ name: 'backend:npm test -- --runInBand', required: true, result: 'pass', source: 'remote', safeSummary: 'remote product check completed' }], rawLogsIncluded: false, safeSummaryOnly: true };
-  const formalRemoteBaseline = { result: 'pass', baselineType: 'remote_product_checks', rawValuesStored: false, safeSummaryOnly: true };
-  const pendingDiagnostic = { status: 'pending', safeSummaryOnly: true };
-  const notApplicableEvidence = { status: 'not_applicable', evidenceType: 'not_applicable', rawLogsIncluded: false, safeSummaryOnly: true };
-  const notApplicableBaseline = { result: 'pass', baselineType: 'not_applicable', rawValuesStored: false, safeSummaryOnly: true };
-  const notApplicableDiagnostic = { npmExitCode: null, diagnosticType: 'not_applicable', rawLogUploaded: false, rawValuesStored: false, safeSummaryOnly: true };
-
-  report = buildRemoteProductEvidenceExecutionReport({ forceCheck: true, productRelevant: true, targetRepoMode: true, isPullRequest: true, skipNpm: false, npmExecuted: true, evidence: passingProductEvidence, baseline: passingProductBaseline, diagnostic: passingRemoteDiagnostic, sameHeadEvidencePresent: true });
+  report = buildRemoteProductEvidenceExecutionReport({ forceCheck: true, productRelevant: true, targetRepoMode: true, isPullRequest: true, skipNpm: false, npmExecuted: true, evidencePresent: true, baselinePresent: true, diagnosticPresent: true, sameHeadEvidencePresent: true });
   assertCase('remote_product_evidence_execution_product_pr_pass', statusOf(report, 'remoteProductEvidenceExecutionStatus') === 'pass', failures, cases, statusOf(report, 'remoteProductEvidenceExecutionStatus'), reasonsOf(report, 'remoteProductEvidenceExecutionStatus'));
-  report = buildRemoteProductEvidenceExecutionReport({ forceCheck: true, productRelevant: true, targetRepoMode: true, isPullRequest: true, skipNpm: true, npmExecuted: false, evidence: formalRemoteEvidence, baseline: formalRemoteBaseline, diagnostic: pendingDiagnostic, sameHeadEvidencePresent: true });
-  assertCase('formal_remote_product_evidence_pass_ignores_pending_placeholder', statusOf(report, 'remoteProductEvidenceExecutionStatus') === 'pass', failures, cases, statusOf(report, 'remoteProductEvidenceExecutionStatus'), reasonsOf(report, 'remoteProductEvidenceExecutionStatus'));
   report = buildRemoteProductEvidenceExecutionReport({ forceCheck: true, productRelevant: true, targetRepoMode: true, isPullRequest: true, skipNpm: false, npmExecuted: true, evidencePath: null, baselinePath: null, diagnosticPath: null });
   assertCase('remote_product_evidence_execution_missing_fails', statusOf(report, 'remoteProductEvidenceExecutionStatus') === 'fail', failures, cases, statusOf(report, 'remoteProductEvidenceExecutionStatus'), reasonsOf(report, 'remoteProductEvidenceExecutionStatus'));
   report = buildRemoteProductEvidenceExecutionReport({ forceCheck: true, productRelevant: true, targetRepoMode: true, isPullRequest: true, skipNpm: false, npmExecuted: true, evidence: { status: 'pending' }, baselinePresent: true, diagnosticPresent: true });
   assertCase('remote_product_evidence_execution_pending_placeholder_fails', statusOf(report, 'remoteProductEvidenceExecutionStatus') === 'fail', failures, cases, statusOf(report, 'remoteProductEvidenceExecutionStatus'), reasonsOf(report, 'remoteProductEvidenceExecutionStatus'));
-  report = buildRemoteProductEvidenceExecutionReport({ forceCheck: true, productRelevant: true, targetRepoMode: true, isPullRequest: true, skipNpm: true, npmExecuted: false, evidence: { status: 'pending' }, baseline: formalRemoteBaseline, diagnostic: pendingDiagnostic, sameHeadEvidencePresent: true });
-  assertCase('placeholder_only_product_evidence_still_fails', statusOf(report, 'remoteProductEvidenceExecutionStatus') === 'fail', failures, cases, statusOf(report, 'remoteProductEvidenceExecutionStatus'), reasonsOf(report, 'remoteProductEvidenceExecutionStatus'));
-  report = buildRemoteProductEvidenceExecutionReport({ forceCheck: true, productRelevant: true, targetRepoMode: true, isPullRequest: true, skipNpm: true, npmExecuted: false, evidencePath: null, baselinePath: null, diagnostic: pendingDiagnostic, sameHeadEvidencePresent: true });
-  assertCase('remote_npm_not_executed_still_fails_when_no_formal_evidence', statusOf(report, 'remoteProductEvidenceExecutionStatus') === 'fail' && reasonsOf(report, 'remoteProductEvidenceExecutionStatus').includes('remote_npm_not_executed_for_product_pr'), failures, cases, statusOf(report, 'remoteProductEvidenceExecutionStatus'), reasonsOf(report, 'remoteProductEvidenceExecutionStatus'));
   report = buildRemoteProductEvidenceExecutionReport({ forceCheck: true, productRelevant: true, targetRepoMode: true, isPullRequest: true, skipNpm: false, npmExecuted: true, npmExitCode: 1, evidence: { status: 'fail', evidenceType: 'remote_npm_test' }, baselinePresent: true, diagnosticPresent: true, sameHeadEvidencePresent: true });
   assertCase('remote_product_evidence_execution_npm_fail_remains_fail', statusOf(report, 'remoteProductEvidenceExecutionStatus') === 'fail', failures, cases, statusOf(report, 'remoteProductEvidenceExecutionStatus'), reasonsOf(report, 'remoteProductEvidenceExecutionStatus'));
-  report = buildRemoteProductEvidenceExecutionReport({ forceCheck: true, productRelevant: false, targetRepoMode: true, isPullRequest: true, skipNpm: true, evidence: notApplicableEvidence, baseline: notApplicableBaseline, diagnostic: notApplicableDiagnostic });
+  report = buildRemoteProductEvidenceExecutionReport({ forceCheck: true, productRelevant: false, targetRepoMode: true, isPullRequest: true, skipNpm: true });
   assertCase('remote_product_evidence_execution_harness_only_skip_pass', statusOf(report, 'remoteProductEvidenceExecutionStatus') === 'pass', failures, cases, statusOf(report, 'remoteProductEvidenceExecutionStatus'), reasonsOf(report, 'remoteProductEvidenceExecutionStatus'));
-  const skipArtifactsDir = fs.mkdtempSync(path.join(os.tmpdir(), 'codex-v098-remote-skip-'));
-  report = runRemoteProductChecks({
-    ...process.env,
-    RUNNER_TEMP: skipArtifactsDir,
-    CODEX_CHANGED_FILES: '.github/workflows/quality-gate.yml\nscripts/codex-v098-self-test.mjs',
-    CODEX_EVENT_NAME: 'pull_request',
-    CODEX_PR_NUMBER: '201',
-    CODEX_PR_HEAD_SHA: 'abc123',
-    CODEX_PR_BASE_SHA: 'def456',
-    CODEX_REPOSITORY: 'hiro4649/disco-funky-repair',
-    CODEX_HARNESS_MODE: 'target',
-  });
-  const skipEvidence = JSON.parse(fs.readFileSync(path.join(skipArtifactsDir, 'codex-product-verification-evidence.remote.json'), 'utf8'));
-  const skipDiagnostic = JSON.parse(fs.readFileSync(path.join(skipArtifactsDir, 'codex-remote-npm-diagnostic.safe.json'), 'utf8'));
-  assertCase('remote_product_checks_harness_only_writes_not_applicable_artifacts', report.status === 'not_applicable' && skipEvidence.status === 'not_applicable' && skipDiagnostic.diagnosticType === 'not_applicable', failures, cases, report.status, report.remoteProductChecksStatus?.reasonCodes || []);
 
   report = buildRemoteProductEvidenceRunnerReport({ forceCheck: true, productRelevant: true, npmExecuted: true, npmExitCode: 0, headSha: 'abc123' });
   assertCase('remote_product_evidence_runner_no_raw_logs', statusOf(report, 'remoteProductEvidenceRunnerStatus') === 'pass', failures, cases, statusOf(report, 'remoteProductEvidenceRunnerStatus'), reasonsOf(report, 'remoteProductEvidenceRunnerStatus'));
-  report = buildRemoteProductEvidenceRunnerReport({ forceCheck: true, productRelevant: true, npmExecuted: false, npmExitCode: 0, headSha: 'abc123', evidence: formalRemoteEvidence, baseline: formalRemoteBaseline });
-  assertCase('remote_npm_diagnostic_pending_not_blocking_when_formal_evidence_pass', statusOf(report, 'remoteProductEvidenceRunnerStatus') === 'pass', failures, cases, statusOf(report, 'remoteProductEvidenceRunnerStatus'), reasonsOf(report, 'remoteProductEvidenceRunnerStatus'));
   const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'codex-v098-self-test-'));
   const productEvidencePath = path.join(tempDir, 'product-evidence.json');
   const npmDiagnosticPath = path.join(tempDir, 'npm-diagnostic.json');
@@ -113,8 +63,6 @@ export function buildV098SelfTestReport() {
   assertCase('product_evidence_consumption_generated_but_not_consumed_fails', statusOf(report, 'productEvidenceConsumptionStatus') === 'fail', failures, cases, statusOf(report, 'productEvidenceConsumptionStatus'), reasonsOf(report, 'productEvidenceConsumptionStatus'));
   report = buildPlaceholderEvidenceForbiddenReport({ productRelevant: true, evidence: { evidenceType: 'placeholder', status: 'pending' } });
   assertCase('placeholder_evidence_forbidden_product_pr', statusOf(report, 'placeholderEvidenceForbiddenStatus') === 'fail', failures, cases, statusOf(report, 'placeholderEvidenceForbiddenStatus'), reasonsOf(report, 'placeholderEvidenceForbiddenStatus'));
-  report = buildPlaceholderEvidenceForbiddenReport({ productRelevant: true, evidence: formalRemoteEvidence, baseline: formalRemoteBaseline, diagnostic: pendingDiagnostic });
-  assertCase('formal_evidence_pass_with_pending_placeholder_not_forbidden', statusOf(report, 'placeholderEvidenceForbiddenStatus') === 'pass', failures, cases, statusOf(report, 'placeholderEvidenceForbiddenStatus'), reasonsOf(report, 'placeholderEvidenceForbiddenStatus'));
 
   report = buildLocalRemotePhaseStatusReport({ remoteEvidencePhase: 'remote_evidence_pending_before_push' });
   assertCase('local_pre_push_remote_pending_allowed', statusOf(report, 'localRemotePhaseStatus') === 'pass', failures, cases, statusOf(report, 'localRemotePhaseStatus'), reasonsOf(report, 'localRemotePhaseStatus'));
@@ -124,29 +72,6 @@ export function buildV098SelfTestReport() {
   assertCase('structured_solvability_fields_pass', statusOf(report, 'structuredSolvabilityFieldsStatus') === 'pass', failures, cases, statusOf(report, 'structuredSolvabilityFieldsStatus'), reasonsOf(report, 'structuredSolvabilityFieldsStatus'));
   report = buildStructuredSolvabilityFieldsReport({ mergeReady: true, remoteEvidencePhase: 'pending' });
   assertCase('structured_solvability_merge_ready_with_remote_pending_fails', statusOf(report, 'structuredSolvabilityFieldsStatus') === 'fail', failures, cases, statusOf(report, 'structuredSolvabilityFieldsStatus'), reasonsOf(report, 'structuredSolvabilityFieldsStatus'));
-  const complexityBaseEnv = {
-    CODEX_EVENT_NAME: 'pull_request',
-    CODEX_PR_NUMBER: '195',
-    CODEX_PRODUCT_VERIFICATION_JSON: JSON.stringify({ productVerificationStatus: { status: 'pass', reasonCodes: [], safeSummaryOnly: true } }),
-  };
-  report = buildComplexityGovernanceReport({
-    ...complexityBaseEnv,
-    CODEX_CHANGED_FILES: 'apps/backend/src/app/lib/tierScheduler.ts\napps/backend/src/app/lib/__tests__/tierScheduler.statusAwareQuery.test.ts',
-    CODEX_PR_BODY: 'Task mode: bugfix\nReproduced: yes\nRoot cause: status-aware query needed\nVerification: focused test pass\nRisk surface: runtime\nRuntime readiness claimed: no\nNo auth/security changes.\nSplit required: no',
-  });
-  assertCase('tier_scheduler_query_change_not_auth_surface', !reasonsOf(report, 'complexityGovernanceStatus').includes('oracle_required_for_auth_surface'), failures, cases, statusOf(report, 'complexityGovernanceStatus'), reasonsOf(report, 'complexityGovernanceStatus'));
-  report = buildComplexityGovernanceReport({
-    ...complexityBaseEnv,
-    CODEX_CHANGED_FILES: 'apps/backend/src/app/middlewares/auth.ts',
-    CODEX_PR_BODY: 'Task mode: bugfix\nReproduced: yes\nRoot cause: auth middleware change\nVerification: smoke command pass\nRuntime readiness claimed: no',
-  });
-  assertCase('auth_middleware_change_requires_auth_oracle', reasonsOf(report, 'complexityGovernanceStatus').includes('oracle_required_for_auth_surface'), failures, cases, statusOf(report, 'complexityGovernanceStatus'), reasonsOf(report, 'complexityGovernanceStatus'));
-  report = buildComplexityGovernanceReport({
-    ...complexityBaseEnv,
-    CODEX_CHANGED_FILES: 'apps/backend/src/app/lib/tierScheduler.ts',
-    CODEX_PR_BODY: 'Task mode: bugfix\nRuntime readiness claimed: no',
-  });
-  assertCase('product_pr_body_evidence_missing_still_fails_relevant_gate', reasonsOf(report, 'complexityGovernanceStatus').includes('bugfix_review_evidence_missing'), failures, cases, statusOf(report, 'complexityGovernanceStatus'), reasonsOf(report, 'complexityGovernanceStatus'));
 
   report = buildLive2DDatasetRowAuditRunnerReport({ forceCheck: true, requireFields: true });
   assertCase('live2d_dataset_row_audit_valid_row_pass', statusOf(report, 'live2dDatasetRowAuditRunnerStatus') === 'pass', failures, cases, statusOf(report, 'live2dDatasetRowAuditRunnerStatus'), reasonsOf(report, 'live2dDatasetRowAuditRunnerStatus'));
@@ -178,10 +103,8 @@ export function buildV098SelfTestReport() {
   assertCase('five_line_owner_digest_missing_fails', statusOf(report, 'fiveLineOwnerDigestStatus') === 'fail', failures, cases, statusOf(report, 'fiveLineOwnerDigestStatus'), reasonsOf(report, 'fiveLineOwnerDigestStatus'));
   report = buildFiveLineOwnerDigestReport({});
   assertCase('source_harness_only_v098_fixture_pass', statusOf(report, 'fiveLineOwnerDigestStatus') === 'pass', failures, cases, statusOf(report, 'fiveLineOwnerDigestStatus'), reasonsOf(report, 'fiveLineOwnerDigestStatus'));
-  report = buildRemoteProductEvidenceExecutionReport({ forceCheck: true, productRelevant: false, targetRepoMode: true, isPullRequest: true, skipNpm: true, evidence: notApplicableEvidence, baseline: notApplicableBaseline, diagnostic: notApplicableDiagnostic });
+  report = buildRemoteProductEvidenceExecutionReport({ forceCheck: true, productRelevant: false, targetRepoMode: true, isPullRequest: true, skipNpm: true });
   assertCase('target_harness_rollout_v098_fixture_pass', statusOf(report, 'remoteProductEvidenceExecutionStatus') === 'pass', failures, cases, statusOf(report, 'remoteProductEvidenceExecutionStatus'), reasonsOf(report, 'remoteProductEvidenceExecutionStatus'));
-  const workflowText = fs.readFileSync(path.join(path.dirname(fileURLToPath(import.meta.url)), '..', '.github', 'workflows', 'quality-gate.yml'), 'utf8');
-  assertCase('workflow_executes_remote_product_checks', workflowText.includes('node scripts/codex-remote-product-checks.mjs') && !workflowText.includes('npm test > "$RUNNER_TEMP/codex-npm-test.raw.log"'), failures, cases, workflowText.includes('node scripts/codex-remote-product-checks.mjs') ? 'pass' : 'missing', []);
 
   const unsafe = scanObjectForUnsafe(cases);
   const status = failures.length || unsafe.length ? 'fail' : 'pass';

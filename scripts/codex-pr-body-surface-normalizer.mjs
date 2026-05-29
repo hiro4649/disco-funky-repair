@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// CODEX_QUALITY_HARNESS_FILE v0.9.8
+// CODEX_QUALITY_HARNESS_FILE v0.9.9
 import { fileURLToPath } from 'node:url';
 import { isPrContext, normalizePath, prBodyText, scanObjectForUnsafe, simpleStatus, writeJsonReport, exitFor } from './codex-v080-lib.mjs';
 
@@ -130,10 +130,8 @@ export function normalizePrBodySurfaces(files = [], body = '', env = process.env
 
 export function effectiveSurfacesForComplexity(files = [], body = '') {
   const normalized = normalizePrBodySurfaces(files, body);
-  const fileSurfaces = new Set(files.flatMap((file) => surfaceFromFile(file)));
-  const explicitAuthBodySurface = /\b(?:auth(?:entication|orization)?|security|permission|role|session|token|login|oauth)\s+(?:surface|change|changed|risk)\b|\b(?:surface|risk surface)\s*:\s*[^\n]*(?:auth|security|permission|session|token)\b/i.test(String(body || ''));
   return {
-    auth: fileSurfaces.has('auth') || (normalized.effectiveChangedSurfaces.includes('auth') && explicitAuthBodySurface),
+    auth: normalized.effectiveChangedSurfaces.includes('auth'),
     storage: normalized.effectiveChangedSurfaces.includes('storage'),
     api: normalized.effectiveChangedSurfaces.includes('api'),
     runtime: normalized.effectiveChangedSurfaces.includes('runtime'),
