@@ -9,6 +9,7 @@ import { marker, HARNESS_VERSION, scanObjectForUnsafe, writeJsonReport, exitFor 
 import { activeSelfTestStatusKey, effectiveSelfTestStatus } from './codex-active-self-test-policy.mjs';
 import { buildProductVerificationEvidenceReport } from './codex-product-verification-evidence-normalize.mjs';
 import { buildRemoteNpmDiagnosticReport } from './codex-remote-npm-diagnostic-classify.mjs';
+import { runRemoteProductChecks } from './codex-remote-product-checks.mjs';
 import { buildActiveSelfTestRegistryReport } from './codex-v097-gate-lib.mjs';
 import {
   buildRemoteProductEvidenceExecutionReport,
@@ -67,6 +68,21 @@ export function buildV098SelfTestReport() {
   assertCase('remote_product_evidence_execution_npm_fail_remains_fail', statusOf(report, 'remoteProductEvidenceExecutionStatus') === 'fail', failures, cases, statusOf(report, 'remoteProductEvidenceExecutionStatus'), reasonsOf(report, 'remoteProductEvidenceExecutionStatus'));
   report = buildRemoteProductEvidenceExecutionReport({ forceCheck: true, productRelevant: false, targetRepoMode: true, isPullRequest: true, skipNpm: true, evidence: notApplicableEvidence, baseline: notApplicableBaseline, diagnostic: notApplicableDiagnostic });
   assertCase('remote_product_evidence_execution_harness_only_skip_pass', statusOf(report, 'remoteProductEvidenceExecutionStatus') === 'pass', failures, cases, statusOf(report, 'remoteProductEvidenceExecutionStatus'), reasonsOf(report, 'remoteProductEvidenceExecutionStatus'));
+  const skipArtifactsDir = fs.mkdtempSync(path.join(os.tmpdir(), 'codex-v098-remote-skip-'));
+  report = runRemoteProductChecks({
+    ...process.env,
+    RUNNER_TEMP: skipArtifactsDir,
+    CODEX_CHANGED_FILES: '.github/workflows/quality-gate.yml\nscripts/codex-v098-self-test.mjs',
+    CODEX_EVENT_NAME: 'pull_request',
+    CODEX_PR_NUMBER: '201',
+    CODEX_PR_HEAD_SHA: 'abc123',
+    CODEX_PR_BASE_SHA: 'def456',
+    CODEX_REPOSITORY: 'hiro4649/disco-funky-repair',
+    CODEX_HARNESS_MODE: 'target',
+  });
+  const skipEvidence = JSON.parse(fs.readFileSync(path.join(skipArtifactsDir, 'codex-product-verification-evidence.remote.json'), 'utf8'));
+  const skipDiagnostic = JSON.parse(fs.readFileSync(path.join(skipArtifactsDir, 'codex-remote-npm-diagnostic.safe.json'), 'utf8'));
+  assertCase('remote_product_checks_harness_only_writes_not_applicable_artifacts', report.status === 'not_applicable' && skipEvidence.status === 'not_applicable' && skipDiagnostic.diagnosticType === 'not_applicable', failures, cases, report.status, report.remoteProductChecksStatus?.reasonCodes || []);
 
   report = buildRemoteProductEvidenceRunnerReport({ forceCheck: true, productRelevant: true, npmExecuted: true, npmExitCode: 0, headSha: 'abc123' });
   assertCase('remote_product_evidence_runner_no_raw_logs', statusOf(report, 'remoteProductEvidenceRunnerStatus') === 'pass', failures, cases, statusOf(report, 'remoteProductEvidenceRunnerStatus'), reasonsOf(report, 'remoteProductEvidenceRunnerStatus'));
