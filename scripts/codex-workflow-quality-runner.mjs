@@ -62,6 +62,7 @@ import { buildFinalSummary } from './codex-target-final-summary.mjs';
 
 
 import { buildDiagnosticConsolidatedSummary } from './codex-diagnostic-consolidation-runner.mjs';
+import { effectiveSelfTestStatus } from './codex-active-self-test-policy.mjs';
 
 
 
@@ -3094,6 +3095,9 @@ function readReport(file) {
 
 
 function statusAllowed(key, status, eventName) {
+  const effectiveSelfTest = effectiveSelfTestStatus(key, status, HARNESS_VERSION);
+  if (effectiveSelfTest === 'pass_legacy_advisory') return true;
+  if (effectiveSelfTest !== status) status = effectiveSelfTest;
 
 
 

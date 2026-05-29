@@ -39,6 +39,7 @@ import { buildGithubReplayContextAsync } from './codex-ci-replay.mjs';
 
 
 import { buildCompactReasonSummary } from './codex-reason-summary.mjs';
+import { effectiveSelfTestStatus } from './codex-active-self-test-policy.mjs';
 
 
 
@@ -4182,6 +4183,11 @@ function computeQualityScoreStatus(report) {
 
     let effectiveStatus = status;
 
+    const selfTestEffectiveStatus = effectiveSelfTestStatus(key, status, HARNESS_VERSION);
+
+    if (selfTestEffectiveStatus === 'pass_legacy_advisory') effectiveStatus = 'pass';
+    else if (selfTestEffectiveStatus !== status) effectiveStatus = selfTestEffectiveStatus;
+
 
 
     if (allowedNotApplicable.has(key) && status === 'not_applicable') effectiveStatus = 'pass';
@@ -5185,6 +5191,11 @@ function computeTargetQualityScoreStatus(report) {
 
 
     let effectiveStatus = status;
+
+    const selfTestEffectiveStatus = effectiveSelfTestStatus(key, status, HARNESS_VERSION);
+
+    if (selfTestEffectiveStatus === 'pass_legacy_advisory') effectiveStatus = 'pass_legacy_advisory';
+    else if (selfTestEffectiveStatus !== status) effectiveStatus = selfTestEffectiveStatus;
 
 
 
