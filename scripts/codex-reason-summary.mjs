@@ -14,6 +14,14 @@ function safeCode(value) {
   return String(value || 'unknown_reason').replace(/[^A-Za-z0-9_.:-]/g, '_').slice(0, 120);
 }
 
+function activeSelfTestStatusKey(version = HARNESS_VERSION) {
+  return `v${String(version).replace(/\./g, '')}SelfTestStatus`;
+}
+
+function isLegacySelfTestStatusKey(key, version = HARNESS_VERSION) {
+  return /^v\d{3}SelfTestStatus$/.test(String(key || '')) && key !== activeSelfTestStatusKey(version);
+}
+
 export function buildCompactReasonSummary(report = {}, options = {}) {
   const catalog = loadCatalog();
   const mode = report.targetQualityScoreStatus ? 'target' : 'source';
@@ -23,6 +31,10 @@ export function buildCompactReasonSummary(report = {}, options = {}) {
   const manualReasons = [];
   const optionalNotApplicable = [];
   for (const [gate, value] of statusEntries) {
+    if (isLegacySelfTestStatusKey(gate) && ['fail', 'missing', 'not_run'].includes(value.status)) {
+      optionalNotApplicable.push(gate);
+      continue;
+    }
     const reasonCodes = value.reasonCodes?.length ? value.reasonCodes : [gate];
     if (value.status === 'fail' || value.status === 'missing') {
       for (const code of reasonCodes) blockingReasons.push({ reasonCode: safeCode(code), gate });

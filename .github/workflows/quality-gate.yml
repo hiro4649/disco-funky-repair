@@ -137,16 +137,50 @@ jobs:
           product_relevant="$(CLASSIFICATION_JSON="$classification_json" node -e "const r=JSON.parse(process.env.CLASSIFICATION_JSON||'{}'); const s=r.changeClassificationStatus||{}; process.stdout.write(s.productRelevantChanged||s.runtimeReadinessClaimed||s.packageOrLockfileChanged?'1':'0')")"
           npm_exit=0
           npm_executed=0
+          remote_command="npm test"
+          remote_command_scope="root"
+          remote_command_cwd="."
+          root_package_json_present=0
+          package_json_present=0
+          script_present=0
+          if [ -f package.json ]; then root_package_json_present=1; fi
           if [ "$product_relevant" = "1" ]; then
             npm_executed=1
             echo "CODEX_SKIP_NPM=0" >> "$GITHUB_ENV"
-            npm test > "$RUNNER_TEMP/codex-npm-test.raw.log" 2>&1 || npm_exit=$?
+            if printf '%s\n' "$changed_files" | grep -q '^apps/backend/' && [ -f apps/backend/package.json ]; then
+              remote_command_scope="apps/backend"
+              remote_command_cwd="apps/backend"
+            elif printf '%s\n' "$changed_files" | grep -q '^apps/frontend/' && [ -f apps/frontend/package.json ]; then
+              remote_command_scope="apps/frontend"
+              remote_command_cwd="apps/frontend"
+            elif printf '%s\n' "$changed_files" | grep -q '^contracts/' && [ -f contracts/package.json ]; then
+              remote_command_scope="contracts"
+              remote_command_cwd="contracts"
+            fi
+            if [ -f "$remote_command_cwd/package.json" ]; then package_json_present=1; fi
+            script_present="$(REMOTE_COMMAND_CWD="$remote_command_cwd" node - <<'NODE'
+          const fs = require('fs');
+          const path = require('path');
+          const cwd = process.env.REMOTE_COMMAND_CWD || '.';
+          try {
+            const pkg = JSON.parse(fs.readFileSync(path.join(cwd, 'package.json'), 'utf8'));
+            process.stdout.write(pkg && pkg.scripts && pkg.scripts.test ? '1' : '0');
+          } catch {
+            process.stdout.write('0');
+          }
+          NODE
+          )"
+            if [ "$package_json_present" = "1" ] && [ "$script_present" = "1" ]; then
+              (cd "$remote_command_cwd" && npm test > "$RUNNER_TEMP/codex-npm-test.raw.log" 2>&1) || npm_exit=$?
+            else
+              npm_exit=254
+            fi
           else
             echo "CODEX_SKIP_NPM=1" >> "$GITHUB_ENV"
           fi
           echo "CODEX_REMOTE_NPM_EXECUTED=$npm_executed" >> "$GITHUB_ENV"
           echo "CODEX_NPM_EXIT_CODE=$npm_exit" >> "$GITHUB_ENV"
-          runner_json="$(PRODUCT_RELEVANT="$product_relevant" NPM_EXECUTED="$npm_executed" NPM_EXIT_CODE="$npm_exit" node -e "const input={productRelevant:process.env.PRODUCT_RELEVANT==='1',isPullRequest:process.env.CODEX_EVENT_NAME==='pull_request',eventName:process.env.CODEX_EVENT_NAME||'',headSha:process.env.CODEX_PR_HEAD_SHA||'',baseSha:process.env.CODEX_PR_BASE_SHA||'',repository:process.env.CODEX_REPOSITORY||'',npmExecuted:process.env.NPM_EXECUTED==='1',npmExitCode:Number(process.env.NPM_EXIT_CODE||0)}; process.stdout.write(JSON.stringify(input));")"
+          runner_json="$(PRODUCT_RELEVANT="$product_relevant" NPM_EXECUTED="$npm_executed" NPM_EXIT_CODE="$npm_exit" REMOTE_COMMAND="$remote_command" REMOTE_COMMAND_SCOPE="$remote_command_scope" PACKAGE_JSON_PRESENT="$package_json_present" SCRIPT_PRESENT="$script_present" ROOT_PACKAGE_JSON_PRESENT="$root_package_json_present" node -e "const input={productRelevant:process.env.PRODUCT_RELEVANT==='1',isPullRequest:process.env.CODEX_EVENT_NAME==='pull_request',eventName:process.env.CODEX_EVENT_NAME||'',headSha:process.env.CODEX_PR_HEAD_SHA||'',baseSha:process.env.CODEX_PR_BASE_SHA||'',repository:process.env.CODEX_REPOSITORY||'',npmExecuted:process.env.NPM_EXECUTED==='1',npmExitCode:Number(process.env.NPM_EXIT_CODE||0),command:process.env.REMOTE_COMMAND||'npm test',commandScope:process.env.REMOTE_COMMAND_SCOPE||'root',packageJsonPresent:process.env.PACKAGE_JSON_PRESENT==='1',scriptPresent:process.env.SCRIPT_PRESENT==='1',rootPackageJsonPresent:process.env.ROOT_PACKAGE_JSON_PRESENT==='1'}; process.stdout.write(JSON.stringify(input));")"
           CODEX_REMOTE_PRODUCT_EVIDENCE_OUT_DIR="$RUNNER_TEMP" CODEX_REMOTE_PRODUCT_EVIDENCE_RUNNER_JSON="$runner_json" node scripts/codex-remote-product-evidence-runner.mjs --write-artifacts
       - name: Run Codex quality gate
         shell: bash
