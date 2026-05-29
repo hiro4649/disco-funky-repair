@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// CODEX_QUALITY_HARNESS_FILE v0.9.9
+// CODEX_QUALITY_HARNESS_FILE v1.0.0
 import fs from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { HARNESS_VERSION, scanObjectForUnsafe, simpleStatus, writeJsonReport, exitFor, readJson, readText } from './codex-v080-lib.mjs';
@@ -10,7 +10,6 @@ export function parseJson(value) {
 }
 export function parseBool(value) { return value === true || value === '1' || value === 'true' || value === 'yes'; }
 function uniq(values) { return [...new Set((values || []).filter(Boolean))]; }
-function hasOwn(value, key) { return Boolean(value && Object.prototype.hasOwnProperty.call(value, key)); }
 function safe(statusKey, status, payload = {}) {
   const out = simpleStatus(statusKey, status, { ...payload, reasonCodes: uniq(payload.reasonCodes), warnings: uniq(payload.warnings), safeSummaryOnly: true });
   return scanObjectForUnsafe(out).length ? simpleStatus(statusKey, 'fail', { reasonCodes: ['unsafe_value_detected'], safeSummaryOnly: true }) : out;
@@ -24,53 +23,6 @@ function readMaybeJson(file) {
 function statusOf(value) { return value?.status || value?.productVerificationEvidenceStatus?.status || value?.remoteProductBaselineStatus?.status || value?.remoteNpmDiagnosticStatus?.status || ''; }
 function isPassLike(value) { return ['pass', 'superseded_by_formal_evidence'].includes(statusOf(value)); }
 function isFailLike(value) { return statusOf(value) === 'fail'; }
-function npmExecutedOf(value) {
-  if (!value || typeof value !== 'object') return false;
-  if (parseBool(value.npmExecuted)) return true;
-  const normalized = value.productVerificationEvidenceStatus?.normalizedEvidence || value.normalizedEvidence;
-  return Array.isArray(normalized?.commands) && normalized.commands.some((item) => item.source === 'remote' && ['pass', 'fail'].includes(item.result));
-}
-function npmExitCodeOf(...values) {
-  for (const value of values) {
-    if (!value || typeof value !== 'object') continue;
-    const candidates = [
-      value.npmExitCode,
-      value.diagnostic?.npmExitCode,
-      value.remoteNpmDiagnosticStatus?.diagnostic?.npmExitCode,
-      value.productVerificationEvidenceStatus?.normalizedEvidence?.npmExitCode,
-    ];
-    for (const candidate of candidates) {
-      const parsed = Number(candidate);
-      if (Number.isFinite(parsed)) return parsed;
-    }
-  }
-  return 0;
-}
-function safeFailureCategoryOf(...values) {
-  for (const value of values) {
-    if (!value || typeof value !== 'object') continue;
-    const candidates = [
-      value.safeFailureCategory,
-      value.failureClass,
-      value.diagnostic?.safeFailureCategory,
-      value.remoteNpmDiagnosticStatus?.diagnostic?.safeFailureCategory,
-      ...(Array.isArray(value.safeReasonCodes) ? value.safeReasonCodes : []),
-      ...(Array.isArray(value.knownFailures) ? value.knownFailures : []),
-      ...(Array.isArray(value.remoteProductBaselineStatus?.knownFailures) ? value.remoteProductBaselineStatus.knownFailures : []),
-    ];
-    const found = candidates.find(Boolean);
-    if (found) return String(found).slice(0, 80);
-  }
-  return '';
-}
-function baselineHasFailure(baseline, category) {
-  if (!category || !baseline || typeof baseline !== 'object') return false;
-  const failures = [
-    ...(Array.isArray(baseline.knownFailures) ? baseline.knownFailures : []),
-    ...(Array.isArray(baseline.remoteProductBaselineStatus?.knownFailures) ? baseline.remoteProductBaselineStatus.knownFailures : []),
-  ].map(String);
-  return failures.includes(category);
-}
 function isPlaceholder(value) {
   if (!value || typeof value !== 'object') return false;
   const type = String(value.evidenceType || value.baselineType || value.diagnosticType || '').toLowerCase();
@@ -110,12 +62,7 @@ export function buildFormalEvidencePrecedenceReport(input = parseJson(process.en
   const baselinePresent = parseBool(input.remoteBaselinePresent) || Boolean(baseline);
   const diagnosticPresent = parseBool(input.remoteNpmDiagnosticPresent) || Boolean(diagnostic);
   const sameHead = input.sameHeadMatch === undefined ? !parseBool(input.sameHeadMismatch) : parseBool(input.sameHeadMatch);
-  const npmExitCode = npmExitCodeOf(input, evidence, diagnostic);
-  const npmFailure = parseBool(input.npmFailure) || npmExitCode !== 0;
-  const safeFailureCategory = safeFailureCategoryOf(input, evidence, diagnostic, baseline);
-  const baselineSameFailure = parseBool(input.baselineSameFailure) || baselineHasFailure(baseline, safeFailureCategory);
-  const candidateRegression = parseBool(input.candidateRegression);
-  const nonRegressionUnknown = npmFailure && safeFailureCategory === 'unknown_npm_failure' && baselineSameFailure && !candidateRegression;
+  const npmFailure = parseBool(input.npmFailure) || Number(input.npmExitCode ?? 0) !== 0 || Number(diagnostic?.npmExitCode ?? 0) !== 0;
   const formalPass = evidencePresent && baselinePresent && diagnosticPresent && isPassLike(evidence) && isPassLike(baseline) && isPassLike(diagnostic) && sameHead && !npmFailure;
   if (!evidencePresent || parseBool(input.productEvidenceMissing)) reasonCodes.push('formal_evidence_precedence_failed');
   if (!baselinePresent || parseBool(input.remoteBaselineMissing)) reasonCodes.push('formal_evidence_precedence_failed');
@@ -128,8 +75,8 @@ export function buildFormalEvidencePrecedenceReport(input = parseJson(process.en
   if (input.normalSafeSummaryPresent === false || parseBool(input.normalSafeSummaryMissing)) reasonCodes.push('safe_artifact_bundle_completeness_failed');
   if (parseBool(input.targetSummaryMissing)) reasonCodes.push('target_quality_blocker_digest_missing');
   if (parseBool(input.reasonSummaryMissing)) reasonCodes.push('safe_artifact_bundle_completeness_failed');
-  if (npmFailure && !nonRegressionUnknown) reasonCodes.push('remote_npm_diagnostic_normalization_failed');
-  return safe('formalEvidencePrecedenceStatus', reasonCodes.length ? 'fail' : 'pass', { reasonCodes, productRelevant, formalEvidencePresent: evidencePresent, lifeboatMode: parseBool(input.standbyLifeboatPresent) ? 'standby' : 'none', npmExitCode, safeFailureCategory, baselineSameFailure, candidateRegression });
+  if (npmFailure) reasonCodes.push('remote_npm_diagnostic_normalization_failed');
+  return safe('formalEvidencePrecedenceStatus', reasonCodes.length ? 'fail' : 'pass', { reasonCodes, productRelevant, formalEvidencePresent: evidencePresent, lifeboatMode: parseBool(input.standbyLifeboatPresent) ? 'standby' : 'none' });
 }
 
 export function buildLifeboatSemanticsReport(input = parseJson(process.env.CODEX_LIFEBOAT_SEMANTICS_JSON) || {}) {
@@ -155,39 +102,12 @@ export function buildRemoteNpmDiagnosticNormalizationReport(input = parseJson(pr
   const productRelevant = productRelevantFromInput(input);
   if (!parseBool(input.forceCheck) && !productRelevant) return notApplicable('remoteNpmDiagnosticNormalizationStatus', 'remote_npm_diagnostic_normalization_not_applicable');
   const reasonCodes = [];
-  const warnings = [];
-  const evidence = hasOwn(input, 'formalEvidence')
-    ? input.formalEvidence
-    : hasOwn(input, 'productEvidence')
-      ? input.productEvidence
-      : parseJson(process.env.CODEX_PRODUCT_VERIFICATION_EVIDENCE_JSON);
-  const baseline = hasOwn(input, 'formalBaseline')
-    ? input.formalBaseline
-    : hasOwn(input, 'remoteBaseline')
-      ? input.remoteBaseline
-      : parseJson(process.env.CODEX_REMOTE_PRODUCT_BASELINE_JSON);
-  const diagnostic = hasOwn(input, 'formalDiagnostic')
-    ? input.formalDiagnostic
-    : hasOwn(input, 'remoteNpmDiagnostic')
-      ? input.remoteNpmDiagnostic
-      : parseJson(process.env.CODEX_REMOTE_NPM_DIAGNOSTIC_JSON);
-  const npmExecuted = hasOwn(input, 'npmExecuted')
-    ? parseBool(input.npmExecuted)
-    : parseBool(process.env.CODEX_REMOTE_NPM_EXECUTED) || npmExecutedOf(evidence);
-  const npmExitCode = Number(input.npmExitCode ?? process.env.CODEX_NPM_EXIT_CODE ?? npmExitCodeOf(evidence, diagnostic) ?? 0);
-  const safeFailureCategory = safeFailureCategoryOf(input, evidence, diagnostic, baseline);
-  const baselineSameFailure = parseBool(input.baselineSameFailure) || baselineHasFailure(baseline, safeFailureCategory);
-  const candidateRegression = parseBool(input.candidateRegression);
+  const npmExecuted = parseBool(input.npmExecuted);
+  const npmExitCode = Number(input.npmExitCode ?? 0);
   if (productRelevant && !npmExecuted) reasonCodes.push('remote_npm_not_executed_for_product_pr');
-  if (npmExitCode !== 0 || parseBool(input.npmFailMarkedPass)) {
-    if (safeFailureCategory === 'unknown_npm_failure' && baselineSameFailure && !candidateRegression && !parseBool(input.npmFailMarkedPass)) {
-      warnings.push('remote_npm_unknown_matches_baseline');
-    } else {
-      reasonCodes.push('remote_npm_diagnostic_normalization_failed');
-    }
-  }
+  if (npmExitCode !== 0 || parseBool(input.npmFailMarkedPass)) reasonCodes.push('remote_npm_diagnostic_normalization_failed');
   if (parseBool(input.diagnosticPendingFinalPass) || parseBool(input.diagnosticMissingNoFormalEvidence) || parseBool(input.remoteNpmNotExecutedEmittedDespiteExecuted)) reasonCodes.push('remote_npm_diagnostic_normalization_failed');
-  return safe('remoteNpmDiagnosticNormalizationStatus', reasonCodes.length ? 'fail' : 'pass', { reasonCodes, warnings, productRelevant, npmExecuted, npmExitCode, safeFailureCategory, baselineSameFailure, candidateRegression });
+  return safe('remoteNpmDiagnosticNormalizationStatus', reasonCodes.length ? 'fail' : 'pass', { reasonCodes, productRelevant, npmExecuted, npmExitCode });
 }
 
 export function buildLegacySelfTestAdvisoryReport(input = parseJson(process.env.CODEX_LEGACY_SELF_TEST_ADVISORY_JSON) || {}) {

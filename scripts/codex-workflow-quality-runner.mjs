@@ -5,7 +5,7 @@
 
 
 
-// CODEX_QUALITY_HARNESS_FILE v0.9.9
+// CODEX_QUALITY_HARNESS_FILE v1.0.0
 
 
 
@@ -69,14 +69,6 @@ import { buildDiagnosticConsolidatedSummary } from './codex-diagnostic-consolida
 
 
 import { buildInvalidReportRecoverySummary } from './codex-invalid-report-recovery.mjs';
-
-function activeSelfTestStatusKey(version = HARNESS_VERSION) {
-  return `v${String(version).replace(/\./g, '')}SelfTestStatus`;
-}
-
-function isLegacySelfTestStatusKey(key, version = HARNESS_VERSION) {
-  return /^v\d{3}SelfTestStatus$/.test(String(key || '')) && key !== activeSelfTestStatusKey(version);
-}
 
 
 
@@ -3147,8 +3139,6 @@ function statusAllowed(key, status, eventName) {
 
   if (status === 'pass') return true;
 
-  if (isLegacySelfTestStatusKey(key)) return true;
-
 
 
 
@@ -5096,7 +5086,7 @@ function writeArtifacts(result, report) {
 
 
 
-  const selfTestStatus = report.v099SelfTestStatus || report.v098SelfTestStatus || report.v097SelfTestStatus || report.v096SelfTestStatus || report.v095SelfTestStatus || report.v094SelfTestStatus || report.v093SelfTestStatus || report.v092SelfTestStatus || report.selfTestCaseExportStatus || {};
+  const selfTestStatus = report.v098SelfTestStatus || report.v097SelfTestStatus || report.v096SelfTestStatus || report.v095SelfTestStatus || report.v094SelfTestStatus || report.v093SelfTestStatus || report.v092SelfTestStatus || report.selfTestCaseExportStatus || {};
 
 
 

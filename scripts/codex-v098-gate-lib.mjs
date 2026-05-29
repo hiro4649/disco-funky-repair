@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// CODEX_QUALITY_HARNESS_FILE v0.9.9
+// CODEX_QUALITY_HARNESS_FILE v1.0.0
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -35,31 +35,6 @@ function isPlaceholder(value) {
   const type = String(value.evidenceType || value.baselineType || value.diagnosticType || '').toLowerCase();
   return value.placeholder === true || value.status === 'pending' || type === 'placeholder';
 }
-function failureCategoryOf(...values) {
-  for (const value of values) {
-    if (!value || typeof value !== 'object') continue;
-    const candidates = [
-      value.safeFailureCategory,
-      value.failureClass,
-      value.diagnostic?.safeFailureCategory,
-      value.remoteNpmDiagnosticStatus?.diagnostic?.safeFailureCategory,
-      ...(Array.isArray(value.safeReasonCodes) ? value.safeReasonCodes : []),
-      ...(Array.isArray(value.knownFailures) ? value.knownFailures : []),
-      ...(Array.isArray(value.remoteProductBaselineStatus?.knownFailures) ? value.remoteProductBaselineStatus.knownFailures : []),
-    ];
-    const found = candidates.find(Boolean);
-    if (found) return String(found).slice(0, 80);
-  }
-  return '';
-}
-function baselineHasFailure(baseline, category) {
-  if (!category || !baseline || typeof baseline !== 'object') return false;
-  const failures = [
-    ...(Array.isArray(baseline.knownFailures) ? baseline.knownFailures : []),
-    ...(Array.isArray(baseline.remoteProductBaselineStatus?.knownFailures) ? baseline.remoteProductBaselineStatus.knownFailures : []),
-  ].map(String);
-  return failures.includes(category);
-}
 function productRelevantFromInput(input, env = process.env) {
   if (input.productRelevant !== undefined) return parseBool(input.productRelevant);
   if (input.productRelevantChanged !== undefined) return parseBool(input.productRelevantChanged);
@@ -94,23 +69,13 @@ export function buildRemoteProductEvidenceExecutionReport(input = parseJson(proc
   if (productRelevant && !(parseBool(input.baselinePresent) || evidencePathPresent(baselinePath) || baseline)) reasonCodes.push('remote_product_evidence_execution_missing');
   if (productRelevant && !(parseBool(input.diagnosticPresent) || evidencePathPresent(diagnosticPath) || diagnostic)) reasonCodes.push('remote_product_evidence_execution_missing');
   if (isPlaceholder(evidence) || isPlaceholder(baseline) || isPlaceholder(diagnostic) || parseBool(input.pendingPlaceholderUsedAsPass)) reasonCodes.push('pending_placeholder_used_as_pass');
-  const safeFailureCategory = failureCategoryOf(input, evidence, diagnostic, baseline);
-  const baselineSameFailure = parseBool(input.baselineSameFailure) || baselineHasFailure(baseline, safeFailureCategory);
-  const candidateRegression = parseBool(input.candidateRegression);
-  const npmFailure = Number(input.npmExitCode ?? 0) !== 0 || evidence?.status === 'fail' || Number(diagnostic?.npmExitCode ?? 0) !== 0;
-  if (productRelevant && npmFailure) {
-    if (safeFailureCategory === 'unknown_npm_failure' && baselineSameFailure && !candidateRegression) {
-      warnings.push('remote_npm_unknown_matches_baseline');
-    } else {
-      reasonCodes.push('remote_product_evidence_runner_failed');
-    }
-  }
+  if (productRelevant && (Number(input.npmExitCode ?? 0) !== 0 || evidence?.status === 'fail' || Number(diagnostic?.npmExitCode ?? 0) !== 0)) reasonCodes.push('remote_product_evidence_runner_failed');
   if (parseBool(input.manualConfirmationOverridesProductFail)) reasonCodes.push('manual_confirmation_overrode_product_verification');
   if (parseBool(input.workflowDispatchUsedAsPrEvidence) || String(input.eventName || '') === 'workflow_dispatch') reasonCodes.push('workflow_dispatch_not_pr_substitute');
   if (parseBool(input.qualityGateDoesNotReadEvidence)) reasonCodes.push('quality_gate_ignored_product_evidence');
   if (productRelevant && !parseBool(input.sameHeadEvidencePresent) && input.sameHeadEvidencePresent !== undefined) reasonCodes.push('same_head_artifact_missing');
   if (String(input.remoteEvidencePhase || '') === 'remote_evidence_pending_before_push') warnings.push('remote_evidence_pending_before_push');
-  return safe('remoteProductEvidenceExecutionStatus', reasonCodes.length ? 'fail' : 'pass', { reasonCodes, warnings, productRelevant, npmExecuted, safeFailureCategory, baselineSameFailure, candidateRegression });
+  return safe('remoteProductEvidenceExecutionStatus', reasonCodes.length ? 'fail' : warnings.length ? 'warning' : 'pass', { reasonCodes, warnings, productRelevant, npmExecuted });
 }
 
 export function buildRemoteProductEvidenceRunnerReport(input = parseJson(process.env.CODEX_REMOTE_PRODUCT_EVIDENCE_RUNNER_JSON) || {}) {
@@ -136,16 +101,8 @@ export function buildRemoteProductSafeArtifacts(input = parseJson(process.env.CO
   const baseSha = String(input.baseSha || env.CODEX_PR_BASE_SHA || '').slice(0, 80);
   const repository = String(input.repository || env.CODEX_REPOSITORY || '').slice(0, 120);
   const evidenceStatus = !productRelevant ? 'not_applicable' : npmExitCode === 0 ? 'pass' : 'fail';
+  const failureClass = npmExitCode === 0 ? '' : String(input.failureClass || 'unknown_npm_failure').slice(0, 80);
   const command = String(input.command || 'npm test').slice(0, 80);
-  const commandScope = String(input.commandScope || input.commandCwd || 'root').replace(/[^A-Za-z0-9_.:/-]/g, '').slice(0, 80) || 'root';
-  const commandCwdKind = commandScope === 'root' || commandScope === '.' ? 'root' : 'workspace_package';
-  const packageJsonPresent = input.packageJsonPresent === undefined ? null : parseBool(input.packageJsonPresent);
-  const scriptPresent = input.scriptPresent === undefined ? null : parseBool(input.scriptPresent);
-  const rootPackageJsonPresent = input.rootPackageJsonPresent === undefined ? null : parseBool(input.rootPackageJsonPresent);
-  let failureClass = npmExitCode === 0 ? '' : String(input.failureClass || 'unknown_npm_failure').slice(0, 80);
-  if (npmExitCode !== 0 && failureClass === 'unknown_npm_failure' && (packageJsonPresent === false || scriptPresent === false)) {
-    failureClass = 'script_missing';
-  }
   const evidence = {
     schemaVersion: '0.8.3', harnessVersion: HARNESS_VERSION, headSha, baseSha,
     eventName: String(input.eventName || env.CODEX_EVENT_NAME || '').slice(0, 60),
@@ -153,7 +110,6 @@ export function buildRemoteProductSafeArtifacts(input = parseJson(process.env.CO
     status: evidenceStatus, evidenceType: productRelevant ? 'remote_npm_test' : 'not_applicable',
     commands: productRelevant ? [{ name: command, required: true, result: evidenceStatus === 'pass' ? 'pass' : 'fail', source: 'remote', durationMs: null, testCount: null, safeSummary: evidenceStatus === 'pass' ? 'remote npm test completed' : 'remote npm test failed with safe diagnostic' }] : [],
     failureClass: failureClass || undefined, safeReasonCodes: failureClass ? [failureClass] : [],
-    commandScope, commandCwdKind, packageJsonPresent, scriptPresent, rootPackageJsonPresent,
     rawLogsIncluded: false, safeSummaryOnly: true,
   };
   const diagnostic = {
@@ -163,7 +119,6 @@ export function buildRemoteProductSafeArtifacts(input = parseJson(process.env.CO
     platform: String(input.platform || env.RUNNER_OS || process.platform || 'unknown').slice(0, 60),
     os: String(input.os || process.platform || 'unknown').slice(0, 60),
     packageManager: 'npm', commandClass: 'npm_test',
-    command, commandScope, commandCwdKind, packageJsonPresent, scriptPresent, rootPackageJsonPresent,
     safeFailureCategory: npmExitCode === 0 ? 'test_assertion_failure' : failureClass || 'unknown_npm_failure',
     safeMarkerCount: null, testCountDetected: null, durationMs: null, knownBaselineMatched: false,
     rawLogUploaded: false, rawValuesStored: false,
@@ -179,21 +134,7 @@ export function buildRemoteProductSafeArtifacts(input = parseJson(process.env.CO
     expiresAt: new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000).toISOString(),
     rawValuesStored: false, safeSummaryOnly: true,
   };
-  const remoteChecks = {
-    schemaVersion: '0.9.9',
-    phase: 'remote product checks',
-    status: productRelevant ? evidenceStatus : 'not_applicable',
-    productRelevant,
-    npmExecuted,
-    npmExitCode: productRelevant ? npmExitCode : null,
-    command,
-    commandScope,
-    commandCwdKind,
-    safeReasonCodes: evidenceStatus === 'fail' ? [failureClass || 'unknown_npm_failure'] : [],
-    placeholderSupersededByFormalEvidence: true,
-    safeSummaryOnly: true,
-  };
-  return { evidence, diagnostic, baseline, remoteChecks };
+  return { evidence, diagnostic, baseline };
 }
 
 export function writeRemoteProductSafeArtifacts(input = parseJson(process.env.CODEX_REMOTE_PRODUCT_EVIDENCE_RUNNER_JSON) || {}, env = process.env) {
@@ -203,7 +144,6 @@ export function writeRemoteProductSafeArtifacts(input = parseJson(process.env.CO
   fs.writeFileSync(path.join(dir, 'codex-product-verification-evidence.remote.json'), JSON.stringify(artifacts.evidence, null, 2));
   fs.writeFileSync(path.join(dir, 'codex-remote-product-baseline.json'), JSON.stringify(artifacts.baseline, null, 2));
   fs.writeFileSync(path.join(dir, 'codex-remote-npm-diagnostic.safe.json'), JSON.stringify(artifacts.diagnostic, null, 2));
-  fs.writeFileSync(path.join(dir, 'codex-remote-product-checks.safe.json'), JSON.stringify(artifacts.remoteChecks, null, 2));
   return artifacts;
 }
 
