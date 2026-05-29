@@ -50,7 +50,14 @@ export function buildV098SelfTestReport() {
   report = buildActiveSelfTestRegistryReport({ harnessVersion: '0.9.8', activeStatusKey: 'v097SelfTestStatus', selfTestFilePresent: true, manifestHasSelfTest: true, localGateHasStatus: true });
   assertCase('active_registry_missing_v098_fails', statusOf(report, 'activeSelfTestRegistryStatus') === 'fail' && reasonsOf(report, 'activeSelfTestRegistryStatus').includes('active_self_test_registry_missing'), failures, cases, statusOf(report, 'activeSelfTestRegistryStatus'), reasonsOf(report, 'activeSelfTestRegistryStatus'));
 
-  report = buildRemoteProductEvidenceExecutionReport({ forceCheck: true, productRelevant: true, targetRepoMode: true, isPullRequest: true, skipNpm: false, npmExecuted: true, evidencePresent: true, baselinePresent: true, diagnosticPresent: true, sameHeadEvidencePresent: true });
+  const passingProductEvidence = { status: 'pass', evidenceType: 'remote_npm_test', rawLogsIncluded: false, safeSummaryOnly: true };
+  const passingProductBaseline = { result: 'pass', baselineType: 'remote_product_verification', rawValuesStored: false, safeSummaryOnly: true };
+  const passingRemoteDiagnostic = { npmExitCode: 0, diagnosticType: 'remote_npm_diagnostic', rawLogUploaded: false, rawValuesStored: false, safeSummaryOnly: true };
+  const notApplicableEvidence = { status: 'not_applicable', evidenceType: 'not_applicable', rawLogsIncluded: false, safeSummaryOnly: true };
+  const notApplicableBaseline = { result: 'pass', baselineType: 'not_applicable', rawValuesStored: false, safeSummaryOnly: true };
+  const notApplicableDiagnostic = { npmExitCode: null, diagnosticType: 'not_applicable', rawLogUploaded: false, rawValuesStored: false, safeSummaryOnly: true };
+
+  report = buildRemoteProductEvidenceExecutionReport({ forceCheck: true, productRelevant: true, targetRepoMode: true, isPullRequest: true, skipNpm: false, npmExecuted: true, evidence: passingProductEvidence, baseline: passingProductBaseline, diagnostic: passingRemoteDiagnostic, sameHeadEvidencePresent: true });
   assertCase('remote_product_evidence_execution_product_pr_pass', statusOf(report, 'remoteProductEvidenceExecutionStatus') === 'pass', failures, cases, statusOf(report, 'remoteProductEvidenceExecutionStatus'), reasonsOf(report, 'remoteProductEvidenceExecutionStatus'));
   report = buildRemoteProductEvidenceExecutionReport({ forceCheck: true, productRelevant: true, targetRepoMode: true, isPullRequest: true, skipNpm: false, npmExecuted: true, evidencePath: null, baselinePath: null, diagnosticPath: null });
   assertCase('remote_product_evidence_execution_missing_fails', statusOf(report, 'remoteProductEvidenceExecutionStatus') === 'fail', failures, cases, statusOf(report, 'remoteProductEvidenceExecutionStatus'), reasonsOf(report, 'remoteProductEvidenceExecutionStatus'));
@@ -58,7 +65,7 @@ export function buildV098SelfTestReport() {
   assertCase('remote_product_evidence_execution_pending_placeholder_fails', statusOf(report, 'remoteProductEvidenceExecutionStatus') === 'fail', failures, cases, statusOf(report, 'remoteProductEvidenceExecutionStatus'), reasonsOf(report, 'remoteProductEvidenceExecutionStatus'));
   report = buildRemoteProductEvidenceExecutionReport({ forceCheck: true, productRelevant: true, targetRepoMode: true, isPullRequest: true, skipNpm: false, npmExecuted: true, npmExitCode: 1, evidence: { status: 'fail', evidenceType: 'remote_npm_test' }, baselinePresent: true, diagnosticPresent: true, sameHeadEvidencePresent: true });
   assertCase('remote_product_evidence_execution_npm_fail_remains_fail', statusOf(report, 'remoteProductEvidenceExecutionStatus') === 'fail', failures, cases, statusOf(report, 'remoteProductEvidenceExecutionStatus'), reasonsOf(report, 'remoteProductEvidenceExecutionStatus'));
-  report = buildRemoteProductEvidenceExecutionReport({ forceCheck: true, productRelevant: false, targetRepoMode: true, isPullRequest: true, skipNpm: true });
+  report = buildRemoteProductEvidenceExecutionReport({ forceCheck: true, productRelevant: false, targetRepoMode: true, isPullRequest: true, skipNpm: true, evidence: notApplicableEvidence, baseline: notApplicableBaseline, diagnostic: notApplicableDiagnostic });
   assertCase('remote_product_evidence_execution_harness_only_skip_pass', statusOf(report, 'remoteProductEvidenceExecutionStatus') === 'pass', failures, cases, statusOf(report, 'remoteProductEvidenceExecutionStatus'), reasonsOf(report, 'remoteProductEvidenceExecutionStatus'));
 
   report = buildRemoteProductEvidenceRunnerReport({ forceCheck: true, productRelevant: true, npmExecuted: true, npmExitCode: 0, headSha: 'abc123' });
@@ -116,7 +123,7 @@ export function buildV098SelfTestReport() {
   assertCase('five_line_owner_digest_missing_fails', statusOf(report, 'fiveLineOwnerDigestStatus') === 'fail', failures, cases, statusOf(report, 'fiveLineOwnerDigestStatus'), reasonsOf(report, 'fiveLineOwnerDigestStatus'));
   report = buildFiveLineOwnerDigestReport({});
   assertCase('source_harness_only_v098_fixture_pass', statusOf(report, 'fiveLineOwnerDigestStatus') === 'pass', failures, cases, statusOf(report, 'fiveLineOwnerDigestStatus'), reasonsOf(report, 'fiveLineOwnerDigestStatus'));
-  report = buildRemoteProductEvidenceExecutionReport({ forceCheck: true, productRelevant: false, targetRepoMode: true, isPullRequest: true, skipNpm: true });
+  report = buildRemoteProductEvidenceExecutionReport({ forceCheck: true, productRelevant: false, targetRepoMode: true, isPullRequest: true, skipNpm: true, evidence: notApplicableEvidence, baseline: notApplicableBaseline, diagnostic: notApplicableDiagnostic });
   assertCase('target_harness_rollout_v098_fixture_pass', statusOf(report, 'remoteProductEvidenceExecutionStatus') === 'pass', failures, cases, statusOf(report, 'remoteProductEvidenceExecutionStatus'), reasonsOf(report, 'remoteProductEvidenceExecutionStatus'));
   const workflowText = fs.readFileSync(path.join(path.dirname(fileURLToPath(import.meta.url)), '..', '.github', 'workflows', 'quality-gate.yml'), 'utf8');
   assertCase('workflow_executes_remote_product_checks', workflowText.includes('node scripts/codex-remote-product-checks.mjs') && !workflowText.includes('npm test > "$RUNNER_TEMP/codex-npm-test.raw.log"'), failures, cases, workflowText.includes('node scripts/codex-remote-product-checks.mjs') ? 'pass' : 'missing', []);
