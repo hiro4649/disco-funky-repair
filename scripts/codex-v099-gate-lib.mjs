@@ -10,6 +10,7 @@ export function parseJson(value) {
 }
 export function parseBool(value) { return value === true || value === '1' || value === 'true' || value === 'yes'; }
 function uniq(values) { return [...new Set((values || []).filter(Boolean))]; }
+function hasOwn(value, key) { return Boolean(value && Object.prototype.hasOwnProperty.call(value, key)); }
 function safe(statusKey, status, payload = {}) {
   const out = simpleStatus(statusKey, status, { ...payload, reasonCodes: uniq(payload.reasonCodes), warnings: uniq(payload.warnings), safeSummaryOnly: true });
   return scanObjectForUnsafe(out).length ? simpleStatus(statusKey, 'fail', { reasonCodes: ['unsafe_value_detected'], safeSummaryOnly: true }) : out;
@@ -155,10 +156,24 @@ export function buildRemoteNpmDiagnosticNormalizationReport(input = parseJson(pr
   if (!parseBool(input.forceCheck) && !productRelevant) return notApplicable('remoteNpmDiagnosticNormalizationStatus', 'remote_npm_diagnostic_normalization_not_applicable');
   const reasonCodes = [];
   const warnings = [];
-  const evidence = input.formalEvidence || input.productEvidence || parseJson(process.env.CODEX_PRODUCT_VERIFICATION_EVIDENCE_JSON);
-  const baseline = input.formalBaseline || input.remoteBaseline || parseJson(process.env.CODEX_REMOTE_PRODUCT_BASELINE_JSON);
-  const diagnostic = input.formalDiagnostic || input.remoteNpmDiagnostic || parseJson(process.env.CODEX_REMOTE_NPM_DIAGNOSTIC_JSON);
-  const npmExecuted = parseBool(input.npmExecuted) || parseBool(process.env.CODEX_REMOTE_NPM_EXECUTED) || npmExecutedOf(evidence);
+  const evidence = hasOwn(input, 'formalEvidence')
+    ? input.formalEvidence
+    : hasOwn(input, 'productEvidence')
+      ? input.productEvidence
+      : parseJson(process.env.CODEX_PRODUCT_VERIFICATION_EVIDENCE_JSON);
+  const baseline = hasOwn(input, 'formalBaseline')
+    ? input.formalBaseline
+    : hasOwn(input, 'remoteBaseline')
+      ? input.remoteBaseline
+      : parseJson(process.env.CODEX_REMOTE_PRODUCT_BASELINE_JSON);
+  const diagnostic = hasOwn(input, 'formalDiagnostic')
+    ? input.formalDiagnostic
+    : hasOwn(input, 'remoteNpmDiagnostic')
+      ? input.remoteNpmDiagnostic
+      : parseJson(process.env.CODEX_REMOTE_NPM_DIAGNOSTIC_JSON);
+  const npmExecuted = hasOwn(input, 'npmExecuted')
+    ? parseBool(input.npmExecuted)
+    : parseBool(process.env.CODEX_REMOTE_NPM_EXECUTED) || npmExecutedOf(evidence);
   const npmExitCode = Number(input.npmExitCode ?? process.env.CODEX_NPM_EXIT_CODE ?? npmExitCodeOf(evidence, diagnostic) ?? 0);
   const safeFailureCategory = safeFailureCategoryOf(input, evidence, diagnostic, baseline);
   const baselineSameFailure = parseBool(input.baselineSameFailure) || baselineHasFailure(baseline, safeFailureCategory);
