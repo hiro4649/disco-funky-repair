@@ -130,8 +130,10 @@ export function normalizePrBodySurfaces(files = [], body = '', env = process.env
 
 export function effectiveSurfacesForComplexity(files = [], body = '') {
   const normalized = normalizePrBodySurfaces(files, body);
+  const fileSurfaces = new Set(files.flatMap((file) => surfaceFromFile(file)));
+  const explicitAuthBodySurface = /\b(?:auth(?:entication|orization)?|security|permission|role|session|token|login|oauth)\s+(?:surface|change|changed|risk)\b|\b(?:surface|risk surface)\s*:\s*[^\n]*(?:auth|security|permission|session|token)\b/i.test(String(body || ''));
   return {
-    auth: normalized.effectiveChangedSurfaces.includes('auth'),
+    auth: fileSurfaces.has('auth') || (normalized.effectiveChangedSurfaces.includes('auth') && explicitAuthBodySurface),
     storage: normalized.effectiveChangedSurfaces.includes('storage'),
     api: normalized.effectiveChangedSurfaces.includes('api'),
     runtime: normalized.effectiveChangedSurfaces.includes('runtime'),
