@@ -28,6 +28,22 @@ function assertCase(id, condition, failures, cases, actualStatus = 'pass', reaso
   cases.push({ id, status: condition ? 'pass' : 'fail', actualStatus, reasonCodes, safeSummaryOnly: true });
   if (!condition) failures.push(id);
 }
+function withEnv(overrides, fn) {
+  const previous = new Map();
+  for (const [key, value] of Object.entries(overrides)) {
+    previous.set(key, process.env[key]);
+    if (value === undefined) delete process.env[key];
+    else process.env[key] = String(value);
+  }
+  try {
+    return fn();
+  } finally {
+    for (const [key, value] of previous.entries()) {
+      if (value === undefined) delete process.env[key];
+      else process.env[key] = value;
+    }
+  }
+}
 const passEvidence = { status: 'pass', safeSummaryOnly: true };
 const failEvidence = { status: 'fail', safeSummaryOnly: true };
 
@@ -68,6 +84,38 @@ export function buildV099SelfTestReport() {
   assertCase('remote_npm_diagnostic_normalized_when_formal_evidence_pass', statusOf(report, 'remoteNpmDiagnosticNormalizationStatus') === 'pass', failures, cases, statusOf(report, 'remoteNpmDiagnosticNormalizationStatus'), reasonsOf(report, 'remoteNpmDiagnosticNormalizationStatus'));
   report = buildRemoteNpmDiagnosticNormalizationReport({ forceCheck: true, productRelevant: true, npmExecuted: false });
   assertCase('remote_npm_not_executed_emitted_when_npm_not_run', statusOf(report, 'remoteNpmDiagnosticNormalizationStatus') === 'fail', failures, cases, statusOf(report, 'remoteNpmDiagnosticNormalizationStatus'), reasonsOf(report, 'remoteNpmDiagnosticNormalizationStatus'));
+  report = withEnv({
+    CODEX_REMOTE_NPM_EXECUTED: 'true',
+    CODEX_NPM_EXIT_CODE: '0',
+    CODEX_PRODUCT_VERIFICATION_EVIDENCE_JSON: JSON.stringify({ ...passEvidence, npmExecuted: true }),
+  }, () => buildRemoteNpmDiagnosticNormalizationReport({ forceCheck: true, productRelevant: true, npmExecuted: false }));
+  assertCase('remote_npm_not_executed_fixture_remains_fail_when_env_has_formal_evidence', statusOf(report, 'remoteNpmDiagnosticNormalizationStatus') === 'fail' && reasonsOf(report, 'remoteNpmDiagnosticNormalizationStatus').includes('remote_npm_not_executed_for_product_pr'), failures, cases, statusOf(report, 'remoteNpmDiagnosticNormalizationStatus'), reasonsOf(report, 'remoteNpmDiagnosticNormalizationStatus'));
+  report = withEnv({
+    CODEX_REMOTE_NPM_EXECUTED: 'true',
+    CODEX_NPM_EXIT_CODE: '0',
+  }, () => buildRemoteNpmDiagnosticNormalizationReport({ forceCheck: true, productRelevant: true, npmExecuted: false }));
+  assertCase('npmExecuted_false_fixture_does_not_use_process_env', statusOf(report, 'remoteNpmDiagnosticNormalizationStatus') === 'fail' && reasonsOf(report, 'remoteNpmDiagnosticNormalizationStatus').includes('remote_npm_not_executed_for_product_pr'), failures, cases, statusOf(report, 'remoteNpmDiagnosticNormalizationStatus'), reasonsOf(report, 'remoteNpmDiagnosticNormalizationStatus'));
+  report = withEnv({
+    CODEX_REMOTE_NPM_EXECUTED: 'true',
+    CODEX_NPM_EXIT_CODE: '254',
+    CODEX_REMOTE_NPM_DIAGNOSTIC_JSON: JSON.stringify({ status: 'fail', safeFailureCategory: 'unknown_npm_failure', npmExitCode: 254 }),
+  }, () => buildRemoteNpmDiagnosticNormalizationReport({ forceCheck: true, productRelevant: true, npmExecuted: false, npmExitCode: 0, safeFailureCategory: '' }));
+  assertCase('forceCheck_fixture_input_overrides_env_fallback', statusOf(report, 'remoteNpmDiagnosticNormalizationStatus') === 'fail' && reasonsOf(report, 'remoteNpmDiagnosticNormalizationStatus').includes('remote_npm_not_executed_for_product_pr') && !reasonsOf(report, 'remoteNpmDiagnosticNormalizationStatus').includes('remote_npm_diagnostic_normalization_failed'), failures, cases, statusOf(report, 'remoteNpmDiagnosticNormalizationStatus'), reasonsOf(report, 'remoteNpmDiagnosticNormalizationStatus'));
+  report = withEnv({
+    CODEX_REMOTE_NPM_EXECUTED: undefined,
+    CODEX_NPM_EXIT_CODE: undefined,
+    CODEX_PRODUCT_VERIFICATION_EVIDENCE_JSON: undefined,
+    CODEX_REMOTE_NPM_DIAGNOSTIC_JSON: undefined,
+  }, () => buildRemoteNpmDiagnosticNormalizationReport({ forceCheck: true, productRelevant: true, npmExecuted: true, npmExitCode: 0, formalEvidence: passEvidence, remoteBaseline: passEvidence, formalDiagnostic: passEvidence }));
+  assertCase('formal_evidence_pass_fixture_remains_pass_without_env', statusOf(report, 'remoteNpmDiagnosticNormalizationStatus') === 'pass', failures, cases, statusOf(report, 'remoteNpmDiagnosticNormalizationStatus'), reasonsOf(report, 'remoteNpmDiagnosticNormalizationStatus'));
+  report = withEnv({
+    CODEX_REMOTE_NPM_EXECUTED: 'true',
+    CODEX_NPM_EXIT_CODE: '0',
+    CODEX_PRODUCT_VERIFICATION_EVIDENCE_JSON: JSON.stringify({ ...passEvidence, npmExecuted: true }),
+    CODEX_REMOTE_PRODUCT_BASELINE_JSON: JSON.stringify(passEvidence),
+    CODEX_REMOTE_NPM_DIAGNOSTIC_JSON: JSON.stringify(passEvidence),
+  }, () => buildRemoteNpmDiagnosticNormalizationReport({ forceCheck: true, productRelevant: true, npmExecuted: false }));
+  assertCase('v099_self_test_fixtures_ignore_ambient_formal_evidence_env', statusOf(report, 'remoteNpmDiagnosticNormalizationStatus') === 'fail' && reasonsOf(report, 'remoteNpmDiagnosticNormalizationStatus').includes('remote_npm_not_executed_for_product_pr'), failures, cases, statusOf(report, 'remoteNpmDiagnosticNormalizationStatus'), reasonsOf(report, 'remoteNpmDiagnosticNormalizationStatus'));
   report = buildLegacySelfTestAdvisoryReport({ harnessVersion: '0.9.9', selfTestFilePresent: true, localGateHasStatus: true, legacyFailureAdvisory: true });
   assertCase('legacy_self_test_advisory_for_non_active_version', statusOf(report, 'legacySelfTestAdvisoryStatus') === 'pass', failures, cases, statusOf(report, 'legacySelfTestAdvisoryStatus'), reasonsOf(report, 'legacySelfTestAdvisoryStatus'));
   report = buildLegacySelfTestAdvisoryReport({ harnessVersion: '0.9.9', selfTestFilePresent: true, localGateHasStatus: true, legacyStatusKey: 'v098SelfTestStatus', legacyFailureAdvisory: true });
