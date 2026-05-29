@@ -118,6 +118,8 @@ export function buildV098SelfTestReport() {
   assertCase('source_harness_only_v098_fixture_pass', statusOf(report, 'fiveLineOwnerDigestStatus') === 'pass', failures, cases, statusOf(report, 'fiveLineOwnerDigestStatus'), reasonsOf(report, 'fiveLineOwnerDigestStatus'));
   report = buildRemoteProductEvidenceExecutionReport({ forceCheck: true, productRelevant: false, targetRepoMode: true, isPullRequest: true, skipNpm: true });
   assertCase('target_harness_rollout_v098_fixture_pass', statusOf(report, 'remoteProductEvidenceExecutionStatus') === 'pass', failures, cases, statusOf(report, 'remoteProductEvidenceExecutionStatus'), reasonsOf(report, 'remoteProductEvidenceExecutionStatus'));
+  const workflowText = fs.readFileSync(path.join(path.dirname(fileURLToPath(import.meta.url)), '..', '.github', 'workflows', 'quality-gate.yml'), 'utf8');
+  assertCase('workflow_executes_remote_product_checks', workflowText.includes('node scripts/codex-remote-product-checks.mjs') && !workflowText.includes('npm test > "$RUNNER_TEMP/codex-npm-test.raw.log"'), failures, cases, workflowText.includes('node scripts/codex-remote-product-checks.mjs') ? 'pass' : 'missing', []);
 
   const unsafe = scanObjectForUnsafe(cases);
   const status = failures.length || unsafe.length ? 'fail' : 'pass';
