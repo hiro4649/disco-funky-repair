@@ -1,9 +1,8 @@
 #!/usr/bin/env node
-// CODEX_QUALITY_HARNESS_FILE v0.9.8
+// CODEX_QUALITY_HARNESS_FILE v0.9.9
 import fs from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { HARNESS_VERSION, scanObjectForUnsafe, simpleStatus, writeJsonReport, exitFor, readText } from './codex-v080-lib.mjs';
-import { activeSelfTestStatusKey } from './codex-active-self-test-policy.mjs';
 
 export function parseJson(value) {
   if (!value) return null;
@@ -21,11 +20,18 @@ function safe(statusKey, status, payload = {}) {
 }
 function notApplicable(statusKey, reasonCode) { return safe(statusKey, 'not_applicable', { reasonCodes: [reasonCode] }); }
 function hasText(file, pattern) { const text = readText(file) || ''; return typeof pattern === 'string' ? text.includes(pattern) : pattern.test(text); }
-function selfTestScriptForStatusKey(statusKey) {
-  const version = String(statusKey || '').match(/^v(\d+)SelfTestStatus$/)?.[1] || '';
-  return version ? `scripts/codex-v${version}-self-test.mjs` : '';
+function activeStatusKeyFor(version) {
+  const normalized = String(version || HARNESS_VERSION).replace(/\./g, '');
+  return `v${normalized}SelfTestStatus`;
 }
-function defaultActiveStatusKey(version = HARNESS_VERSION) { return activeSelfTestStatusKey(version) || 'missing'; }
+function activeSelfTestFileFor(version) {
+  const normalized = String(version || HARNESS_VERSION).replace(/\./g, '');
+  return `scripts/codex-v${normalized}-self-test.mjs`;
+}
+function defaultActiveStatusKey(version = HARNESS_VERSION) {
+  const key = activeStatusKeyFor(version);
+  return hasText('scripts/codex-local-quality-gate.mjs', key) ? key : 'missing';
+}
 
 export const REQUIRED_WORKFLOW_PRODUCT_STEPS = ['Prepare target product verification','remote product checks','remote product baseline','remote npm diagnostic','product verification evidence remote generation','safe artifact upload'];
 export const REQUIRED_REMOTE_PRODUCT_ARTIFACTS = ['codex-remote-product-checks.safe.json','codex-remote-product-baseline.json','codex-product-verification-evidence.remote.json','codex-remote-npm-diagnostic.safe.json'];
@@ -33,18 +39,18 @@ export const REQUIRED_REMOTE_PRODUCT_ARTIFACTS = ['codex-remote-product-checks.s
 export function buildActiveSelfTestRegistryReport(input = parseJson(process.env.CODEX_ACTIVE_SELF_TEST_REGISTRY_JSON) || {}) {
   const reasonCodes = [];
   const version = String(input.harnessVersion || HARNESS_VERSION);
-  const expectedStatusKey = activeSelfTestStatusKey(version);
+  const expectedStatusKey = activeStatusKeyFor(version);
+  const expectedSelfTestFile = activeSelfTestFileFor(version);
   const activeStatusKey = input.activeStatusKey || defaultActiveStatusKey(version);
-  const selfTestScript = selfTestScriptForStatusKey(expectedStatusKey);
-  const selfTestFilePresent = input.selfTestFilePresent ?? (selfTestScript ? fs.existsSync(selfTestScript) : false);
-  const manifestPath = fs.existsSync('CODEX_SOURCE_HARNESS_MANIFEST.json')
-    ? 'CODEX_SOURCE_HARNESS_MANIFEST.json'
-    : 'docs/process/CODEX_HARNESS_MANIFEST.json';
+  const selfTestFilePresent = input.selfTestFilePresent ?? fs.existsSync(expectedSelfTestFile);
+  const manifestPath = process.env.CODEX_HARNESS_MODE === 'target'
+    ? 'docs/process/CODEX_HARNESS_MANIFEST.json'
+    : 'CODEX_SOURCE_HARNESS_MANIFEST.json';
   const manifestText = readText(manifestPath) || '';
-  const manifestHasSelfTest = input.manifestHasSelfTest ?? (selfTestScript ? manifestText.includes(selfTestScript.replace('scripts/', '')) : false);
-  const localGateHasStatus = input.localGateHasStatus ?? (expectedStatusKey ? hasText('scripts/codex-local-quality-gate.mjs', expectedStatusKey) : false);
+  const manifestHasSelfTest = input.manifestHasSelfTest ?? manifestText.includes(expectedSelfTestFile.replace('scripts/', ''));
+  const localGateHasStatus = input.localGateHasStatus ?? hasText('scripts/codex-local-quality-gate.mjs', expectedStatusKey);
   if (input.invalidInput) reasonCodes.push('active_self_test_registry_missing');
-  if (!expectedStatusKey || activeStatusKey !== expectedStatusKey) reasonCodes.push('active_self_test_registry_missing');
+  if (activeStatusKey !== expectedStatusKey) reasonCodes.push('active_self_test_registry_missing');
   if (!parseBool(selfTestFilePresent)) reasonCodes.push('active_self_test_registry_missing');
   if (!parseBool(manifestHasSelfTest)) reasonCodes.push('active_self_test_registry_missing');
   if (!parseBool(localGateHasStatus)) reasonCodes.push('active_self_test_registry_missing');
