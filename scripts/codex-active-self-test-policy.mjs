@@ -19,6 +19,7 @@ export const SELF_TEST_STATUS_KEYS = [
   'v095SelfTestStatus',
   'v096SelfTestStatus',
   'v097SelfTestStatus',
+  'v098SelfTestStatus',
 ];
 
 const ACTIVE_SELF_TEST_BY_VERSION = {
@@ -39,6 +40,7 @@ const ACTIVE_SELF_TEST_BY_VERSION = {
   '0.9.5': 'v095SelfTestStatus',
   '0.9.6': 'v096SelfTestStatus',
   '0.9.7': 'v097SelfTestStatus',
+  '0.9.8': 'v098SelfTestStatus',
 };
 
 export function activeSelfTestStatusKey(harnessVersion) {

@@ -6,8 +6,10 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { marker, HARNESS_VERSION, scanObjectForUnsafe, writeJsonReport, exitFor } from './codex-v080-lib.mjs';
+import { activeSelfTestStatusKey, effectiveSelfTestStatus } from './codex-active-self-test-policy.mjs';
 import { buildProductVerificationEvidenceReport } from './codex-product-verification-evidence-normalize.mjs';
 import { buildRemoteNpmDiagnosticReport } from './codex-remote-npm-diagnostic-classify.mjs';
+import { buildActiveSelfTestRegistryReport } from './codex-v097-gate-lib.mjs';
 import {
   buildRemoteProductEvidenceExecutionReport,
   buildRemoteProductEvidenceRunnerReport,
@@ -36,6 +38,17 @@ export function buildV098SelfTestReport() {
   const failures = [];
   const cases = [];
   let report;
+
+  report = { activeStatusKey: activeSelfTestStatusKey('0.9.8') };
+  assertCase('active_v098_self_test_selected', report.activeStatusKey === 'v098SelfTestStatus', failures, cases, report.activeStatusKey, []);
+  report = { effectiveStatus: effectiveSelfTestStatus('v098SelfTestStatus', 'fail', '0.9.8') };
+  assertCase('active_v098_failure_still_blocks', report.effectiveStatus === 'fail', failures, cases, report.effectiveStatus, []);
+  report = { effectiveStatus: effectiveSelfTestStatus('v096SelfTestStatus', 'fail', '0.9.8') };
+  assertCase('legacy_v096_failure_advisory_for_v098', report.effectiveStatus === 'pass_legacy_advisory', failures, cases, report.effectiveStatus, []);
+  report = { effectiveStatus: effectiveSelfTestStatus('v097SelfTestStatus', 'fail', '0.9.8') };
+  assertCase('legacy_v097_failure_advisory_for_v098', report.effectiveStatus === 'pass_legacy_advisory', failures, cases, report.effectiveStatus, []);
+  report = buildActiveSelfTestRegistryReport({ harnessVersion: '0.9.8', activeStatusKey: 'v097SelfTestStatus', selfTestFilePresent: true, manifestHasSelfTest: true, localGateHasStatus: true });
+  assertCase('active_registry_missing_v098_fails', statusOf(report, 'activeSelfTestRegistryStatus') === 'fail' && reasonsOf(report, 'activeSelfTestRegistryStatus').includes('active_self_test_registry_missing'), failures, cases, statusOf(report, 'activeSelfTestRegistryStatus'), reasonsOf(report, 'activeSelfTestRegistryStatus'));
 
   report = buildRemoteProductEvidenceExecutionReport({ forceCheck: true, productRelevant: true, targetRepoMode: true, isPullRequest: true, skipNpm: false, npmExecuted: true, evidencePresent: true, baselinePresent: true, diagnosticPresent: true, sameHeadEvidencePresent: true });
   assertCase('remote_product_evidence_execution_product_pr_pass', statusOf(report, 'remoteProductEvidenceExecutionStatus') === 'pass', failures, cases, statusOf(report, 'remoteProductEvidenceExecutionStatus'), reasonsOf(report, 'remoteProductEvidenceExecutionStatus'));
