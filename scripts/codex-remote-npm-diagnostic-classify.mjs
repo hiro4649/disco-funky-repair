@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// CODEX_QUALITY_HARNESS_FILE v0.9.8
+// CODEX_QUALITY_HARNESS_FILE v0.9.9
 import { fileURLToPath } from 'node:url';
 import {
   HARNESS_VERSION,
@@ -105,9 +105,6 @@ export function buildRemoteNpmDiagnosticReport(env = process.env) {
   }
   if (input.__invalid) {
     return simpleStatus('remoteNpmDiagnosticStatus', 'fail', { reasonCodes: ['remote_npm_diagnostic_invalid'] });
-  }
-  if (String(input.diagnosticType || input.diagnostic_type || '').toLowerCase() === 'not_applicable') {
-    return simpleStatus('remoteNpmDiagnosticStatus', 'not_applicable', { reasonCodes: ['remote_npm_diagnostic_not_required'] });
   }
   const { diagnostic, unsafe } = normalizeRemoteNpmDiagnostic(input);
   if (unsafe) return simpleStatus('remoteNpmDiagnosticStatus', 'fail', { reasonCodes: ['remote_npm_diagnostic_unsafe'] });

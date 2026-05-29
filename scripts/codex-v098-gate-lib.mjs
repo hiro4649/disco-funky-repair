@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// CODEX_QUALITY_HARNESS_FILE v0.9.8
+// CODEX_QUALITY_HARNESS_FILE v0.9.9
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -35,23 +35,6 @@ function isPlaceholder(value) {
   const type = String(value.evidenceType || value.baselineType || value.diagnosticType || '').toLowerCase();
   return value.placeholder === true || value.status === 'pending' || type === 'placeholder';
 }
-function commandResultsPass(commands) {
-  return Array.isArray(commands) && commands.length > 0 && commands.every((command) => String(command?.result || '').toLowerCase() === 'pass');
-}
-function isFormalProductEvidencePass(value) {
-  if (!value || typeof value !== 'object' || isPlaceholder(value)) return false;
-  const status = String(value.status || value.productVerificationEvidenceStatus?.status || '').toLowerCase();
-  return status === 'pass' || commandResultsPass(value.commands);
-}
-function isFormalProductBaselinePass(value) {
-  if (!value || typeof value !== 'object' || isPlaceholder(value)) return false;
-  const status = String(value.status || value.remoteProductBaselineStatus?.status || '').toLowerCase();
-  const result = String(value.result || value.baselineResult || '').toLowerCase();
-  return status === 'pass' || result === 'pass';
-}
-function formalRemoteProductEvidencePass(evidence, baseline) {
-  return isFormalProductEvidencePass(evidence) && isFormalProductBaselinePass(baseline);
-}
 function productRelevantFromInput(input, env = process.env) {
   if (input.productRelevant !== undefined) return parseBool(input.productRelevant);
   if (input.productRelevantChanged !== undefined) return parseBool(input.productRelevantChanged);
@@ -80,21 +63,19 @@ export function buildRemoteProductEvidenceExecutionReport(input = parseJson(proc
   const evidence = input.evidence || readMaybeJson(evidencePath);
   const baseline = input.baseline || readMaybeJson(baselinePath);
   const diagnostic = input.diagnostic || readMaybeJson(diagnosticPath);
-  const formalEvidencePass = formalRemoteProductEvidencePass(evidence, baseline);
-  const effectiveNpmExecuted = npmExecuted || formalEvidencePass;
-  if (productRelevant && skipNpm && !formalEvidencePass) reasonCodes.push('remote_npm_not_executed_for_product_pr');
-  if (productRelevant && !effectiveNpmExecuted) reasonCodes.push('remote_npm_not_executed_for_product_pr');
+  if (productRelevant && skipNpm) reasonCodes.push('remote_npm_not_executed_for_product_pr');
+  if (productRelevant && !npmExecuted) reasonCodes.push('remote_npm_not_executed_for_product_pr');
   if (productRelevant && !(parseBool(input.evidencePresent) || evidencePathPresent(evidencePath) || evidence)) reasonCodes.push('remote_product_evidence_execution_missing');
   if (productRelevant && !(parseBool(input.baselinePresent) || evidencePathPresent(baselinePath) || baseline)) reasonCodes.push('remote_product_evidence_execution_missing');
   if (productRelevant && !(parseBool(input.diagnosticPresent) || evidencePathPresent(diagnosticPath) || diagnostic)) reasonCodes.push('remote_product_evidence_execution_missing');
-  if (isPlaceholder(evidence) || isPlaceholder(baseline) || (isPlaceholder(diagnostic) && !formalEvidencePass) || parseBool(input.pendingPlaceholderUsedAsPass)) reasonCodes.push('pending_placeholder_used_as_pass');
+  if (isPlaceholder(evidence) || isPlaceholder(baseline) || isPlaceholder(diagnostic) || parseBool(input.pendingPlaceholderUsedAsPass)) reasonCodes.push('pending_placeholder_used_as_pass');
   if (productRelevant && (Number(input.npmExitCode ?? 0) !== 0 || evidence?.status === 'fail' || Number(diagnostic?.npmExitCode ?? 0) !== 0)) reasonCodes.push('remote_product_evidence_runner_failed');
   if (parseBool(input.manualConfirmationOverridesProductFail)) reasonCodes.push('manual_confirmation_overrode_product_verification');
   if (parseBool(input.workflowDispatchUsedAsPrEvidence) || String(input.eventName || '') === 'workflow_dispatch') reasonCodes.push('workflow_dispatch_not_pr_substitute');
   if (parseBool(input.qualityGateDoesNotReadEvidence)) reasonCodes.push('quality_gate_ignored_product_evidence');
   if (productRelevant && !parseBool(input.sameHeadEvidencePresent) && input.sameHeadEvidencePresent !== undefined) reasonCodes.push('same_head_artifact_missing');
   if (String(input.remoteEvidencePhase || '') === 'remote_evidence_pending_before_push') warnings.push('remote_evidence_pending_before_push');
-  return safe('remoteProductEvidenceExecutionStatus', reasonCodes.length ? 'fail' : warnings.length ? 'warning' : 'pass', { reasonCodes, warnings, productRelevant, npmExecuted: effectiveNpmExecuted });
+  return safe('remoteProductEvidenceExecutionStatus', reasonCodes.length ? 'fail' : warnings.length ? 'warning' : 'pass', { reasonCodes, warnings, productRelevant, npmExecuted });
 }
 
 export function buildRemoteProductEvidenceRunnerReport(input = parseJson(process.env.CODEX_REMOTE_PRODUCT_EVIDENCE_RUNNER_JSON) || {}) {
@@ -102,12 +83,7 @@ export function buildRemoteProductEvidenceRunnerReport(input = parseJson(process
   if (!parseBool(input.forceCheck) && !productRelevant) return notApplicable('remoteProductEvidenceRunnerStatus', 'remote_product_evidence_runner_not_required');
   const reasonCodes = [];
   const npmExitCode = Number(input.npmExitCode ?? process.env.CODEX_NPM_EXIT_CODE ?? 0);
-  const evidencePath = inputPathOrEnv(input, 'evidencePath', 'CODEX_PRODUCT_VERIFICATION_EVIDENCE_PATH');
-  const baselinePath = inputPathOrEnv(input, 'baselinePath', 'CODEX_REMOTE_PRODUCT_BASELINE_PATH');
-  const evidence = input.evidence || readMaybeJson(evidencePath);
-  const baseline = input.baseline || readMaybeJson(baselinePath);
-  const formalEvidencePass = formalRemoteProductEvidencePass(evidence, baseline);
-  const npmExecuted = parseBool(input.npmExecuted) || process.env.CODEX_REMOTE_NPM_EXECUTED === '1' || formalEvidencePass;
+  const npmExecuted = parseBool(input.npmExecuted) || process.env.CODEX_REMOTE_NPM_EXECUTED === '1';
   const runnerStatus = npmExitCode === 0 ? 'pass' : 'fail';
   if (scanObjectForUnsafe(input).length || parseBool(input.rawLogsIncluded) || parseBool(input.rawStdoutIncluded) || parseBool(input.rawStderrIncluded)) reasonCodes.push('remote_product_evidence_runner_failed');
   if (productRelevant && !npmExecuted) reasonCodes.push('remote_npm_not_executed_for_product_pr');
@@ -195,8 +171,7 @@ export function buildPlaceholderEvidenceForbiddenReport(input = parseJson(proces
   const evidence = input.evidence || readMaybeJson(input.evidencePath || process.env.CODEX_PRODUCT_VERIFICATION_EVIDENCE_PATH);
   const baseline = input.baseline || readMaybeJson(input.baselinePath || process.env.CODEX_REMOTE_PRODUCT_BASELINE_PATH);
   const diagnostic = input.diagnostic || readMaybeJson(input.diagnosticPath || process.env.CODEX_NPM_TEST_SAFE_SUMMARY_PATH);
-  const formalEvidencePass = formalRemoteProductEvidencePass(evidence, baseline);
-  if (productRelevant && (isPlaceholder(evidence) || isPlaceholder(baseline) || (isPlaceholder(diagnostic) && !formalEvidencePass) || parseBool(input.placeholderUsedAsPass))) reasonCodes.push('placeholder_evidence_forbidden');
+  if (productRelevant && (isPlaceholder(evidence) || isPlaceholder(baseline) || isPlaceholder(diagnostic) || parseBool(input.placeholderUsedAsPass))) reasonCodes.push('placeholder_evidence_forbidden');
   if (parseBool(input.generatedBeforeNpmNoFinal)) reasonCodes.push('pending_placeholder_used_as_pass');
   return safe('placeholderEvidenceForbiddenStatus', reasonCodes.length ? 'fail' : 'pass', { reasonCodes, productRelevant });
 }

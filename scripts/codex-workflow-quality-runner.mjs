@@ -5,7 +5,7 @@
 
 
 
-// CODEX_QUALITY_HARNESS_FILE v0.9.8
+// CODEX_QUALITY_HARNESS_FILE v0.9.9
 
 
 
@@ -62,7 +62,6 @@ import { buildFinalSummary } from './codex-target-final-summary.mjs';
 
 
 import { buildDiagnosticConsolidatedSummary } from './codex-diagnostic-consolidation-runner.mjs';
-import { effectiveSelfTestStatus } from './codex-active-self-test-policy.mjs';
 
 
 
@@ -1337,6 +1336,37 @@ const v098OptionalNotApplicable = new Set([
 
 
 
+const v099StatusKeys = [
+  'formalEvidencePrecedenceStatus',
+  'lifeboatSemanticsStatus',
+  'placeholderOnlyEvidenceStatus',
+  'remoteNpmDiagnosticNormalizationStatus',
+  'legacySelfTestAdvisoryStatus',
+  'authSurfaceClassifierRefinementStatus',
+  'targetQualityBlockerDigestStatus',
+  'prEvidenceAutoRepairHintStatus',
+  'actionsBlockerRecoveryStatus',
+  'prContextRerunAssistantStatus',
+  'sameHeadEvidenceRefreshStatus',
+  'safeArtifactBundleCompletenessStatus',
+  'datasetAuditV2P0SchemaStatus',
+  'gameToolAdapterFixtureReadinessStatus',
+  'belovedAvatarSafetyReadinessStatus',
+  'v099SelfTestStatus',
+];
+
+const v099OptionalNotApplicable = new Set([
+  'formalEvidencePrecedenceStatus',
+  'remoteNpmDiagnosticNormalizationStatus',
+  'authSurfaceClassifierRefinementStatus',
+  'actionsBlockerRecoveryStatus',
+  'prContextRerunAssistantStatus',
+  'sameHeadEvidenceRefreshStatus',
+  'datasetAuditV2P0SchemaStatus',
+  'gameToolAdapterFixtureReadinessStatus',
+  'belovedAvatarSafetyReadinessStatus',
+]);
+
 const sourceRequiredPass = [
 
 
@@ -1485,6 +1515,8 @@ const sourceRequiredPass = [
 
 
   ...v097StatusKeys,
+  ...v098StatusKeys,
+  ...v099StatusKeys,
 
 
 
@@ -2178,6 +2210,8 @@ const targetRequiredPass = [
 
 
   ...v097StatusKeys,
+  ...v098StatusKeys,
+  ...v099StatusKeys,
 
 
 
@@ -2612,6 +2646,8 @@ const optionalNotApplicable = new Set([
 
 
   ...v097OptionalNotApplicable,
+  ...v098OptionalNotApplicable,
+  ...v099OptionalNotApplicable,
 
 
 
@@ -3095,9 +3131,6 @@ function readReport(file) {
 
 
 function statusAllowed(key, status, eventName) {
-  const effectiveSelfTest = effectiveSelfTestStatus(key, status, HARNESS_VERSION);
-  if (effectiveSelfTest === 'pass_legacy_advisory') return true;
-  if (effectiveSelfTest !== status) status = effectiveSelfTest;
 
 
 
@@ -3646,6 +3679,7 @@ export function evaluateWorkflowReport(report, options = {}) {
   const v097Fields = new Set(v097StatusKeys);
 
   const v098Fields = new Set(v098StatusKeys);
+  const v099Fields = new Set(v099StatusKeys);
 
   const hasV084Shape = report.harnessVersion === HARNESS_VERSION || [...v084Fields].some((key) => report[key]);
 
@@ -3734,6 +3768,7 @@ export function evaluateWorkflowReport(report, options = {}) {
   const hasV097Shape = report.harnessVersion === HARNESS_VERSION || [...v097Fields].some((key) => report[key]);
 
   const hasV098Shape = report.harnessVersion === HARNESS_VERSION || [...v098Fields].some((key) => report[key]);
+  const hasV099Shape = report.harnessVersion === HARNESS_VERSION || [...v099Fields].some((key) => report[key]);
 
   const required = (mode === 'target' ? targetRequiredPass : sourceRequiredPass)
 
@@ -3832,7 +3867,8 @@ export function evaluateWorkflowReport(report, options = {}) {
 
 
 
-    .filter((key) => hasV098Shape || !v098Fields.has(key));
+    .filter((key) => hasV098Shape || !v098Fields.has(key))
+    .filter((key) => hasV099Shape || !v099Fields.has(key));
 
 
 
@@ -4757,13 +4793,6 @@ export function evaluateWorkflowReport(report, options = {}) {
 
 
     datasetAuditRunnerReadinessStatus: report.datasetAuditRunnerReadinessStatus || { status: 'missing' },
-
-
-
-
-
-
-    v098SelfTestStatus: report.v098SelfTestStatus || { status: 'missing' },
 
 
 
