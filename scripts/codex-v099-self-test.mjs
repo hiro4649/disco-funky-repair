@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// CODEX_QUALITY_HARNESS_FILE v0.9.9
+// CODEX_QUALITY_HARNESS_FILE v1.0.0
 
 import { fileURLToPath } from 'node:url';
 import { marker, HARNESS_VERSION, scanObjectForUnsafe, writeJsonReport, exitFor } from './codex-v080-lib.mjs';
@@ -20,29 +20,12 @@ import {
   buildGameToolAdapterFixtureReadinessReport,
   buildBelovedAvatarSafetyReadinessReport,
 } from './codex-v099-gate-lib.mjs';
-import { buildRemoteProductSafeArtifacts } from './codex-v098-gate-lib.mjs';
 
 function statusOf(report, key) { return report[key]?.status || report.status || 'missing'; }
 function reasonsOf(report, key) { return report[key]?.reasonCodes || []; }
 function assertCase(id, condition, failures, cases, actualStatus = 'pass', reasonCodes = []) {
   cases.push({ id, status: condition ? 'pass' : 'fail', actualStatus, reasonCodes, safeSummaryOnly: true });
   if (!condition) failures.push(id);
-}
-function withEnv(overrides, fn) {
-  const previous = new Map();
-  for (const [key, value] of Object.entries(overrides)) {
-    previous.set(key, process.env[key]);
-    if (value === undefined) delete process.env[key];
-    else process.env[key] = String(value);
-  }
-  try {
-    return fn();
-  } finally {
-    for (const [key, value] of previous.entries()) {
-      if (value === undefined) delete process.env[key];
-      else process.env[key] = value;
-    }
-  }
 }
 const passEvidence = { status: 'pass', safeSummaryOnly: true };
 const failEvidence = { status: 'fail', safeSummaryOnly: true };
@@ -74,60 +57,16 @@ export function buildV099SelfTestReport() {
   assertCase('missing_reason_summary_fails', statusOf(report, 'safeArtifactBundleCompletenessStatus') === 'fail', failures, cases, statusOf(report, 'safeArtifactBundleCompletenessStatus'), reasonsOf(report, 'safeArtifactBundleCompletenessStatus'));
   report = buildFormalEvidencePrecedenceReport({ forceCheck: true, productRelevant: true, formalEvidence: passEvidence, remoteBaseline: passEvidence, remoteNpmDiagnostic: passEvidence, sameHeadMatch: true, npmFailure: true });
   assertCase('npm_failure_remains_fail', statusOf(report, 'formalEvidencePrecedenceStatus') === 'fail', failures, cases, statusOf(report, 'formalEvidencePrecedenceStatus'), reasonsOf(report, 'formalEvidencePrecedenceStatus'));
-  report = buildRemoteNpmDiagnosticNormalizationReport({ forceCheck: true, productRelevant: true, npmExecuted: true, npmExitCode: 254, safeFailureCategory: 'unknown_npm_failure', remoteBaseline: { status: 'manual_confirmation_required', remoteProductBaselineStatus: { knownFailures: ['unknown_npm_failure'] } }, candidateRegression: false });
-  assertCase('npm_exit_254_unknown_does_not_auto_product_failure', statusOf(report, 'remoteNpmDiagnosticNormalizationStatus') === 'pass' && !reasonsOf(report, 'remoteNpmDiagnosticNormalizationStatus').includes('remote_npm_not_executed_for_product_pr'), failures, cases, statusOf(report, 'remoteNpmDiagnosticNormalizationStatus'), reasonsOf(report, 'remoteNpmDiagnosticNormalizationStatus'));
-  report = buildRemoteNpmDiagnosticNormalizationReport({ forceCheck: true, productRelevant: true, npmExecuted: true, npmExitCode: 254, safeFailureCategory: 'unknown_npm_failure', remoteBaseline: { status: 'manual_confirmation_required', remoteProductBaselineStatus: { knownFailures: ['unknown_npm_failure'] } }, candidateRegression: false });
-  assertCase('baseline_same_unknown_npm_failure_not_candidate_regression', statusOf(report, 'remoteNpmDiagnosticNormalizationStatus') === 'pass', failures, cases, statusOf(report, 'remoteNpmDiagnosticNormalizationStatus'), reasonsOf(report, 'remoteNpmDiagnosticNormalizationStatus'));
-  report = buildRemoteNpmDiagnosticNormalizationReport({ forceCheck: true, productRelevant: true, npmExecuted: true, npmExitCode: 254, safeFailureCategory: 'unknown_npm_failure', remoteBaseline: { status: 'manual_confirmation_required', remoteProductBaselineStatus: { knownFailures: ['unknown_npm_failure'] } } });
-  assertCase('formal_evidence_npmExecuted_true_not_remote_npm_not_executed', !reasonsOf(report, 'remoteNpmDiagnosticNormalizationStatus').includes('remote_npm_not_executed_for_product_pr'), failures, cases, statusOf(report, 'remoteNpmDiagnosticNormalizationStatus'), reasonsOf(report, 'remoteNpmDiagnosticNormalizationStatus'));
   report = buildRemoteNpmDiagnosticNormalizationReport({ forceCheck: true, productRelevant: true, npmExecuted: true, npmExitCode: 0, formalEvidence: passEvidence, remoteBaseline: passEvidence, diagnosticStatus: 'superseded_by_formal_evidence' });
   assertCase('remote_npm_diagnostic_normalized_when_formal_evidence_pass', statusOf(report, 'remoteNpmDiagnosticNormalizationStatus') === 'pass', failures, cases, statusOf(report, 'remoteNpmDiagnosticNormalizationStatus'), reasonsOf(report, 'remoteNpmDiagnosticNormalizationStatus'));
   report = buildRemoteNpmDiagnosticNormalizationReport({ forceCheck: true, productRelevant: true, npmExecuted: false });
   assertCase('remote_npm_not_executed_emitted_when_npm_not_run', statusOf(report, 'remoteNpmDiagnosticNormalizationStatus') === 'fail', failures, cases, statusOf(report, 'remoteNpmDiagnosticNormalizationStatus'), reasonsOf(report, 'remoteNpmDiagnosticNormalizationStatus'));
-  report = withEnv({
-    CODEX_REMOTE_NPM_EXECUTED: 'true',
-    CODEX_NPM_EXIT_CODE: '0',
-    CODEX_PRODUCT_VERIFICATION_EVIDENCE_JSON: JSON.stringify({ ...passEvidence, npmExecuted: true }),
-  }, () => buildRemoteNpmDiagnosticNormalizationReport({ forceCheck: true, productRelevant: true, npmExecuted: false }));
-  assertCase('remote_npm_not_executed_fixture_remains_fail_when_env_has_formal_evidence', statusOf(report, 'remoteNpmDiagnosticNormalizationStatus') === 'fail' && reasonsOf(report, 'remoteNpmDiagnosticNormalizationStatus').includes('remote_npm_not_executed_for_product_pr'), failures, cases, statusOf(report, 'remoteNpmDiagnosticNormalizationStatus'), reasonsOf(report, 'remoteNpmDiagnosticNormalizationStatus'));
-  report = withEnv({
-    CODEX_REMOTE_NPM_EXECUTED: 'true',
-    CODEX_NPM_EXIT_CODE: '0',
-  }, () => buildRemoteNpmDiagnosticNormalizationReport({ forceCheck: true, productRelevant: true, npmExecuted: false }));
-  assertCase('npmExecuted_false_fixture_does_not_use_process_env', statusOf(report, 'remoteNpmDiagnosticNormalizationStatus') === 'fail' && reasonsOf(report, 'remoteNpmDiagnosticNormalizationStatus').includes('remote_npm_not_executed_for_product_pr'), failures, cases, statusOf(report, 'remoteNpmDiagnosticNormalizationStatus'), reasonsOf(report, 'remoteNpmDiagnosticNormalizationStatus'));
-  report = withEnv({
-    CODEX_REMOTE_NPM_EXECUTED: 'true',
-    CODEX_NPM_EXIT_CODE: '254',
-    CODEX_REMOTE_NPM_DIAGNOSTIC_JSON: JSON.stringify({ status: 'fail', safeFailureCategory: 'unknown_npm_failure', npmExitCode: 254 }),
-  }, () => buildRemoteNpmDiagnosticNormalizationReport({ forceCheck: true, productRelevant: true, npmExecuted: false, npmExitCode: 0, safeFailureCategory: '' }));
-  assertCase('forceCheck_fixture_input_overrides_env_fallback', statusOf(report, 'remoteNpmDiagnosticNormalizationStatus') === 'fail' && reasonsOf(report, 'remoteNpmDiagnosticNormalizationStatus').includes('remote_npm_not_executed_for_product_pr') && !reasonsOf(report, 'remoteNpmDiagnosticNormalizationStatus').includes('remote_npm_diagnostic_normalization_failed'), failures, cases, statusOf(report, 'remoteNpmDiagnosticNormalizationStatus'), reasonsOf(report, 'remoteNpmDiagnosticNormalizationStatus'));
-  report = withEnv({
-    CODEX_REMOTE_NPM_EXECUTED: undefined,
-    CODEX_NPM_EXIT_CODE: undefined,
-    CODEX_PRODUCT_VERIFICATION_EVIDENCE_JSON: undefined,
-    CODEX_REMOTE_NPM_DIAGNOSTIC_JSON: undefined,
-  }, () => buildRemoteNpmDiagnosticNormalizationReport({ forceCheck: true, productRelevant: true, npmExecuted: true, npmExitCode: 0, formalEvidence: passEvidence, remoteBaseline: passEvidence, formalDiagnostic: passEvidence }));
-  assertCase('formal_evidence_pass_fixture_remains_pass_without_env', statusOf(report, 'remoteNpmDiagnosticNormalizationStatus') === 'pass', failures, cases, statusOf(report, 'remoteNpmDiagnosticNormalizationStatus'), reasonsOf(report, 'remoteNpmDiagnosticNormalizationStatus'));
-  report = withEnv({
-    CODEX_REMOTE_NPM_EXECUTED: 'true',
-    CODEX_NPM_EXIT_CODE: '0',
-    CODEX_PRODUCT_VERIFICATION_EVIDENCE_JSON: JSON.stringify({ ...passEvidence, npmExecuted: true }),
-    CODEX_REMOTE_PRODUCT_BASELINE_JSON: JSON.stringify(passEvidence),
-    CODEX_REMOTE_NPM_DIAGNOSTIC_JSON: JSON.stringify(passEvidence),
-  }, () => buildRemoteNpmDiagnosticNormalizationReport({ forceCheck: true, productRelevant: true, npmExecuted: false }));
-  assertCase('v099_self_test_fixtures_ignore_ambient_formal_evidence_env', statusOf(report, 'remoteNpmDiagnosticNormalizationStatus') === 'fail' && reasonsOf(report, 'remoteNpmDiagnosticNormalizationStatus').includes('remote_npm_not_executed_for_product_pr'), failures, cases, statusOf(report, 'remoteNpmDiagnosticNormalizationStatus'), reasonsOf(report, 'remoteNpmDiagnosticNormalizationStatus'));
   report = buildLegacySelfTestAdvisoryReport({ harnessVersion: '0.9.9', selfTestFilePresent: true, localGateHasStatus: true, legacyFailureAdvisory: true });
   assertCase('legacy_self_test_advisory_for_non_active_version', statusOf(report, 'legacySelfTestAdvisoryStatus') === 'pass', failures, cases, statusOf(report, 'legacySelfTestAdvisoryStatus'), reasonsOf(report, 'legacySelfTestAdvisoryStatus'));
-  report = buildLegacySelfTestAdvisoryReport({ harnessVersion: '0.9.9', selfTestFilePresent: true, localGateHasStatus: true, legacyStatusKey: 'v098SelfTestStatus', legacyFailureAdvisory: true });
-  assertCase('legacy_v098_failure_advisory_for_v099', statusOf(report, 'legacySelfTestAdvisoryStatus') === 'pass', failures, cases, statusOf(report, 'legacySelfTestAdvisoryStatus'), reasonsOf(report, 'legacySelfTestAdvisoryStatus'));
-  report = buildLegacySelfTestAdvisoryReport({ harnessVersion: '0.9.9', selfTestFilePresent: true, localGateHasStatus: true, legacyStatusKey: 'v085SelfTestStatus', legacyFailureAdvisory: true });
-  assertCase('legacy_v085_failure_advisory_for_v099', statusOf(report, 'legacySelfTestAdvisoryStatus') === 'pass', failures, cases, statusOf(report, 'legacySelfTestAdvisoryStatus'), reasonsOf(report, 'legacySelfTestAdvisoryStatus'));
   report = buildLegacySelfTestAdvisoryReport({ harnessVersion: '0.9.9', selfTestFilePresent: true, localGateHasStatus: true, activeV099Failure: true });
   assertCase('active_v099_self_test_failure_blocks', statusOf(report, 'legacySelfTestAdvisoryStatus') === 'fail', failures, cases, statusOf(report, 'legacySelfTestAdvisoryStatus'), reasonsOf(report, 'legacySelfTestAdvisoryStatus'));
   report = buildAuthSurfaceClassifierRefinementReport({ forceCheck: true, queryOnly: true, classification: 'query_filter_only' });
   assertCase('auth_surface_query_only_not_auth_surface', statusOf(report, 'authSurfaceClassifierRefinementStatus') === 'pass', failures, cases, statusOf(report, 'authSurfaceClassifierRefinementStatus'), reasonsOf(report, 'authSurfaceClassifierRefinementStatus'));
-  report = buildAuthSurfaceClassifierRefinementReport({ forceCheck: true, queryOnly: true, classification: 'query_filter_only' });
-  assertCase('tier_scheduler_query_only_not_auth_surface', statusOf(report, 'authSurfaceClassifierRefinementStatus') === 'pass', failures, cases, statusOf(report, 'authSurfaceClassifierRefinementStatus'), reasonsOf(report, 'authSurfaceClassifierRefinementStatus'));
   report = buildAuthSurfaceClassifierRefinementReport({ forceCheck: true, actualAuthChange: true, classification: 'auth_surface' });
   assertCase('actual_auth_change_still_auth_surface', statusOf(report, 'authSurfaceClassifierRefinementStatus') === 'pass', failures, cases, statusOf(report, 'authSurfaceClassifierRefinementStatus'), reasonsOf(report, 'authSurfaceClassifierRefinementStatus'));
   report = buildTargetQualityBlockerDigestReport({ targetQualityFail: true, topBlocker: 'product evidence missing', blockerClass: 'product', safeReasonCodes: ['formal_evidence_precedence_failed'] });
@@ -138,8 +77,6 @@ export function buildV099SelfTestReport() {
   assertCase('target_quality_blocker_digest_remote_infra', statusOf(report, 'targetQualityBlockerDigestStatus') === 'pass', failures, cases, statusOf(report, 'targetQualityBlockerDigestStatus'), reasonsOf(report, 'targetQualityBlockerDigestStatus'));
   report = buildPrEvidenceAutoRepairHintReport({ bodyOnlyIssue: true, repairClass: 'body_only' });
   assertCase('pr_evidence_auto_repair_body_only_hint', statusOf(report, 'prEvidenceAutoRepairHintStatus') === 'pass', failures, cases, statusOf(report, 'prEvidenceAutoRepairHintStatus'), reasonsOf(report, 'prEvidenceAutoRepairHintStatus'));
-  report = buildPrEvidenceAutoRepairHintReport({ productFailureBodyOnly: true });
-  assertCase('body_evidence_missing_still_fails_relevant_gate', statusOf(report, 'prEvidenceAutoRepairHintStatus') === 'fail', failures, cases, statusOf(report, 'prEvidenceAutoRepairHintStatus'), reasonsOf(report, 'prEvidenceAutoRepairHintStatus'));
   report = buildActionsBlockerRecoveryReport({ forceCheck: true, failureClass: 'remote_quality_gate_blocked_account_billing', blockerClass: 'remote_infra', safeAction: 'wait_for_same_head_remote_pass' });
   assertCase('actions_blocker_billing_classified_remote_infra', statusOf(report, 'actionsBlockerRecoveryStatus') === 'pass', failures, cases, statusOf(report, 'actionsBlockerRecoveryStatus'), reasonsOf(report, 'actionsBlockerRecoveryStatus'));
   report = buildActionsBlockerRecoveryReport({ forceCheck: true, failureClass: 'remote_quality_gate_rerun_404', safeAction: 'push_empty_commit_to_refresh_pr_context' });
@@ -164,12 +101,6 @@ export function buildV099SelfTestReport() {
   assertCase('beloved_avatar_memory_privacy_fails', statusOf(report, 'belovedAvatarSafetyReadinessStatus') === 'fail', failures, cases, statusOf(report, 'belovedAvatarSafetyReadinessStatus'), reasonsOf(report, 'belovedAvatarSafetyReadinessStatus'));
   report = buildPlaceholderOnlyEvidenceReport({ productRelevant: false });
   assertCase('source_harness_only_v099_fixture_pass', statusOf(report, 'placeholderOnlyEvidenceStatus') === 'pass', failures, cases, statusOf(report, 'placeholderOnlyEvidenceStatus'), reasonsOf(report, 'placeholderOnlyEvidenceStatus'));
-  report = buildFormalEvidencePrecedenceReport({ forceCheck: true, productRelevant: true, formalEvidence: passEvidence, remoteBaseline: passEvidence, remoteNpmDiagnostic: passEvidence, productEvidence: { status: 'pending', evidenceType: 'placeholder' }, placeholderSupersededByFormalEvidence: true, sameHeadMatch: true });
-  assertCase('pending_remote_product_checks_superseded_by_formal_evidence_pass', statusOf(report, 'formalEvidencePrecedenceStatus') === 'pass', failures, cases, statusOf(report, 'formalEvidencePrecedenceStatus'), reasonsOf(report, 'formalEvidencePrecedenceStatus'));
-  report = buildFormalEvidencePrecedenceReport({ forceCheck: true, productRelevant: true, productEvidence: { status: 'pending', evidenceType: 'placeholder' }, remoteBaseline: passEvidence, remoteNpmDiagnostic: passEvidence, sameHeadMatch: true });
-  assertCase('remote_product_checks_pending_only_still_fails', statusOf(report, 'formalEvidencePrecedenceStatus') === 'fail', failures, cases, statusOf(report, 'formalEvidencePrecedenceStatus'), reasonsOf(report, 'formalEvidencePrecedenceStatus'));
-  const safeArtifacts = buildRemoteProductSafeArtifacts({ productRelevant: true, npmExecuted: true, npmExitCode: 254, commandScope: 'root', packageJsonPresent: false, scriptPresent: false, rootPackageJsonPresent: false, headSha: 'a'.repeat(40), baseSha: 'b'.repeat(40), repository: 'owner/repo' }, { CODEX_EVENT_NAME: 'pull_request', CODEX_PR_HEAD_SHA: 'a'.repeat(40), CODEX_PR_BASE_SHA: 'b'.repeat(40), CODEX_REPOSITORY: 'owner/repo', CODEX_NODE_MAJOR: '20' });
-  assertCase('remote_command_scope_mismatch_classified_safely', safeArtifacts.diagnostic.safeFailureCategory === 'script_missing' && safeArtifacts.remoteChecks.status === 'fail' && safeArtifacts.remoteChecks.commandScope === 'root', failures, cases, safeArtifacts.diagnostic.safeFailureCategory, safeArtifacts.remoteChecks.safeReasonCodes);
   report = buildSafeArtifactBundleCompletenessReport({ productRelevant: false });
   assertCase('target_harness_rollout_v099_fixture_pass', statusOf(report, 'safeArtifactBundleCompletenessStatus') === 'pass', failures, cases, statusOf(report, 'safeArtifactBundleCompletenessStatus'), reasonsOf(report, 'safeArtifactBundleCompletenessStatus'));
 

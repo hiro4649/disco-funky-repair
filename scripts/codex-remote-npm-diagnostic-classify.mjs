@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// CODEX_QUALITY_HARNESS_FILE v0.9.9
+// CODEX_QUALITY_HARNESS_FILE v1.0.0
 import { fileURLToPath } from 'node:url';
 import {
   HARNESS_VERSION,
@@ -83,11 +83,6 @@ export function normalizeRemoteNpmDiagnostic(input = {}) {
     os: String(input.os || 'unknown').slice(0, 60),
     packageManager: String(input.packageManager || input.package_manager || 'unknown').slice(0, 60),
     commandClass: String(input.commandClass || input.command_class || 'npm_test').slice(0, 80),
-    commandScope: String(input.commandScope || input.command_scope || 'unknown').replace(/[^A-Za-z0-9_.:/-]/g, '').slice(0, 80) || 'unknown',
-    commandCwdKind: String(input.commandCwdKind || input.command_cwd_kind || 'unknown').replace(/[^A-Za-z0-9_.:-]/g, '').slice(0, 80) || 'unknown',
-    packageJsonPresent: input.packageJsonPresent === undefined ? null : Boolean(input.packageJsonPresent),
-    scriptPresent: input.scriptPresent === undefined ? null : Boolean(input.scriptPresent),
-    rootPackageJsonPresent: input.rootPackageJsonPresent === undefined ? null : Boolean(input.rootPackageJsonPresent),
     safeFailureCategory: category,
     safeMarkerCount: numberOrNull(input.safeMarkerCount ?? input.safe_marker_count),
     testCountDetected: numberOrNull(input.testCountDetected ?? input.safe_test_count),

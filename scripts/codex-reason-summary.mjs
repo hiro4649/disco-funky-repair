@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// CODEX_QUALITY_HARNESS_FILE v0.9.9
+// CODEX_QUALITY_HARNESS_FILE v1.0.0
 import fs from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { HARNESS_VERSION, marker, readJson, scanObjectForUnsafe, simpleStatus, writeJsonReport, exitFor } from './codex-v080-lib.mjs';
@@ -14,14 +14,6 @@ function safeCode(value) {
   return String(value || 'unknown_reason').replace(/[^A-Za-z0-9_.:-]/g, '_').slice(0, 120);
 }
 
-function activeSelfTestStatusKey(version = HARNESS_VERSION) {
-  return `v${String(version).replace(/\./g, '')}SelfTestStatus`;
-}
-
-function isLegacySelfTestStatusKey(key, version = HARNESS_VERSION) {
-  return /^v\d{3}SelfTestStatus$/.test(String(key || '')) && key !== activeSelfTestStatusKey(version);
-}
-
 export function buildCompactReasonSummary(report = {}, options = {}) {
   const catalog = loadCatalog();
   const mode = report.targetQualityScoreStatus ? 'target' : 'source';
@@ -31,10 +23,6 @@ export function buildCompactReasonSummary(report = {}, options = {}) {
   const manualReasons = [];
   const optionalNotApplicable = [];
   for (const [gate, value] of statusEntries) {
-    if (isLegacySelfTestStatusKey(gate) && ['fail', 'missing', 'not_run'].includes(value.status)) {
-      optionalNotApplicable.push(gate);
-      continue;
-    }
     const reasonCodes = value.reasonCodes?.length ? value.reasonCodes : [gate];
     if (value.status === 'fail' || value.status === 'missing') {
       for (const code of reasonCodes) blockingReasons.push({ reasonCode: safeCode(code), gate });
