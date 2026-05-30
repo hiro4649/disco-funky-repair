@@ -68,7 +68,9 @@ export function buildRemoteProductEvidenceExecutionReport(input = parseJson(proc
   const reasonCodes = [];
   const warnings = [];
   const skipNpm = input.skipNpm !== undefined ? parseBool(input.skipNpm) : process.env.CODEX_SKIP_NPM === '1';
-  const npmExecuted = parseBool(input.npmExecuted) || process.env.CODEX_REMOTE_NPM_EXECUTED === '1';
+  const npmExecuted = input.npmExecuted !== undefined
+    ? parseBool(input.npmExecuted)
+    : process.env.CODEX_REMOTE_NPM_EXECUTED === '1';
   const evidencePath = inputPathOrEnv(input, 'evidencePath', 'CODEX_PRODUCT_VERIFICATION_EVIDENCE_PATH');
   const baselinePath = inputPathOrEnv(input, 'baselinePath', 'CODEX_REMOTE_PRODUCT_BASELINE_PATH');
   const diagnosticPath = inputPathOrEnv(input, 'diagnosticPath', 'CODEX_NPM_TEST_SAFE_SUMMARY_PATH');
