@@ -509,6 +509,111 @@ const CASES = [
     },
     "mergeSequenceStatus",
     "pass"
+  ],
+  [
+    "backend_product_pr_uses_apps_backend_cwd",
+    "buildBackendProductRemoteCheckReport",
+    {
+      "productRelevant": true,
+      "changedFiles": [
+        "apps/backend/src/app/lib/tierScheduler.ts"
+      ],
+      "rootPackagePresent": false,
+      "backendPackagePresent": true,
+      "expectBackendCwd": true
+    },
+    "backendProductRemoteCheckStatus",
+    "pass"
+  ],
+  [
+    "backend_product_pr_does_not_run_root_npm_test_when_root_package_missing",
+    "buildBackendProductRemoteCheckReport",
+    {
+      "productRelevant": true,
+      "changedFiles": [
+        "apps/backend/src/app/lib/tierScheduler.ts"
+      ],
+      "rootPackagePresent": false,
+      "backendPackagePresent": true,
+      "expectNoRootNpmWhenRootMissing": true
+    },
+    "backendProductRemoteCheckStatus",
+    "pass"
+  ],
+  [
+    "root_package_missing_classified_as_command_scope_mismatch",
+    "buildBackendProductRemoteCheckReport",
+    {
+      "productRelevant": true,
+      "changedFiles": [
+        "apps/frontend/src/App.tsx"
+      ],
+      "rootPackagePresent": false,
+      "backendPackagePresent": false,
+      "expectCommandScopeMismatch": true
+    },
+    "backendProductRemoteCheckStatus",
+    "pass"
+  ],
+  [
+    "apps_backend_package_present_generates_backend_remote_evidence",
+    "buildBackendProductRemoteCheckReport",
+    {
+      "productRelevant": true,
+      "changedFiles": [
+        "apps/backend/package.json"
+      ],
+      "rootPackagePresent": false,
+      "backendPackagePresent": true,
+      "expectBackendCwd": true
+    },
+    "backendProductRemoteCheckStatus",
+    "pass"
+  ],
+  [
+    "backend_remote_evidence_records_cwd_and_package_scope",
+    "buildBackendProductRemoteCheckReport",
+    {
+      "expectBackendEvidenceMetadata": true
+    },
+    "backendProductRemoteCheckStatus",
+    "pass"
+  ],
+  [
+    "placeholder_only_product_evidence_still_fails",
+    "buildBackendProductRemoteCheckReport",
+    {
+      "expectPlaceholderOnlyFails": true
+    },
+    "backendProductRemoteCheckStatus",
+    "pass"
+  ],
+  [
+    "formal_backend_evidence_required_for_backend_product_pr",
+    "buildBackendProductRemoteCheckReport",
+    {
+      "expectFormalEvidenceRequired": true
+    },
+    "backendProductRemoteCheckStatus",
+    "pass"
+  ],
+  [
+    "active_v100_failure_still_blocks",
+    "buildBackendProductRemoteCheckReport",
+    {
+      "expectActiveV100FailureBlocks": true
+    },
+    "backendProductRemoteCheckStatus",
+    "pass"
+  ],
+  [
+    "parent_v099_preservation_still_passes",
+    "buildBackendProductRemoteCheckReport",
+    {
+      "expectParentV099Preservation": true
+    },
+    "backendProductRemoteCheckStatus",
+    "pass"
   ]
 ];
 function statusOf(report, key) { return report[key]?.status || report.status || 'missing'; }

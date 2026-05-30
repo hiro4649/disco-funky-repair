@@ -2947,6 +2947,14 @@
       "canManualConfirmationOverride": false
     },
     {
+      "reasonCode": "remote_product_command_scope_mismatch",
+      "severity": "error",
+      "safeMessage": "remote product command scope mismatch",
+      "nextBestFix": "Select the package cwd for the product surface before running remote npm evidence.",
+      "gate": "remoteProductEvidenceRunnerStatus",
+      "canManualConfirmationOverride": false
+    },
+    {
       "reasonCode": "product_evidence_not_consumed",
       "severity": "error",
       "safeMessage": "product evidence not consumed",
