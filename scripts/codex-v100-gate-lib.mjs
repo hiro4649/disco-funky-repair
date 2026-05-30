@@ -22,6 +22,31 @@ function manifestText() { return readText('CODEX_SOURCE_HARNESS_MANIFEST.json') 
 function manifestJson() { const file = fs.existsSync('CODEX_SOURCE_HARNESS_MANIFEST.json') ? 'CODEX_SOURCE_HARNESS_MANIFEST.json' : 'docs/process/CODEX_HARNESS_MANIFEST.json'; const parsed = readJson(file); return parsed.ok ? parsed.value : {}; }
 function relevant(input, field) { return parseBool(input.forceCheck) || parseBool(input[field]); }
 function statusOf(report, key) { return report[key]?.status || report.status || 'missing'; }
+function reasonCodesOf(report, key) { return report[key]?.reasonCodes || []; }
+function withTemporaryEnv(values, fn) {
+  const previous = {};
+  for (const key of Object.keys(values)) {
+    previous[key] = process.env[key];
+    if (values[key] === undefined) delete process.env[key];
+    else process.env[key] = String(values[key]);
+  }
+  try {
+    return fn();
+  } finally {
+    for (const key of Object.keys(values)) {
+      if (previous[key] === undefined) delete process.env[key];
+      else process.env[key] = previous[key];
+    }
+  }
+}
+const REMOTE_WORKFLOW_POLLUTION_ENV = {
+  CODEX_PR_HEAD_SHA: 'dummy_remote_head',
+  CODEX_PRODUCT_VERIFICATION_EVIDENCE_PATH: 'dummy',
+  CODEX_REMOTE_PRODUCT_BASELINE_PATH: 'dummy',
+  CODEX_NPM_TEST_SAFE_SUMMARY_PATH: 'dummy',
+  CODEX_REMOTE_NPM_EXECUTED: '1',
+  CODEX_NPM_EXIT_CODE: '0',
+};
 function mapGate(statusKey, reasonCode, input, relevantField, failFields = [], warnFields = []) {
   if (!relevant(input, relevantField)) return notApplicable(statusKey, reasonCode + '_not_applicable');
   const reasonCodes = any(input, failFields) ? [reasonCode] : [];
@@ -92,8 +117,26 @@ export function buildBackendProductRemoteCheckReport(input = parseJson(process.e
     if (statusOf(report, 'remoteProductEvidenceExecutionStatus') !== 'fail') r.push('placeholder_only_product_evidence_passed');
   }
   if (parseBool(input.expectFormalEvidenceRequired)) {
-    const report = buildRemoteProductEvidenceExecutionReport({ forceCheck: true, productRelevant: true, isPullRequest: true, targetRepoMode: true, skipNpm: false, npmExecuted: false, npmExitCode: 0, evidencePresent: false, baselinePresent: false, diagnosticPresent: false });
+    const report = buildRemoteProductEvidenceExecutionReport({ forceCheck: true, productRelevant: true, isPullRequest: true, targetRepoMode: true, skipNpm: false, npmExecuted: false, npmExitCode: 0, evidencePresent: false, baselinePresent: false, diagnosticPresent: false, evidencePath: '', baselinePath: '', diagnosticPath: '' });
     if (statusOf(report, 'remoteProductEvidenceExecutionStatus') !== 'fail') r.push('formal_backend_evidence_not_required');
+  }
+  if (parseBool(input.expectFormalBackendEvidenceFixtureIgnoresEnv)) {
+    const missingFormalReport = withTemporaryEnv(REMOTE_WORKFLOW_POLLUTION_ENV, () => buildRemoteProductEvidenceExecutionReport({
+      forceCheck: true,
+      productRelevant: true,
+      isPullRequest: true,
+      targetRepoMode: true,
+      skipNpm: false,
+      npmExecuted: false,
+      npmExitCode: 0,
+      evidencePresent: false,
+      baselinePresent: false,
+      diagnosticPresent: false,
+      evidencePath: '',
+      baselinePath: '',
+      diagnosticPath: '',
+    }));
+    if (statusOf(missingFormalReport, 'remoteProductEvidenceExecutionStatus') !== 'fail' || !reasonCodesOf(missingFormalReport, 'remoteProductEvidenceExecutionStatus').includes('remote_product_evidence_execution_missing')) r.push('formal_backend_evidence_fixture_env_leak');
   }
   if (parseBool(input.expectFormalBackendEvidenceSupersedesStaleDiagnostic)) {
     const report = buildRemoteNpmDiagnosticNormalizationReport({
@@ -114,6 +157,26 @@ export function buildBackendProductRemoteCheckReport(input = parseJson(process.e
     });
     if (statusOf(report, 'remoteNpmDiagnosticNormalizationStatus') !== 'pass' || report.remoteNpmDiagnosticNormalizationStatus.npmExecuted !== true) r.push('remote_npm_diagnostic_normalization_failed');
   }
+  if (parseBool(input.expectFormalBackendEvidenceSameHeadPassesUnderRemoteEnv)) {
+    const report = withTemporaryEnv(REMOTE_WORKFLOW_POLLUTION_ENV, () => buildRemoteNpmDiagnosticNormalizationReport({
+      forceCheck: true,
+      productRelevant: true,
+      currentHeadSha: 'fixture-head',
+      evidenceHeadSha: 'fixture-head',
+      npmExecuted: false,
+      formalEvidence: {
+        status: 'pass',
+        normalizedEvidence: {
+          headSha: 'fixture-head',
+          commands: [{ required: true, result: 'pass', source: 'remote', cwd: 'apps/backend', packageScope: 'apps/backend', commandClass: 'backend_npm_test' }],
+        },
+      },
+      remoteBaseline: { status: 'pass', result: 'pass', commandCwd: 'apps/backend', packageScope: 'apps/backend', commandClass: 'backend_npm_test' },
+      remoteNpmDiagnostic: { status: 'fail', npmExitCode: 0, safeFailureCategory: 'not_executed' },
+      diagnosticPendingFinalPass: true,
+    }));
+    if (statusOf(report, 'remoteNpmDiagnosticNormalizationStatus') !== 'pass' || report.remoteNpmDiagnosticNormalizationStatus.npmExecuted !== true || report.remoteNpmDiagnosticNormalizationStatus.formalBackendEvidencePass !== true) r.push('formal_backend_evidence_env_isolation_failed');
+  }
   if (parseBool(input.expectStaleFormalBackendEvidenceStillBlocks)) {
     const report = buildRemoteNpmDiagnosticNormalizationReport({
       forceCheck: true,
@@ -130,6 +193,43 @@ export function buildBackendProductRemoteCheckReport(input = parseJson(process.e
       remoteBaseline: { status: 'pass', result: 'pass' },
     });
     if (statusOf(report, 'remoteNpmDiagnosticNormalizationStatus') !== 'fail') r.push('same_head_evidence_refresh_failed');
+  }
+  if (parseBool(input.expectStaleFormalBackendEvidenceExplicitStaleHead)) {
+    const report = withTemporaryEnv(REMOTE_WORKFLOW_POLLUTION_ENV, () => buildRemoteNpmDiagnosticNormalizationReport({
+      forceCheck: true,
+      productRelevant: true,
+      currentHeadSha: 'fixture-head',
+      evidenceHeadSha: 'stale-head',
+      npmExecuted: false,
+      formalEvidence: {
+        status: 'pass',
+        normalizedEvidence: {
+          headSha: 'stale-head',
+          commands: [{ required: true, result: 'pass', source: 'remote', cwd: 'apps/backend', packageScope: 'apps/backend', commandClass: 'backend_npm_test' }],
+        },
+      },
+      remoteBaseline: { status: 'pass', result: 'pass', commandCwd: 'apps/backend', packageScope: 'apps/backend', commandClass: 'backend_npm_test' },
+      remoteNpmDiagnostic: { status: 'fail', npmExitCode: 0, safeFailureCategory: 'not_executed' },
+    }));
+    if (statusOf(report, 'remoteNpmDiagnosticNormalizationStatus') !== 'fail' || !reasonCodesOf(report, 'remoteNpmDiagnosticNormalizationStatus').includes('same_head_evidence_refresh_failed')) r.push('same_head_evidence_refresh_failed');
+  }
+  if (parseBool(input.expectFormalBackendEvidenceMissingStillFails)) {
+    const report = withTemporaryEnv(REMOTE_WORKFLOW_POLLUTION_ENV, () => buildRemoteProductEvidenceExecutionReport({
+      forceCheck: true,
+      productRelevant: true,
+      isPullRequest: true,
+      targetRepoMode: true,
+      skipNpm: false,
+      npmExecuted: false,
+      npmExitCode: 0,
+      evidencePresent: false,
+      baselinePresent: false,
+      diagnosticPresent: false,
+      evidencePath: '',
+      baselinePath: '',
+      diagnosticPath: '',
+    }));
+    if (statusOf(report, 'remoteProductEvidenceExecutionStatus') !== 'fail' || !reasonCodesOf(report, 'remoteProductEvidenceExecutionStatus').includes('remote_product_evidence_execution_missing')) r.push('formal_backend_evidence_missing_not_blocking');
   }
   if (parseBool(input.expectLegacyTargetSelfTestsAdvisory)) {
     const localGateText = readText('scripts/codex-local-quality-gate.mjs') || '';
