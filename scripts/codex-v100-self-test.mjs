@@ -589,6 +589,15 @@ const CASES = [
     "pass"
   ],
   [
+    "v100_self_test_formal_backend_evidence_fixture_ignores_env",
+    "buildBackendProductRemoteCheckReport",
+    {
+      "expectFormalBackendEvidenceFixtureIgnoresEnv": true
+    },
+    "backendProductRemoteCheckStatus",
+    "pass"
+  ],
+  [
     "formal_backend_evidence_required_for_backend_product_pr",
     "buildBackendProductRemoteCheckReport",
     {
@@ -607,10 +616,37 @@ const CASES = [
     "pass"
   ],
   [
+    "formal_backend_evidence_same_head_passes_under_remote_env",
+    "buildBackendProductRemoteCheckReport",
+    {
+      "expectFormalBackendEvidenceSameHeadPassesUnderRemoteEnv": true
+    },
+    "backendProductRemoteCheckStatus",
+    "pass"
+  ],
+  [
     "stale_formal_backend_evidence_still_blocks",
     "buildBackendProductRemoteCheckReport",
     {
       "expectStaleFormalBackendEvidenceStillBlocks": true
+    },
+    "backendProductRemoteCheckStatus",
+    "pass"
+  ],
+  [
+    "stale_formal_backend_evidence_still_blocks_with_explicit_stale_head",
+    "buildBackendProductRemoteCheckReport",
+    {
+      "expectStaleFormalBackendEvidenceExplicitStaleHead": true
+    },
+    "backendProductRemoteCheckStatus",
+    "pass"
+  ],
+  [
+    "formal_backend_evidence_missing_still_fails",
+    "buildBackendProductRemoteCheckReport",
+    {
+      "expectFormalBackendEvidenceMissingStillFails": true
     },
     "backendProductRemoteCheckStatus",
     "pass"
