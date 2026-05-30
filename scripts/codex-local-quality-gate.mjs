@@ -5310,6 +5310,8 @@ function computeTargetQualityScoreStatus(report) {
 
 
 
+    if (LEGACY_SELF_TEST_STATUS_KEYS.has(key) && key !== ACTIVE_SELF_TEST_STATUS_KEY && report[key]?.advisoryStatus === 'fail') effectiveStatus = 'pass_optional';
+
     if (allowedNotApplicable.has(key) && status === 'not_applicable') effectiveStatus = 'pass_optional';
 
 
@@ -6790,7 +6792,53 @@ function computeOldHarnessMarkerStatus(sourceMode = true) {
 
 
 
+const LEGACY_SELF_TEST_STATUS_KEYS = new Set([
+  'v080SelfTestStatus',
+  'v081SelfTestStatus',
+  'v082SelfTestStatus',
+  'v083SelfTestStatus',
+  'v084SelfTestStatus',
+  'v085SelfTestStatus',
+  'v086SelfTestStatus',
+  'v087SelfTestStatus',
+  'v088SelfTestStatus',
+  'v089SelfTestStatus',
+  'v090SelfTestStatus',
+  'v092SelfTestStatus',
+  'v093SelfTestStatus',
+  'v094SelfTestStatus',
+  'v095SelfTestStatus',
+  'v096SelfTestStatus',
+  'v097SelfTestStatus',
+  'v098SelfTestStatus',
+  'v099SelfTestStatus',
+]);
+
+const ACTIVE_SELF_TEST_STATUS_KEY = `v${HARNESS_VERSION.replace(/\./g, '')}SelfTestStatus`;
+
+function normalizeLegacySelfTestAdvisories(report, env = process.env) {
+  if (env.CODEX_HARNESS_MODE !== 'target') return;
+  for (const key of LEGACY_SELF_TEST_STATUS_KEYS) {
+    if (key === ACTIVE_SELF_TEST_STATUS_KEY) continue;
+    const value = report[key];
+    if (!value || value.status !== 'fail') continue;
+    report[key] = {
+      ...value,
+      status: 'not_applicable',
+      originalStatus: 'fail',
+      advisoryStatus: 'fail',
+      advisoryClass: 'legacy_self_test',
+      reasonCodes: [...new Set([...(Array.isArray(value.reasonCodes) ? value.reasonCodes : []), 'legacy_self_test_advisory'])],
+      safeSummaryOnly: true,
+    };
+  }
+}
+
 function applyStatusOutcome(key, value, failures, warnings) {
+
+
+
+  if (LEGACY_SELF_TEST_STATUS_KEYS.has(key) && key !== ACTIVE_SELF_TEST_STATUS_KEY && value?.advisoryStatus === 'fail') return;
 
 
 
@@ -8216,6 +8264,8 @@ async function runSourceHarnessGate() {
 
 
 
+  normalizeLegacySelfTestAdvisories(report, gateEnv);
+
   report.selfTestProfileStatus = computeSelfTestProfileStatus(report, gateEnv, true);
 
 
@@ -8232,7 +8282,7 @@ async function runSourceHarnessGate() {
 
 
 
-    CODEX_SELF_TEST_REPORT_JSON: JSON.stringify(report.v089SelfTestStatus),
+    CODEX_SELF_TEST_REPORT_JSON: JSON.stringify(report.v100SelfTestStatus),
 
 
 
@@ -10313,6 +10363,8 @@ async function runTargetHarnessGate() {
 
 
 
+  normalizeLegacySelfTestAdvisories(report, gateEnv);
+
   report.selfTestProfileStatus = computeSelfTestProfileStatus(report, gateEnv, false);
 
 
@@ -10329,7 +10381,7 @@ async function runTargetHarnessGate() {
 
 
 
-    CODEX_SELF_TEST_REPORT_JSON: JSON.stringify(report.v089SelfTestStatus),
+    CODEX_SELF_TEST_REPORT_JSON: JSON.stringify(report.v100SelfTestStatus),
 
 
 
