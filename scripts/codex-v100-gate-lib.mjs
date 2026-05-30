@@ -5,6 +5,8 @@ import { fileURLToPath } from 'node:url';
 import { HARNESS_VERSION, scanObjectForUnsafe, simpleStatus, writeJsonReport, exitFor, readJson, readText } from './codex-v080-lib.mjs';
 import { buildRemoteProductCheckPlan } from './codex-remote-product-checks.mjs';
 import { buildRemoteProductEvidenceExecutionReport, buildRemoteProductSafeArtifacts } from './codex-v098-gate-lib.mjs';
+import { buildRemoteNpmDiagnosticNormalizationReport } from './codex-v099-gate-lib.mjs';
+import { buildSelfTestCaseExportReport } from './codex-self-test-case-export.mjs';
 
 export function parseJson(value) { if (!value) return null; try { return JSON.parse(value); } catch { return { invalidInput: true }; } }
 export function parseBool(value) { return value === true || value === '1' || value === 'true' || value === 'yes'; }
@@ -92,6 +94,70 @@ export function buildBackendProductRemoteCheckReport(input = parseJson(process.e
   if (parseBool(input.expectFormalEvidenceRequired)) {
     const report = buildRemoteProductEvidenceExecutionReport({ forceCheck: true, productRelevant: true, isPullRequest: true, targetRepoMode: true, skipNpm: false, npmExecuted: false, npmExitCode: 0, evidencePresent: false, baselinePresent: false, diagnosticPresent: false });
     if (statusOf(report, 'remoteProductEvidenceExecutionStatus') !== 'fail') r.push('formal_backend_evidence_not_required');
+  }
+  if (parseBool(input.expectFormalBackendEvidenceSupersedesStaleDiagnostic)) {
+    const report = buildRemoteNpmDiagnosticNormalizationReport({
+      forceCheck: true,
+      productRelevant: true,
+      headSha: 'abc123',
+      npmExecuted: false,
+      formalEvidence: {
+        status: 'pass',
+        normalizedEvidence: {
+          headSha: 'abc123',
+          commands: [{ required: true, result: 'pass', source: 'remote', cwd: 'apps/backend', packageScope: 'apps/backend', commandClass: 'backend_npm_test' }],
+        },
+      },
+      remoteBaseline: { status: 'pass', result: 'pass', commandCwd: 'apps/backend', packageScope: 'apps/backend', commandClass: 'backend_npm_test' },
+      remoteNpmDiagnostic: { status: 'fail', npmExitCode: 0, safeFailureCategory: 'not_executed' },
+      diagnosticPendingFinalPass: true,
+    });
+    if (statusOf(report, 'remoteNpmDiagnosticNormalizationStatus') !== 'pass' || report.remoteNpmDiagnosticNormalizationStatus.npmExecuted !== true) r.push('remote_npm_diagnostic_normalization_failed');
+  }
+  if (parseBool(input.expectStaleFormalBackendEvidenceStillBlocks)) {
+    const report = buildRemoteNpmDiagnosticNormalizationReport({
+      forceCheck: true,
+      productRelevant: true,
+      headSha: 'newhead',
+      npmExecuted: false,
+      formalEvidence: {
+        status: 'pass',
+        normalizedEvidence: {
+          headSha: 'oldhead',
+          commands: [{ required: true, result: 'pass', source: 'remote', cwd: 'apps/backend', packageScope: 'apps/backend', commandClass: 'backend_npm_test' }],
+        },
+      },
+      remoteBaseline: { status: 'pass', result: 'pass' },
+    });
+    if (statusOf(report, 'remoteNpmDiagnosticNormalizationStatus') !== 'fail') r.push('same_head_evidence_refresh_failed');
+  }
+  if (parseBool(input.expectLegacyTargetSelfTestsAdvisory)) {
+    const localGateText = readText('scripts/codex-local-quality-gate.mjs') || '';
+    if (!localGateText.includes('normalizeLegacySelfTestAdvisories') || !localGateText.includes('advisoryClass') || !localGateText.includes('legacy_self_test')) r.push('legacy_self_test_advisory_failed');
+    if (!localGateText.includes('ACTIVE_SELF_TEST_STATUS_KEY') || !localGateText.includes('v099SelfTestStatus')) r.push('legacy_self_test_advisory_failed');
+  }
+  if (parseBool(input.expectV100SelfTestCaseIdExport)) {
+    const report = buildSelfTestCaseExportReport({
+      CODEX_SELF_TEST_REPORT_JSON: JSON.stringify({
+        status: 'fail',
+        suite: 'v100',
+        caseCount: 1,
+        failedCaseCount: 1,
+        cases: [{ id: 'safe_case_id', status: 'fail', actualStatus: 'fail', reasonCodes: ['safe_reason'] }],
+      }),
+    });
+    const failedCase = report.selfTestCaseExportStatus.failedCases[0] || {};
+    if (statusOf(report, 'selfTestCaseExportStatus') !== 'pass' || failedCase.caseId !== 'safe_case_id') r.push('self_test_failed_case_export_missing');
+    const expectedFailureReport = buildSelfTestCaseExportReport({
+      CODEX_SELF_TEST_REPORT_JSON: JSON.stringify({
+        status: 'pass',
+        suite: 'v100',
+        caseCount: 1,
+        failedCaseCount: 0,
+        cases: [{ id: 'expected_failure_case', status: 'pass', expectedStatus: 'fail', actualStatus: 'fail', reasonCodes: ['safe_reason'] }],
+      }),
+    });
+    if (expectedFailureReport.selfTestCaseExportStatus.failedCases.length !== 0) r.push('self_test_failed_case_export_missing');
   }
   if (parseBool(input.expectActiveV100FailureBlocks) && statusOf(buildNewHarnessSelfTestReport({ v100SelfTestMissing: true }), 'newHarnessSelfTestStatus') !== 'fail') r.push('active_v100_failure_not_blocking');
   if (parseBool(input.expectParentV099Preservation) && (statusOf(buildParentHarnessSelfTestReport({}), 'parentHarnessSelfTestStatus') !== 'pass' || statusOf(buildParentGatePreservationReport({}), 'parentGatePreservationStatus') !== 'pass')) r.push('parent_v099_preservation_failed');
