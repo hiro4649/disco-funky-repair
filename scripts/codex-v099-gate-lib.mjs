@@ -20,7 +20,7 @@ function readMaybeJson(file) {
   const parsed = readJson(file);
   return parsed.ok ? parsed.value : null;
 }
-function statusOf(value) { return value?.status || value?.productVerificationEvidenceStatus?.status || value?.remoteProductBaselineStatus?.status || value?.remoteNpmDiagnosticStatus?.status || ''; }
+function statusOf(value) { return value?.status || value?.productVerificationEvidenceStatus?.status || value?.remoteProductBaselineStatus?.status || value?.remoteNpmDiagnosticStatus?.status || value?.result || ''; }
 function isPassLike(value) { return ['pass', 'superseded_by_formal_evidence'].includes(statusOf(value)); }
 function isFailLike(value) { return statusOf(value) === 'fail'; }
 function isPlaceholder(value) {
@@ -36,6 +36,71 @@ function productRelevantFromInput(input, env = process.env) {
   if (input.productRelevant !== undefined) return parseBool(input.productRelevant);
   const classified = parseChangeClassification(env);
   return Boolean(classified.productRelevantChanged || classified.packageOrLockfileChanged || classified.runtimeReadinessClaimed);
+}
+function numberOrNull(value) {
+  if (value === undefined || value === null || value === '') return null;
+  const numeric = Number(value);
+  return Number.isFinite(numeric) ? numeric : null;
+}
+function firstNumber(...values) {
+  for (const value of values) {
+    const numeric = numberOrNull(value);
+    if (numeric !== null) return numeric;
+  }
+  return 0;
+}
+function unwrapStatusPayload(value, statusKey) {
+  if (!value || typeof value !== 'object') return {};
+  const nested = value[statusKey];
+  return nested && typeof nested === 'object' ? nested : value;
+}
+function productEvidencePayload(value) {
+  return unwrapStatusPayload(value, 'productVerificationEvidenceStatus');
+}
+function baselinePayload(value) {
+  return unwrapStatusPayload(value, 'remoteProductBaselineStatus');
+}
+function diagnosticPayload(value) {
+  return unwrapStatusPayload(value, 'remoteNpmDiagnosticStatus');
+}
+function normalizedEvidencePayload(value) {
+  const payload = productEvidencePayload(value);
+  return payload.normalizedEvidence || payload.normalized || payload;
+}
+function evidenceCommands(value) {
+  const payload = productEvidencePayload(value);
+  const normalized = normalizedEvidencePayload(value);
+  if (Array.isArray(normalized.commands)) return normalized.commands;
+  if (Array.isArray(payload.commands)) return payload.commands;
+  return [];
+}
+function isBackendNpmCommandPass(command) {
+  if (!command || typeof command !== 'object') return false;
+  const cwd = String(command.cwd || command.commandCwd || command.command_cwd || '').replace(/\\/g, '/');
+  const packageScope = String(command.packageScope || command.package_scope || '').replace(/\\/g, '/');
+  const commandClass = String(command.commandClass || command.command_class || '');
+  return command.result === 'pass' && cwd === 'apps/backend' && packageScope === 'apps/backend' && commandClass === 'backend_npm_test';
+}
+function currentHeadMatches(input, evidence) {
+  const currentHead = String(input.headSha || input.currentHeadSha || process.env.CODEX_CURRENT_HEAD_SHA || process.env.CODEX_PR_HEAD_SHA || '').trim();
+  const payload = productEvidencePayload(evidence);
+  const normalized = normalizedEvidencePayload(evidence);
+  const evidenceHead = String(input.evidenceHeadSha || payload.headSha || normalized.headSha || '').trim();
+  return !currentHead || !evidenceHead || currentHead === evidenceHead;
+}
+function hasFormalBackendEvidencePass(input, evidence, baseline) {
+  const evidencePayload = productEvidencePayload(evidence);
+  const normalized = normalizedEvidencePayload(evidence);
+  const baselineValue = baselinePayload(baseline);
+  const directNpmPass = parseBool(input.npmExecuted) && firstNumber(input.npmExitCode, 0) === 0;
+  const evidenceNpmPass = parseBool(evidencePayload.npmExecuted || normalized.npmExecuted) && firstNumber(evidencePayload.npmExitCode, normalized.npmExitCode, 1) === 0;
+  const backendCommandPass = evidenceCommands(evidence).some(isBackendNpmCommandPass);
+  return isPassLike(evidence) &&
+    isPassLike(baselineValue) &&
+    !isPlaceholder(evidencePayload) &&
+    !isPlaceholder(baselineValue) &&
+    currentHeadMatches(input, evidence) &&
+    (backendCommandPass || evidenceNpmPass || directNpmPass);
 }
 function hasText(file, pattern) {
   const text = readText(file) || '';
@@ -101,13 +166,30 @@ export function buildPlaceholderOnlyEvidenceReport(input = parseJson(process.env
 export function buildRemoteNpmDiagnosticNormalizationReport(input = parseJson(process.env.CODEX_REMOTE_NPM_DIAGNOSTIC_NORMALIZATION_JSON) || {}) {
   const productRelevant = productRelevantFromInput(input);
   if (!parseBool(input.forceCheck) && !productRelevant) return notApplicable('remoteNpmDiagnosticNormalizationStatus', 'remote_npm_diagnostic_normalization_not_applicable');
+  const evidence = input.formalEvidence || input.productEvidence || input.evidence || parseJson(process.env.CODEX_PRODUCT_VERIFICATION_EVIDENCE_JSON) || readMaybeJson(input.evidencePath || process.env.CODEX_PRODUCT_VERIFICATION_EVIDENCE_PATH);
+  const baseline = input.formalBaseline || input.remoteBaseline || input.baseline || parseJson(process.env.CODEX_REMOTE_PRODUCT_BASELINE_JSON) || readMaybeJson(input.baselinePath || process.env.CODEX_REMOTE_PRODUCT_BASELINE_PATH);
+  const diagnostic = input.formalDiagnostic || input.remoteNpmDiagnostic || input.diagnostic || parseJson(process.env.CODEX_REMOTE_NPM_DIAGNOSTIC_JSON) || readMaybeJson(input.diagnosticPath || process.env.CODEX_NPM_TEST_SAFE_SUMMARY_PATH);
+  const evidencePayload = productEvidencePayload(evidence);
+  const normalized = normalizedEvidencePayload(evidence);
+  const diagnosticValue = diagnosticPayload(diagnostic);
+  const formalBackendEvidencePass = hasFormalBackendEvidencePass(input, evidence, baseline);
   const reasonCodes = [];
-  const npmExecuted = parseBool(input.npmExecuted);
-  const npmExitCode = Number(input.npmExitCode ?? 0);
+  const observedNpmExecuted = parseBool(input.npmExecuted) || parseBool(process.env.CODEX_REMOTE_NPM_EXECUTED) || parseBool(evidencePayload.npmExecuted || normalized.npmExecuted);
+  const npmExecuted = formalBackendEvidencePass ? true : observedNpmExecuted;
+  const observedNpmExitCode = firstNumber(input.npmExitCode, process.env.CODEX_NPM_EXIT_CODE, evidencePayload.npmExitCode, normalized.npmExitCode, diagnosticValue.npmExitCode, 0);
+  const npmExitCode = formalBackendEvidencePass ? 0 : observedNpmExitCode;
+  const explicitInputNpmFailure = input.npmExitCode !== undefined && numberOrNull(input.npmExitCode) !== 0;
   if (productRelevant && !npmExecuted) reasonCodes.push('remote_npm_not_executed_for_product_pr');
-  if (npmExitCode !== 0 || parseBool(input.npmFailMarkedPass)) reasonCodes.push('remote_npm_diagnostic_normalization_failed');
-  if (parseBool(input.diagnosticPendingFinalPass) || parseBool(input.diagnosticMissingNoFormalEvidence) || parseBool(input.remoteNpmNotExecutedEmittedDespiteExecuted)) reasonCodes.push('remote_npm_diagnostic_normalization_failed');
-  return safe('remoteNpmDiagnosticNormalizationStatus', reasonCodes.length ? 'fail' : 'pass', { reasonCodes, productRelevant, npmExecuted, npmExitCode });
+  if (explicitInputNpmFailure || npmExitCode !== 0 || parseBool(input.npmFailMarkedPass)) reasonCodes.push('remote_npm_diagnostic_normalization_failed');
+  if (!formalBackendEvidencePass && (parseBool(input.diagnosticPendingFinalPass) || parseBool(input.diagnosticMissingNoFormalEvidence) || parseBool(input.remoteNpmNotExecutedEmittedDespiteExecuted))) reasonCodes.push('remote_npm_diagnostic_normalization_failed');
+  return safe('remoteNpmDiagnosticNormalizationStatus', reasonCodes.length ? 'fail' : 'pass', {
+    reasonCodes,
+    productRelevant,
+    npmExecuted,
+    npmExitCode,
+    formalBackendEvidencePass,
+    diagnosticStatus: formalBackendEvidencePass ? 'superseded_by_formal_evidence' : (statusOf(diagnosticValue) || input.diagnosticStatus || 'unknown'),
+  });
 }
 
 export function buildLegacySelfTestAdvisoryReport(input = parseJson(process.env.CODEX_LEGACY_SELF_TEST_ADVISORY_JSON) || {}) {
