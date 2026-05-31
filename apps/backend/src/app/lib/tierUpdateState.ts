@@ -262,6 +262,9 @@ export const buildTxSentUpdateData = (
     txTo: input.txTo,
     batchId: input.batchId,
     sentAt: input.sentAt,
+    lockedBy: null,
+    lockedAt: null,
+    lockExpiresAt: null,
     heartbeatAt: input.sentAt
   };
 };

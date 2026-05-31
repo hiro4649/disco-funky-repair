@@ -200,15 +200,15 @@ describe('tierScheduler claim service runtime adoption', () => {
         expect(mockSendTierSyncTransaction).not.toHaveBeenCalled();
     });
 
-    it('keeps the PR-D2 PENDING-only query and avoids tx state or receipt polling wiring', () => {
+    it('keeps the PR-D2 PENDING-only query and avoids receipt polling wiring', () => {
         const source = fs.readFileSync(tierSchedulerPath, 'utf8');
 
         expect(source).toContain('where: buildScheduledTierUpdateProcessingWhere()');
         expect(source).toContain('claimScheduledTierUpdate');
         expect(source).toContain('refreshScheduledTierUpdateHeartbeat');
         expect(source).toContain('releaseScheduledTierUpdateClaim');
-        expect(source).not.toContain('recordTierUpdateTxSent');
+        expect(source).toContain('recordTierUpdateTxSent');
         expect(source).not.toContain('findPendingReceiptTierUpdates');
-        expect(source).not.toContain('tierUpdateTxStateService');
+        expect(source).toContain('tierUpdateTxStateService');
     });
 });

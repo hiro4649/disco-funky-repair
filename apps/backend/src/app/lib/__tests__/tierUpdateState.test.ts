@@ -119,7 +119,7 @@ describe('tierUpdateState', () => {
     expect(data).not.toHaveProperty('processed');
   });
 
-  it('builds tx-sent data without changing the existing processed flag', () => {
+  it('builds tx-sent data without changing processed and clears claim ownership', () => {
     const sentAt = new Date('2026-05-28T00:02:00.000Z');
     const batchId = buildDeterministicTierUpdateBatchId({
       scheduledTierUpdateId: 42,
@@ -147,6 +147,9 @@ describe('tierUpdateState', () => {
       txTo: toAddress,
       batchId,
       sentAt,
+      lockedBy: null,
+      lockedAt: null,
+      lockExpiresAt: null,
       heartbeatAt: sentAt
     }));
     expect(data).not.toHaveProperty('processed');
