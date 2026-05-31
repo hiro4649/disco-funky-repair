@@ -45,7 +45,12 @@ Low-priority findings may be ignored when they do not affect correctness,
 security, maintainability, or user-facing behavior. After fixing review
 findings, rerun the relevant tests.
 <!-- CODEX_QUALITY_HARNESS_BEGIN -->
-CODEX_QUALITY_HARNESS_FILE v1.0.0
+CODEX_QUALITY_HARNESS_FILE v1.0.1
+
+## Prime Directive
+
+Ship the smallest correct change that increases product value without weakening
+truth, trust, security, or maintainability.
 
 ## Source Harness Boundary
 
@@ -53,7 +58,7 @@ Target rollout work uses the source harness as the parent authority, but this re
 
 ## Codex Target Harness Boundary
 
-This target repository consumes Codex Development Harness v1.0.0 through
+This target repository consumes Codex Development Harness v1.0.1 through
 `docs/process/CODEX_HARNESS_MANIFEST.json`; do not copy or create
 `CODEX_SOURCE_HARNESS_MANIFEST.json` here. Keep product authority outside this
 block intact.
@@ -64,9 +69,12 @@ Keep AGENTS.md compact: doctrine, routing map, and links only. Put detailed
 policy in `docs/process`. Load only task-needed skills, normally four or fewer
 and never more than five. Use `docs/process/CODEX_AGENTS_DOCTRINE_POLICY.md`,
 `docs/process/CODEX_SKILL_ROUTING_POLICY.md`,
-`docs/process/CODEX_SUBAGENT_GOVERNANCE_POLICY.md`, and related v0.9.5-v1.0.0
+`docs/process/CODEX_SUBAGENT_GOVERNANCE_POLICY.md`, and related v0.9.5-v1.0.1
 files for detailed rules. Use `docs/process/CODEX_OPENAI_CODEX_METHOD_POLICY.md`
-for Codex Method requirements.
+for Codex Method requirements. For v1.0.1 outcome, ownership, anti-accretion,
+visible acceptance evidence, toolchain preflight, branch/head, and local gate
+report contract routing, use the matching `docs/process/CODEX_*_POLICY.md`
+files.
 
 ## Target Safety Rules
 
