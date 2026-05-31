@@ -343,13 +343,20 @@ describe('tierUpdateClaimService', () => {
     expect(updateMany).not.toHaveBeenCalled();
   });
 
-  it('keeps runtime scheduler, tracking, main, and tx modules disconnected from the claim service', () => {
+  it('keeps claim service runtime adoption scoped to the tier scheduler only', () => {
     const tierScheduler = fs.readFileSync(tierSchedulerPath, 'utf8');
     const tierSync = fs.readFileSync(tierSyncPath, 'utf8');
     const trackingService = fs.readFileSync(trackingServicePath, 'utf8');
     const main = fs.readFileSync(mainPath, 'utf8');
 
-    for (const source of [tierScheduler, tierSync, trackingService, main]) {
+    expect(tierScheduler).toContain('tierUpdateClaimService');
+    expect(tierScheduler).toContain('claimScheduledTierUpdate');
+    expect(tierScheduler).toContain('refreshScheduledTierUpdateHeartbeat');
+    expect(tierScheduler).toContain('releaseScheduledTierUpdateClaim');
+    expect(tierScheduler).not.toContain('findClaimableTierUpdates');
+    expect(tierScheduler).not.toContain('markScheduledTierUpdateTimedOut');
+
+    for (const source of [tierSync, trackingService, main]) {
       expect(source).not.toContain('tierUpdateClaimService');
       expect(source).not.toContain('claimScheduledTierUpdate');
       expect(source).not.toContain('findClaimableTierUpdates');

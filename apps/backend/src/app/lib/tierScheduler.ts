@@ -16,7 +16,8 @@
  * - Fair and predictable
  */
 
-import type { Prisma, ScheduledTierUpdateStatus } from '@prisma/client';
+import { Prisma } from '@prisma/client';
+import type { ScheduledTierUpdateStatus } from '@prisma/client';
 import prisma from '../db/prisma_client';
 import { ethers } from 'ethers';
 import { walletBalanceMonitor } from './walletBalanceMonitor';
@@ -35,10 +36,24 @@ import {
     TierSyncContext,
     TIER_UPDATER_ABI
 } from './tierSync';
-import { SCHEDULED_TIER_UPDATE_STATUSES } from './tierUpdateState';
+import {
+    normalizeTierUpdateSafeError,
+    SCHEDULED_TIER_UPDATE_STATUSES
+} from './tierUpdateState';
+import {
+    claimScheduledTierUpdate,
+    markScheduledTierUpdateFailed,
+    refreshScheduledTierUpdateHeartbeat,
+    releaseScheduledTierUpdateClaim,
+    type TierUpdateClaimPrismaClient
+} from './tierUpdateClaimService';
 
 
 export { getMilestoneTier, getNextTierDays };
+
+const SCHEDULED_TIER_UPDATE_LOOKAHEAD_MS = 60 * 60 * 1000;
+
+export const SCHEDULED_TIER_UPDATE_CLAIM_WORKER_ID = 'tier-scheduler';
 
 export const SCHEDULED_TIER_UPDATE_PROCESSING_STATUSES: ScheduledTierUpdateStatus[] = [
     SCHEDULED_TIER_UPDATE_STATUSES.PENDING
@@ -48,13 +63,15 @@ export const buildScheduledTierUpdateProcessingWhere = (
     now: Date = new Date()
 ): Prisma.ScheduledTierUpdateWhereInput => ({
     scheduledAt: {
-        lte: new Date(now.getTime() + 60 * 60 * 1000)
+        lte: new Date(now.getTime() + SCHEDULED_TIER_UPDATE_LOOKAHEAD_MS)
     },
     processed: false,
     status: {
         in: [...SCHEDULED_TIER_UPDATE_PROCESSING_STATUSES]
     }
 });
+
+const tierUpdateClaimPrisma = prisma as unknown as TierUpdateClaimPrismaClient;
 
 /**
  * Schedule tier update for a user
@@ -100,6 +117,14 @@ export const scheduleTierUpdate = async (userId: number, currentHoldingDays: num
                 expectedTier: nextTierDays,
                 currentTier,
                 processed: false,
+                status: SCHEDULED_TIER_UPDATE_STATUSES.PENDING,
+                attempt: 0,
+                lockedBy: null,
+                lockedAt: null,
+                heartbeatAt: null,
+                lockExpiresAt: null,
+                safeErrorKind: null,
+                safeSummary: Prisma.JsonNull,
                 updatedAt: new Date()
             }
         });
@@ -145,7 +170,33 @@ export const processScheduledTierUpdates = async (): Promise<void> => {
 
 
         for (const scheduled of upcomingUpdates) {
+            let claimAcquired = false;
+            let enteredLegacyTierSync = false;
             try {
+                const claimNow = new Date();
+                const claimResult = await claimScheduledTierUpdate({
+                    prisma: tierUpdateClaimPrisma,
+                    scheduledTierUpdateId: scheduled.id,
+                    workerId: SCHEDULED_TIER_UPDATE_CLAIM_WORKER_ID,
+                    now: claimNow,
+                    scheduledAtBefore: new Date(
+                        claimNow.getTime() + SCHEDULED_TIER_UPDATE_LOOKAHEAD_MS
+                    )
+                });
+
+                if (claimResult.count === 0) {
+                    continue;
+                }
+
+                claimAcquired = true;
+
+                await refreshScheduledTierUpdateHeartbeat({
+                    prisma: tierUpdateClaimPrisma,
+                    scheduledTierUpdateId: scheduled.id,
+                    workerId: SCHEDULED_TIER_UPDATE_CLAIM_WORKER_ID,
+                    now: new Date()
+                });
+
                 // Recalculate current holding days (accounts for passive time increase)
                 const timeSinceUpdate = Date.now() - scheduled.user.updatedAt.getTime();
                 const additionalDays = timeSinceUpdate / (24 * 60 * 60 * 1000);
@@ -159,25 +210,72 @@ export const processScheduledTierUpdates = async (): Promise<void> => {
                 if (currentTier >= scheduled.expectedTier) {
 
 
+                    await refreshScheduledTierUpdateHeartbeat({
+                        prisma: tierUpdateClaimPrisma,
+                        scheduledTierUpdateId: scheduled.id,
+                        workerId: SCHEDULED_TIER_UPDATE_CLAIM_WORKER_ID,
+                        now: new Date()
+                    });
+
+                    enteredLegacyTierSync = true;
                     await updateUserContractTier(scheduled.userId);
 
-                    // Mark as processed
-                    await prisma.scheduledTierUpdate.update({
-                        where: { id: scheduled.id },
+                    // Mark as processed only while this scheduler still owns the claim.
+                    const processed = await prisma.scheduledTierUpdate.updateMany({
+                        where: {
+                            id: scheduled.id,
+                            status: SCHEDULED_TIER_UPDATE_STATUSES.CLAIMED,
+                            processed: false,
+                            lockedBy: SCHEDULED_TIER_UPDATE_CLAIM_WORKER_ID
+                        },
                         data: {
                             processed: true,
+                            lockedBy: null,
+                            lockedAt: null,
+                            heartbeatAt: null,
+                            lockExpiresAt: null,
                             updatedAt: new Date()
                         }
                     });
 
-                    // Schedule next tier update if applicable
-                    await scheduleTierUpdate(scheduled.userId, currentHoldingDays);
+                    if (processed.count > 0) {
+                        // Schedule next tier update if applicable
+                        await scheduleTierUpdate(scheduled.userId, currentHoldingDays);
+                    }
                 } else {
-
+                    await releaseScheduledTierUpdateClaim({
+                        prisma: tierUpdateClaimPrisma,
+                        scheduledTierUpdateId: scheduled.id,
+                        workerId: SCHEDULED_TIER_UPDATE_CLAIM_WORKER_ID
+                    });
                 }
 
             } catch (error) {
                 const errorName = error instanceof Error ? error.name : typeof error;
+                void errorName;
+
+                if (claimAcquired) {
+                    try {
+                        await markScheduledTierUpdateFailed({
+                            prisma: tierUpdateClaimPrisma,
+                            scheduledTierUpdateId: scheduled.id,
+                            workerId: SCHEDULED_TIER_UPDATE_CLAIM_WORKER_ID,
+                            safeErrorKind: normalizeTierUpdateSafeError(error),
+                            safeSummary: {
+                                reason: enteredLegacyTierSync
+                                    ? 'legacy_tier_sync_failed_without_durable_tx_evidence'
+                                    : 'pre_broadcast_claimed_processing_failed',
+                                retryable: !enteredLegacyTierSync
+                            },
+                            failedAt: new Date()
+                        });
+                    } catch (claimFailureError) {
+                        const claimFailureName = claimFailureError instanceof Error
+                            ? claimFailureError.name
+                            : typeof claimFailureError;
+                        void claimFailureName;
+                    }
+                }
 
             }
         }
