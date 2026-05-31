@@ -61,8 +61,10 @@ export function buildRemoteProductCheckPlan(input = inputFromEnv(), env = proces
   const files = parseList(input.changedFiles ?? input.changed_files ?? env.CODEX_CHANGED_FILES);
   const productRelevant = productRelevantFromInput(input, files, env);
   const backendProduct = parseBool(input.backendProduct) || files.some((file) => file === 'apps/backend' || file.startsWith('apps/backend/'));
+  const contractsProduct = parseBool(input.contractsProduct) || files.some((file) => file === 'contracts' || file.startsWith('contracts/'));
   const rootPackagePresent = boolOrFile(input.rootPackagePresent, 'package.json');
   const backendPackagePresent = boolOrFile(input.backendPackagePresent, 'apps/backend/package.json');
+  const contractsPackagePresent = boolOrFile(input.contractsPackagePresent, 'contracts/package.json');
   const reasonCodes = [];
   const warnings = [];
 
@@ -81,7 +83,13 @@ export function buildRemoteProductCheckPlan(input = inputFromEnv(), env = proces
     cwd = 'apps/backend';
     packageScope = 'apps/backend';
     commandClass = 'backend_npm_test';
-  } else if (!backendProduct && rootPackagePresent) {
+  } else if (contractsProduct && contractsPackagePresent) {
+    status = 'pass';
+    command = 'npm test';
+    cwd = 'contracts';
+    packageScope = 'contracts';
+    commandClass = 'contracts_npm_test';
+  } else if (!backendProduct && !contractsProduct && rootPackagePresent) {
     status = 'pass';
     command = 'npm test';
     cwd = '.';
@@ -94,7 +102,8 @@ export function buildRemoteProductCheckPlan(input = inputFromEnv(), env = proces
     failureClass = 'command_scope_mismatch';
     reasonCodes.push('remote_product_command_scope_mismatch');
     if (backendProduct && !backendPackagePresent) reasonCodes.push('backend_package_scope_missing');
-    if (!backendProduct && !rootPackagePresent) reasonCodes.push('root_package_missing');
+    if (contractsProduct && !contractsPackagePresent) reasonCodes.push('contracts_package_scope_missing');
+    if (!backendProduct && !contractsProduct && !rootPackagePresent) reasonCodes.push('root_package_missing');
   }
 
   const plan = {
@@ -105,8 +114,10 @@ export function buildRemoteProductCheckPlan(input = inputFromEnv(), env = proces
     status,
     productRelevant,
     backendProduct,
+    contractsProduct,
     rootPackagePresent,
     backendPackagePresent,
+    contractsPackagePresent,
     command: command ? String(command).slice(0, 80) : '',
     cwd: safeRelative(cwd),
     packageScope: safeRelative(packageScope || cwd || ''),
@@ -126,8 +137,10 @@ export function buildRemoteProductCheckPlan(input = inputFromEnv(), env = proces
       status: 'fail',
       productRelevant,
       backendProduct,
+      contractsProduct,
       rootPackagePresent,
       backendPackagePresent,
+      contractsPackagePresent,
       command: '',
       cwd: '',
       packageScope: '',

@@ -82,11 +82,17 @@ export function buildBackendProductRemoteCheckReport(input = parseJson(process.e
   const w = [];
   if (parseBool(input.expectBackendCwd) && !(plan.status === 'pass' && plan.cwd === 'apps/backend' && plan.packageScope === 'apps/backend' && plan.commandClass === 'backend_npm_test' && plan.command === 'npm test -- --runInBand')) r.push('backend_product_cwd_selection_failed');
   if (parseBool(input.expectNoRootNpmWhenRootMissing) && !(plan.rootPackagePresent === false && plan.cwd === 'apps/backend' && plan.commandClass === 'backend_npm_test' && plan.command !== 'npm test')) r.push('backend_product_root_npm_bypass_failed');
+  if (parseBool(input.expectContractsCwd) && !(plan.status === 'pass' && plan.cwd === 'contracts' && plan.packageScope === 'contracts' && plan.commandClass === 'contracts_npm_test' && plan.command === 'npm test')) r.push('contracts_product_cwd_selection_failed');
+  if (parseBool(input.expectContractsNoRootNpmWhenRootMissing) && !(plan.rootPackagePresent === false && plan.cwd === 'contracts' && plan.packageScope === 'contracts' && plan.commandClass === 'contracts_npm_test')) r.push('contracts_product_root_npm_bypass_failed');
   if (parseBool(input.expectCommandScopeMismatch) && !(plan.status === 'fail' && plan.failureClass === 'command_scope_mismatch' && plan.reasonCodes.includes('remote_product_command_scope_mismatch'))) r.push('remote_product_command_scope_mismatch');
   if (parseBool(input.expectBackendEvidenceMetadata)) {
     const artifacts = buildRemoteProductSafeArtifacts({ productRelevant: true, npmExecuted: true, npmExitCode: 0, command: 'npm test -- --runInBand', commandCwd: 'apps/backend', packageScope: 'apps/backend', commandClass: 'backend_npm_test', headSha: 'abc', baseSha: 'def', repository: 'hiro4649/disco-funky-repair', eventName: 'pull_request', isPullRequest: true }, { ...process.env, CODEX_EVENT_NAME: 'pull_request' });
     const command = artifacts.evidence.commands[0] || {};
     if (command.cwd !== 'apps/backend' || command.packageScope !== 'apps/backend' || command.commandClass !== 'backend_npm_test' || artifacts.diagnostic.cwd !== 'apps/backend' || artifacts.diagnostic.packageScope !== 'apps/backend') r.push('backend_remote_evidence_metadata_missing');
+  }
+  if (parseBool(input.expectContractsEvidenceMetadata)) {
+    const metadataPlan = buildRemoteProductCheckPlan({ productRelevant: true, changedFiles: ['contracts/package.json'], rootPackagePresent: false, backendPackagePresent: false, contractsPackagePresent: true }, env);
+    if (metadataPlan.command !== 'npm test' || metadataPlan.cwd !== 'contracts' || metadataPlan.packageScope !== 'contracts' || metadataPlan.commandClass !== 'contracts_npm_test' || metadataPlan.failureClass !== '') r.push('contracts_remote_evidence_metadata_missing');
   }
   if (parseBool(input.expectPlaceholderOnlyFails)) {
     const report = buildRemoteProductEvidenceExecutionReport({ forceCheck: true, productRelevant: true, isPullRequest: true, targetRepoMode: true, npmExecuted: true, npmExitCode: 0, evidence: { status: 'pending' }, baseline: { status: 'pending' }, diagnostic: { status: 'pending' } });
