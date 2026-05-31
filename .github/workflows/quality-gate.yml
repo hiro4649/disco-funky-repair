@@ -164,6 +164,9 @@ jobs:
             elif [ "$check_status" = "pass" ] && [ "$command_class" = "root_npm_test" ] && [ "$command_cwd" = "." ]; then
               npm_executed=1
               npm test > "$RUNNER_TEMP/codex-npm-test.raw.log" 2>&1 || npm_exit=$?
+            elif [ "$check_status" = "pass" ] && [ "$command_class" = "contracts_npm_test" ] && [ "$command_cwd" = "contracts" ]; then
+              npm_executed=1
+              (cd "$command_cwd" && npm test > "$RUNNER_TEMP/codex-npm-test.raw.log" 2>&1) || npm_exit=$?
             else
               npm_exit=254
             fi

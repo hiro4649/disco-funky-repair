@@ -541,6 +541,38 @@ const CASES = [
     "pass"
   ],
   [
+    "contracts_product_pr_uses_contracts_cwd",
+    "buildBackendProductRemoteCheckReport",
+    {
+      "productRelevant": true,
+      "changedFiles": [
+        "contracts/test/FunkyRave.test.js"
+      ],
+      "rootPackagePresent": false,
+      "backendPackagePresent": false,
+      "contractsPackagePresent": true,
+      "expectContractsCwd": true
+    },
+    "backendProductRemoteCheckStatus",
+    "pass"
+  ],
+  [
+    "contracts_product_pr_does_not_run_root_npm_test_when_root_package_missing",
+    "buildBackendProductRemoteCheckReport",
+    {
+      "productRelevant": true,
+      "changedFiles": [
+        "contracts/test/FunkyRave.test.js"
+      ],
+      "rootPackagePresent": false,
+      "backendPackagePresent": false,
+      "contractsPackagePresent": true,
+      "expectContractsNoRootNpmWhenRootMissing": true
+    },
+    "backendProductRemoteCheckStatus",
+    "pass"
+  ],
+  [
     "root_package_missing_classified_as_command_scope_mismatch",
     "buildBackendProductRemoteCheckReport",
     {
@@ -571,10 +603,35 @@ const CASES = [
     "pass"
   ],
   [
+    "contracts_package_present_generates_contracts_remote_evidence",
+    "buildBackendProductRemoteCheckReport",
+    {
+      "productRelevant": true,
+      "changedFiles": [
+        "contracts/package.json"
+      ],
+      "rootPackagePresent": false,
+      "backendPackagePresent": false,
+      "contractsPackagePresent": true,
+      "expectContractsCwd": true
+    },
+    "backendProductRemoteCheckStatus",
+    "pass"
+  ],
+  [
     "backend_remote_evidence_records_cwd_and_package_scope",
     "buildBackendProductRemoteCheckReport",
     {
       "expectBackendEvidenceMetadata": true
+    },
+    "backendProductRemoteCheckStatus",
+    "pass"
+  ],
+  [
+    "contracts_remote_evidence_records_cwd_and_package_scope",
+    "buildBackendProductRemoteCheckReport",
+    {
+      "expectContractsEvidenceMetadata": true
     },
     "backendProductRemoteCheckStatus",
     "pass"
