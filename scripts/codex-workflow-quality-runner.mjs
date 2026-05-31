@@ -72,6 +72,18 @@ import { buildInvalidReportRecoverySummary } from './codex-invalid-report-recove
 import { V101_STATUS_KEYS } from './codex-v101-gate-lib.mjs';
 
 
+function activeSelfTestStatusKey() {
+  return `v${HARNESS_VERSION.replace(/\./g, '')}SelfTestStatus`;
+}
+
+function isSelfTestStatusKey(key) {
+  return /^v\d{3}SelfTestStatus$/.test(String(key || ''));
+}
+
+function isLegacySelfTestStatusKey(key) {
+  return isSelfTestStatusKey(key) && key !== activeSelfTestStatusKey();
+}
+
 
 
 
@@ -3153,8 +3165,14 @@ function readReport(file) {
 
 
 
-function statusAllowed(key, status, eventName) {
+export function statusAllowed(key, status, eventName, harnessMode = process.env.CODEX_HARNESS_MODE) {
 
+
+
+
+
+
+  if (harnessMode === 'target' && isLegacySelfTestStatusKey(key)) return true;
 
 
 
@@ -3921,7 +3939,7 @@ export function evaluateWorkflowReport(report, options = {}) {
 
 
 
-    if (!statusAllowed(key, status, options.eventName || process.env.CODEX_EVENT_NAME)) failures.push(`${key}=${status}`);
+    if (!statusAllowed(key, status, options.eventName || process.env.CODEX_EVENT_NAME, harnessMode)) failures.push(`${key}=${status}`);
 
 
 
