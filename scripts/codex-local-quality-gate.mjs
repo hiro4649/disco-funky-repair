@@ -58,6 +58,23 @@ const PROFILE_TEMPLATE_VERSION = '0.7.0';
 
 const MARKER = `CODEX_QUALITY_HARNESS_FILE v${HARNESS_VERSION}`;
 
+function activeSelfTestStatusKey() {
+  return `v${HARNESS_VERSION.replace(/\./g, '')}SelfTestStatus`;
+}
+
+function isSelfTestStatusKey(key) {
+  return /^v\d{3}SelfTestStatus$/.test(String(key || ''));
+}
+
+function isLegacySelfTestStatusKey(key) {
+  return isSelfTestStatusKey(key) && key !== activeSelfTestStatusKey();
+}
+
+function targetEffectiveStatus(key, status) {
+  if (isLegacySelfTestStatusKey(key)) return 'pass_legacy_advisory';
+  return status;
+}
+
 
 
 
@@ -3299,6 +3316,7 @@ function computeOutputShapeStatus(report) {
     ...V098_STATUS_KEYS,
     ...V099_STATUS_KEYS,
     ...V100_STATUS_KEYS,
+    ...V101_STATUS_KEYS,
 
 
     'remoteLocalParityStatus',
@@ -4590,6 +4608,7 @@ function computeTargetOutputShapeStatus(report) {
     ...V098_STATUS_KEYS,
     ...V099_STATUS_KEYS,
     ...V100_STATUS_KEYS,
+    ...V101_STATUS_KEYS,
 
 
     'remoteLocalParityStatus',
@@ -4956,6 +4975,7 @@ function computeTargetQualityScoreStatus(report) {
     ...V098_STATUS_KEYS,
     ...V099_STATUS_KEYS,
     ...V100_STATUS_KEYS,
+    ...V101_STATUS_KEYS,
 
 
     'remoteLocalParityStatus',
@@ -5398,7 +5418,7 @@ function computeTargetQualityScoreStatus(report) {
 
 
 
-    let effectiveStatus = status;
+    let effectiveStatus = targetEffectiveStatus(key, status);
 
 
 
@@ -6883,6 +6903,8 @@ function computeOldHarnessMarkerStatus(sourceMode = true) {
 
 
 function applyStatusOutcome(key, value, failures, warnings) {
+
+  if (process.env.CODEX_HARNESS_MODE === 'target' && isLegacySelfTestStatusKey(key)) return;
 
 
 

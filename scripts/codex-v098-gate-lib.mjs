@@ -135,7 +135,7 @@ export function buildRemoteProductSafeArtifacts(input = parseJson(process.env.CO
     platform: String(input.platform || env.RUNNER_OS || process.platform || 'unknown').slice(0, 60),
     os: String(input.os || process.platform || 'unknown').slice(0, 60),
     packageManager: 'npm', commandClass, cwd: commandCwd || null, packageScope: packageScope || null,
-    safeFailureCategory: npmExitCode === 0 ? 'test_assertion_failure' : failureClass || 'unknown_npm_failure',
+    safeFailureCategory: npmExitCode === 0 ? 'none' : failureClass || 'unknown_npm_failure',
     safeMarkerCount: null, testCountDetected: null, durationMs: null, knownBaselineMatched: false,
     rawLogUploaded: false, rawValuesStored: false,
     diagnosticType: productRelevant ? 'remote_npm_diagnostic' : 'not_applicable', safeSummaryOnly: true,

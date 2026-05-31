@@ -11,6 +11,7 @@ import {
 } from './codex-v080-lib.mjs';
 
 const SAFE_CATEGORIES = new Set([
+  'none',
   'test_assertion_failure',
   'lint_failure',
   'typecheck_failure',
