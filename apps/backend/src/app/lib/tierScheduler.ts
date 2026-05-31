@@ -33,7 +33,7 @@ import {
     getMilestoneTier,
     getNextTierDays,
     sendTierSyncTransaction,
-    TierSyncContext,
+    type TierSyncContext,
     TIER_UPDATER_ABI
 } from './tierSync';
 import {
@@ -47,6 +47,10 @@ import {
     releaseScheduledTierUpdateClaim,
     type TierUpdateClaimPrismaClient
 } from './tierUpdateClaimService';
+import {
+    recordTierUpdateTxSent,
+    type TierUpdateTxStatePrismaClient
+} from './tierUpdateTxStateService';
 
 
 export { getMilestoneTier, getNextTierDays };
@@ -72,6 +76,27 @@ export const buildScheduledTierUpdateProcessingWhere = (
 });
 
 const tierUpdateClaimPrisma = prisma as unknown as TierUpdateClaimPrismaClient;
+const tierUpdateTxStatePrisma = prisma as unknown as TierUpdateTxStatePrismaClient;
+
+type TierSchedulerSyncContext = TierSyncContext & {
+    scheduledTierUpdateId?: number;
+};
+
+const resolveTierUpdateTxChainId = async (
+    provider: { getNetwork(): Promise<{ chainId: bigint | number | string }> },
+    tx: { chainId?: bigint | number | string | null }
+): Promise<number> => {
+    const chainIdSource = tx.chainId ?? (await provider.getNetwork()).chainId;
+    const chainId = typeof chainIdSource === 'bigint'
+        ? Number(chainIdSource)
+        : Number(chainIdSource);
+
+    if (!Number.isInteger(chainId)) {
+        throw new Error('invalid_tier_update_chain_id');
+    }
+
+    return chainId;
+};
 
 /**
  * Schedule tier update for a user
@@ -218,7 +243,9 @@ export const processScheduledTierUpdates = async (): Promise<void> => {
                     });
 
                     enteredLegacyTierSync = true;
-                    await updateUserContractTier(scheduled.userId);
+                    await updateUserContractTier(scheduled.userId, undefined, {
+                        scheduledTierUpdateId: scheduled.id
+                    });
 
                     // Mark as processed only while this scheduler still owns the claim.
                     const processed = await prisma.scheduledTierUpdate.updateMany({
@@ -294,12 +321,13 @@ export const processScheduledTierUpdates = async (): Promise<void> => {
 export const updateUserContractTier = async (
     userId: number,
     retries: number = 3,
-    syncContext: TierSyncContext = {}
+    syncContext: TierSchedulerSyncContext = {}
 ): Promise<void> => {
     let lastError: Error | null = null;
     let user: { wallet_address: string; holdingDate: number; disco_balance: number; held_amount: number } | null = null;
 
     for (let attempt = 0; attempt < retries; attempt++) {
+        let scheduledTxBroadcasted = false;
         try {
             if (!TIER_RELAYER_PRIVATE_KEY || !QUICKNODE_HTTP_RPC_URL || !TIER_UPDATER_CONTRACT_ADDRESS) {
 
@@ -400,6 +428,20 @@ export const updateUserContractTier = async (
                 txOptions
             );
 
+            if (syncContext.scheduledTierUpdateId !== undefined) {
+                scheduledTxBroadcasted = true;
+                await recordTierUpdateTxSent({
+                    prisma: tierUpdateTxStatePrisma,
+                    scheduledTierUpdateId: syncContext.scheduledTierUpdateId,
+                    txHash: tx.hash,
+                    txChainId: await resolveTierUpdateTxChainId(provider, tx),
+                    txContractAddress: TIER_UPDATER_CONTRACT_ADDRESS,
+                    txFrom: wallet.address,
+                    txTo: user.wallet_address,
+                    batchId,
+                    sentAt: new Date()
+                });
+            }
 
 
             const receipt = await tx.wait();
@@ -422,6 +464,12 @@ export const updateUserContractTier = async (
             lastError = error as Error;
             const errorName = error instanceof Error ? error.name : typeof error;
 
+
+            // Once a scheduled tier tx has been broadcast, never retry the send path here.
+            // TX_SENT evidence or the scheduler failure state becomes the resume boundary.
+            if (scheduledTxBroadcasted) {
+                throw error;
+            }
 
             // If insufficient balance, no point retrying
             if (error instanceof Error && error.message.includes('Insufficient tier relayer wallet balance')) {

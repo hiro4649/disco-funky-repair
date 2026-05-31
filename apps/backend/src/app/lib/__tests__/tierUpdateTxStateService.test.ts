@@ -87,6 +87,9 @@ describe('tierUpdateTxStateService', () => {
         txTo: toAddress,
         batchId,
         sentAt,
+        lockedBy: null,
+        lockedAt: null,
+        lockExpiresAt: null,
         heartbeatAt: sentAt
       })
     });
@@ -294,12 +297,12 @@ describe('tierUpdateTxStateService', () => {
     });
   });
 
-  it('keeps runtime scheduler and tx send modules disconnected from this service', () => {
+  it('keeps receipt polling disconnected while allowing scheduler tx sent evidence', () => {
     const tierScheduler = fs.readFileSync(tierSchedulerPath, 'utf8');
     const tierSync = fs.readFileSync(tierSyncPath, 'utf8');
 
-    expect(tierScheduler).not.toContain('tierUpdateTxStateService');
-    expect(tierScheduler).not.toContain('recordTierUpdateTxSent');
+    expect(tierScheduler).toContain('tierUpdateTxStateService');
+    expect(tierScheduler).toContain('recordTierUpdateTxSent');
     expect(tierScheduler).not.toContain('recordTierUpdateConfirmed');
     expect(tierScheduler).not.toContain('findPendingReceiptTierUpdates');
     expect(tierSync).not.toContain('tierUpdateTxStateService');
