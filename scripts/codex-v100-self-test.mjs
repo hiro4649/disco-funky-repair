@@ -29,6 +29,13 @@ const CASES = [
     "pass"
   ],
   [
+    "workflow_runner_legacy_self_test_not_applicable_is_optional",
+    "buildWorkflowLegacySelfTestOptionalReport",
+    {},
+    "workflowLegacySelfTestOptionalStatus",
+    "pass"
+  ],
+  [
     "new_v100_self_test_registered_pass",
     "buildNewHarnessSelfTestReport",
     {},
