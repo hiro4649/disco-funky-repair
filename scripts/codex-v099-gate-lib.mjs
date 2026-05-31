@@ -102,8 +102,21 @@ export function buildRemoteNpmDiagnosticNormalizationReport(input = parseJson(pr
   const productRelevant = productRelevantFromInput(input);
   if (!parseBool(input.forceCheck) && !productRelevant) return notApplicable('remoteNpmDiagnosticNormalizationStatus', 'remote_npm_diagnostic_normalization_not_applicable');
   const reasonCodes = [];
-  const npmExecuted = parseBool(input.npmExecuted);
-  const npmExitCode = Number(input.npmExitCode ?? 0);
+  const evidence = input.productEvidence || input.formalEvidence || parseJson(process.env.CODEX_PRODUCT_VERIFICATION_EVIDENCE_JSON) || {};
+  const normalizedEvidence = evidence.normalizedEvidence || evidence;
+  const diagnostic = input.remoteNpmDiagnostic || input.formalDiagnostic || parseJson(process.env.CODEX_REMOTE_NPM_DIAGNOSTIC_JSON) || {};
+  const normalizedDiagnostic = diagnostic.diagnostic || diagnostic;
+  const evidenceCommands = Array.isArray(normalizedEvidence.commands)
+    ? normalizedEvidence.commands
+    : Array.isArray(normalizedEvidence.normalized?.commands)
+      ? normalizedEvidence.normalized.commands
+      : [];
+  const commandEvidencePassed = evidenceCommands.some((command) => command?.source === 'remote' && command?.result === 'pass');
+  const npmExecuted = parseBool(input.npmExecuted) ||
+    parseBool(normalizedEvidence.npmExecuted) ||
+    parseBool(evidence.npmExecuted) ||
+    commandEvidencePassed;
+  const npmExitCode = Number(input.npmExitCode ?? normalizedDiagnostic.npmExitCode ?? normalizedEvidence.npmExitCode ?? evidence.npmExitCode ?? 0);
   if (productRelevant && !npmExecuted) reasonCodes.push('remote_npm_not_executed_for_product_pr');
   if (npmExitCode !== 0 || parseBool(input.npmFailMarkedPass)) reasonCodes.push('remote_npm_diagnostic_normalization_failed');
   if (parseBool(input.diagnosticPendingFinalPass) || parseBool(input.diagnosticMissingNoFormalEvidence) || parseBool(input.remoteNpmNotExecutedEmittedDespiteExecuted)) reasonCodes.push('remote_npm_diagnostic_normalization_failed');
