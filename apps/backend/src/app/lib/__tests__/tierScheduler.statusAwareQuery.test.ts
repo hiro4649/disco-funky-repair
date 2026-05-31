@@ -89,12 +89,12 @@ describe('tierScheduler status-aware processing query', () => {
         );
     });
 
-    it('keeps processScheduledTierUpdates on the status-aware helper without claim or receipt wiring', () => {
+    it('keeps processScheduledTierUpdates on the status-aware helper with claim-only runtime adoption', () => {
         const source = fs.readFileSync(tierSchedulerPath, 'utf8');
 
         expect(source).toContain('where: buildScheduledTierUpdateProcessingWhere()');
-        expect(source).not.toContain('tierUpdateClaimService');
-        expect(source).not.toContain('claimScheduledTierUpdate');
+        expect(source).toContain('tierUpdateClaimService');
+        expect(source).toContain('claimScheduledTierUpdate');
         expect(source).not.toContain('tierUpdateTxStateService');
         expect(source).not.toContain('recordTierUpdateTxSent');
         expect(source).not.toContain('findPendingReceiptTierUpdates');
