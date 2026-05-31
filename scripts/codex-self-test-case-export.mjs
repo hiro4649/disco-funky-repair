@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// CODEX_QUALITY_HARNESS_FILE v1.0.0
+// CODEX_QUALITY_HARNESS_FILE v1.0.1
 import fs from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { scanObjectForUnsafe, simpleStatus, writeJsonReport, exitFor } from './codex-v080-lib.mjs';
@@ -16,7 +16,7 @@ function envJson(env, name) {
 function safeCases(report) {
   const cases = Array.isArray(report?.cases) ? report.cases : [];
   return cases
-    .filter((item) => item.status === 'fail')
+    .filter((item) => item.status === 'fail' || item.actualStatus === 'fail')
     .map((item) => ({
       caseId: String(item.id || item.caseId || 'unknown_case').slice(0, 120),
       expectedStatus: String(item.expectedStatus || item.expected || 'pass').slice(0, 40),
@@ -27,17 +27,12 @@ function safeCases(report) {
 }
 
 export function buildSelfTestCaseExportReport(env = process.env) {
-  const report = envJson(env, 'CODEX_SELF_TEST_REPORT_JSON') ||
-    envJson(env, 'CODEX_V100_SELF_TEST_REPORT') ||
-    envJson(env, 'CODEX_V099_SELF_TEST_REPORT') ||
-    envJson(env, 'CODEX_V089_SELF_TEST_REPORT') ||
-    {};
-  const statusReport = report.v100SelfTestStatus || report.v099SelfTestStatus || report.v089SelfTestStatus || report;
-  const suite = String(statusReport.suite || env.CODEX_SELF_TEST_SUITE || 'local_quality_gate');
-  const failedCases = safeCases(statusReport);
-  const failedCaseCount = Number(statusReport.failedCaseCount ?? failedCases.length);
-  const caseCount = Number(statusReport.caseCount ?? (Array.isArray(statusReport.cases) ? statusReport.cases.length : failedCases.length));
-  const reportedFailure = statusReport.status === 'fail' || failedCaseCount > 0;
+  const report = envJson(env, 'CODEX_SELF_TEST_REPORT_JSON') || envJson(env, 'CODEX_V089_SELF_TEST_REPORT') || {};
+  const suite = String(report.suite || report.v089SelfTestStatus?.suite || env.CODEX_SELF_TEST_SUITE || 'local_quality_gate');
+  const failedCases = safeCases(report);
+  const failedCaseCount = Number(report.failedCaseCount ?? failedCases.length);
+  const caseCount = Number(report.caseCount ?? (Array.isArray(report.cases) ? report.cases.length : failedCases.length));
+  const reportedFailure = report.status === 'fail' || report.v089SelfTestStatus?.status === 'fail' || failedCaseCount > 0;
   const reasonCodes = [];
   if (reportedFailure && !failedCases.length) reasonCodes.push('self_test_failed_case_export_missing');
   const payload = {

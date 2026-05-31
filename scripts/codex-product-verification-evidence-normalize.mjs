@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// CODEX_QUALITY_HARNESS_FILE v1.0.0
+// CODEX_QUALITY_HARNESS_FILE v1.0.1
 import fs from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import {
@@ -41,20 +41,6 @@ function hasUnsafeEvidenceKeys(value) {
   return visit(value);
 }
 
-function safeRelative(value) {
-  const normalized = String(value || '').replace(/\\/g, '/').replace(/^\.\/+/, '').replace(/\/+/g, '/').trim();
-  if (!normalized) return null;
-  if (normalized === '.') return '.';
-  if (/^(?:[A-Za-z]:|\/)/.test(normalized)) return null;
-  if (normalized.split('/').some((part) => part === '..')) return null;
-  return /^[A-Za-z0-9._/-]+$/.test(normalized) ? normalized : null;
-}
-
-function safeToken(value) {
-  const text = String(value || '').slice(0, 80);
-  return /^[A-Za-z0-9_.-]+$/.test(text) ? text : null;
-}
-
 function bodyEvidence(body) {
   const commands = [];
   const safe = String(body || '');
@@ -82,9 +68,6 @@ function envCommands(env) {
     required: true,
     result: env.CODEX_PRODUCT_VERIFICATION_RESULT || 'pass',
     source: env.CODEX_PRODUCT_VERIFICATION_SOURCE || 'local',
-    cwd: safeRelative(env.CODEX_NPM_COMMAND_CWD),
-    packageScope: safeRelative(env.CODEX_NPM_PACKAGE_SCOPE),
-    commandClass: safeToken(env.CODEX_NPM_COMMAND_CLASS),
     durationMs: null,
     testCount: null,
     safeSummary: 'command supplied through safe environment evidence',
@@ -117,9 +100,6 @@ export function normalizeProductVerificationEvidence(env = process.env) {
     required: Boolean(item.required),
     result: ['not_run', 'pass', 'fail'].includes(item.result) ? item.result : 'not_run',
     source: ['local', 'remote', 'not_applicable'].includes(item.source) ? item.source : 'local',
-    cwd: safeRelative(item.cwd || item.commandCwd || item.command_cwd),
-    packageScope: safeRelative(item.packageScope || item.package_scope),
-    commandClass: safeToken(item.commandClass || item.command_class),
     durationMs: Number.isFinite(Number(item.durationMs)) ? Number(item.durationMs) : null,
     testCount: Number.isFinite(Number(item.testCount)) ? Number(item.testCount) : null,
     safeSummary: String(item.safeSummary || 'safe command summary').slice(0, 160),

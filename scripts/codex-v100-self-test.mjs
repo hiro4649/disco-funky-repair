@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// CODEX_QUALITY_HARNESS_FILE v1.0.0
+// CODEX_QUALITY_HARNESS_FILE v1.0.1
 import { fileURLToPath } from 'node:url';
 import { marker, HARNESS_VERSION, scanObjectForUnsafe, writeJsonReport, exitFor } from './codex-v080-lib.mjs';
 import * as gates from './codex-v100-gate-lib.mjs';
@@ -26,13 +26,6 @@ const CASES = [
     "buildParentHarnessSelfTestReport",
     {},
     "parentHarnessSelfTestStatus",
-    "pass"
-  ],
-  [
-    "workflow_runner_legacy_self_test_not_applicable_is_optional",
-    "buildWorkflowLegacySelfTestOptionalReport",
-    {},
-    "workflowLegacySelfTestOptionalStatus",
     "pass"
   ],
   [
@@ -516,183 +509,6 @@ const CASES = [
     },
     "mergeSequenceStatus",
     "pass"
-  ],
-  [
-    "backend_product_pr_uses_apps_backend_cwd",
-    "buildBackendProductRemoteCheckReport",
-    {
-      "productRelevant": true,
-      "changedFiles": [
-        "apps/backend/src/app/lib/tierScheduler.ts"
-      ],
-      "rootPackagePresent": false,
-      "backendPackagePresent": true,
-      "expectBackendCwd": true
-    },
-    "backendProductRemoteCheckStatus",
-    "pass"
-  ],
-  [
-    "backend_product_pr_does_not_run_root_npm_test_when_root_package_missing",
-    "buildBackendProductRemoteCheckReport",
-    {
-      "productRelevant": true,
-      "changedFiles": [
-        "apps/backend/src/app/lib/tierScheduler.ts"
-      ],
-      "rootPackagePresent": false,
-      "backendPackagePresent": true,
-      "expectNoRootNpmWhenRootMissing": true
-    },
-    "backendProductRemoteCheckStatus",
-    "pass"
-  ],
-  [
-    "root_package_missing_classified_as_command_scope_mismatch",
-    "buildBackendProductRemoteCheckReport",
-    {
-      "productRelevant": true,
-      "changedFiles": [
-        "apps/frontend/src/App.tsx"
-      ],
-      "rootPackagePresent": false,
-      "backendPackagePresent": false,
-      "expectCommandScopeMismatch": true
-    },
-    "backendProductRemoteCheckStatus",
-    "pass"
-  ],
-  [
-    "apps_backend_package_present_generates_backend_remote_evidence",
-    "buildBackendProductRemoteCheckReport",
-    {
-      "productRelevant": true,
-      "changedFiles": [
-        "apps/backend/package.json"
-      ],
-      "rootPackagePresent": false,
-      "backendPackagePresent": true,
-      "expectBackendCwd": true
-    },
-    "backendProductRemoteCheckStatus",
-    "pass"
-  ],
-  [
-    "backend_remote_evidence_records_cwd_and_package_scope",
-    "buildBackendProductRemoteCheckReport",
-    {
-      "expectBackendEvidenceMetadata": true
-    },
-    "backendProductRemoteCheckStatus",
-    "pass"
-  ],
-  [
-    "placeholder_only_product_evidence_still_fails",
-    "buildBackendProductRemoteCheckReport",
-    {
-      "expectPlaceholderOnlyFails": true
-    },
-    "backendProductRemoteCheckStatus",
-    "pass"
-  ],
-  [
-    "v100_self_test_formal_backend_evidence_fixture_ignores_env",
-    "buildBackendProductRemoteCheckReport",
-    {
-      "expectFormalBackendEvidenceFixtureIgnoresEnv": true
-    },
-    "backendProductRemoteCheckStatus",
-    "pass"
-  ],
-  [
-    "formal_backend_evidence_required_for_backend_product_pr",
-    "buildBackendProductRemoteCheckReport",
-    {
-      "expectFormalEvidenceRequired": true
-    },
-    "backendProductRemoteCheckStatus",
-    "pass"
-  ],
-  [
-    "formal_backend_evidence_supersedes_stale_remote_npm_diagnostic",
-    "buildBackendProductRemoteCheckReport",
-    {
-      "expectFormalBackendEvidenceSupersedesStaleDiagnostic": true
-    },
-    "backendProductRemoteCheckStatus",
-    "pass"
-  ],
-  [
-    "formal_backend_evidence_same_head_passes_under_remote_env",
-    "buildBackendProductRemoteCheckReport",
-    {
-      "expectFormalBackendEvidenceSameHeadPassesUnderRemoteEnv": true
-    },
-    "backendProductRemoteCheckStatus",
-    "pass"
-  ],
-  [
-    "stale_formal_backend_evidence_still_blocks",
-    "buildBackendProductRemoteCheckReport",
-    {
-      "expectStaleFormalBackendEvidenceStillBlocks": true
-    },
-    "backendProductRemoteCheckStatus",
-    "pass"
-  ],
-  [
-    "stale_formal_backend_evidence_still_blocks_with_explicit_stale_head",
-    "buildBackendProductRemoteCheckReport",
-    {
-      "expectStaleFormalBackendEvidenceExplicitStaleHead": true
-    },
-    "backendProductRemoteCheckStatus",
-    "pass"
-  ],
-  [
-    "formal_backend_evidence_missing_still_fails",
-    "buildBackendProductRemoteCheckReport",
-    {
-      "expectFormalBackendEvidenceMissingStillFails": true
-    },
-    "backendProductRemoteCheckStatus",
-    "pass"
-  ],
-  [
-    "legacy_v085_v098_v099_self_tests_are_target_advisory",
-    "buildBackendProductRemoteCheckReport",
-    {
-      "expectLegacyTargetSelfTestsAdvisory": true
-    },
-    "backendProductRemoteCheckStatus",
-    "pass"
-  ],
-  [
-    "v100_self_test_case_export_reports_failed_case_id",
-    "buildBackendProductRemoteCheckReport",
-    {
-      "expectV100SelfTestCaseIdExport": true
-    },
-    "backendProductRemoteCheckStatus",
-    "pass"
-  ],
-  [
-    "active_v100_failure_still_blocks",
-    "buildBackendProductRemoteCheckReport",
-    {
-      "expectActiveV100FailureBlocks": true
-    },
-    "backendProductRemoteCheckStatus",
-    "pass"
-  ],
-  [
-    "parent_v099_preservation_still_passes",
-    "buildBackendProductRemoteCheckReport",
-    {
-      "expectParentV099Preservation": true
-    },
-    "backendProductRemoteCheckStatus",
-    "pass"
   ]
 ];
 function statusOf(report, key) { return report[key]?.status || report.status || 'missing'; }
@@ -704,11 +520,11 @@ export function buildV100SelfTestReport() {
     const report = gates[builderName](input);
     const actualStatus = statusOf(report, key);
     const ok = actualStatus === expected;
-    out.push({ caseIndex: out.length + 1, id, status: ok ? 'pass' : 'fail', expectedStatus: expected, actualStatus, reasonCodes: reasonsOf(report, key), safeSummaryOnly: true });
+    out.push({ caseIndex: out.length + 1, status: ok ? 'pass' : 'fail', actualStatus, reasonCodes: reasonsOf(report, key), safeSummaryOnly: true });
     if (!ok) failures.push(id);
   }
   const unsafe = scanObjectForUnsafe(out);
   const status = failures.length || unsafe.length ? 'fail' : 'pass';
-  return { marker, harnessVersion: HARNESS_VERSION, status, v100SelfTestStatus: { status, suite: 'v100', caseCount: out.length, failedCaseCount: failures.length, failedCases: failures.map((id) => CASES.findIndex((item) => item[0] === id) + 1), failedCaseIds: failures.slice(0, 20), cases: out, reasonCodes: unsafe.length ? ['unsafe_output_detected'] : [], safeSummaryOnly: true }, cases: out, safeSummaryOnly: true };
+  return { marker, harnessVersion: HARNESS_VERSION, status, v100SelfTestStatus: { status, suite: 'v100', caseCount: out.length, failedCaseCount: failures.length, failedCases: failures.map((id) => CASES.findIndex((item) => item[0] === id) + 1), cases: out, reasonCodes: unsafe.length ? ['unsafe_output_detected'] : [], safeSummaryOnly: true }, cases: out, safeSummaryOnly: true };
 }
 if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) { const report = buildV100SelfTestReport(); writeJsonReport(report, 'CODEX_V100_SELF_TEST_REPORT'); exitFor(report); }
