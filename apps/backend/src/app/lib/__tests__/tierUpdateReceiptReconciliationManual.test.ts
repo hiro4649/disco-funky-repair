@@ -14,14 +14,14 @@ jest.mock('../tierUpdateReceiptReconciliationJob', () => ({
   runTierUpdateReceiptReconciliationJob: mockRunTierUpdateReceiptReconciliationJob
 }));
 
-import { runManualTierUpdateReceiptReconciliation } from '../tierUpdateReceiptReconciliationEntrypoint';
+import { runManualTierUpdateReceiptReconciliation } from '../tierUpdateReceiptReconciliationManual';
 
 const fixedNow = new Date('2026-06-01T00:00:00.000Z');
 const contractAddress = '0x0000000000000000000000000000000000000001';
 const backendRoot = path.resolve(__dirname, '../../../../');
-const entrypointPath = path.join(
+const manualBoundaryPath = path.join(
   backendRoot,
-  'src/app/lib/tierUpdateReceiptReconciliationEntrypoint.ts'
+  'src/app/lib/tierUpdateReceiptReconciliationManual.ts'
 );
 
 const buildPrisma = (): TierUpdateTxStatePrismaClient => ({
@@ -73,7 +73,7 @@ const buildJobResult = (
   ...overrides
 });
 
-describe('tierUpdateReceiptReconciliationEntrypoint', () => {
+describe('tierUpdateReceiptReconciliationManual', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     mockRunTierUpdateReceiptReconciliationJob.mockResolvedValue(buildJobResult());
@@ -264,22 +264,22 @@ describe('tierUpdateReceiptReconciliationEntrypoint', () => {
   });
 
   it('keeps the manual entrypoint disconnected from routes, CLI, cron, main, trackingService, real RPC, and tx send code', () => {
-    const entrypointSource = fs.readFileSync(entrypointPath, 'utf8');
+    const manualBoundarySource = fs.readFileSync(manualBoundaryPath, 'utf8');
 
-    expect(entrypointSource).toContain('runTierUpdateReceiptReconciliationJob');
-    expect(entrypointSource).not.toContain('express.Router');
-    expect(entrypointSource).not.toContain('router.');
-    expect(entrypointSource).not.toContain('process.argv');
-    expect(entrypointSource).not.toContain('require.main');
-    expect(entrypointSource).not.toContain('node-cron');
-    expect(entrypointSource).not.toContain('trackingService');
-    expect(entrypointSource).not.toContain('main.ts');
-    expect(entrypointSource).not.toContain('JsonRpcProvider');
-    expect(entrypointSource).not.toContain('new ethers');
-    expect(entrypointSource).not.toContain('Wallet(');
-    expect(entrypointSource).not.toContain('Contract(');
-    expect(entrypointSource).not.toContain('sendTierSyncTransaction');
-    expect(entrypointSource).not.toContain('recordTierUpdateTxSent');
-    expect(entrypointSource).not.toContain('tx.wait');
+    expect(manualBoundarySource).toContain('runTierUpdateReceiptReconciliationJob');
+    expect(manualBoundarySource).not.toContain('express.Router');
+    expect(manualBoundarySource).not.toContain('router.');
+    expect(manualBoundarySource).not.toContain('process.argv');
+    expect(manualBoundarySource).not.toContain('require.main');
+    expect(manualBoundarySource).not.toContain('node-cron');
+    expect(manualBoundarySource).not.toContain('trackingService');
+    expect(manualBoundarySource).not.toContain('main.ts');
+    expect(manualBoundarySource).not.toContain('JsonRpcProvider');
+    expect(manualBoundarySource).not.toContain('new ethers');
+    expect(manualBoundarySource).not.toContain('Wallet(');
+    expect(manualBoundarySource).not.toContain('Contract(');
+    expect(manualBoundarySource).not.toContain('sendTierSyncTransaction');
+    expect(manualBoundarySource).not.toContain('recordTierUpdateTxSent');
+    expect(manualBoundarySource).not.toContain('tx.wait');
   });
 });
