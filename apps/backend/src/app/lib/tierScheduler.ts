@@ -16,6 +16,7 @@
  * - Fair and predictable
  */
 
+import type { Prisma, ScheduledTierUpdateStatus } from '@prisma/client';
 import prisma from '../db/prisma_client';
 import { ethers } from 'ethers';
 import { walletBalanceMonitor } from './walletBalanceMonitor';
@@ -34,9 +35,26 @@ import {
     TierSyncContext,
     TIER_UPDATER_ABI
 } from './tierSync';
+import { SCHEDULED_TIER_UPDATE_STATUSES } from './tierUpdateState';
 
 
 export { getMilestoneTier, getNextTierDays };
+
+export const SCHEDULED_TIER_UPDATE_PROCESSING_STATUSES: ScheduledTierUpdateStatus[] = [
+    SCHEDULED_TIER_UPDATE_STATUSES.PENDING
+];
+
+export const buildScheduledTierUpdateProcessingWhere = (
+    now: Date = new Date()
+): Prisma.ScheduledTierUpdateWhereInput => ({
+    scheduledAt: {
+        lte: new Date(now.getTime() + 60 * 60 * 1000)
+    },
+    processed: false,
+    status: {
+        in: [...SCHEDULED_TIER_UPDATE_PROCESSING_STATUSES]
+    }
+});
 
 /**
  * Schedule tier update for a user
@@ -105,12 +123,7 @@ export const processScheduledTierUpdates = async (): Promise<void> => {
 
         // Get all scheduled updates that should be processed in the next hour
         const upcomingUpdates = await prisma.scheduledTierUpdate.findMany({
-            where: {
-                scheduledAt: {
-                    lte: new Date(Date.now() + 60 * 60 * 1000) // Next hour
-                },
-                processed: false
-            },
+            where: buildScheduledTierUpdateProcessingWhere(),
             include: {
                 user: {
                     select: {
