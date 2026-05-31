@@ -1365,6 +1365,7 @@ const v099OptionalNotApplicable = new Set([
   'datasetAuditV2P0SchemaStatus',
   'gameToolAdapterFixtureReadinessStatus',
   'belovedAvatarSafetyReadinessStatus',
+  'v099SelfTestStatus',
 ]);
 
 const sourceRequiredPass = [
@@ -2617,6 +2618,7 @@ const optionalNotApplicable = new Set([
 
 
 
+  'v085SelfTestStatus',
   ...v093OptionalNotApplicable,
 
 
