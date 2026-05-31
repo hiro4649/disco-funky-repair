@@ -44,6 +44,7 @@ type JobRunCreateOptions = {
 
 type JobRunServiceOptions = {
   now?: Date;
+  checkpoint?: Prisma.InputJsonValue;
 };
 
 type MarkTimedOutJobRunsOptions = {
@@ -169,6 +170,15 @@ const safeSummaryData = (safeSummary?: Prisma.InputJsonValue) => {
 
   assertSafeSummary(safeSummary);
   return { safeSummary };
+};
+
+const checkpointData = (checkpoint?: Prisma.InputJsonValue) => {
+  if (checkpoint === undefined) {
+    return {};
+  }
+
+  assertSafeSummary(checkpoint, 'checkpoint');
+  return { checkpoint };
 };
 
 const getJobRunById = async (client: Pick<JobRunClient, 'jobRun'>, jobRunId: number) => {
@@ -330,6 +340,7 @@ export const completeJobRun = async (
       status: JOB_RUN_STATUSES.SUCCEEDED,
       finishedAt: now,
       heartbeatAt: now,
+      ...checkpointData(options.checkpoint),
       ...safeSummaryData(safeSummary)
     }
   });
@@ -373,6 +384,7 @@ export const failJobRun = async (
         finishedAt: now,
         heartbeatAt: now,
         safeErrorKind,
+        ...checkpointData(options.checkpoint),
         ...summaryData
       }
     });

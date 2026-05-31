@@ -237,13 +237,19 @@ describe('JobRun foundation service', () => {
     await claimJobRun('tracking_balance', 'window-2026-05-26', 'worker-a');
 
     const wrongWorker = await completeJobRun(rows[0].id, 'worker-b', { reason: 'done' });
-    const owner = await completeJobRun(rows[0].id, 'worker-a', { reason: 'done', processedCount: 3 });
+    const owner = await completeJobRun(
+      rows[0].id,
+      'worker-a',
+      { reason: 'done', processedCount: 3 },
+      { checkpoint: { reason: 'done', processedCount: 3 } }
+    );
 
     expect(wrongWorker.status).toBe('skipped');
     expect(owner.status).toBe('updated');
     expect(rows[0]).toMatchObject({
       status: 'SUCCEEDED',
       lockedBy: 'worker-a',
+      checkpoint: { reason: 'done', processedCount: 3 },
       safeSummary: { reason: 'done', processedCount: 3 }
     });
   });
@@ -260,15 +266,22 @@ describe('JobRun foundation service', () => {
 
     expect(rows[0].safeSummary).toBeNull();
 
-    const result = await failJobRun(rows[0].id, 'worker-a', 'provider_timeout', {
-      reason: 'provider_timeout',
-      failedCount: 1
-    });
+    const result = await failJobRun(
+      rows[0].id,
+      'worker-a',
+      'provider_timeout',
+      {
+        reason: 'provider_timeout',
+        failedCount: 1
+      },
+      { checkpoint: { reason: 'provider_timeout', failedCount: 1 } }
+    );
 
     expect(result.status).toBe('updated');
     expect(rows[0]).toMatchObject({
       status: 'FAILED',
       safeErrorKind: 'provider_timeout',
+      checkpoint: { reason: 'provider_timeout', failedCount: 1 },
       safeSummary: { reason: 'provider_timeout', failedCount: 1 }
     });
   });
