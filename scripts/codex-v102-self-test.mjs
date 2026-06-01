@@ -44,6 +44,35 @@ function backendProductArtifacts() {
   });
 }
 
+function contractsProductPlan() {
+  return buildRemoteProductCheckPlan({
+    productRelevant: true,
+    changedFiles: ['contracts/test/FunkyRave.test.js'],
+    rootPackagePresent: false,
+    backendPackagePresent: true,
+    contractsPackagePresent: true,
+  });
+}
+
+function contractsProductArtifacts() {
+  return buildRemoteProductSafeArtifacts({
+    productRelevant: true,
+    isPullRequest: true,
+    npmExecuted: true,
+    npmExitCode: 0,
+    command: 'npm test',
+    cwd: 'contracts',
+    packageScope: 'contracts',
+    commandClass: 'contracts_npm_test',
+  }, {
+    CODEX_REMOTE_NPM_EXECUTED: '1',
+    CODEX_NPM_EXIT_CODE: '0',
+    CODEX_NPM_CWD: 'contracts',
+    CODEX_NPM_PACKAGE_SCOPE: 'contracts',
+    CODEX_NPM_COMMAND_CLASS: 'contracts_npm_test',
+  });
+}
+
 function rootPackageMissingPlan() {
   return buildRemoteProductCheckPlan({
     productRelevant: true,
@@ -221,6 +250,39 @@ const CASES = [
       report.remoteProductEvidenceRunnerStatus.status === 'fail' &&
       report.remoteProductEvidenceRunnerStatus.reasonCodes.includes('remote_npm_not_executed_for_product_pr'));
   }, {}, 'formalBackendEvidenceRequiredFixtureStatus', 'pass'],
+  ['contracts_product_pr_uses_contracts_cwd_v102', () => {
+    const plan = contractsProductPlan();
+    return caseStatus('contractsProductCwdFixtureStatus',
+      plan.status === 'pass' && plan.cwd === 'contracts');
+  }, {}, 'contractsProductCwdFixtureStatus', 'pass'],
+  ['contracts_product_pr_does_not_run_root_npm_test_when_root_package_missing_v102', () => {
+    const plan = contractsProductPlan();
+    return caseStatus('contractsProductNoRootNpmFixtureStatus',
+      plan.status === 'pass' &&
+      plan.command === 'npm test' &&
+      plan.cwd === 'contracts' &&
+      plan.packageScope === 'contracts' &&
+      plan.commandClass === 'contracts_npm_test');
+  }, {}, 'contractsProductNoRootNpmFixtureStatus', 'pass'],
+  ['contracts_package_present_generates_contracts_remote_evidence_v102', () => {
+    const artifacts = contractsProductArtifacts();
+    const command = artifacts.evidence.commands[0] || {};
+    return caseStatus('contractsProductRemoteEvidenceFixtureStatus',
+      artifacts.evidence.status === 'pass' &&
+      artifacts.diagnostic.cwd === 'contracts' &&
+      command.result === 'pass');
+  }, {}, 'contractsProductRemoteEvidenceFixtureStatus', 'pass'],
+  ['contracts_remote_evidence_records_cwd_and_package_scope_v102', () => {
+    const artifacts = contractsProductArtifacts();
+    const command = artifacts.evidence.commands[0] || {};
+    return caseStatus('contractsProductRemoteMetadataFixtureStatus',
+      command.cwd === 'contracts' &&
+      command.packageScope === 'contracts' &&
+      command.commandClass === 'contracts_npm_test' &&
+      artifacts.diagnostic.cwd === 'contracts' &&
+      artifacts.diagnostic.packageScope === 'contracts' &&
+      artifacts.diagnostic.commandClass === 'contracts_npm_test');
+  }, {}, 'contractsProductRemoteMetadataFixtureStatus', 'pass'],
   ['placeholder_only_product_evidence_still_fails_v102', gates.buildProductPrEvidenceValidatorReport, { placeholderOnly: true }, 'productPrEvidenceValidatorStatus', 'fail'],
   ['active_v102_failure_still_blocks', gates.buildLegacySelfTestMatrixReport, { activeVersion: 'v102', v102SelfTestStatus: 'fail', failureClass: 'active_failure' }, 'legacySelfTestMatrixStatus', 'fail'],
   ['parent_v101_preservation_still_passes', gates.buildLegacySelfTestMatrixReport, { activeVersion: 'v102', v101SelfTestStatus: 'pass', v102SelfTestStatus: 'pass' }, 'legacySelfTestMatrixStatus', 'pass'],
@@ -272,6 +334,101 @@ const CASES = [
       !result.summary.blockingReasons.some((item) => item.gate === 'v085SelfTestStatus') &&
       result.summary.optionalReasons.some((item) => item.gate === 'v085SelfTestStatus'));
   }, {}, 'diagnosticLegacySelfTestAdvisoryFixtureStatus', 'pass'],
+  ['reason_summary_pass_when_target_quality_pass_and_v102_pass', () => {
+    const result = buildCompactReasonSummary(targetQualityFixtureReport({
+      status: 'fail',
+      targetQualityScoreStatus: targetQualityStatus(),
+      failures: [
+        { id: 'v085SelfTestStatus.failed' },
+        { id: 'v102SelfTestStatus.failed' },
+      ],
+    }));
+    return caseStatus('reasonSummaryTargetPassFixtureStatus',
+      result.summary.status === 'pass' && result.summary.blockingReasons.length === 0);
+  }, {}, 'reasonSummaryTargetPassFixtureStatus', 'pass'],
+  ['reason_summary_ignores_legacy_v085_advisory_when_v102_pass', () => {
+    const result = buildCompactReasonSummary(targetQualityFixtureReport({
+      targetQualityScoreStatus: targetQualityStatus({ v085SelfTestStatus: { status: 'fail', safeSummaryOnly: true } }),
+      v085SelfTestStatus: { status: 'fail', safeSummaryOnly: true },
+      failures: [{ id: 'v085SelfTestStatus.failed' }],
+    }));
+    return caseStatus('reasonSummaryLegacyAdvisoryNoBlockFixtureStatus',
+      !result.summary.blockingReasons.some((item) => item.reasonCode === 'v085SelfTestStatus.failed'));
+  }, {}, 'reasonSummaryLegacyAdvisoryNoBlockFixtureStatus', 'pass'],
+  ['reason_summary_drops_stale_v102_failed_reason_when_v102_pass', () => {
+    const result = buildCompactReasonSummary(targetQualityFixtureReport({
+      status: 'fail',
+      targetQualityScoreStatus: targetQualityStatus(),
+      v102SelfTestStatus: { status: 'pass', safeSummaryOnly: true },
+      failures: [{ id: 'v102SelfTestStatus.failed' }],
+    }));
+    return caseStatus('reasonSummaryStaleV102NoBlockFixtureStatus',
+      result.summary.status === 'pass' && !result.summary.blockingReasons.some((item) => item.reasonCode === 'v102SelfTestStatus.failed'));
+  }, {}, 'reasonSummaryStaleV102NoBlockFixtureStatus', 'pass'],
+  ['final_report_pass_when_target_quality_pass_and_no_blockers', () => {
+    const result = buildCompactReasonSummary(targetQualityFixtureReport({
+      status: 'fail',
+      targetQualityScoreStatus: targetQualityStatus(),
+      failures: [{ id: 'v102SelfTestStatus.failed' }],
+    }));
+    return caseStatus('finalReportTargetPassFixtureStatus', result.summary.status === 'pass');
+  }, {}, 'finalReportTargetPassFixtureStatus', 'pass'],
+  ['diagnostic_summary_matches_reason_summary_for_legacy_advisory', () => {
+    const report = targetQualityFixtureReport({
+      targetQualityScoreStatus: targetQualityStatus({ v085SelfTestStatus: { status: 'fail', safeSummaryOnly: true } }),
+      v085SelfTestStatus: { status: 'fail', safeSummaryOnly: true },
+    });
+    const reason = buildCompactReasonSummary(report);
+    const diagnostic = buildDiagnosticConsolidatedSummary(report);
+    return caseStatus('diagnosticReasonLegacyAdvisoryParityFixtureStatus',
+      !reason.summary.blockingReasons.some((item) => item.gate === 'v085SelfTestStatus') &&
+      !diagnostic.summary.blockingReasons.some((item) => item.gate === 'v085SelfTestStatus'));
+  }, {}, 'diagnosticReasonLegacyAdvisoryParityFixtureStatus', 'pass'],
+  ['active_v102_failure_still_blocks_reason_summary', () => {
+    const result = buildCompactReasonSummary(targetQualityFixtureReport({
+      targetQualityScoreStatus: targetQualityStatus({ v102SelfTestStatus: { status: 'fail', safeSummaryOnly: true } }),
+      v102SelfTestStatus: { status: 'fail', safeSummaryOnly: true },
+      failures: [{ id: 'v102SelfTestStatus.failed' }],
+    }));
+    return caseStatus('reasonSummaryActiveV102BlocksFixtureStatus',
+      result.summary.blockingReasons.some((item) => item.reasonCode === 'v102SelfTestStatus.failed'));
+  }, {}, 'reasonSummaryActiveV102BlocksFixtureStatus', 'pass'],
+  ['product_verification_failure_still_blocks_reason_summary', () => {
+    const result = buildCompactReasonSummary(targetQualityFixtureReport({
+      targetQualityScoreStatus: targetQualityStatus({ productVerificationStatus: { status: 'fail', safeSummaryOnly: true } }),
+      productVerificationStatus: { status: 'fail', reasonCodes: ['product_verification_failed'], safeSummaryOnly: true },
+      failures: [{ id: 'productVerificationStatus.failed' }],
+    }));
+    return caseStatus('reasonSummaryProductVerificationBlocksFixtureStatus',
+      result.summary.blockingReasons.some((item) => item.gate === 'productVerificationStatus' || item.reasonCode === 'productVerificationStatus.failed'));
+  }, {}, 'reasonSummaryProductVerificationBlocksFixtureStatus', 'pass'],
+  ['safe_output_failure_still_blocks_reason_summary', () => {
+    const result = buildCompactReasonSummary(targetQualityFixtureReport({
+      targetQualityScoreStatus: { status: 'fail', score: 70, safeSummaryOnly: true },
+      safeOutputScanStatus: { status: 'fail', reasonCodes: ['unsafe_value_detected'], safeSummaryOnly: true },
+      failures: [{ id: 'safeOutputScanStatus.failed' }],
+    }));
+    return caseStatus('reasonSummarySafeOutputBlocksFixtureStatus',
+      result.summary.blockingReasons.some((item) => item.gate === 'safeOutputScanStatus' || item.reasonCode === 'safeOutputScanStatus.failed'));
+  }, {}, 'reasonSummarySafeOutputBlocksFixtureStatus', 'pass'],
+  ['target_quality_failure_still_blocks_final_report', () => {
+    const result = buildCompactReasonSummary(targetQualityFixtureReport({
+      targetQualityScoreStatus: { status: 'fail', score: 70, safeSummaryOnly: true },
+      failures: [{ id: 'targetQualityScoreStatus.failed' }],
+    }));
+    return caseStatus('finalReportTargetQualityBlocksFixtureStatus',
+      result.summary.status === 'fail' && result.summary.blockingReasons.some((item) => item.reasonCode === 'targetQualityScoreStatus.failed'));
+  }, {}, 'finalReportTargetQualityBlocksFixtureStatus', 'pass'],
+  ['legacy_v085_pass_advisory_not_top_level_failure', () => {
+    const result = buildCompactReasonSummary(targetQualityFixtureReport({
+      status: 'fail',
+      targetQualityScoreStatus: targetQualityStatus({ v085SelfTestStatus: { status: 'fail', safeSummaryOnly: true } }),
+      v085SelfTestStatus: { status: 'fail', safeSummaryOnly: true },
+      failures: [{ id: 'v085SelfTestStatus.failed' }],
+    }));
+    return caseStatus('legacyV085AdvisoryNotTopLevelFailureFixtureStatus',
+      result.summary.status === 'pass' && result.summary.optionalNotApplicable.includes('v085SelfTestStatus'));
+  }, {}, 'legacyV085AdvisoryNotTopLevelFailureFixtureStatus', 'pass'],
   ['remote_npm_diagnostic_uses_current_safe_artifact_scope_v102', () => {
     const artifacts = backendProductArtifacts();
     const report = buildRemoteNpmDiagnosticNormalizationReport({
@@ -341,21 +498,39 @@ const results = CASES.map(([name, builder, input, key, expected]) => {
   const report = builder(input);
   const actual = report[key]?.status || report.status;
   return {
+    id: name,
     name,
     status: actual === expected ? 'pass' : 'fail',
     expected,
     actual,
+    expectedStatus: expected,
+    actualStatus: actual,
+    reasonCodes: actual === expected ? [] : ['v102_self_test_case_failed'],
     safeSummaryOnly: true,
   };
 });
 
 const failures = results.filter((item) => item.status !== 'pass');
+const failedCases = failures.map((item) => ({
+  caseId: item.id,
+  expectedStatus: item.expectedStatus,
+  actualStatus: item.actualStatus,
+  reasonCodes: item.reasonCodes,
+  safeMessage: 'v102 self-test case failed',
+}));
 const report = {
   marker: 'CODEX_QUALITY_HARNESS_FILE v1.0.2',
+  suite: 'v102',
   status: failures.length ? 'fail' : 'pass',
+  caseCount: results.length,
+  failedCaseCount: failures.length,
+  failedCases,
   v102SelfTestStatus: {
     status: failures.length ? 'fail' : 'pass',
+    suite: 'v102',
     caseCount: results.length,
+    failedCaseCount: failures.length,
+    failedCases,
     failures,
     safeSummaryOnly: true,
   },
