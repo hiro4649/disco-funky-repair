@@ -107,9 +107,11 @@ export function buildRemoteNpmDiagnosticNormalizationReport(input = parseJson(pr
   const diagnosticHasExit = diagnostic && Object.prototype.hasOwnProperty.call(diagnostic, 'npmExitCode') && diagnostic.npmExitCode !== null;
   const npmExecuted = input.npmExecuted !== undefined
     ? parseBool(input.npmExecuted)
-    : process.env.CODEX_REMOTE_NPM_EXECUTED !== undefined
-      ? parseBool(process.env.CODEX_REMOTE_NPM_EXECUTED)
-      : parseBool(diagnostic?.npmExecuted) || Boolean(productRelevant && diagnosticHasExit);
+    : diagnostic?.npmExecuted !== undefined
+      ? parseBool(diagnostic.npmExecuted)
+      : process.env.CODEX_REMOTE_NPM_EXECUTED !== undefined
+        ? parseBool(process.env.CODEX_REMOTE_NPM_EXECUTED)
+        : Boolean(productRelevant && diagnosticHasExit);
   const npmExitCode = Number(input.npmExitCode ?? process.env.CODEX_NPM_EXIT_CODE ?? diagnostic?.npmExitCode ?? 0);
   if (productRelevant && !npmExecuted) reasonCodes.push('remote_npm_not_executed_for_product_pr');
   if (npmExitCode !== 0 || parseBool(input.npmFailMarkedPass)) reasonCodes.push('remote_npm_diagnostic_normalization_failed');
