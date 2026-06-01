@@ -5124,7 +5124,8 @@ function writeArtifacts(result, report) {
 
 
 
-  const selfTestStatus = report.v098SelfTestStatus || report.v097SelfTestStatus || report.v096SelfTestStatus || report.v095SelfTestStatus || report.v094SelfTestStatus || report.v093SelfTestStatus || report.v092SelfTestStatus || report.selfTestCaseExportStatus || {};
+  const activeSelfTestKey = report.activeSelfTestRegistryStatus?.activeStatusKey || 'v102SelfTestStatus';
+  const selfTestStatus = report[activeSelfTestKey] || report.v102SelfTestStatus || report.selfTestCaseExportStatus || report.v098SelfTestStatus || report.v097SelfTestStatus || report.v096SelfTestStatus || report.v095SelfTestStatus || report.v094SelfTestStatus || report.v093SelfTestStatus || report.v092SelfTestStatus || {};
 
 
 

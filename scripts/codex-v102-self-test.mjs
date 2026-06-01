@@ -44,6 +44,35 @@ function backendProductArtifacts() {
   });
 }
 
+function contractsProductPlan() {
+  return buildRemoteProductCheckPlan({
+    productRelevant: true,
+    changedFiles: ['contracts/test/FunkyRave.test.js'],
+    rootPackagePresent: false,
+    backendPackagePresent: true,
+    contractsPackagePresent: true,
+  });
+}
+
+function contractsProductArtifacts() {
+  return buildRemoteProductSafeArtifacts({
+    productRelevant: true,
+    isPullRequest: true,
+    npmExecuted: true,
+    npmExitCode: 0,
+    command: 'npm test',
+    cwd: 'contracts',
+    packageScope: 'contracts',
+    commandClass: 'contracts_npm_test',
+  }, {
+    CODEX_REMOTE_NPM_EXECUTED: '1',
+    CODEX_NPM_EXIT_CODE: '0',
+    CODEX_NPM_CWD: 'contracts',
+    CODEX_NPM_PACKAGE_SCOPE: 'contracts',
+    CODEX_NPM_COMMAND_CLASS: 'contracts_npm_test',
+  });
+}
+
 function rootPackageMissingPlan() {
   return buildRemoteProductCheckPlan({
     productRelevant: true,
@@ -221,6 +250,39 @@ const CASES = [
       report.remoteProductEvidenceRunnerStatus.status === 'fail' &&
       report.remoteProductEvidenceRunnerStatus.reasonCodes.includes('remote_npm_not_executed_for_product_pr'));
   }, {}, 'formalBackendEvidenceRequiredFixtureStatus', 'pass'],
+  ['contracts_product_pr_uses_contracts_cwd_v102', () => {
+    const plan = contractsProductPlan();
+    return caseStatus('contractsProductCwdFixtureStatus',
+      plan.status === 'pass' && plan.cwd === 'contracts');
+  }, {}, 'contractsProductCwdFixtureStatus', 'pass'],
+  ['contracts_product_pr_does_not_run_root_npm_test_when_root_package_missing_v102', () => {
+    const plan = contractsProductPlan();
+    return caseStatus('contractsProductNoRootNpmFixtureStatus',
+      plan.status === 'pass' &&
+      plan.command === 'npm test' &&
+      plan.cwd === 'contracts' &&
+      plan.packageScope === 'contracts' &&
+      plan.commandClass === 'contracts_npm_test');
+  }, {}, 'contractsProductNoRootNpmFixtureStatus', 'pass'],
+  ['contracts_package_present_generates_contracts_remote_evidence_v102', () => {
+    const artifacts = contractsProductArtifacts();
+    const command = artifacts.evidence.commands[0] || {};
+    return caseStatus('contractsProductRemoteEvidenceFixtureStatus',
+      artifacts.evidence.status === 'pass' &&
+      artifacts.diagnostic.cwd === 'contracts' &&
+      command.result === 'pass');
+  }, {}, 'contractsProductRemoteEvidenceFixtureStatus', 'pass'],
+  ['contracts_remote_evidence_records_cwd_and_package_scope_v102', () => {
+    const artifacts = contractsProductArtifacts();
+    const command = artifacts.evidence.commands[0] || {};
+    return caseStatus('contractsProductRemoteMetadataFixtureStatus',
+      command.cwd === 'contracts' &&
+      command.packageScope === 'contracts' &&
+      command.commandClass === 'contracts_npm_test' &&
+      artifacts.diagnostic.cwd === 'contracts' &&
+      artifacts.diagnostic.packageScope === 'contracts' &&
+      artifacts.diagnostic.commandClass === 'contracts_npm_test');
+  }, {}, 'contractsProductRemoteMetadataFixtureStatus', 'pass'],
   ['placeholder_only_product_evidence_still_fails_v102', gates.buildProductPrEvidenceValidatorReport, { placeholderOnly: true }, 'productPrEvidenceValidatorStatus', 'fail'],
   ['active_v102_failure_still_blocks', gates.buildLegacySelfTestMatrixReport, { activeVersion: 'v102', v102SelfTestStatus: 'fail', failureClass: 'active_failure' }, 'legacySelfTestMatrixStatus', 'fail'],
   ['parent_v101_preservation_still_passes', gates.buildLegacySelfTestMatrixReport, { activeVersion: 'v102', v101SelfTestStatus: 'pass', v102SelfTestStatus: 'pass' }, 'legacySelfTestMatrixStatus', 'pass'],
@@ -341,21 +403,39 @@ const results = CASES.map(([name, builder, input, key, expected]) => {
   const report = builder(input);
   const actual = report[key]?.status || report.status;
   return {
+    id: name,
     name,
     status: actual === expected ? 'pass' : 'fail',
     expected,
     actual,
+    expectedStatus: expected,
+    actualStatus: actual,
+    reasonCodes: actual === expected ? [] : ['v102_self_test_case_failed'],
     safeSummaryOnly: true,
   };
 });
 
 const failures = results.filter((item) => item.status !== 'pass');
+const failedCases = failures.map((item) => ({
+  caseId: item.id,
+  expectedStatus: item.expectedStatus,
+  actualStatus: item.actualStatus,
+  reasonCodes: item.reasonCodes,
+  safeMessage: 'v102 self-test case failed',
+}));
 const report = {
   marker: 'CODEX_QUALITY_HARNESS_FILE v1.0.2',
+  suite: 'v102',
   status: failures.length ? 'fail' : 'pass',
+  caseCount: results.length,
+  failedCaseCount: failures.length,
+  failedCases,
   v102SelfTestStatus: {
     status: failures.length ? 'fail' : 'pass',
+    suite: 'v102',
     caseCount: results.length,
+    failedCaseCount: failures.length,
+    failedCases,
     failures,
     safeSummaryOnly: true,
   },
