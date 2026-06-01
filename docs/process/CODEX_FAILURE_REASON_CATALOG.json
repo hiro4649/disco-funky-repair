@@ -571,6 +571,14 @@
       "canManualConfirmationOverride": false
     },
     {
+      "reasonCode": "remote_npm_diagnostic_not_required",
+      "gate": "remoteNpmDiagnostic",
+      "severity": "info",
+      "safeMessage": "Remote npm diagnostic is not required for this change.",
+      "nextBestFix": "No action required for harness-only changes.",
+      "canManualConfirmationOverride": false
+    },
+    {
       "reasonCode": "remote_npm_diagnostic_unsafe",
       "gate": "remoteNpmDiagnostic",
       "severity": "error",
@@ -3056,6 +3064,46 @@
       "safeMessage": "remote npm not executed for product pr",
       "nextBestFix": "Repair the v0.9.8 harness evidence contract without adding product code or raw artifacts.",
       "gate": "remoteProductEvidenceExecutionStatus",
+      "canManualConfirmationOverride": false
+    },
+    {
+      "reasonCode": "remote_product_command_scope_mismatch",
+      "severity": "error",
+      "safeMessage": "remote product command scope mismatch",
+      "nextBestFix": "Repair the remote product evidence command scope without adding product code or raw artifacts.",
+      "gate": "remoteProductCheckPlanStatus",
+      "canManualConfirmationOverride": false
+    },
+    {
+      "reasonCode": "backend_package_scope_missing",
+      "severity": "error",
+      "safeMessage": "backend package scope missing",
+      "nextBestFix": "Restore backend package-scoped product evidence execution without adding product code or raw artifacts.",
+      "gate": "remoteProductCheckPlanStatus",
+      "canManualConfirmationOverride": false
+    },
+    {
+      "reasonCode": "contracts_package_scope_missing",
+      "severity": "error",
+      "safeMessage": "contracts package scope missing",
+      "nextBestFix": "Restore contracts package-scoped product evidence execution without adding product code or raw artifacts.",
+      "gate": "remoteProductCheckPlanStatus",
+      "canManualConfirmationOverride": false
+    },
+    {
+      "reasonCode": "root_package_missing",
+      "severity": "error",
+      "safeMessage": "root package missing",
+      "nextBestFix": "Use an explicit product package scope instead of root npm when root package.json is absent.",
+      "gate": "remoteProductCheckPlanStatus",
+      "canManualConfirmationOverride": false
+    },
+    {
+      "reasonCode": "command_scope_mismatch",
+      "severity": "error",
+      "safeMessage": "command scope mismatch",
+      "nextBestFix": "Repair the product evidence command scope and rerun same-head remote evidence.",
+      "gate": "remoteNpmDiagnosticStatus",
       "canManualConfirmationOverride": false
     },
     {
