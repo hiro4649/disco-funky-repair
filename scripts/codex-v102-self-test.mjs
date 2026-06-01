@@ -10,6 +10,7 @@ import { computeTargetQualityScoreStatus } from './codex-local-quality-gate.mjs'
 import { buildWorkflowQualityRunnerReport } from './codex-workflow-quality-runner.mjs';
 import { buildCompactReasonSummary } from './codex-reason-summary.mjs';
 import { buildDiagnosticConsolidatedSummary } from './codex-diagnostic-consolidation-runner.mjs';
+import { buildSelfTestCaseExportReport } from './codex-self-test-case-export.mjs';
 
 function caseStatus(statusKey, pass, payload = {}) {
   return { [statusKey]: { status: pass ? 'pass' : 'fail', ...payload, safeSummaryOnly: true } };
@@ -250,6 +251,29 @@ const CASES = [
       report.remoteProductEvidenceRunnerStatus.status === 'fail' &&
       report.remoteProductEvidenceRunnerStatus.reasonCodes.includes('remote_npm_not_executed_for_product_pr'));
   }, {}, 'formalBackendEvidenceRequiredFixtureStatus', 'pass'],
+  ['formal_backend_evidence_input_false_overrides_remote_env_v102', () => {
+    const previousExecuted = process.env.CODEX_REMOTE_NPM_EXECUTED;
+    const previousExitCode = process.env.CODEX_NPM_EXIT_CODE;
+    try {
+      process.env.CODEX_REMOTE_NPM_EXECUTED = '1';
+      process.env.CODEX_NPM_EXIT_CODE = '0';
+      const report = buildRemoteProductEvidenceRunnerReport({
+        forceCheck: true,
+        productRelevant: true,
+        npmExecuted: false,
+        npmExitCode: 0,
+      });
+      return caseStatus('formalBackendEvidenceEnvIsolationFixtureStatus',
+        report.remoteProductEvidenceRunnerStatus.status === 'fail' &&
+        report.remoteProductEvidenceRunnerStatus.npmExecuted === false &&
+        report.remoteProductEvidenceRunnerStatus.reasonCodes.includes('remote_npm_not_executed_for_product_pr'));
+    } finally {
+      if (previousExecuted === undefined) delete process.env.CODEX_REMOTE_NPM_EXECUTED;
+      else process.env.CODEX_REMOTE_NPM_EXECUTED = previousExecuted;
+      if (previousExitCode === undefined) delete process.env.CODEX_NPM_EXIT_CODE;
+      else process.env.CODEX_NPM_EXIT_CODE = previousExitCode;
+    }
+  }, {}, 'formalBackendEvidenceEnvIsolationFixtureStatus', 'pass'],
   ['contracts_product_pr_uses_contracts_cwd_v102', () => {
     const plan = contractsProductPlan();
     return caseStatus('contractsProductCwdFixtureStatus',
@@ -429,6 +453,126 @@ const CASES = [
     return caseStatus('legacyV085AdvisoryNotTopLevelFailureFixtureStatus',
       result.summary.status === 'pass' && result.summary.optionalNotApplicable.includes('v085SelfTestStatus'));
   }, {}, 'legacyV085AdvisoryNotTopLevelFailureFixtureStatus', 'pass'],
+  ['self_test_case_export_ignores_stale_failed_case_when_v102_pass', () => {
+    const result = buildSelfTestCaseExportReport({
+      CODEX_SELF_TEST_REPORT_JSON: JSON.stringify({
+        suite: 'v102',
+        status: 'pass',
+        caseCount: 2,
+        failedCaseCount: 1,
+        failedCases: [{ caseId: 'stale_case', actualStatus: 'fail' }],
+        v102SelfTestStatus: { status: 'pass', suite: 'v102', failedCaseCount: 0, failedCases: [], safeSummaryOnly: true },
+        cases: [{ id: 'stale_case', status: 'fail', expectedStatus: 'pass', actualStatus: 'fail', safeSummaryOnly: true }],
+      }),
+    });
+    return caseStatus('selfTestCaseExportStaleFailedCaseFixtureStatus',
+      result.selfTestCaseExportStatus.status === 'pass' &&
+      result.selfTestCaseExportStatus.failedCaseCount === 0 &&
+      result.selfTestCaseExportStatus.failedCases.length === 0);
+  }, {}, 'selfTestCaseExportStaleFailedCaseFixtureStatus', 'pass'],
+  ['self_test_case_export_does_not_export_expected_failure_fixtures_as_failed', () => {
+    const result = buildSelfTestCaseExportReport({
+      CODEX_SELF_TEST_REPORT_JSON: JSON.stringify({
+        suite: 'v102',
+        status: 'pass',
+        v102SelfTestStatus: { status: 'pass', suite: 'v102', failedCaseCount: 0, failedCases: [], safeSummaryOnly: true },
+        cases: [{ id: 'negative_fixture', status: 'pass', expectedStatus: 'fail', actualStatus: 'fail', safeSummaryOnly: true }],
+      }),
+    });
+    return caseStatus('selfTestCaseExportExpectedFailureFixtureStatus',
+      result.selfTestCaseExportStatus.status === 'pass' &&
+      result.selfTestCaseExportStatus.failedCases.length === 0);
+  }, {}, 'selfTestCaseExportExpectedFailureFixtureStatus', 'pass'],
+  ['quality_summary_matches_target_final_summary_when_no_blockers', () => {
+    const report = targetQualityFixtureReport({
+      status: 'fail',
+      targetQualityScoreStatus: targetQualityStatus(),
+      v102SelfTestStatus: { status: 'pass', failedCaseCount: 0, failedCases: [], safeSummaryOnly: true },
+      selfTestCaseExportStatus: { status: 'pass', suite: 'v102', failedCaseCount: 0, failedCases: [], safeSummaryOnly: true },
+      failures: [{ id: 'v102SelfTestStatus.failed' }],
+    });
+    const reason = buildCompactReasonSummary(report);
+    return caseStatus('qualityFinalSummaryConsistencyFixtureStatus',
+      reason.summary.status === 'pass' && reason.summary.blockingReasons.length === 0);
+  }, {}, 'qualityFinalSummaryConsistencyFixtureStatus', 'pass'],
+  ['reason_summary_pass_with_target_quality_pass_and_no_failed_cases', () => {
+    const exportReport = buildSelfTestCaseExportReport({
+      CODEX_SELF_TEST_REPORT_JSON: JSON.stringify({
+        suite: 'v102',
+        status: 'pass',
+        v102SelfTestStatus: { status: 'pass', suite: 'v102', failedCaseCount: 0, failedCases: [], safeSummaryOnly: true },
+      }),
+    });
+    const reason = buildCompactReasonSummary(targetQualityFixtureReport({
+      targetQualityScoreStatus: targetQualityStatus(),
+      selfTestCaseExportStatus: exportReport.selfTestCaseExportStatus,
+    }));
+    return caseStatus('reasonSummaryNoFailedCasesFixtureStatus', reason.summary.status === 'pass');
+  }, {}, 'reasonSummaryNoFailedCasesFixtureStatus', 'pass'],
+  ['actual_v102_failed_case_still_blocks', () => {
+    const reason = buildCompactReasonSummary(targetQualityFixtureReport({
+      targetQualityScoreStatus: targetQualityStatus({ v102SelfTestStatus: { status: 'fail', safeSummaryOnly: true } }),
+      v102SelfTestStatus: { status: 'fail', suite: 'v102', failedCaseCount: 1, failedCases: [{ caseId: 'actual_case' }], safeSummaryOnly: true },
+      failures: [{ id: 'v102SelfTestStatus.failed' }],
+    }));
+    return caseStatus('actualV102FailedCaseBlocksFixtureStatus',
+      reason.summary.status === 'fail' && reason.summary.blockingReasons.some((item) => item.reasonCode === 'v102SelfTestStatus.failed'));
+  }, {}, 'actualV102FailedCaseBlocksFixtureStatus', 'pass'],
+  ['actual_v102_failed_case_is_exported', () => {
+    const result = buildSelfTestCaseExportReport({
+      CODEX_SELF_TEST_REPORT_JSON: JSON.stringify({
+        suite: 'v102',
+        status: 'fail',
+        v102SelfTestStatus: {
+          status: 'fail',
+          suite: 'v102',
+          failedCaseCount: 1,
+          failedCases: [{ caseId: 'actual_case', expectedStatus: 'pass', actualStatus: 'fail', safeSummaryOnly: true }],
+          safeSummaryOnly: true,
+        },
+      }),
+    });
+    return caseStatus('actualV102FailedCaseExportedFixtureStatus',
+      result.selfTestCaseExportStatus.failedCaseCount === 1 &&
+      result.selfTestCaseExportStatus.failedCases.some((item) => item.caseId === 'actual_case'));
+  }, {}, 'actualV102FailedCaseExportedFixtureStatus', 'pass'],
+  ['product_verification_failure_still_blocks_quality_summary', () => {
+    const reason = buildCompactReasonSummary(targetQualityFixtureReport({
+      targetQualityScoreStatus: targetQualityStatus({ productVerificationStatus: { status: 'fail', safeSummaryOnly: true } }),
+      productVerificationStatus: { status: 'fail', reasonCodes: ['product_verification_failed'], safeSummaryOnly: true },
+      failures: [{ id: 'productVerificationStatus.failed' }],
+    }));
+    return caseStatus('qualitySummaryProductVerificationBlocksFixtureStatus', reason.summary.status === 'fail');
+  }, {}, 'qualitySummaryProductVerificationBlocksFixtureStatus', 'pass'],
+  ['safe_output_failure_still_blocks_quality_summary', () => {
+    const reason = buildCompactReasonSummary(targetQualityFixtureReport({
+      targetQualityScoreStatus: { status: 'fail', score: 70, safeSummaryOnly: true },
+      safeOutputScanStatus: { status: 'fail', reasonCodes: ['unsafe_value_detected'], safeSummaryOnly: true },
+      failures: [{ id: 'safeOutputScanStatus.failed' }],
+    }));
+    return caseStatus('qualitySummarySafeOutputBlocksFixtureStatus', reason.summary.status === 'fail');
+  }, {}, 'qualitySummarySafeOutputBlocksFixtureStatus', 'pass'],
+  ['placeholder_only_evidence_still_fails', () => {
+    const status = computeTargetQualityScoreStatus(targetQualityFixtureReport({
+      productVerificationEvidenceStatus: { status: 'fail', reasonCodes: ['pending_placeholder_used_as_pass'], safeSummaryOnly: true },
+    }));
+    return caseStatus('placeholderOnlyEvidenceStillFailsFixtureStatus',
+      status.status === 'fail' && status.blockingStatuses.some((item) => item.key === 'productVerificationEvidenceStatus'));
+  }, {}, 'placeholderOnlyEvidenceStillFailsFixtureStatus', 'pass'],
+  ['same_head_self_test_case_export_required', () => {
+    const result = buildSelfTestCaseExportReport({
+      CODEX_SELF_TEST_REPORT_JSON: JSON.stringify({
+        suite: 'v102',
+        status: 'pass',
+        caseCount: 1,
+        v102SelfTestStatus: { status: 'pass', suite: 'v102', caseCount: 1, failedCaseCount: 0, failedCases: [], safeSummaryOnly: true },
+      }),
+    });
+    return caseStatus('sameHeadSelfTestCaseExportFixtureStatus',
+      result.selfTestCaseExportStatus.suite === 'v102' &&
+      result.selfTestCaseExportStatus.caseCount === 1 &&
+      result.selfTestCaseExportStatus.failedCaseCount === 0);
+  }, {}, 'sameHeadSelfTestCaseExportFixtureStatus', 'pass'],
   ['remote_npm_diagnostic_uses_current_safe_artifact_scope_v102', () => {
     const artifacts = backendProductArtifacts();
     const report = buildRemoteNpmDiagnosticNormalizationReport({
