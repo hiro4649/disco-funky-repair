@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// CODEX_QUALITY_HARNESS_FILE v1.0.1
+// CODEX_QUALITY_HARNESS_FILE v1.0.2
 import fs from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { HARNESS_VERSION, marker, parseArgs, readJson, scanObjectForUnsafe, simpleStatus, writeJsonReport, exitFor } from './codex-v080-lib.mjs';
@@ -21,18 +21,6 @@ function statusItems(report) {
     value && typeof value === 'object');
 }
 
-function activeSelfTestStatusKey() {
-  return `v${HARNESS_VERSION.replace(/\./g, '')}SelfTestStatus`;
-}
-
-function isSelfTestStatusKey(key) {
-  return /^v\d{3}SelfTestStatus$/.test(String(key || ''));
-}
-
-function isLegacySelfTestStatusKey(key) {
-  return isSelfTestStatusKey(key) && key !== activeSelfTestStatusKey();
-}
-
 function safeReasonCode(key, status) {
   if (status === 'manual_confirmation_required') return 'missing_human_confirmation';
   if (status === 'warning') return 'workflow_required_status_failure';
@@ -47,7 +35,6 @@ export function buildDiagnosticConsolidatedSummary(report, options = {}) {
   const manual = [];
   const optional = [];
   for (const [key, value] of statusItems(report)) {
-    if (mode === 'target' && isLegacySelfTestStatusKey(key)) continue;
     const status = value.status || 'missing';
     const reasonCodes = Array.isArray(value.reasonCodes) && value.reasonCodes.length ? value.reasonCodes : [safeReasonCode(key, status)];
     const entry = { gate: key, status, reasonCodes: reasonCodes.slice(0, 5) };

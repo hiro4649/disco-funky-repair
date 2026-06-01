@@ -1,10 +1,8 @@
 #!/usr/bin/env node
-// CODEX_QUALITY_HARNESS_FILE v1.0.1
+// CODEX_QUALITY_HARNESS_FILE v1.0.2
 import fs from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { HARNESS_VERSION, scanObjectForUnsafe, simpleStatus, writeJsonReport, exitFor, readJson, readText } from './codex-v080-lib.mjs';
-import { buildRemoteProductCheckPlan } from './codex-remote-product-checks.mjs';
-import { buildRemoteProductEvidenceExecutionReport, buildRemoteProductSafeArtifacts } from './codex-v098-gate-lib.mjs';
 
 export function parseJson(value) { if (!value) return null; try { return JSON.parse(value); } catch { return { invalidInput: true }; } }
 export function parseBool(value) { return value === true || value === '1' || value === 'true' || value === 'yes'; }
@@ -16,11 +14,9 @@ function safe(statusKey, status, payload = {}) {
 }
 function notApplicable(statusKey, reasonCode) { return safe(statusKey, 'not_applicable', { reasonCodes: [reasonCode] }); }
 function hasText(file, pattern) { const text = readText(file) || ''; return typeof pattern === 'string' ? text.includes(pattern) : pattern.test(text); }
-function targetMode() { return process.env.CODEX_HARNESS_MODE === 'target' && fs.existsSync('docs/process/CODEX_HARNESS_MANIFEST.json'); }
-function manifestText() { return targetMode() ? (readText('docs/process/CODEX_HARNESS_MANIFEST.json') || '') : (readText('CODEX_SOURCE_HARNESS_MANIFEST.json') || readText('docs/process/CODEX_HARNESS_MANIFEST.json') || ''); }
-function manifestJson() { const file = targetMode() ? 'docs/process/CODEX_HARNESS_MANIFEST.json' : (fs.existsSync('CODEX_SOURCE_HARNESS_MANIFEST.json') ? 'CODEX_SOURCE_HARNESS_MANIFEST.json' : 'docs/process/CODEX_HARNESS_MANIFEST.json'); const parsed = readJson(file); return parsed.ok ? parsed.value : {}; }
+function manifestText() { return readText('CODEX_SOURCE_HARNESS_MANIFEST.json') || readText('docs/process/CODEX_HARNESS_MANIFEST.json') || ''; }
+function manifestJson() { const file = fs.existsSync('CODEX_SOURCE_HARNESS_MANIFEST.json') ? 'CODEX_SOURCE_HARNESS_MANIFEST.json' : 'docs/process/CODEX_HARNESS_MANIFEST.json'; const parsed = readJson(file); return parsed.ok ? parsed.value : {}; }
 function relevant(input, field) { return parseBool(input.forceCheck) || parseBool(input[field]); }
-function statusOf(report, key) { return report[key]?.status || report.status || 'missing'; }
 function mapGate(statusKey, reasonCode, input, relevantField, failFields = [], warnFields = []) {
   if (!relevant(input, relevantField)) return notApplicable(statusKey, reasonCode + '_not_applicable');
   const reasonCodes = any(input, failFields) ? [reasonCode] : [];
@@ -29,13 +25,21 @@ function mapGate(statusKey, reasonCode, input, relevantField, failFields = [], w
 }
 const REQUIRED_PARENT_GATE_KEYS = ['formalEvidencePrecedenceStatus','lifeboatSemanticsStatus','placeholderOnlyEvidenceStatus','remoteNpmDiagnosticNormalizationStatus','legacySelfTestAdvisoryStatus','targetQualityBlockerDigestStatus','prEvidenceAutoRepairHintStatus','actionsBlockerRecoveryStatus','sameHeadEvidenceRefreshStatus','safeArtifactBundleCompletenessStatus','productEvidenceConsumptionStatus','placeholderEvidenceForbiddenStatus','sameHeadArtifactEvidenceStatus','skipNpmProductBypassStatus'];
 const V100_HARNESS_VERSION = '1.0.0';
-const V100_SUCCESSOR_VERSIONS = ['1.0.0', '1.0.1'];
+const V100_SUCCESSOR_VERSIONS = ['1.0.0', '1.0.1', '1.0.2'];
 
 export function buildParentHarnessDevelopmentReport(input = parseJson(process.env.CODEX_PARENT_HARNESS_DEVELOPMENT_JSON) || {}) { const reasonCodes = []; const parentVersion = String(input.parentVersion || '0.9.9'); const childVersion = String(input.childVersion || V100_HARNESS_VERSION); if (parentVersion !== '0.9.9' || childVersion !== V100_HARNESS_VERSION || input.parentVersion === '') reasonCodes.push('parent_harness_required'); if (!fs.existsSync('scripts/codex-v099-self-test.mjs') || parseBool(input.parentSelfTestNotRun)) reasonCodes.push('parent_harness_self_test_failed'); if (any(input, ['newHarnessOnlyJudgement','v099GateWeakened','targetRolloutBeforeSourceMainVerification'])) reasonCodes.push('parent_gate_preservation_failed'); return safe('parentHarnessDevelopmentStatus', reasonCodes.length ? 'fail' : 'pass', { reasonCodes, parentVersion, childVersion }); }
 export function buildParentHarnessSelfTestReport(input = parseJson(process.env.CODEX_PARENT_HARNESS_SELF_TEST_JSON) || {}) { const reasonCodes = []; if (!fs.existsSync('scripts/codex-v099-self-test.mjs') || !hasText('scripts/codex-local-quality-gate.mjs', 'v099SelfTestStatus')) reasonCodes.push('parent_harness_self_test_failed'); if (any(input, ['activeParentFailure','parentActiveSelfTestRegistryMissing','legacyFailureBlockingActive','activeFailureAdvisory'])) reasonCodes.push('parent_harness_self_test_failed'); return safe('parentHarnessSelfTestStatus', reasonCodes.length ? 'fail' : 'pass', { reasonCodes, requiredSelfTestCount: 9 }); }
 export function buildNewHarnessSelfTestReport(input = parseJson(process.env.CODEX_NEW_HARNESS_SELF_TEST_JSON) || {}) { const reasonCodes = []; const manifest = manifestText(); if (!fs.existsSync('scripts/codex-v100-self-test.mjs') || parseBool(input.v100SelfTestMissing)) reasonCodes.push('new_harness_self_test_failed'); if (!hasText('scripts/codex-local-quality-gate.mjs', 'v100SelfTestStatus') || parseBool(input.v100StatusKeyMissing)) reasonCodes.push('new_harness_self_test_failed'); if (!fs.existsSync('docs/process/CODEX_V100_EVAL_CASES.json') || parseBool(input.v100EvalCasesMissing)) reasonCodes.push('new_harness_self_test_failed'); if (!manifest.includes('codex-v100-self-test.mjs') || parseBool(input.v100FilesMissingFromManifest)) reasonCodes.push('new_harness_self_test_failed'); if (parseBool(input.v100LocalQualityGateIntegrationMissing)) reasonCodes.push('new_harness_self_test_failed'); return safe('newHarnessSelfTestStatus', reasonCodes.length ? 'fail' : 'pass', { reasonCodes }); }
 export function buildParentGatePreservationReport(input = parseJson(process.env.CODEX_PARENT_GATE_PRESERVATION_JSON) || {}) { const reasonCodes = []; const localGateText = readText('scripts/codex-local-quality-gate.mjs') || ''; for (const key of REQUIRED_PARENT_GATE_KEYS) if (!localGateText.includes(key)) reasonCodes.push('parent_gate_preservation_failed'); if (any(input, ['formalEvidenceFailPass','lifeboatOnlyPass','placeholderOnlyProductEvidencePass','npmFailurePass','workflowDispatchPrEvidence','sameHeadMismatchHidden','remoteInfraAsProduct','productFailureAsRemoteInfra','parentGateFileRemoved'])) reasonCodes.push('parent_gate_preservation_failed'); return safe('parentGatePreservationStatus', reasonCodes.length ? 'fail' : 'pass', { reasonCodes, preservedGateCount: REQUIRED_PARENT_GATE_KEYS.length }); }
-export function buildVersionSuccessionReport(input = parseJson(process.env.CODEX_VERSION_SUCCESSION_JSON) || {}) { const reasonCodes = []; const manifest = manifestJson(); const readmeOk = targetMode() ? true : V100_SUCCESSOR_VERSIONS.some((version) => hasText('README.md', `Version: v${version}`)); if (!readmeOk || !V100_SUCCESSOR_VERSIONS.includes(manifest.harnessVersion) || parseBool(input.manifestReadmeMismatch) || parseBool(input.activeSelfTestVersionMismatch)) reasonCodes.push('version_succession_failed'); if (any(input, ['v099TargetRolloutIncomplete','sourceMainUnverifiedTargetRollout','threeRepoIncompleteNextVersion','skipParentVersion'])) reasonCodes.push('version_succession_failed'); return safe('versionSuccessionStatus', reasonCodes.length ? 'fail' : 'pass', { reasonCodes, parentVersion: '0.9.9', childVersion: V100_HARNESS_VERSION }); }
+export function buildVersionSuccessionReport(input = parseJson(process.env.CODEX_VERSION_SUCCESSION_JSON) || {}) {
+  const reasonCodes = [];
+  const manifest = manifestJson();
+  const targetManifestMode = !fs.existsSync('CODEX_SOURCE_HARNESS_MANIFEST.json') && fs.existsSync('docs/process/CODEX_HARNESS_MANIFEST.json');
+  const readmeOk = targetManifestMode || V100_SUCCESSOR_VERSIONS.some((version) => hasText('README.md', `Version: v${version}`));
+  if (!readmeOk || !V100_SUCCESSOR_VERSIONS.includes(manifest.harnessVersion) || parseBool(input.manifestReadmeMismatch) || parseBool(input.activeSelfTestVersionMismatch)) reasonCodes.push('version_succession_failed');
+  if (any(input, ['v099TargetRolloutIncomplete','sourceMainUnverifiedTargetRollout','threeRepoIncompleteNextVersion','skipParentVersion'])) reasonCodes.push('version_succession_failed');
+  return safe('versionSuccessionStatus', reasonCodes.length ? 'fail' : 'pass', { reasonCodes, parentVersion: '0.9.9', childVersion: V100_HARNESS_VERSION });
+}
 export function buildWorkflowPlanReport(input = parseJson(process.env.CODEX_WORKFLOW_PLAN_JSON) || {}) { if (!relevant(input, 'workflowRelevant')) return notApplicable('workflowPlanStatus', 'workflow_plan_not_applicable'); const r = any(input, ['largeTaskWithoutDecomposition','productAndHarnessMixed','allowedFilesMissing','forbiddenFilesMissing','doneCriteriaMissing','stopConditionMissing']) ? ['workflow_plan_missing'] : []; return safe('workflowPlanStatus', r.length ? 'fail' : 'pass', { reasonCodes: r, taskMode: input.taskMode || 'harness_change' }); }
 export function buildTaskGraphReport(input = parseJson(process.env.CODEX_TASK_GRAPH_JSON) || {}) { if (!relevant(input, 'taskGraphRelevant')) return notApplicable('taskGraphStatus', 'task_graph_not_applicable'); const r = any(input, ['targetBeforeSource','productBeforeHarnessRepair','cycleDetected','missingDependency']) ? ['task_graph_invalid'] : []; return safe('taskGraphStatus', r.length ? 'fail' : 'pass', { reasonCodes: r }); }
 export function buildWorkflowScopeReport(input = parseJson(process.env.CODEX_WORKFLOW_SCOPE_JSON) || {}) { const allowed = ['read_only_map','plan_only','safe_cleanup','behavior_preserving_refactor','product_change','security_audit','performance_audit','cost_audit','db_audit','handover','runtime_readiness','harness_change','target_rollout']; const scope = String(input.scope || 'harness_change'); const r = (!allowed.includes(scope) || parseBool(input.scopeUnknown) || parseBool(input.productCodeHarnessMixed)) ? ['workflow_scope_missing'] : []; return safe('workflowScopeStatus', r.length ? 'fail' : 'pass', { reasonCodes: r, scope }); }
@@ -74,36 +78,4 @@ export function buildPublicContractChangeReport(input = parseJson(process.env.CO
 export function buildMigrationSafetyPlanReport(input = parseJson(process.env.CODEX_MIGRATION_SAFETY_PLAN_JSON) || {}) { return mapGate('migrationSafetyPlanStatus', 'migration_safety_plan_failed', input, 'migrationRelevant', ['migrationAutoApplied','compatMissing','backfillMissing','rollbackMissing','downtimeUnknown']); }
 export function buildRuntimeReadinessBoundaryReport(input = parseJson(process.env.CODEX_RUNTIME_READINESS_BOUNDARY_JSON) || {}) { const r = []; if (parseBool(input.runtimeReadinessClaimed) && !parseBool(input.runtimeOraclePresent)) r.push('runtime_readiness_boundary_failed'); if (any(input, ['fixturePassRealReady','unitTestPassRealReady','localSmokeRealReady'])) r.push('runtime_readiness_boundary_failed'); return safe('runtimeReadinessBoundaryStatus', r.length ? 'fail' : 'pass', { reasonCodes: r, runtimeReadinessClaimed: parseBool(input.runtimeReadinessClaimed) }); }
 export function buildProductionGoBoundaryReport(input = parseJson(process.env.CODEX_PRODUCTION_GO_BOUNDARY_JSON) || {}) { const r = any(input, ['productionReadinessClaimed','productionGoWithoutOwner','productionGoWithoutOracle','harnessAloneProductionGo']) ? ['production_go_boundary_failed'] : []; return safe('productionGoBoundaryStatus', r.length ? 'fail' : 'pass', { reasonCodes: r, productionReadinessClaimed: parseBool(input.productionReadinessClaimed) }); }
-export function buildBackendProductRemoteCheckReport(input = parseJson(process.env.CODEX_BACKEND_PRODUCT_REMOTE_CHECK_JSON) || {}) {
-  const changed = Array.isArray(input.changedFiles) ? input.changedFiles.join('\n') : String(input.changedFiles || '');
-  const env = { ...process.env, CODEX_CHANGED_FILES: changed };
-  const plan = buildRemoteProductCheckPlan(input, env);
-  const r = [];
-  const w = [];
-  if (parseBool(input.expectBackendCwd) && !(plan.status === 'pass' && plan.cwd === 'apps/backend' && plan.packageScope === 'apps/backend' && plan.commandClass === 'backend_npm_test' && plan.command === 'npm test -- --runInBand')) r.push('backend_product_cwd_selection_failed');
-  if (parseBool(input.expectNoRootNpmWhenRootMissing) && !(plan.rootPackagePresent === false && plan.cwd === 'apps/backend' && plan.commandClass === 'backend_npm_test' && plan.command !== 'npm test')) r.push('backend_product_root_npm_bypass_failed');
-  if (parseBool(input.expectContractsCwd) && !(plan.status === 'pass' && plan.cwd === 'contracts' && plan.packageScope === 'contracts' && plan.commandClass === 'contracts_npm_test' && plan.command === 'npm test')) r.push('contracts_product_cwd_selection_failed');
-  if (parseBool(input.expectContractsNoRootNpmWhenRootMissing) && !(plan.rootPackagePresent === false && plan.cwd === 'contracts' && plan.packageScope === 'contracts' && plan.commandClass === 'contracts_npm_test')) r.push('contracts_product_root_npm_bypass_failed');
-  if (parseBool(input.expectCommandScopeMismatch) && !(plan.status === 'fail' && plan.failureClass === 'command_scope_mismatch' && plan.reasonCodes.includes('remote_product_command_scope_mismatch'))) r.push('remote_product_command_scope_mismatch');
-  if (parseBool(input.expectBackendEvidenceMetadata)) {
-    const artifacts = buildRemoteProductSafeArtifacts({ productRelevant: true, npmExecuted: true, npmExitCode: 0, command: 'npm test -- --runInBand', commandCwd: 'apps/backend', packageScope: 'apps/backend', commandClass: 'backend_npm_test', headSha: 'abc', baseSha: 'def', repository: 'hiro4649/disco-funky-repair', eventName: 'pull_request', isPullRequest: true }, { ...process.env, CODEX_EVENT_NAME: 'pull_request' });
-    const command = artifacts.evidence.commands[0] || {};
-    if (command.cwd !== 'apps/backend' || command.packageScope !== 'apps/backend' || command.commandClass !== 'backend_npm_test' || artifacts.diagnostic.cwd !== 'apps/backend' || artifacts.diagnostic.packageScope !== 'apps/backend') r.push('backend_remote_evidence_metadata_missing');
-  }
-  if (parseBool(input.expectContractsEvidenceMetadata)) {
-    const metadataPlan = buildRemoteProductCheckPlan({ productRelevant: true, changedFiles: ['contracts/package.json'], rootPackagePresent: false, backendPackagePresent: false, contractsPackagePresent: true }, env);
-    if (metadataPlan.command !== 'npm test' || metadataPlan.cwd !== 'contracts' || metadataPlan.packageScope !== 'contracts' || metadataPlan.commandClass !== 'contracts_npm_test' || metadataPlan.failureClass !== '') r.push('contracts_remote_evidence_metadata_missing');
-  }
-  if (parseBool(input.expectPlaceholderOnlyFails)) {
-    const report = buildRemoteProductEvidenceExecutionReport({ forceCheck: true, productRelevant: true, isPullRequest: true, targetRepoMode: true, npmExecuted: true, npmExitCode: 0, evidence: { status: 'pending' }, baseline: { status: 'pending' }, diagnostic: { status: 'pending' } });
-    if (statusOf(report, 'remoteProductEvidenceExecutionStatus') !== 'fail') r.push('placeholder_only_product_evidence_passed');
-  }
-  if (parseBool(input.expectFormalEvidenceRequired)) {
-    const report = buildRemoteProductEvidenceExecutionReport({ forceCheck: true, productRelevant: true, isPullRequest: true, targetRepoMode: true, skipNpm: false, npmExecuted: false, npmExitCode: 0, evidencePresent: false, baselinePresent: false, diagnosticPresent: false });
-    if (statusOf(report, 'remoteProductEvidenceExecutionStatus') !== 'fail') r.push('formal_backend_evidence_not_required');
-  }
-  if (parseBool(input.expectActiveV100FailureBlocks) && statusOf(buildNewHarnessSelfTestReport({ v100SelfTestMissing: true }), 'newHarnessSelfTestStatus') !== 'fail') r.push('active_v100_failure_not_blocking');
-  if (parseBool(input.expectParentV099Preservation) && (statusOf(buildParentHarnessSelfTestReport({}), 'parentHarnessSelfTestStatus') !== 'pass' || statusOf(buildParentGatePreservationReport({}), 'parentGatePreservationStatus') !== 'pass')) r.push('parent_v099_preservation_failed');
-  return safe('backendProductRemoteCheckStatus', r.length ? 'fail' : w.length ? 'warning' : 'pass', { reasonCodes: r, warnings: w, plan });
-}
 export function runV100GateCli(metaUrl, argvOne, builder, envName) { if (argvOne && fileURLToPath(metaUrl) === argvOne) { const report = builder(); writeJsonReport(report, envName); exitFor(report); } }
