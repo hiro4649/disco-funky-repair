@@ -24,6 +24,7 @@ const SAFE_CATEGORIES = new Set([
   'snapshot_mismatch',
   'package_manager_error',
   'baseline_failure',
+  'command_scope_mismatch',
   'unknown_npm_failure',
 ]);
 
@@ -53,6 +54,9 @@ function inputFromEnv(env = process.env) {
       platform: env.CODEX_PLATFORM_LABEL,
       packageManager: env.CODEX_PACKAGE_MANAGER,
       commandClass: env.CODEX_NPM_COMMAND_CLASS,
+      cwd: env.CODEX_NPM_CWD,
+      packageScope: env.CODEX_NPM_PACKAGE_SCOPE,
+      npmExecuted: env.CODEX_REMOTE_NPM_EXECUTED,
     };
   }
   return null;
@@ -83,6 +87,9 @@ export function normalizeRemoteNpmDiagnostic(input = {}) {
     os: String(input.os || 'unknown').slice(0, 60),
     packageManager: String(input.packageManager || input.package_manager || 'unknown').slice(0, 60),
     commandClass: String(input.commandClass || input.command_class || 'npm_test').slice(0, 80),
+    cwd: String(input.cwd || '').replace(/\\/g, '/').slice(0, 80),
+    packageScope: String(input.packageScope || input.package_scope || '').replace(/\\/g, '/').slice(0, 80),
+    npmExecuted: input.npmExecuted === true || input.npmExecuted === '1' || input.npmExecuted === 'true',
     safeFailureCategory: category,
     safeMarkerCount: numberOrNull(input.safeMarkerCount ?? input.safe_marker_count),
     testCountDetected: numberOrNull(input.testCountDetected ?? input.safe_test_count),
