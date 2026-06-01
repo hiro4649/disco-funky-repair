@@ -6986,6 +6986,22 @@ function applyStatusOutcome(key, value, failures, warnings) {
 
 }
 
+function targetQualityResolvedSelfTestFailure(failure, report = {}) {
+  if (report.targetQualityScoreStatus?.status !== 'pass') return false;
+  const reason = String(failure?.id || failure?.reasonCode || '');
+  const match = reason.match(/\b(v(?:085|098|099|100|101|102)SelfTestStatus)\.failed\b/);
+  if (!match) return false;
+  const key = match[1];
+  const activeSelfTestKey = report.activeSelfTestRegistryStatus?.activeStatusKey || 'v102SelfTestStatus';
+  if (key !== activeSelfTestKey) return true;
+  return report[key]?.status === 'pass';
+}
+
+function pruneTargetQualityResolvedFailures(failures, report = {}) {
+  const kept = failures.filter((failure) => !targetQualityResolvedSelfTestFailure(failure, report));
+  failures.splice(0, failures.length, ...kept);
+}
+
 
 
 function isPullRequestContext(env = process.env) {
@@ -11003,6 +11019,7 @@ async function runTargetHarnessGate() {
 
 
   if (report.targetQualityScoreStatus.status === 'fail') failures.push({ id: 'targetQualityScoreStatus.failed', message: 'target quality score validation failed' });
+  pruneTargetQualityResolvedFailures(failures, report);
 
 
 
@@ -11023,6 +11040,14 @@ async function runTargetHarnessGate() {
 
 
   report.humanReviewRequired = warnings.length > 0;
+
+  const finalReasonSummary = buildCompactReasonSummary(report);
+  report.reasonSummaryStatus = {
+    status: finalReasonSummary.status,
+    reasonCodes: finalReasonSummary.reasonCodes,
+    summary: finalReasonSummary.summary,
+    safeSummaryOnly: true,
+  };
 
 
 
