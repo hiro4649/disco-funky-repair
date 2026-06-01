@@ -6,6 +6,10 @@ import { buildRemoteProductCheckPlan } from './codex-remote-product-checks.mjs';
 import { buildRemoteProductEvidenceRunnerReport, buildRemoteProductSafeArtifacts } from './codex-v098-gate-lib.mjs';
 import { buildRemoteNpmDiagnosticReport } from './codex-remote-npm-diagnostic-classify.mjs';
 import { buildRemoteNpmDiagnosticNormalizationReport } from './codex-v099-gate-lib.mjs';
+import { computeTargetQualityScoreStatus } from './codex-local-quality-gate.mjs';
+import { buildWorkflowQualityRunnerReport } from './codex-workflow-quality-runner.mjs';
+import { buildCompactReasonSummary } from './codex-reason-summary.mjs';
+import { buildDiagnosticConsolidatedSummary } from './codex-diagnostic-consolidation-runner.mjs';
 
 function caseStatus(statusKey, pass, payload = {}) {
   return { [statusKey]: { status: pass ? 'pass' : 'fail', ...payload, safeSummaryOnly: true } };
@@ -47,6 +51,61 @@ function rootPackageMissingPlan() {
     rootPackagePresent: false,
     backendPackagePresent: true,
     contractsPackagePresent: false,
+  });
+}
+
+function targetQualityFixtureReport(overrides = {}) {
+  return {
+    targetManifestStatus: { status: 'pass', safeSummaryOnly: true },
+    secretScan: { status: 'pass', safeSummaryOnly: true },
+    agentsContextStatus: { status: 'pass', safeSummaryOnly: true },
+    environmentReadinessStatus: { status: 'pass', safeSummaryOnly: true },
+    changeClassificationStatus: { status: 'pass', safeSummaryOnly: true },
+    productVerificationStatus: { status: 'pass', safeSummaryOnly: true },
+    productVerificationEvidenceStatus: { status: 'pass', safeSummaryOnly: true },
+    testMetricsStatus: { status: 'pass', safeSummaryOnly: true },
+    remoteProductBaselineStatus: { status: 'pass', safeSummaryOnly: true },
+    remoteNpmDiagnosticStatus: { status: 'pass', safeSummaryOnly: true },
+    workflowPreflightStatus: { status: 'pass', safeSummaryOnly: true },
+    artifactLifeboatStatus: { status: 'pass', safeSummaryOnly: true },
+    classificationCoverageStatus: { status: 'pass', safeSummaryOnly: true },
+    versionLineageStatus: { status: 'pass', safeSummaryOnly: true },
+    remoteLocalParityStatus: { status: 'pass', safeSummaryOnly: true },
+    noArtifactFailureStatus: { status: 'pass', safeSummaryOnly: true },
+    prEvidenceRendererStatus: { status: 'pass', safeSummaryOnly: true },
+    safeArtifactClassifierStatus: { status: 'pass', safeSummaryOnly: true },
+    securityLifecycleStatus: { status: 'pass', safeSummaryOnly: true },
+    reviewIndependenceStatus: { status: 'pass', safeSummaryOnly: true },
+    taskBriefCompilerStatus: { status: 'pass', safeSummaryOnly: true },
+    activeSelfTestRegistryStatus: {
+      status: 'pass',
+      activeStatusKey: 'v102SelfTestStatus',
+      registeredVersion: '1.0.2',
+      safeSummaryOnly: true,
+    },
+    v085SelfTestStatus: { status: 'pass', safeSummaryOnly: true },
+    v098SelfTestStatus: { status: 'pass', safeSummaryOnly: true },
+    v099SelfTestStatus: { status: 'pass', safeSummaryOnly: true },
+    v100SelfTestStatus: { status: 'pass', safeSummaryOnly: true },
+    v101SelfTestStatus: { status: 'pass', safeSummaryOnly: true },
+    v102SelfTestStatus: { status: 'pass', safeSummaryOnly: true },
+    ...overrides,
+  };
+}
+
+function targetQualityStatus(overrides = {}) {
+  const seed = targetQualityFixtureReport();
+  const seedStatus = computeTargetQualityScoreStatus(seed);
+  const requiredKeys = [
+    ...(seedStatus.blockingStatuses || []),
+    ...(seedStatus.manualStatuses || []),
+    ...(seedStatus.notApplicableStatuses || []),
+  ].map((item) => item.key);
+  const complete = Object.fromEntries(requiredKeys.map((key) => [key, { status: 'pass', safeSummaryOnly: true }]));
+  return computeTargetQualityScoreStatus({
+    ...complete,
+    ...seed,
+    ...overrides,
   });
 }
 
@@ -165,6 +224,54 @@ const CASES = [
   ['placeholder_only_product_evidence_still_fails_v102', gates.buildProductPrEvidenceValidatorReport, { placeholderOnly: true }, 'productPrEvidenceValidatorStatus', 'fail'],
   ['active_v102_failure_still_blocks', gates.buildLegacySelfTestMatrixReport, { activeVersion: 'v102', v102SelfTestStatus: 'fail', failureClass: 'active_failure' }, 'legacySelfTestMatrixStatus', 'fail'],
   ['parent_v101_preservation_still_passes', gates.buildLegacySelfTestMatrixReport, { activeVersion: 'v102', v101SelfTestStatus: 'pass', v102SelfTestStatus: 'pass' }, 'legacySelfTestMatrixStatus', 'pass'],
+  ['legacy_v085_failure_advisory_for_v102', () => caseStatus('legacyV085AdvisoryFixtureStatus',
+    targetQualityStatus({ v085SelfTestStatus: { status: 'fail', safeSummaryOnly: true } }).status === 'pass'), {}, 'legacyV085AdvisoryFixtureStatus', 'pass'],
+  ['legacy_v098_failure_advisory_for_v102', () => caseStatus('legacyV098AdvisoryFixtureStatus',
+    targetQualityStatus({ v098SelfTestStatus: { status: 'fail', safeSummaryOnly: true } }).status === 'pass'), {}, 'legacyV098AdvisoryFixtureStatus', 'pass'],
+  ['legacy_v099_failure_advisory_for_v102', () => caseStatus('legacyV099AdvisoryFixtureStatus',
+    targetQualityStatus({ v099SelfTestStatus: { status: 'fail', safeSummaryOnly: true } }).status === 'pass'), {}, 'legacyV099AdvisoryFixtureStatus', 'pass'],
+  ['legacy_v100_failure_advisory_for_v102', () => caseStatus('legacyV100AdvisoryFixtureStatus',
+    targetQualityStatus({ v100SelfTestStatus: { status: 'fail', safeSummaryOnly: true } }).status === 'pass'), {}, 'legacyV100AdvisoryFixtureStatus', 'pass'],
+  ['legacy_v101_failure_advisory_for_v102', () => caseStatus('legacyV101AdvisoryFixtureStatus',
+    targetQualityStatus({ v101SelfTestStatus: { status: 'fail', safeSummaryOnly: true } }).status === 'pass'), {}, 'legacyV101AdvisoryFixtureStatus', 'pass'],
+  ['target_quality_score_pass_with_v102_pass_and_v085_fail', () => {
+    const status = targetQualityStatus({ v085SelfTestStatus: { status: 'fail', safeSummaryOnly: true } });
+    return caseStatus('targetQualityLegacyAdvisoryFixtureStatus',
+      status.status === 'pass' && !status.blockingStatuses.some((item) => item.key === 'v085SelfTestStatus'));
+  }, {}, 'targetQualityLegacyAdvisoryFixtureStatus', 'pass'],
+  ['target_quality_score_fail_with_v102_fail', () => {
+    const status = targetQualityStatus({ v102SelfTestStatus: { status: 'fail', safeSummaryOnly: true } });
+    return caseStatus('targetQualityActiveV102FixtureStatus',
+      status.status === 'fail' && status.blockingStatuses.some((item) => item.key === 'v102SelfTestStatus'));
+  }, {}, 'targetQualityActiveV102FixtureStatus', 'fail'],
+  ['workflow_runner_legacy_self_test_advisory_in_target_v102', () => {
+    const report = targetQualityFixtureReport({
+      targetQualityScoreStatus: targetQualityStatus({ v085SelfTestStatus: { status: 'fail', safeSummaryOnly: true } }),
+      status: 'pass',
+      v085SelfTestStatus: { status: 'fail', safeSummaryOnly: true },
+    });
+    const result = buildWorkflowQualityRunnerReport(report, { gateExit: 0, eventName: 'pull_request' });
+    return caseStatus('workflowLegacySelfTestAdvisoryFixtureStatus',
+      !result.workflowQualityRunnerStatus.failures.some((item) => item === 'v085SelfTestStatus=fail'));
+  }, {}, 'workflowLegacySelfTestAdvisoryFixtureStatus', 'pass'],
+  ['reason_summary_legacy_self_test_advisory_in_target_v102', () => {
+    const result = buildCompactReasonSummary(targetQualityFixtureReport({
+      status: 'pass',
+      targetQualityScoreStatus: targetQualityStatus({ v085SelfTestStatus: { status: 'fail', safeSummaryOnly: true } }),
+      v085SelfTestStatus: { status: 'fail', safeSummaryOnly: true },
+    }));
+    return caseStatus('reasonSummaryLegacySelfTestAdvisoryFixtureStatus',
+      result.status === 'pass' && !result.summary.blockingReasons.some((item) => item.gate === 'v085SelfTestStatus'));
+  }, {}, 'reasonSummaryLegacySelfTestAdvisoryFixtureStatus', 'pass'],
+  ['diagnostic_legacy_self_test_advisory_in_target_v102', () => {
+    const result = buildDiagnosticConsolidatedSummary(targetQualityFixtureReport({
+      targetQualityScoreStatus: targetQualityStatus({ v085SelfTestStatus: { status: 'fail', safeSummaryOnly: true } }),
+      v085SelfTestStatus: { status: 'fail', safeSummaryOnly: true },
+    }));
+    return caseStatus('diagnosticLegacySelfTestAdvisoryFixtureStatus',
+      !result.summary.blockingReasons.some((item) => item.gate === 'v085SelfTestStatus') &&
+      result.summary.optionalReasons.some((item) => item.gate === 'v085SelfTestStatus'));
+  }, {}, 'diagnosticLegacySelfTestAdvisoryFixtureStatus', 'pass'],
   ['remote_npm_diagnostic_uses_current_safe_artifact_scope_v102', () => {
     const artifacts = backendProductArtifacts();
     const report = buildRemoteNpmDiagnosticNormalizationReport({

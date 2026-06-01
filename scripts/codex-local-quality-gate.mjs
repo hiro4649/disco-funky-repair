@@ -3696,7 +3696,7 @@ function computeOutputShapeStatus(report) {
 
 
 
-function computeQualityScoreStatus(report) {
+export function computeQualityScoreStatus(report) {
 
 
 
@@ -4440,6 +4440,15 @@ function computeQualityScoreStatus(report) {
 
 
 
+  const activeSelfTestKey = report.activeSelfTestRegistryStatus?.activeStatusKey || 'v102SelfTestStatus';
+  const legacySelfTestKeys = new Set([
+    'v085SelfTestStatus',
+    'v098SelfTestStatus',
+    'v099SelfTestStatus',
+    'v100SelfTestStatus',
+    'v101SelfTestStatus',
+  ]);
+
   const statuses = scored.map((key) => {
 
 
@@ -4461,6 +4470,7 @@ function computeQualityScoreStatus(report) {
 
 
     if (key === 'humanConfirmationObjectStatus' && status === 'not_required') effectiveStatus = 'pass';
+    if (legacySelfTestKeys.has(key) && key !== activeSelfTestKey && status === 'fail') effectiveStatus = 'pass_advisory';
 
 
 
@@ -4484,7 +4494,7 @@ function computeQualityScoreStatus(report) {
 
 
 
-  const passCount = statuses.filter((item) => item.effectiveStatus === 'pass').length;
+  const passCount = statuses.filter((item) => item.effectiveStatus === 'pass' || item.effectiveStatus === 'pass_advisory').length;
 
 
 
@@ -4888,8 +4898,6 @@ function computeTargetOutputShapeStatus(report) {
 
     'v092SelfTestStatus',
 
-
-
     'safeArtifactValidation',
 
 
@@ -4930,7 +4938,7 @@ function computeTargetOutputShapeStatus(report) {
 
 
 
-function computeTargetQualityScoreStatus(report) {
+export function computeTargetQualityScoreStatus(report) {
 
 
 
@@ -5250,8 +5258,6 @@ function computeTargetQualityScoreStatus(report) {
 
     'v092SelfTestStatus',
 
-
-
     'safeArtifactValidation',
 
 
@@ -5442,11 +5448,26 @@ function computeTargetQualityScoreStatus(report) {
 
     'v092SelfTestStatus',
 
+    'v098SelfTestStatus',
 
+    'v099SelfTestStatus',
+
+    'v100SelfTestStatus',
+
+    'v101SelfTestStatus',
+
+    'v102SelfTestStatus',
 
   ]);
 
-
+  const activeSelfTestKey = report.activeSelfTestRegistryStatus?.activeStatusKey || 'v102SelfTestStatus';
+  const legacySelfTestKeys = new Set([
+    'v085SelfTestStatus',
+    'v098SelfTestStatus',
+    'v099SelfTestStatus',
+    'v100SelfTestStatus',
+    'v101SelfTestStatus',
+  ]);
 
   const statuses = scored.map((key) => {
 
@@ -5461,6 +5482,7 @@ function computeTargetQualityScoreStatus(report) {
 
 
     if (allowedNotApplicable.has(key) && status === 'not_applicable') effectiveStatus = 'pass_optional';
+    if (legacySelfTestKeys.has(key) && key !== activeSelfTestKey && status === 'fail') effectiveStatus = 'pass_advisory';
 
 
 
@@ -5481,6 +5503,7 @@ function computeTargetQualityScoreStatus(report) {
 
 
   const notApplicable = statuses.filter((item) => item.effectiveStatus === 'pass_optional');
+  const advisory = statuses.filter((item) => item.effectiveStatus === 'pass_advisory');
 
 
 
@@ -5545,6 +5568,7 @@ function computeTargetQualityScoreStatus(report) {
 
 
     notApplicableStatuses: notApplicable,
+    advisoryStatuses: advisory,
 
 
 

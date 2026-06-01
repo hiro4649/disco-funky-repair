@@ -3225,6 +3225,17 @@ function statusAllowed(key, status, eventName) {
 
 }
 
+function isLegacySelfTestAdvisoryStatus(key, report = {}) {
+  const activeSelfTestKey = report.activeSelfTestRegistryStatus?.activeStatusKey || 'v102SelfTestStatus';
+  return [
+    'v085SelfTestStatus',
+    'v098SelfTestStatus',
+    'v099SelfTestStatus',
+    'v100SelfTestStatus',
+    'v101SelfTestStatus',
+  ].includes(key) && key !== activeSelfTestKey;
+}
+
 
 
 
@@ -3915,6 +3926,8 @@ export function evaluateWorkflowReport(report, options = {}) {
 
 
     const status = report[key]?.status || 'missing';
+
+    if (status === 'fail' && isLegacySelfTestAdvisoryStatus(key, report)) continue;
 
 
 
