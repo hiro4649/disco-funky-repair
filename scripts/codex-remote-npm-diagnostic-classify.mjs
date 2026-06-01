@@ -115,6 +115,13 @@ export function buildRemoteNpmDiagnosticReport(env = process.env) {
   }
   const { diagnostic, unsafe } = normalizeRemoteNpmDiagnostic(input);
   if (unsafe) return simpleStatus('remoteNpmDiagnosticStatus', 'fail', { reasonCodes: ['remote_npm_diagnostic_unsafe'] });
+  const diagnosticType = String(input.diagnosticType || input.diagnostic_type || '').toLowerCase();
+  if (diagnosticType === 'not_applicable' || (diagnostic.npmExitCode === null && diagnostic.npmExecuted === false)) {
+    return simpleStatus('remoteNpmDiagnosticStatus', 'not_applicable', {
+      diagnostic,
+      reasonCodes: ['remote_npm_diagnostic_not_required'],
+    });
+  }
   const unknown = diagnostic.safeFailureCategory === 'unknown_npm_failure';
   return simpleStatus('remoteNpmDiagnosticStatus', unknown ? 'manual_confirmation_required' : 'pass', {
     diagnostic,

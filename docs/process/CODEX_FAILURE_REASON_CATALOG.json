@@ -571,6 +571,14 @@
       "canManualConfirmationOverride": false
     },
     {
+      "reasonCode": "remote_npm_diagnostic_not_required",
+      "gate": "remoteNpmDiagnostic",
+      "severity": "info",
+      "safeMessage": "Remote npm diagnostic is not required for this change.",
+      "nextBestFix": "No action required for harness-only changes.",
+      "canManualConfirmationOverride": false
+    },
+    {
       "reasonCode": "remote_npm_diagnostic_unsafe",
       "gate": "remoteNpmDiagnostic",
       "severity": "error",

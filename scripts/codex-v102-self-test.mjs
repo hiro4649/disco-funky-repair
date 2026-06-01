@@ -5,6 +5,7 @@ import { scanObjectForUnsafe, writeJsonReport, exitFor } from './codex-v080-lib.
 import * as gates from './codex-v102-gate-lib.mjs';
 import { buildRemoteProductCheckPlan } from './codex-remote-product-checks.mjs';
 import { buildRemoteProductEvidenceRunnerReport, buildRemoteProductSafeArtifacts } from './codex-v098-gate-lib.mjs';
+import { buildRemoteNpmDiagnosticReport } from './codex-remote-npm-diagnostic-classify.mjs';
 import { buildRemoteNpmDiagnosticNormalizationReport } from './codex-v099-gate-lib.mjs';
 
 function caseStatus(statusKey, pass, payload = {}) {
@@ -177,6 +178,20 @@ const CASES = [
       report.remoteNpmDiagnosticNormalizationStatus.commandClass === 'backend_npm_test' &&
       report.remoteNpmDiagnosticNormalizationStatus.cwd === 'apps/backend');
   }, {}, 'remoteNpmDiagnosticScopeFixtureStatus', 'pass'],
+  ['harness_only_remote_npm_diagnostic_not_applicable_v102', () => {
+    const artifacts = buildRemoteProductSafeArtifacts({
+      productRelevant: false,
+      isPullRequest: true,
+      npmExecuted: false,
+      npmExitCode: 0,
+    }, {});
+    const report = buildRemoteNpmDiagnosticReport({
+      CODEX_NPM_TEST_SAFE_SUMMARY_JSON: JSON.stringify(artifacts.diagnostic),
+    });
+    return caseStatus('harnessOnlyRemoteNpmDiagnosticFixtureStatus',
+      report.remoteNpmDiagnosticStatus.status === 'not_applicable' &&
+      report.remoteNpmDiagnosticStatus.reasonCodes.includes('remote_npm_diagnostic_not_required'));
+  }, {}, 'harnessOnlyRemoteNpmDiagnosticFixtureStatus', 'pass'],
   ['workflow_remote_product_plan_controls_npm_execution_v102', () => {
     const workflow = fs.readFileSync('.github/workflows/quality-gate.yml', 'utf8');
     return caseStatus('workflowRemoteProductPlanFixtureStatus',
