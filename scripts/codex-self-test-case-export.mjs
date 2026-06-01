@@ -26,6 +26,26 @@ function safeCases(report) {
     }));
 }
 
+function activeSelfTestStatus(report = {}) {
+  return report.v102SelfTestStatus ||
+    report.v101SelfTestStatus ||
+    report.v100SelfTestStatus ||
+    report.v099SelfTestStatus ||
+    report.v098SelfTestStatus ||
+    report.v089SelfTestStatus ||
+    {};
+}
+
+function activeSelfTestPassed(activeStatus = {}) {
+  return activeStatus.status === 'pass' && Number(activeStatus.failedCaseCount ?? 0) === 0;
+}
+
+function activeFailedCases(activeStatus = {}) {
+  if (Array.isArray(activeStatus.failedCases)) return activeStatus.failedCases;
+  if (Array.isArray(activeStatus.failures)) return activeStatus.failures;
+  return [];
+}
+
 export function buildSelfTestCaseExportReport(env = process.env) {
   const report = envJson(env, 'CODEX_SELF_TEST_REPORT_JSON') ||
     envJson(env, 'CODEX_V102_SELF_TEST_REPORT') ||
@@ -35,16 +55,14 @@ export function buildSelfTestCaseExportReport(env = process.env) {
     envJson(env, 'CODEX_V098_SELF_TEST_REPORT') ||
     envJson(env, 'CODEX_V089_SELF_TEST_REPORT') ||
     {};
-  const activeStatus = report.v102SelfTestStatus ||
-    report.v101SelfTestStatus ||
-    report.v100SelfTestStatus ||
-    report.v099SelfTestStatus ||
-    report.v098SelfTestStatus ||
-    report.v089SelfTestStatus ||
-    {};
+  const activeStatus = activeSelfTestStatus(report);
   const suite = String(report.suite || activeStatus.suite || env.CODEX_SELF_TEST_SUITE || 'local_quality_gate');
-  const failedCases = safeCases(report);
-  const failedCaseCount = Number(report.failedCaseCount ?? activeStatus.failedCaseCount ?? failedCases.length);
+  const failedCases = activeSelfTestPassed(activeStatus)
+    ? []
+    : safeCases({ cases: activeFailedCases(activeStatus).length ? activeFailedCases(activeStatus) : report.cases });
+  const failedCaseCount = activeSelfTestPassed(activeStatus)
+    ? 0
+    : Number(activeStatus.failedCaseCount ?? report.failedCaseCount ?? failedCases.length);
   const caseCount = Number(report.caseCount ?? (Array.isArray(report.cases) ? report.cases.length : failedCases.length));
   const reportedFailure = report.status === 'fail' || activeStatus.status === 'fail' || failedCaseCount > 0;
   const reasonCodes = [];
