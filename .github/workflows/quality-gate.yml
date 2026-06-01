@@ -1,4 +1,4 @@
-# CODEX_QUALITY_HARNESS_FILE v1.0.1
+# CODEX_QUALITY_HARNESS_FILE v1.0.2
 name: quality-gate
 
 on:
@@ -114,7 +114,6 @@ jobs:
           echo "CODEX_PRODUCT_VERIFICATION_EVIDENCE_PATH=$RUNNER_TEMP/codex-product-verification-evidence.remote.json" >> "$GITHUB_ENV"
           echo "CODEX_REMOTE_PRODUCT_BASELINE_PATH=$RUNNER_TEMP/codex-remote-product-baseline.json" >> "$GITHUB_ENV"
           echo "CODEX_NPM_TEST_SAFE_SUMMARY_PATH=$RUNNER_TEMP/codex-remote-npm-diagnostic.safe.json" >> "$GITHUB_ENV"
-          echo "CODEX_REMOTE_PRODUCT_CHECKS_PATH=$RUNNER_TEMP/codex-remote-product-checks.safe.json" >> "$GITHUB_ENV"
           if [ -f CODEX_SOURCE_HARNESS_MANIFEST.json ]; then
             is_pr=false
             if [ "${CODEX_EVENT_NAME:-}" = "pull_request" ]; then is_pr=true; fi
@@ -130,55 +129,24 @@ jobs:
           changed_files="$(git diff --name-only origin/main...HEAD || true)"
           export CODEX_CHANGED_FILES="$changed_files"
           {
-            echo 'CODEX_CHANGED_FILES<<CODEX_CHANGED_FILES_EOF'
+            echo "CODEX_CHANGED_FILES<<CODEX_CHANGED_FILES_EOF"
             printf '%s\n' "$changed_files"
-            echo 'CODEX_CHANGED_FILES_EOF'
+            echo "CODEX_CHANGED_FILES_EOF"
           } >> "$GITHUB_ENV"
           classification_json="$(CODEX_QUALITY_REPORT=json node scripts/codex-change-classification-gate.mjs || true)"
           product_relevant="$(CLASSIFICATION_JSON="$classification_json" node -e "const r=JSON.parse(process.env.CLASSIFICATION_JSON||'{}'); const s=r.changeClassificationStatus||{}; process.stdout.write(s.productRelevantChanged||s.runtimeReadinessClaimed||s.packageOrLockfileChanged?'1':'0')")"
-          check_input="$(PRODUCT_RELEVANT="$product_relevant" node -e "const files=(process.env.CODEX_CHANGED_FILES||'').split(/\r?\n/).filter(Boolean); process.stdout.write(JSON.stringify({productRelevant:process.env.PRODUCT_RELEVANT==='1',changedFiles:files}));")"
-          check_plan="$(CODEX_REMOTE_PRODUCT_CHECKS_JSON="$check_input" node scripts/codex-remote-product-checks.mjs --plan-json || true)"
-          printf '%s\n' "$check_plan" > "$RUNNER_TEMP/codex-remote-product-checks.safe.json"
-          plan_field() {
-            CHECK_PLAN="$check_plan" FIELD="$1" node -e "try{const p=JSON.parse(process.env.CHECK_PLAN||'{}'); const v=p[process.env.FIELD]; process.stdout.write(v===undefined||v===null?'':String(v));}catch{process.stdout.write('')}"
-          }
-          check_status="$(plan_field status)"
-          command_name="$(plan_field command)"
-          command_cwd="$(plan_field cwd)"
-          package_scope="$(plan_field packageScope)"
-          command_class="$(plan_field commandClass)"
-          failure_class="$(plan_field failureClass)"
-          if [ -z "$check_status" ]; then check_status=fail; fi
-          if [ -z "$failure_class" ] && [ "$check_status" = "fail" ]; then failure_class=command_scope_mismatch; fi
-          echo "CODEX_NPM_COMMAND=$command_name" >> "$GITHUB_ENV"
-          echo "CODEX_NPM_COMMAND_CWD=$command_cwd" >> "$GITHUB_ENV"
-          echo "CODEX_NPM_PACKAGE_SCOPE=$package_scope" >> "$GITHUB_ENV"
-          echo "CODEX_NPM_COMMAND_CLASS=$command_class" >> "$GITHUB_ENV"
           npm_exit=0
           npm_executed=0
           if [ "$product_relevant" = "1" ]; then
+            npm_executed=1
             echo "CODEX_SKIP_NPM=0" >> "$GITHUB_ENV"
-            if [ "$check_status" = "pass" ] && [ "$command_class" = "backend_npm_test" ] && [ "$command_cwd" = "apps/backend" ]; then
-              npm_executed=1
-              (cd "$command_cwd" && npm test -- --runInBand > "$RUNNER_TEMP/codex-npm-test.raw.log" 2>&1) || npm_exit=$?
-            elif [ "$check_status" = "pass" ] && [ "$command_class" = "root_npm_test" ] && [ "$command_cwd" = "." ]; then
-              npm_executed=1
-              npm test > "$RUNNER_TEMP/codex-npm-test.raw.log" 2>&1 || npm_exit=$?
-            elif [ "$check_status" = "pass" ] && [ "$command_class" = "contracts_npm_test" ] && [ "$command_cwd" = "contracts" ]; then
-              npm_executed=1
-              (cd "$command_cwd" && npm test > "$RUNNER_TEMP/codex-npm-test.raw.log" 2>&1) || npm_exit=$?
-            else
-              npm_exit=254
-            fi
+            npm test > "$RUNNER_TEMP/codex-npm-test.raw.log" 2>&1 || npm_exit=$?
           else
             echo "CODEX_SKIP_NPM=1" >> "$GITHUB_ENV"
           fi
-          if [ "$npm_exit" != "0" ] && [ -z "$failure_class" ]; then failure_class=unknown_npm_failure; fi
           echo "CODEX_REMOTE_NPM_EXECUTED=$npm_executed" >> "$GITHUB_ENV"
           echo "CODEX_NPM_EXIT_CODE=$npm_exit" >> "$GITHUB_ENV"
-          echo "CODEX_NPM_FAILURE_CLASS=$failure_class" >> "$GITHUB_ENV"
-          echo "CODEX_NPM_SAFE_FAILURE_CATEGORY=$failure_class" >> "$GITHUB_ENV"
-          runner_json="$(PRODUCT_RELEVANT="$product_relevant" NPM_EXECUTED="$npm_executed" NPM_EXIT_CODE="$npm_exit" COMMAND_NAME="$command_name" COMMAND_CWD="$command_cwd" PACKAGE_SCOPE="$package_scope" COMMAND_CLASS="$command_class" FAILURE_CLASS="$failure_class" node -e "const input={productRelevant:process.env.PRODUCT_RELEVANT==='1',isPullRequest:process.env.CODEX_EVENT_NAME==='pull_request',eventName:process.env.CODEX_EVENT_NAME||'',headSha:process.env.CODEX_PR_HEAD_SHA||'',baseSha:process.env.CODEX_PR_BASE_SHA||'',repository:process.env.CODEX_REPOSITORY||'',npmExecuted:process.env.NPM_EXECUTED==='1',npmExitCode:Number(process.env.NPM_EXIT_CODE||0),command:process.env.COMMAND_NAME||'',commandCwd:process.env.COMMAND_CWD||'',packageScope:process.env.PACKAGE_SCOPE||'',commandClass:process.env.COMMAND_CLASS||'',failureClass:process.env.FAILURE_CLASS||''}; process.stdout.write(JSON.stringify(input));")"
+          runner_json="$(PRODUCT_RELEVANT="$product_relevant" NPM_EXECUTED="$npm_executed" NPM_EXIT_CODE="$npm_exit" node -e "const input={productRelevant:process.env.PRODUCT_RELEVANT==='1',isPullRequest:process.env.CODEX_EVENT_NAME==='pull_request',eventName:process.env.CODEX_EVENT_NAME||'',headSha:process.env.CODEX_PR_HEAD_SHA||'',baseSha:process.env.CODEX_PR_BASE_SHA||'',repository:process.env.CODEX_REPOSITORY||'',npmExecuted:process.env.NPM_EXECUTED==='1',npmExitCode:Number(process.env.NPM_EXIT_CODE||0)}; process.stdout.write(JSON.stringify(input));")"
           CODEX_REMOTE_PRODUCT_EVIDENCE_OUT_DIR="$RUNNER_TEMP" CODEX_REMOTE_PRODUCT_EVIDENCE_RUNNER_JSON="$runner_json" node scripts/codex-remote-product-evidence-runner.mjs --write-artifacts
       - name: Run Codex quality gate
         shell: bash

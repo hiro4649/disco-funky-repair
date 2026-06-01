@@ -1,55 +1,7 @@
 #!/usr/bin/env node
-// CODEX_QUALITY_HARNESS_FILE v1.0.1
+// CODEX_QUALITY_HARNESS_FILE v1.0.2
 import { scanObjectForUnsafe, writeJsonReport, exitFor } from './codex-v080-lib.mjs';
 import * as gates from './codex-v101-gate-lib.mjs';
-import { buildCompactReasonSummary } from './codex-reason-summary.mjs';
-import { statusAllowed as workflowStatusAllowed } from './codex-workflow-quality-runner.mjs';
-import { buildDiagnosticConsolidatedSummary } from './codex-diagnostic-consolidation-runner.mjs';
-
-function buildWorkflowLegacySelfTestAdvisoryReport() {
-  const legacyAllowed = workflowStatusAllowed('v100SelfTestStatus', 'fail', 'pull_request', 'target');
-  const activeBlocked = !workflowStatusAllowed('v101SelfTestStatus', 'fail', 'pull_request', 'target');
-  return {
-    workflowLegacySelfTestAdvisoryStatus: {
-      status: legacyAllowed && activeBlocked ? 'pass' : 'fail',
-      legacyAllowed,
-      activeBlocked,
-      safeSummaryOnly: true,
-    },
-  };
-}
-
-function buildReasonSummaryLegacySelfTestAdvisoryReport() {
-  const result = buildCompactReasonSummary({
-    targetQualityScoreStatus: { status: 'pass', score: 95 },
-    v100SelfTestStatus: { status: 'fail', reasonCodes: ['legacy_self_test_failed'] },
-    v101SelfTestStatus: { status: 'pass' },
-  });
-  const legacyBlocking = result.summary?.blockingReasons?.some((item) => item.gate === 'v100SelfTestStatus');
-  return {
-    reasonSummaryLegacySelfTestAdvisoryStatus: {
-      status: legacyBlocking ? 'fail' : 'pass',
-      legacyBlocking: Boolean(legacyBlocking),
-      safeSummaryOnly: true,
-    },
-  };
-}
-
-function buildDiagnosticLegacySelfTestAdvisoryReport() {
-  const summary = buildDiagnosticConsolidatedSummary({
-    targetQualityScoreStatus: { status: 'pass', score: 95 },
-    v100SelfTestStatus: { status: 'fail', reasonCodes: ['legacy_self_test_failed'] },
-    v101SelfTestStatus: { status: 'pass' },
-  });
-  const legacyBlocking = summary.blockingReasons?.some((item) => item.gate === 'v100SelfTestStatus');
-  return {
-    diagnosticLegacySelfTestAdvisoryStatus: {
-      status: legacyBlocking ? 'fail' : 'pass',
-      legacyBlocking: Boolean(legacyBlocking),
-      safeSummaryOnly: true,
-    },
-  };
-}
 
 const CASES = [
   ['parent_v100_required_for_v101_pass', gates.buildParentHarnessPreflightReport, { parentVersion: '1.0.0' }, 'parentHarnessPreflightStatus', 'pass'],
@@ -101,9 +53,6 @@ const CASES = [
   ['small_product_pr_no_remote_evidence_fails', gates.buildSmallProductPrFastPathReport, { noRemoteEvidence: true }, 'smallProductPrFastPathStatus', 'fail'],
   ['self_test_fixture_isolation_pass', gates.buildSelfTestFixtureIsolationReport, {}, 'selfTestFixtureIsolationStatus', 'pass'],
   ['self_test_fixture_tracked_file_side_effect_fails', gates.buildSelfTestFixtureIsolationReport, { trackedFileSideEffect: true }, 'selfTestFixtureIsolationStatus', 'fail'],
-  ['workflow_legacy_self_test_advisory_in_target_pass', buildWorkflowLegacySelfTestAdvisoryReport, {}, 'workflowLegacySelfTestAdvisoryStatus', 'pass'],
-  ['reason_summary_legacy_self_test_advisory_in_target_pass', buildReasonSummaryLegacySelfTestAdvisoryReport, {}, 'reasonSummaryLegacySelfTestAdvisoryStatus', 'pass'],
-  ['diagnostic_legacy_self_test_advisory_in_target_pass', buildDiagnosticLegacySelfTestAdvisoryReport, {}, 'diagnosticLegacySelfTestAdvisoryStatus', 'pass'],
   ['authoritative_product_evidence_pass', gates.buildAuthoritativeProductEvidenceReport, { sameHeadFormalPass: true, staleDiagnosticPresent: true }, 'authoritativeProductEvidenceStatus', 'pass'],
   ['placeholder_only_still_fails', gates.buildAuthoritativeProductEvidenceReport, { placeholderOnly: true }, 'authoritativeProductEvidenceStatus', 'fail'],
   ['lifeboat_only_still_fails', gates.buildAuthoritativeProductEvidenceReport, { lifeboatOnly: true }, 'authoritativeProductEvidenceStatus', 'fail'],
@@ -129,7 +78,7 @@ const results = CASES.map(([name, builder, input, key, expected]) => {
 
 const failures = results.filter((item) => item.status !== 'pass');
 const report = {
-  marker: 'CODEX_QUALITY_HARNESS_FILE v1.0.1',
+  marker: 'CODEX_QUALITY_HARNESS_FILE v1.0.2',
   status: failures.length ? 'fail' : 'pass',
   v101SelfTestStatus: {
     status: failures.length ? 'fail' : 'pass',

@@ -5,7 +5,7 @@
 
 
 
-// CODEX_QUALITY_HARNESS_FILE v1.0.1
+// CODEX_QUALITY_HARNESS_FILE v1.0.2
 
 
 
@@ -71,18 +71,6 @@ import { buildDiagnosticConsolidatedSummary } from './codex-diagnostic-consolida
 import { buildInvalidReportRecoverySummary } from './codex-invalid-report-recovery.mjs';
 import { V101_STATUS_KEYS } from './codex-v101-gate-lib.mjs';
 
-
-function activeSelfTestStatusKey() {
-  return `v${HARNESS_VERSION.replace(/\./g, '')}SelfTestStatus`;
-}
-
-function isSelfTestStatusKey(key) {
-  return /^v\d{3}SelfTestStatus$/.test(String(key || ''));
-}
-
-function isLegacySelfTestStatusKey(key) {
-  return isSelfTestStatusKey(key) && key !== activeSelfTestStatusKey();
-}
 
 
 
@@ -3165,14 +3153,8 @@ function readReport(file) {
 
 
 
-export function statusAllowed(key, status, eventName, harnessMode = process.env.CODEX_HARNESS_MODE) {
+function statusAllowed(key, status, eventName) {
 
-
-
-
-
-
-  if (harnessMode === 'target' && isLegacySelfTestStatusKey(key)) return true;
 
 
 
@@ -3939,7 +3921,7 @@ export function evaluateWorkflowReport(report, options = {}) {
 
 
 
-    if (!statusAllowed(key, status, options.eventName || process.env.CODEX_EVENT_NAME, harnessMode)) failures.push(`${key}=${status}`);
+    if (!statusAllowed(key, status, options.eventName || process.env.CODEX_EVENT_NAME)) failures.push(`${key}=${status}`);
 
 
 

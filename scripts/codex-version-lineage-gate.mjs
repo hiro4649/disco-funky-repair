@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// CODEX_QUALITY_HARNESS_FILE v1.0.1
+// CODEX_QUALITY_HARNESS_FILE v1.0.2
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -20,7 +20,6 @@ function firstMarkerVersion(file) {
 
 function listRepoFiles(dir = '.') {
   const out = [];
-  if (!fs.existsSync(dir)) return out;
   for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
     if (['.git', 'node_modules', 'dist', 'build'].includes(entry.name)) continue;
     const full = path.join(dir, entry.name);
@@ -32,17 +31,6 @@ function listRepoFiles(dir = '.') {
   return out;
 }
 
-function targetHarnessMarkerFiles(paths = []) {
-  const files = new Set(paths);
-  for (const dir of ['docs/process', 'docs/codex', 'scripts']) {
-    for (const file of listRepoFiles(dir)) files.add(file);
-  }
-  for (const file of ['.github/pull_request_template.md', '.github/workflows/quality-gate.yml']) {
-    files.add(file);
-  }
-  return [...files].filter((file) => fs.existsSync(file) && fs.statSync(file).isFile());
-}
-
 function manifestPath(env = process.env) {
   if (env.CODEX_HARNESS_MODE === 'target' && fs.existsSync('docs/process/CODEX_HARNESS_MANIFEST.json')) {
     return 'docs/process/CODEX_HARNESS_MANIFEST.json';
@@ -51,8 +39,13 @@ function manifestPath(env = process.env) {
   return 'docs/process/CODEX_HARNESS_MANIFEST.json';
 }
 
+function isTargetMode(env = process.env) {
+  return (env.CODEX_HARNESS_MODE === 'target' || !fs.existsSync('CODEX_SOURCE_HARNESS_MANIFEST.json')) &&
+    fs.existsSync('docs/process/CODEX_HARNESS_MANIFEST.json');
+}
+
 function requiredPaths(env = process.env) {
-  const target = env.CODEX_HARNESS_MODE === 'target' && fs.existsSync('docs/process/CODEX_HARNESS_MANIFEST.json');
+  const target = isTargetMode(env);
   return [
     ...(target ? ['docs/process/CODEX_HARNESS_MANIFEST.json', 'AGENTS.md'] : ['README.md', 'CODEX_SOURCE_HARNESS_MANIFEST.json']),
     'docs/process/CODEX_KNOWLEDGE_MAP.json',
@@ -68,7 +61,7 @@ function requiredPaths(env = process.env) {
 export function buildVersionLineageReport(env = process.env) {
   const failures = [];
   const warnings = [];
-  const target = env.CODEX_HARNESS_MODE === 'target' && fs.existsSync('docs/process/CODEX_HARNESS_MANIFEST.json');
+  const target = isTargetMode(env);
   const paths = requiredPaths(env);
   const manifestFile = manifestPath(env);
   const manifestJson = readJson(manifestFile);
@@ -102,13 +95,12 @@ export function buildVersionLineageReport(env = process.env) {
     if (version && version !== HARNESS_VERSION) failures.push(`active_marker_version_mismatch:${file}`);
   }
 
-  const markerFiles = target ? targetHarnessMarkerFiles(paths) : listRepoFiles();
-  for (const file of markerFiles) {
+  for (const file of listRepoFiles()) {
     if (!fs.existsSync(file) || !fs.statSync(file).isFile()) continue;
     const version = firstMarkerVersion(file);
     if (!version) continue;
     if (version !== HARNESS_VERSION) {
-      if (/archive|historical|past-pr/i.test(file)) warnings.push(`archived_marker:${file}`);
+      if (/archive|historical|past-pr/i.test(file) || (target && !paths.includes(file) && !file.startsWith('scripts/codex-'))) warnings.push(`archived_marker:${file}`);
       else failures.push(`active_marker_version_mismatch:${file}`);
     }
   }

@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// CODEX_QUALITY_HARNESS_FILE v1.0.1
+// CODEX_QUALITY_HARNESS_FILE v1.0.2
 import { fileURLToPath } from 'node:url';
 import {
   HARNESS_VERSION,
@@ -11,7 +11,6 @@ import {
 } from './codex-v080-lib.mjs';
 
 const SAFE_CATEGORIES = new Set([
-  'none',
   'test_assertion_failure',
   'lint_failure',
   'typecheck_failure',
@@ -25,27 +24,12 @@ const SAFE_CATEGORIES = new Set([
   'snapshot_mismatch',
   'package_manager_error',
   'baseline_failure',
-  'command_scope_mismatch',
   'unknown_npm_failure',
 ]);
 
 function numberOrNull(value) {
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : null;
-}
-
-function safeRelative(value) {
-  const normalized = String(value || '').replace(/\\/g, '/').replace(/^\.\/+/, '').replace(/\/+/g, '/').trim();
-  if (!normalized) return null;
-  if (normalized === '.') return '.';
-  if (/^(?:[A-Za-z]:|\/)/.test(normalized)) return null;
-  if (normalized.split('/').some((part) => part === '..')) return null;
-  return /^[A-Za-z0-9._/-]+$/.test(normalized) ? normalized : null;
-}
-
-function safeToken(value, fallback = 'unknown') {
-  const text = String(value || '').slice(0, 80);
-  return /^[A-Za-z0-9_.-]+$/.test(text) ? text : fallback;
 }
 
 function inputFromEnv(env = process.env) {
@@ -61,7 +45,7 @@ function inputFromEnv(env = process.env) {
     if (!parsed.ok) return parsed.reasonCode === 'file_missing' ? null : { __invalid: true };
     return parsed.value;
   }
-  if (env.CODEX_NPM_EXIT_CODE || env.CODEX_NPM_SAFE_FAILURE_CATEGORY || env.CODEX_NPM_COMMAND_CWD || env.CODEX_NPM_PACKAGE_SCOPE) {
+  if (env.CODEX_NPM_EXIT_CODE || env.CODEX_NPM_SAFE_FAILURE_CATEGORY) {
     return {
       npmExitCode: env.CODEX_NPM_EXIT_CODE,
       safeFailureCategory: env.CODEX_NPM_SAFE_FAILURE_CATEGORY || 'unknown_npm_failure',
@@ -69,8 +53,6 @@ function inputFromEnv(env = process.env) {
       platform: env.CODEX_PLATFORM_LABEL,
       packageManager: env.CODEX_PACKAGE_MANAGER,
       commandClass: env.CODEX_NPM_COMMAND_CLASS,
-      cwd: env.CODEX_NPM_COMMAND_CWD,
-      packageScope: env.CODEX_NPM_PACKAGE_SCOPE,
     };
   }
   return null;
@@ -100,9 +82,7 @@ export function normalizeRemoteNpmDiagnostic(input = {}) {
     platform: String(input.platform || input.platform_label || 'unknown').slice(0, 60),
     os: String(input.os || 'unknown').slice(0, 60),
     packageManager: String(input.packageManager || input.package_manager || 'unknown').slice(0, 60),
-    commandClass: safeToken(input.commandClass || input.command_class || 'npm_test', 'npm_test'),
-    cwd: safeRelative(input.cwd || input.commandCwd || input.command_cwd),
-    packageScope: safeRelative(input.packageScope || input.package_scope),
+    commandClass: String(input.commandClass || input.command_class || 'npm_test').slice(0, 80),
     safeFailureCategory: category,
     safeMarkerCount: numberOrNull(input.safeMarkerCount ?? input.safe_marker_count),
     testCountDetected: numberOrNull(input.testCountDetected ?? input.safe_test_count),
