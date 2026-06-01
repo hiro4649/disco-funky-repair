@@ -3255,6 +3255,22 @@ export function evaluateWorkflowReport(report, options = {}) {
 
 
 
+  const activeSelfTestKey = report.activeSelfTestRegistryStatus?.activeStatusKey || 'v102SelfTestStatus';
+  const activeSelfTestStatus = report[activeSelfTestKey];
+  if (activeSelfTestStatus?.suite && report.selfTestCaseExportStatus?.suite && report.selfTestCaseExportStatus.suite !== activeSelfTestStatus.suite) {
+    report.selfTestCaseExportStatus = {
+      ...report.selfTestCaseExportStatus,
+      suite: activeSelfTestStatus.suite,
+      caseCount: activeSelfTestStatus.caseCount ?? report.selfTestCaseExportStatus.caseCount,
+      failedCaseCount: activeSelfTestStatus.failedCaseCount ?? report.selfTestCaseExportStatus.failedCaseCount,
+      failedCases: Array.isArray(activeSelfTestStatus.failedCases) ? activeSelfTestStatus.failedCases : report.selfTestCaseExportStatus.failedCases,
+    };
+  }
+
+
+
+
+
   const mode = report.targetQualityScoreStatus && !report.sourceHarnessValidationStatus ? 'target' : 'source';
 
 
