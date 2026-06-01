@@ -2,6 +2,53 @@
 // CODEX_QUALITY_HARNESS_FILE v1.0.2
 import { scanObjectForUnsafe, writeJsonReport, exitFor } from './codex-v080-lib.mjs';
 import * as gates from './codex-v102-gate-lib.mjs';
+import { buildRemoteProductCheckPlan } from './codex-remote-product-checks.mjs';
+import { buildRemoteProductEvidenceRunnerReport, buildRemoteProductSafeArtifacts } from './codex-v098-gate-lib.mjs';
+import { buildRemoteNpmDiagnosticReport } from './codex-remote-npm-diagnostic-classify.mjs';
+import { buildRemoteNpmDiagnosticNormalizationReport } from './codex-v099-gate-lib.mjs';
+
+function caseStatus(statusKey, pass, payload = {}) {
+  return { [statusKey]: { status: pass ? 'pass' : 'fail', ...payload, safeSummaryOnly: true } };
+}
+
+function backendProductPlan() {
+  return buildRemoteProductCheckPlan({
+    productRelevant: true,
+    changedFiles: ['apps/backend/src/app/lib/example.ts'],
+    rootPackagePresent: false,
+    backendPackagePresent: true,
+    contractsPackagePresent: false,
+  });
+}
+
+function backendProductArtifacts() {
+  return buildRemoteProductSafeArtifacts({
+    productRelevant: true,
+    isPullRequest: true,
+    npmExecuted: true,
+    npmExitCode: 0,
+    command: 'npm test -- --runInBand',
+    cwd: 'apps/backend',
+    packageScope: 'apps/backend',
+    commandClass: 'backend_npm_test',
+  }, {
+    CODEX_REMOTE_NPM_EXECUTED: '1',
+    CODEX_NPM_EXIT_CODE: '0',
+    CODEX_NPM_CWD: 'apps/backend',
+    CODEX_NPM_PACKAGE_SCOPE: 'apps/backend',
+    CODEX_NPM_COMMAND_CLASS: 'backend_npm_test',
+  });
+}
+
+function rootPackageMissingPlan() {
+  return buildRemoteProductCheckPlan({
+    productRelevant: true,
+    changedFiles: ['src/product-entry.ts'],
+    rootPackagePresent: false,
+    backendPackagePresent: true,
+    contractsPackagePresent: false,
+  });
+}
 
 const baseResume = {
   lastCompletedPhase: 'phase_a',
@@ -64,6 +111,86 @@ const CASES = [
   ['product_pr_evidence_stale_remote_fails', gates.buildProductPrEvidenceValidatorReport, { remoteEvidenceStale: true }, 'productPrEvidenceValidatorStatus', 'fail'],
   ['product_pr_evidence_placeholder_only_fails', gates.buildProductPrEvidenceValidatorReport, { placeholderOnly: true }, 'productPrEvidenceValidatorStatus', 'fail'],
   ['product_pr_evidence_lifeboat_only_fails', gates.buildProductPrEvidenceValidatorReport, { lifeboatOnly: true }, 'productPrEvidenceValidatorStatus', 'fail'],
+  ['backend_product_pr_uses_apps_backend_cwd_v102', () => {
+    const plan = backendProductPlan();
+    return caseStatus('backendProductCwdFixtureStatus', plan.status === 'pass' && plan.cwd === 'apps/backend');
+  }, {}, 'backendProductCwdFixtureStatus', 'pass'],
+  ['backend_product_pr_records_apps_backend_package_scope_v102', () => {
+    const artifacts = backendProductArtifacts();
+    const command = artifacts.evidence.commands[0] || {};
+    return caseStatus('backendProductPackageScopeFixtureStatus',
+      command.packageScope === 'apps/backend' && artifacts.diagnostic.packageScope === 'apps/backend');
+  }, {}, 'backendProductPackageScopeFixtureStatus', 'pass'],
+  ['backend_product_pr_records_backend_npm_test_command_class_v102', () => {
+    const artifacts = backendProductArtifacts();
+    const command = artifacts.evidence.commands[0] || {};
+    return caseStatus('backendProductCommandClassFixtureStatus',
+      command.commandClass === 'backend_npm_test' && artifacts.diagnostic.commandClass === 'backend_npm_test');
+  }, {}, 'backendProductCommandClassFixtureStatus', 'pass'],
+  ['root_package_missing_does_not_run_root_npm_test_v102', () => {
+    const plan = rootPackageMissingPlan();
+    return caseStatus('rootPackageMissingNoRootNpmFixtureStatus',
+      plan.status === 'fail' && plan.command === 'not_run' && plan.commandClass === 'command_scope_mismatch');
+  }, {}, 'rootPackageMissingNoRootNpmFixtureStatus', 'pass'],
+  ['root_package_missing_classified_as_command_scope_mismatch_v102', () => {
+    const plan = rootPackageMissingPlan();
+    const artifacts = buildRemoteProductSafeArtifacts({
+      productRelevant: true,
+      isPullRequest: true,
+      npmExecuted: false,
+      npmExitCode: 254,
+      command: plan.command,
+      cwd: plan.cwd,
+      packageScope: plan.packageScope,
+      commandClass: plan.commandClass,
+      failureClass: plan.failureClass,
+    }, {});
+    return caseStatus('rootPackageMissingCommandScopeFixtureStatus',
+      plan.reasonCodes.includes('root_package_missing') &&
+      plan.failureClass === 'command_scope_mismatch' &&
+      artifacts.diagnostic.safeFailureCategory === 'command_scope_mismatch' &&
+      artifacts.evidence.safeReasonCodes.includes('command_scope_mismatch'));
+  }, {}, 'rootPackageMissingCommandScopeFixtureStatus', 'pass'],
+  ['formal_backend_evidence_required_for_backend_product_pr_v102', () => {
+    const report = buildRemoteProductEvidenceRunnerReport({
+      forceCheck: true,
+      productRelevant: true,
+      npmExecuted: false,
+      npmExitCode: 0,
+    });
+    return caseStatus('formalBackendEvidenceRequiredFixtureStatus',
+      report.remoteProductEvidenceRunnerStatus.status === 'fail' &&
+      report.remoteProductEvidenceRunnerStatus.reasonCodes.includes('remote_npm_not_executed_for_product_pr'));
+  }, {}, 'formalBackendEvidenceRequiredFixtureStatus', 'pass'],
+  ['placeholder_only_product_evidence_still_fails_v102', gates.buildProductPrEvidenceValidatorReport, { placeholderOnly: true }, 'productPrEvidenceValidatorStatus', 'fail'],
+  ['active_v102_failure_still_blocks', gates.buildLegacySelfTestMatrixReport, { activeVersion: 'v102', v102SelfTestStatus: 'fail', failureClass: 'active_failure' }, 'legacySelfTestMatrixStatus', 'fail'],
+  ['parent_v101_preservation_still_passes', gates.buildLegacySelfTestMatrixReport, { activeVersion: 'v102', v101SelfTestStatus: 'pass', v102SelfTestStatus: 'pass' }, 'legacySelfTestMatrixStatus', 'pass'],
+  ['remote_npm_diagnostic_uses_current_safe_artifact_scope_v102', () => {
+    const artifacts = backendProductArtifacts();
+    const report = buildRemoteNpmDiagnosticNormalizationReport({
+      forceCheck: true,
+      productRelevant: true,
+      remoteNpmDiagnosticStatus: { status: 'pass', diagnostic: artifacts.diagnostic },
+    });
+    return caseStatus('remoteNpmDiagnosticScopeFixtureStatus',
+      report.remoteNpmDiagnosticNormalizationStatus.status === 'pass' &&
+      report.remoteNpmDiagnosticNormalizationStatus.commandClass === 'backend_npm_test' &&
+      report.remoteNpmDiagnosticNormalizationStatus.cwd === 'apps/backend');
+  }, {}, 'remoteNpmDiagnosticScopeFixtureStatus', 'pass'],
+  ['harness_only_remote_npm_diagnostic_not_applicable_v102', () => {
+    const artifacts = buildRemoteProductSafeArtifacts({
+      productRelevant: false,
+      isPullRequest: true,
+      npmExecuted: false,
+      npmExitCode: 0,
+    }, {});
+    const report = buildRemoteNpmDiagnosticReport({
+      CODEX_NPM_TEST_SAFE_SUMMARY_JSON: JSON.stringify(artifacts.diagnostic),
+    });
+    return caseStatus('harnessOnlyRemoteNpmDiagnosticFixtureStatus',
+      report.remoteNpmDiagnosticStatus.status === 'not_applicable' &&
+      report.remoteNpmDiagnosticStatus.reasonCodes.includes('remote_npm_diagnostic_not_required'));
+  }, {}, 'harnessOnlyRemoteNpmDiagnosticFixtureStatus', 'pass'],
 
   ['backup_artifact_repo_external_pass', gates.buildRepoExternalBackupReport, {}, 'repoExternalBackupStatus', 'pass'],
   ['backup_artifact_tracked_file_fails', gates.buildBackupArtifactManagerReport, { tracked: true }, 'backupArtifactManagerStatus', 'fail'],
