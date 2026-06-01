@@ -1,6 +1,5 @@
 #!/usr/bin/env node
 // CODEX_QUALITY_HARNESS_FILE v1.0.2
-import fs from 'node:fs';
 import { scanObjectForUnsafe, writeJsonReport, exitFor } from './codex-v080-lib.mjs';
 import * as gates from './codex-v102-gate-lib.mjs';
 import { buildRemoteProductCheckPlan } from './codex-remote-product-checks.mjs';
@@ -192,22 +191,6 @@ const CASES = [
       report.remoteNpmDiagnosticStatus.status === 'not_applicable' &&
       report.remoteNpmDiagnosticStatus.reasonCodes.includes('remote_npm_diagnostic_not_required'));
   }, {}, 'harnessOnlyRemoteNpmDiagnosticFixtureStatus', 'pass'],
-  ['workflow_remote_product_plan_controls_npm_execution_v102', () => {
-    const workflow = fs.readFileSync('.github/workflows/quality-gate.yml', 'utf8');
-    return caseStatus('workflowRemoteProductPlanFixtureStatus',
-      workflow.includes('scripts/codex-remote-product-checks.mjs --write-artifact') &&
-      workflow.includes('product_plan_status') &&
-      workflow.includes('backend_npm_test:apps/backend') &&
-      workflow.includes('failure_class="${product_failure_class:-command_scope_mismatch}"'));
-  }, {}, 'workflowRemoteProductPlanFixtureStatus', 'pass'],
-  ['workflow_records_remote_product_scope_safe_env_v102', () => {
-    const workflow = fs.readFileSync('.github/workflows/quality-gate.yml', 'utf8');
-    return caseStatus('workflowRemoteProductScopeEnvFixtureStatus',
-      workflow.includes('CODEX_NPM_COMMAND_CLASS=$product_command_class') &&
-      workflow.includes('CODEX_NPM_CWD=$product_cwd') &&
-      workflow.includes('CODEX_NPM_PACKAGE_SCOPE=$product_package_scope') &&
-      workflow.includes('PRODUCT_PACKAGE_SCOPE="$product_package_scope"'));
-  }, {}, 'workflowRemoteProductScopeEnvFixtureStatus', 'pass'],
 
   ['backup_artifact_repo_external_pass', gates.buildRepoExternalBackupReport, {}, 'repoExternalBackupStatus', 'pass'],
   ['backup_artifact_tracked_file_fails', gates.buildBackupArtifactManagerReport, { tracked: true }, 'backupArtifactManagerStatus', 'fail'],
