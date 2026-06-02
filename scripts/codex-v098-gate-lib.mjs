@@ -122,6 +122,7 @@ export function buildRemoteProductSafeArtifacts(input = parseJson(process.env.CO
   };
   const diagnostic = {
     schemaVersion: '0.8.3', harnessVersion: HARNESS_VERSION,
+    npmExecuted: productRelevant ? npmExecuted : false,
     npmExitCode: productRelevant ? npmExitCode : null,
     nodeMajor: Number(env.CODEX_NODE_MAJOR || process.versions.node.split('.')[0]),
     platform: String(input.platform || env.RUNNER_OS || process.platform || 'unknown').slice(0, 60),
