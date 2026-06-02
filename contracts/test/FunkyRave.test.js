@@ -1,4 +1,6 @@
 const { expect } = require("chai");
+const fs = require("fs");
+const path = require("path");
 const { loadFixture } = require("@nomicfoundation/hardhat-toolbox/network-helpers");
 const { ethers } = require("hardhat");
 
@@ -41,14 +43,15 @@ describe("FunkyRave", function () {
   }
 
   describe("Deployment", function () {
-    it("Should set correct name and symbol", async function () {
+    it("keeps the existing FUNKY identity for VGC Model readiness", async function () {
       const { token } = await loadFixture(deployFunkyRaveFixture);
       expect(await token.name()).to.equal("FUNKY");
       expect(await token.symbol()).to.equal("FUNKY RAVE");
     });
 
-    it("Should mint initial supply to admin", async function () {
+    it("uses OpenZeppelin ERC20 default decimals and mints constructor supply to admin", async function () {
       const { token, admin } = await loadFixture(deployFunkyRaveFixture);
+      expect(await token.decimals()).to.equal(18);
       expect(await token.balanceOf(admin.address)).to.equal(INITIAL_SUPPLY);
       expect(await token.totalSupply()).to.equal(INITIAL_SUPPLY);
     });
@@ -111,6 +114,12 @@ describe("FunkyRave", function () {
       const { token, admin, user1 } = await loadFixture(deployFunkyRaveFixture);
       await expect(token.connect(admin).add_tier_updater(user1.address))
         .to.be.revertedWithCustomError(token, "TierUpdaterMustBeContract");
+    });
+
+    it("Cannot remove the only registered tier updater contract", async function () {
+      const { token, admin, tierUpdater } = await loadFixture(deployFunkyRaveFixture);
+      await expect(token.connect(admin).remove_tier_updater(tierUpdater.target))
+        .to.be.revertedWithCustomError(token, "CannotRemoveLastTierUpdater");
     });
   });
 
@@ -223,6 +232,7 @@ describe("FunkyRave", function () {
         admin.address
       );
       expect(await token.isFeeExempt(user1.address)).to.equal(true);
+      expect(await token.exemptAddressCount()).to.equal(1);
 
       await token.connect(admin).set_fee_exempt(
         user1.address,
@@ -234,6 +244,7 @@ describe("FunkyRave", function () {
         admin.address
       );
       expect(await token.isFeeExempt(user1.address)).to.equal(false);
+      expect(await token.exemptAddressCount()).to.equal(0);
     });
 
     it("Reverts fee exemption when cap is exceeded", async function () {
@@ -291,11 +302,13 @@ describe("FunkyRave", function () {
 
   describe("Transfers and fees", function () {
     it("Transfer to non-DEX: no fee", async function () {
-      const { token, admin, user1, user2 } = await loadFixture(deployFunkyRaveFixture);
+      const { token, admin, feeRecipient, user1, user2 } = await loadFixture(deployFunkyRaveFixture);
       const amount = 1000n * 10n ** 18n;
       await token.connect(admin).transfer(user1.address, amount);
+      const feeRecipientBefore = await token.balanceOf(feeRecipient.address);
       await token.connect(user1).transfer(user2.address, amount);
       expect(await token.balanceOf(user2.address)).to.equal(amount);
+      expect(await token.balanceOf(feeRecipient.address)).to.equal(feeRecipientBefore);
     });
 
     it("Transfer to DEX (sell): fee applied based on sender holding tier", async function () {
@@ -389,6 +402,23 @@ describe("FunkyRave", function () {
 
       expect(await token.balanceOf(feeRecipient.address)).to.equal(feeRecipientBefore);
       expect(await token.balanceOf(pair.target)).to.equal(amount);
+    });
+  });
+
+  describe("Deployment script readiness", function () {
+    it("keeps FUNKY deploy and governance scripts gated by explicit env vars", function () {
+      const deployScript = fs.readFileSync(path.join(__dirname, "..", "scripts", "deploy-funky.js"), "utf8");
+      const governanceScript = fs.readFileSync(path.join(__dirname, "..", "scripts", "configure-funky-governance.js"), "utf8");
+
+      expect(deployScript).to.include('requireEnv("FUNKY_INITIAL_ADMIN")');
+      expect(deployScript).to.include('requireEnv("FUNKY_INITIAL_FEE_RECIPIENT")');
+      expect(deployScript).to.include("Set PRIVATE_KEY before deploying.");
+
+      expect(governanceScript).to.include('requireEnv("FUNKY_TOKEN_ADDRESS")');
+      expect(governanceScript).to.include("FUNKY_TIER_UPDATER");
+      expect(governanceScript).to.include("FUNKY_TRUSTED_FACTORIES");
+      expect(governanceScript).to.include("FUNKY_INITIAL_PAIRS");
+      expect(governanceScript).to.include("Set PRIVATE_KEY in env.");
     });
   });
 });
