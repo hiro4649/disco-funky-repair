@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// CODEX_QUALITY_HARNESS_FILE v1.0.2
+// CODEX_QUALITY_HARNESS_FILE v1.0.3
 import fs from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import {
@@ -39,21 +39,6 @@ function hasUnsafeEvidenceKeys(value) {
     });
   };
   return visit(value);
-}
-
-function safeRelative(value, fallback = '') {
-  const normalized = String(value || '').replace(/\\/g, '/').replace(/\/+/g, '/').replace(/^\.\//, '').trim();
-  if (!normalized) return fallback;
-  if (normalized === '.') return '.';
-  if (/^(?:[A-Za-z]:|\/)/.test(normalized)) return fallback;
-  if (normalized.split('/').some((part) => part === '..')) return fallback;
-  if (!/^[A-Za-z0-9._/-]+$/.test(normalized)) return fallback;
-  return normalized;
-}
-
-function safeToken(value, fallback = '') {
-  const text = String(value || '').slice(0, 80);
-  return /^[A-Za-z0-9_.-]+$/.test(text) ? text : fallback;
 }
 
 function bodyEvidence(body) {
@@ -117,9 +102,6 @@ export function normalizeProductVerificationEvidence(env = process.env) {
     source: ['local', 'remote', 'not_applicable'].includes(item.source) ? item.source : 'local',
     durationMs: Number.isFinite(Number(item.durationMs)) ? Number(item.durationMs) : null,
     testCount: Number.isFinite(Number(item.testCount)) ? Number(item.testCount) : null,
-    cwd: safeRelative(item.cwd || item.workingDirectory || ''),
-    packageScope: safeRelative(item.packageScope || item.package_scope || ''),
-    commandClass: safeToken(item.commandClass || item.command_class || ''),
     safeSummary: String(item.safeSummary || 'safe command summary').slice(0, 160),
   }));
   const skipNpm = env.CODEX_SKIP_NPM === '1';

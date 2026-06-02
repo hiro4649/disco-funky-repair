@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// CODEX_QUALITY_HARNESS_FILE v1.0.2
+// CODEX_QUALITY_HARNESS_FILE v1.0.3
 import { fileURLToPath } from 'node:url';
 import {
   HARNESS_VERSION,
@@ -24,7 +24,6 @@ const SAFE_CATEGORIES = new Set([
   'snapshot_mismatch',
   'package_manager_error',
   'baseline_failure',
-  'command_scope_mismatch',
   'unknown_npm_failure',
 ]);
 
@@ -54,9 +53,6 @@ function inputFromEnv(env = process.env) {
       platform: env.CODEX_PLATFORM_LABEL,
       packageManager: env.CODEX_PACKAGE_MANAGER,
       commandClass: env.CODEX_NPM_COMMAND_CLASS,
-      cwd: env.CODEX_NPM_CWD,
-      packageScope: env.CODEX_NPM_PACKAGE_SCOPE,
-      npmExecuted: env.CODEX_REMOTE_NPM_EXECUTED,
     };
   }
   return null;
@@ -87,9 +83,6 @@ export function normalizeRemoteNpmDiagnostic(input = {}) {
     os: String(input.os || 'unknown').slice(0, 60),
     packageManager: String(input.packageManager || input.package_manager || 'unknown').slice(0, 60),
     commandClass: String(input.commandClass || input.command_class || 'npm_test').slice(0, 80),
-    cwd: String(input.cwd || '').replace(/\\/g, '/').slice(0, 80),
-    packageScope: String(input.packageScope || input.package_scope || '').replace(/\\/g, '/').slice(0, 80),
-    npmExecuted: input.npmExecuted === true || input.npmExecuted === '1' || input.npmExecuted === 'true',
     safeFailureCategory: category,
     safeMarkerCount: numberOrNull(input.safeMarkerCount ?? input.safe_marker_count),
     testCountDetected: numberOrNull(input.testCountDetected ?? input.safe_test_count),
@@ -115,13 +108,6 @@ export function buildRemoteNpmDiagnosticReport(env = process.env) {
   }
   const { diagnostic, unsafe } = normalizeRemoteNpmDiagnostic(input);
   if (unsafe) return simpleStatus('remoteNpmDiagnosticStatus', 'fail', { reasonCodes: ['remote_npm_diagnostic_unsafe'] });
-  const diagnosticType = String(input.diagnosticType || input.diagnostic_type || '').toLowerCase();
-  if (diagnosticType === 'not_applicable' || (diagnostic.npmExitCode === null && diagnostic.npmExecuted === false)) {
-    return simpleStatus('remoteNpmDiagnosticStatus', 'not_applicable', {
-      diagnostic,
-      reasonCodes: ['remote_npm_diagnostic_not_required'],
-    });
-  }
   const unknown = diagnostic.safeFailureCategory === 'unknown_npm_failure';
   return simpleStatus('remoteNpmDiagnosticStatus', unknown ? 'manual_confirmation_required' : 'pass', {
     diagnostic,

@@ -5,7 +5,7 @@
 
 
 
-// CODEX_QUALITY_HARNESS_FILE v1.0.2
+// CODEX_QUALITY_HARNESS_FILE v1.0.3
 
 
 
@@ -3225,17 +3225,6 @@ function statusAllowed(key, status, eventName) {
 
 }
 
-function isLegacySelfTestAdvisoryStatus(key, report = {}) {
-  const activeSelfTestKey = report.activeSelfTestRegistryStatus?.activeStatusKey || 'v102SelfTestStatus';
-  return [
-    'v085SelfTestStatus',
-    'v098SelfTestStatus',
-    'v099SelfTestStatus',
-    'v100SelfTestStatus',
-    'v101SelfTestStatus',
-  ].includes(key) && key !== activeSelfTestKey;
-}
-
 
 
 
@@ -3250,22 +3239,6 @@ function isLegacySelfTestAdvisoryStatus(key, report = {}) {
 
 export function evaluateWorkflowReport(report, options = {}) {
 
-
-
-
-
-
-  const activeSelfTestKey = report.activeSelfTestRegistryStatus?.activeStatusKey || 'v102SelfTestStatus';
-  const activeSelfTestStatus = report[activeSelfTestKey];
-  if (activeSelfTestStatus?.suite && report.selfTestCaseExportStatus?.suite && report.selfTestCaseExportStatus.suite !== activeSelfTestStatus.suite) {
-    report.selfTestCaseExportStatus = {
-      ...report.selfTestCaseExportStatus,
-      suite: activeSelfTestStatus.suite,
-      caseCount: activeSelfTestStatus.caseCount ?? report.selfTestCaseExportStatus.caseCount,
-      failedCaseCount: activeSelfTestStatus.failedCaseCount ?? report.selfTestCaseExportStatus.failedCaseCount,
-      failedCases: Array.isArray(activeSelfTestStatus.failedCases) ? activeSelfTestStatus.failedCases : report.selfTestCaseExportStatus.failedCases,
-    };
-  }
 
 
 
@@ -3942,8 +3915,6 @@ export function evaluateWorkflowReport(report, options = {}) {
 
 
     const status = report[key]?.status || 'missing';
-
-    if (status === 'fail' && isLegacySelfTestAdvisoryStatus(key, report)) continue;
 
 
 
@@ -5140,8 +5111,7 @@ function writeArtifacts(result, report) {
 
 
 
-  const activeSelfTestKey = report.activeSelfTestRegistryStatus?.activeStatusKey || 'v102SelfTestStatus';
-  const selfTestStatus = report[activeSelfTestKey] || report.v102SelfTestStatus || report.selfTestCaseExportStatus || report.v098SelfTestStatus || report.v097SelfTestStatus || report.v096SelfTestStatus || report.v095SelfTestStatus || report.v094SelfTestStatus || report.v093SelfTestStatus || report.v092SelfTestStatus || {};
+  const selfTestStatus = report.v098SelfTestStatus || report.v097SelfTestStatus || report.v096SelfTestStatus || report.v095SelfTestStatus || report.v094SelfTestStatus || report.v093SelfTestStatus || report.v092SelfTestStatus || report.selfTestCaseExportStatus || {};
 
 
 
