@@ -45,7 +45,7 @@ Low-priority findings may be ignored when they do not affect correctness,
 security, maintainability, or user-facing behavior. After fixing review
 findings, rerun the relevant tests.
 <!-- CODEX_QUALITY_HARNESS_BEGIN -->
-CODEX_QUALITY_HARNESS_FILE v1.0.2
+CODEX_QUALITY_HARNESS_FILE v1.0.3
 
 ## Prime Directive
 
@@ -59,7 +59,8 @@ the harness itself unless a task explicitly names a downstream project. Do not
 change downstream project repositories from source harness work.
 Use `docs/process/CODEX_OPENAI_CODEX_METHOD_POLICY.md` and
 `docs/process/code_review.md` as the stable method references.
-For v1.0.1 and v1.0.2 outcome, recovery, fixture isolation, clean-main,
+For v1.0.1 through v1.0.3 outcome, recovery, fixture isolation, clean-main,
+judgment consistency, product surface routing, review taxonomy, stale input,
 external blocked, handover, branch/head, and local gate contract routing, use
 the matching `docs/process/CODEX_*_POLICY.md` files.
 
@@ -86,6 +87,8 @@ review, release-gate, harness-change, or docs-only. For bugfix work, use the
 `codex-bugfix` skill and write reproduction status plus root-cause hypothesis
 before code edits unless the change is documentation-only. Keep task-specific
 workflow detail in skills or `docs/process`, not in AGENTS.md.
+In 5.5 low mode, keep one PR/repo focus, avoid broad changes, and return
+exactly one safe next action.
 
 ## Agent Doctrine And Skill Routing
 
