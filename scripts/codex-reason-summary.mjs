@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// CODEX_QUALITY_HARNESS_FILE v1.0.2
+// CODEX_QUALITY_HARNESS_FILE v1.0.3
 import fs from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { HARNESS_VERSION, marker, readJson, scanObjectForUnsafe, simpleStatus, writeJsonReport, exitFor } from './codex-v080-lib.mjs';
@@ -14,32 +14,6 @@ function safeCode(value) {
   return String(value || 'unknown_reason').replace(/[^A-Za-z0-9_.:-]/g, '_').slice(0, 120);
 }
 
-function isLegacySelfTestAdvisoryStatus(gate, report = {}) {
-  const activeSelfTestKey = report.activeSelfTestRegistryStatus?.activeStatusKey || 'v102SelfTestStatus';
-  return [
-    'v085SelfTestStatus',
-    'v098SelfTestStatus',
-    'v099SelfTestStatus',
-    'v100SelfTestStatus',
-    'v101SelfTestStatus',
-  ].includes(gate) && gate !== activeSelfTestKey;
-}
-
-function targetQualityPassed(report = {}) {
-  return report.targetQualityScoreStatus?.status === 'pass';
-}
-
-function staleSelfTestFailureResolved(failure, report = {}) {
-  if (!targetQualityPassed(report)) return false;
-  const reason = String(failure?.id || failure?.reasonCode || '');
-  const activeSelfTestKey = report.activeSelfTestRegistryStatus?.activeStatusKey || 'v102SelfTestStatus';
-  const selfTestMatch = reason.match(/\b(v(?:085|098|099|100|101|102)SelfTestStatus)\.failed\b/);
-  if (!selfTestMatch) return false;
-  const key = selfTestMatch[1];
-  if (isLegacySelfTestAdvisoryStatus(key, report)) return true;
-  return key === activeSelfTestKey && report[key]?.status === 'pass';
-}
-
 export function buildCompactReasonSummary(report = {}, options = {}) {
   const catalog = loadCatalog();
   const mode = report.targetQualityScoreStatus ? 'target' : 'source';
@@ -51,10 +25,6 @@ export function buildCompactReasonSummary(report = {}, options = {}) {
   for (const [gate, value] of statusEntries) {
     const reasonCodes = value.reasonCodes?.length ? value.reasonCodes : [gate];
     if (value.status === 'fail' || value.status === 'missing') {
-      if (value.status === 'fail' && isLegacySelfTestAdvisoryStatus(gate, report)) {
-        optionalNotApplicable.push(gate);
-        continue;
-      }
       for (const code of reasonCodes) blockingReasons.push({ reasonCode: safeCode(code), gate });
     } else if (['manual_confirmation_required', 'warning'].includes(value.status)) {
       for (const code of reasonCodes) manualReasons.push({ reasonCode: safeCode(code), gate });
@@ -63,19 +33,14 @@ export function buildCompactReasonSummary(report = {}, options = {}) {
     }
   }
   for (const failure of report.failures || []) {
-    if (staleSelfTestFailureResolved(failure, report)) continue;
     blockingReasons.push({ reasonCode: safeCode(failure.id || failure.reasonCode), gate: 'localQualityGate' });
   }
-  const summaryStatus = blockingReasons.length ? 'fail'
-    : manualReasons.length ? 'manual_confirmation_required'
-      : targetQualityPassed(report) ? 'pass'
-        : report.status || options.status || 'unknown';
   const nextActions = [...blockingReasons, ...manualReasons].slice(0, 5).map((item) => {
     const known = catalog.get(item.reasonCode);
     return known?.nextBestFix || `Review ${item.gate} safe reason ${item.reasonCode}.`;
   });
   const summary = {
-    status: summaryStatus,
+    status: report.status || options.status || 'unknown',
     mode,
     score,
     blockingReasons: blockingReasons.slice(0, 10),

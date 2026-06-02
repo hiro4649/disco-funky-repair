@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// CODEX_QUALITY_HARNESS_FILE v1.0.2
+// CODEX_QUALITY_HARNESS_FILE v1.0.3
 import fs from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { HARNESS_VERSION, marker, parseArgs, readJson, scanObjectForUnsafe, simpleStatus, writeJsonReport, exitFor } from './codex-v080-lib.mjs';
@@ -28,17 +28,6 @@ function safeReasonCode(key, status) {
   return `${key}_failed`.replace(/[^a-z0-9_]/gi, '_').toLowerCase();
 }
 
-function isLegacySelfTestAdvisoryStatus(key, report = {}) {
-  const activeSelfTestKey = report.activeSelfTestRegistryStatus?.activeStatusKey || 'v102SelfTestStatus';
-  return [
-    'v085SelfTestStatus',
-    'v098SelfTestStatus',
-    'v099SelfTestStatus',
-    'v100SelfTestStatus',
-    'v101SelfTestStatus',
-  ].includes(key) && key !== activeSelfTestKey;
-}
-
 export function buildDiagnosticConsolidatedSummary(report, options = {}) {
   const mode = report?.targetQualityScoreStatus && !report?.sourceHarnessValidationStatus ? 'target' : 'source';
   const catalog = reasonCatalog();
@@ -49,8 +38,7 @@ export function buildDiagnosticConsolidatedSummary(report, options = {}) {
     const status = value.status || 'missing';
     const reasonCodes = Array.isArray(value.reasonCodes) && value.reasonCodes.length ? value.reasonCodes : [safeReasonCode(key, status)];
     const entry = { gate: key, status, reasonCodes: reasonCodes.slice(0, 5) };
-    if (status === 'fail' && isLegacySelfTestAdvisoryStatus(key, report)) optional.push(entry);
-    else if (['fail', 'missing', 'not_run'].includes(status)) blocking.push(entry);
+    if (['fail', 'missing', 'not_run'].includes(status)) blocking.push(entry);
     else if (['manual_confirmation_required', 'warning'].includes(status)) manual.push(entry);
     else if (status === 'not_applicable') optional.push(entry);
   }

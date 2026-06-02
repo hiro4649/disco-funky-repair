@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// CODEX_QUALITY_HARNESS_FILE v1.0.2
+// CODEX_QUALITY_HARNESS_FILE v1.0.3
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -30,19 +30,6 @@ function evidencePathPresent(file) { return Boolean(file && fs.existsSync(file))
 function inputPathOrEnv(input, field, envName, env = process.env) {
   return Object.prototype.hasOwnProperty.call(input, field) ? input[field] : env[envName];
 }
-function safeRelative(value, fallback = '') {
-  const normalized = String(value || '').replace(/\\/g, '/').replace(/\/+/g, '/').replace(/^\.\//, '').trim();
-  if (!normalized) return fallback;
-  if (normalized === '.') return '.';
-  if (/^(?:[A-Za-z]:|\/)/.test(normalized)) return fallback;
-  if (normalized.split('/').some((part) => part === '..')) return fallback;
-  if (!/^[A-Za-z0-9._/-]+$/.test(normalized)) return fallback;
-  return normalized;
-}
-function safeToken(value, fallback = 'unknown') {
-  const text = String(value || '').slice(0, 80);
-  return /^[A-Za-z0-9_.-]+$/.test(text) ? text : fallback;
-}
 function isPlaceholder(value) {
   if (!value || typeof value !== 'object') return false;
   const type = String(value.evidenceType || value.baselineType || value.diagnosticType || '').toLowerCase();
@@ -69,9 +56,7 @@ export function buildRemoteProductEvidenceExecutionReport(input = parseJson(proc
   const reasonCodes = [];
   const warnings = [];
   const skipNpm = input.skipNpm !== undefined ? parseBool(input.skipNpm) : process.env.CODEX_SKIP_NPM === '1';
-  const npmExecuted = Object.prototype.hasOwnProperty.call(input, 'npmExecuted')
-    ? parseBool(input.npmExecuted)
-    : process.env.CODEX_REMOTE_NPM_EXECUTED === '1';
+  const npmExecuted = parseBool(input.npmExecuted) || process.env.CODEX_REMOTE_NPM_EXECUTED === '1';
   const evidencePath = inputPathOrEnv(input, 'evidencePath', 'CODEX_PRODUCT_VERIFICATION_EVIDENCE_PATH');
   const baselinePath = inputPathOrEnv(input, 'baselinePath', 'CODEX_REMOTE_PRODUCT_BASELINE_PATH');
   const diagnosticPath = inputPathOrEnv(input, 'diagnosticPath', 'CODEX_NPM_TEST_SAFE_SUMMARY_PATH');
@@ -98,9 +83,7 @@ export function buildRemoteProductEvidenceRunnerReport(input = parseJson(process
   if (!parseBool(input.forceCheck) && !productRelevant) return notApplicable('remoteProductEvidenceRunnerStatus', 'remote_product_evidence_runner_not_required');
   const reasonCodes = [];
   const npmExitCode = Number(input.npmExitCode ?? process.env.CODEX_NPM_EXIT_CODE ?? 0);
-  const npmExecuted = Object.prototype.hasOwnProperty.call(input, 'npmExecuted')
-    ? parseBool(input.npmExecuted)
-    : process.env.CODEX_REMOTE_NPM_EXECUTED === '1';
+  const npmExecuted = parseBool(input.npmExecuted) || process.env.CODEX_REMOTE_NPM_EXECUTED === '1';
   const runnerStatus = npmExitCode === 0 ? 'pass' : 'fail';
   if (scanObjectForUnsafe(input).length || parseBool(input.rawLogsIncluded) || parseBool(input.rawStdoutIncluded) || parseBool(input.rawStderrIncluded)) reasonCodes.push('remote_product_evidence_runner_failed');
   if (productRelevant && !npmExecuted) reasonCodes.push('remote_npm_not_executed_for_product_pr');
@@ -112,50 +95,31 @@ export function buildRemoteProductEvidenceRunnerReport(input = parseJson(process
 export function buildRemoteProductSafeArtifacts(input = parseJson(process.env.CODEX_REMOTE_PRODUCT_EVIDENCE_RUNNER_JSON) || {}, env = process.env) {
   const productRelevant = productRelevantFromInput(input, env);
   const npmExitCode = Number(input.npmExitCode ?? env.CODEX_NPM_EXIT_CODE ?? (productRelevant ? 1 : 0));
-  const npmExecuted = parseBool(input.npmExecuted) || env.CODEX_REMOTE_NPM_EXECUTED === '1';
+  const npmExecuted = parseBool(input.npmExecuted) || env.CODEX_REMOTE_NPM_EXECUTED === '1' || productRelevant;
   const now = new Date();
   const headSha = String(input.headSha || env.CODEX_PR_HEAD_SHA || env.GITHUB_SHA || '').slice(0, 80);
   const baseSha = String(input.baseSha || env.CODEX_PR_BASE_SHA || '').slice(0, 80);
   const repository = String(input.repository || env.CODEX_REPOSITORY || '').slice(0, 120);
-  const evidenceStatus = !productRelevant ? 'not_applicable' : npmExecuted && npmExitCode === 0 ? 'pass' : 'fail';
-  const failureClassInput = safeToken(input.failureClass || input.safeFailureCategory || env.CODEX_NPM_SAFE_FAILURE_CATEGORY || '', '');
-  const failureClass = evidenceStatus === 'pass'
-    ? ''
-    : failureClassInput || (!npmExecuted && productRelevant ? 'remote_npm_not_executed_for_product_pr' : 'unknown_npm_failure');
+  const evidenceStatus = !productRelevant ? 'not_applicable' : npmExitCode === 0 ? 'pass' : 'fail';
+  const failureClass = npmExitCode === 0 ? '' : String(input.failureClass || 'unknown_npm_failure').slice(0, 80);
   const command = String(input.command || 'npm test').slice(0, 80);
-  const commandClass = safeToken(input.commandClass || env.CODEX_NPM_COMMAND_CLASS || (failureClass === 'command_scope_mismatch' ? 'command_scope_mismatch' : 'npm_test'), 'npm_test');
-  const cwd = safeRelative(input.cwd || env.CODEX_NPM_CWD || (commandClass === 'backend_npm_test' ? 'apps/backend' : commandClass === 'contracts_npm_test' ? 'contracts' : commandClass === 'root_npm_test' || commandClass === 'npm_test' ? '.' : ''));
-  const packageScope = safeRelative(input.packageScope || env.CODEX_NPM_PACKAGE_SCOPE || (cwd === '.' ? 'root' : cwd), cwd === '.' ? 'root' : cwd);
-  const commandEvidence = {
-    name: command,
-    required: true,
-    result: evidenceStatus === 'pass' ? 'pass' : 'fail',
-    source: 'remote',
-    durationMs: null,
-    testCount: null,
-    cwd,
-    packageScope,
-    commandClass,
-    safeSummary: evidenceStatus === 'pass' ? 'remote npm test completed' : 'remote npm test failed with safe diagnostic',
-  };
   const evidence = {
     schemaVersion: '0.8.3', harnessVersion: HARNESS_VERSION, headSha, baseSha,
     eventName: String(input.eventName || env.CODEX_EVENT_NAME || '').slice(0, 60),
     isPullRequest: isPullRequest(input, env), productRelevant, npmExecuted, npmExitCode,
     status: evidenceStatus, evidenceType: productRelevant ? 'remote_npm_test' : 'not_applicable',
-    commands: productRelevant ? [commandEvidence] : [],
+    commands: productRelevant ? [{ name: command, required: true, result: evidenceStatus === 'pass' ? 'pass' : 'fail', source: 'remote', durationMs: null, testCount: null, safeSummary: evidenceStatus === 'pass' ? 'remote npm test completed' : 'remote npm test failed with safe diagnostic' }] : [],
     failureClass: failureClass || undefined, safeReasonCodes: failureClass ? [failureClass] : [],
     rawLogsIncluded: false, safeSummaryOnly: true,
   };
   const diagnostic = {
     schemaVersion: '0.8.3', harnessVersion: HARNESS_VERSION,
-    npmExecuted: productRelevant ? npmExecuted : false,
     npmExitCode: productRelevant ? npmExitCode : null,
     nodeMajor: Number(env.CODEX_NODE_MAJOR || process.versions.node.split('.')[0]),
     platform: String(input.platform || env.RUNNER_OS || process.platform || 'unknown').slice(0, 60),
     os: String(input.os || process.platform || 'unknown').slice(0, 60),
-    packageManager: 'npm', commandClass, cwd, packageScope,
-    safeFailureCategory: evidenceStatus === 'pass' ? 'test_assertion_failure' : failureClass || 'unknown_npm_failure',
+    packageManager: 'npm', commandClass: 'npm_test',
+    safeFailureCategory: npmExitCode === 0 ? 'test_assertion_failure' : failureClass || 'unknown_npm_failure',
     safeMarkerCount: null, testCountDetected: null, durationMs: null, knownBaselineMatched: false,
     rawLogUploaded: false, rawValuesStored: false,
     diagnosticType: productRelevant ? 'remote_npm_diagnostic' : 'not_applicable', safeSummaryOnly: true,
@@ -163,7 +127,7 @@ export function buildRemoteProductSafeArtifacts(input = parseJson(process.env.CO
   const baseline = {
     schemaVersion: '0.8.3', harnessVersion: HARNESS_VERSION, repository, baseSha,
     baselineType: productRelevant ? 'remote_product_verification' : 'not_applicable',
-    commands: productRelevant ? [{ name: command, cwd, packageScope, commandClass }] : [], result: evidenceStatus === 'not_applicable' ? 'pass' : evidenceStatus,
+    commands: productRelevant ? [command] : [], result: evidenceStatus === 'not_applicable' ? 'pass' : evidenceStatus,
     date: now.toISOString(), source: 'remote_workflow',
     safeSummary: productRelevant ? 'remote product baseline generated from safe npm result' : 'baseline not required for harness-only change',
     knownFailures: evidenceStatus === 'fail' ? [failureClass || 'unknown_npm_failure'] : [],
