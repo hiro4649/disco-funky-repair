@@ -4,6 +4,7 @@ import fs from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { scanObjectForUnsafe, simpleStatus, writeJsonReport, exitFor, readText } from './codex-v080-lib.mjs';
 import { buildRemoteProductSafeArtifacts } from './codex-v098-gate-lib.mjs';
+import { buildRemoteNpmDiagnosticNormalizationReport } from './codex-v099-gate-lib.mjs';
 
 export const V103_STATUS_KEYS = [
   'reasonSummaryFinalAggregationStatus',
@@ -168,6 +169,25 @@ export function buildRemoteNpmDiagnosticTruthReport(input = {}) {
     classification: input.classification || (executed ? 'remote_npm_executed_current_head' : 'remote_npm_not_required'),
     commandClass: input.commandClass || 'not_applicable',
     commandCwd: input.commandCwd || 'not_applicable',
+  });
+}
+
+export function buildRemoteNpmDiagnosticNormalizerInputReport(input = {}) {
+  const report = buildRemoteNpmDiagnosticNormalizationReport({
+    productRelevant: true,
+    remoteNpmDiagnostic: {
+      npmExecuted: input.remoteNpmDiagnosticNpmExecuted ?? true,
+      npmExitCode: input.remoteNpmDiagnosticNpmExitCode ?? 0,
+    },
+  });
+  if (report.status !== 'pass') return fail('remoteNpmDiagnosticTruthStatus', ['remote_npm_executed_but_normalizer_missing'], {
+    normalizationStatus: report.status,
+    normalizationReasonCodes: report.reasonCodes || [],
+  });
+  return pass('remoteNpmDiagnosticTruthStatus', {
+    normalizationStatus: report.status,
+    npmExecuted: report.npmExecuted,
+    npmExitCode: report.npmExitCode,
   });
 }
 

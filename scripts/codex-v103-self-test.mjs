@@ -18,6 +18,7 @@ const CASES = [
   ['remote_npm_truth_executed_pass', gates.buildRemoteNpmDiagnosticTruthReport, { remoteNpmDiagnosticNpmExecuted: true, requiresProductVerification: true }, 'remoteNpmDiagnosticTruthStatus', 'pass'],
   ['remote_npm_truth_not_executed_fail', gates.buildRemoteNpmDiagnosticTruthReport, { requiresProductVerification: true }, 'remoteNpmDiagnosticTruthStatus', 'fail'],
   ['remote_npm_executed_normalizer_missing_field_classified', gates.buildRemoteNpmDiagnosticTruthReport, { remoteNpmDiagnosticNpmExecuted: true, normalizerMissingField: true }, 'remoteNpmDiagnosticTruthStatus', 'fail'],
+  ['remote_npm_normalizer_uses_diagnostic_json_pass', gates.buildRemoteNpmDiagnosticNormalizerInputReport, { remoteNpmDiagnosticNpmExecuted: true, remoteNpmDiagnosticNpmExitCode: 0 }, 'remoteNpmDiagnosticTruthStatus', 'pass'],
   ['remote_npm_stale_head_fails', gates.buildRemoteNpmDiagnosticTruthReport, { remoteNpmDiagnosticNpmExecuted: true, staleHead: true }, 'remoteNpmDiagnosticTruthStatus', 'fail'],
   ['remote_npm_body_governance_missing_classified', gates.buildRemoteNpmDiagnosticTruthReport, { bodyGovernanceMissing: true }, 'remoteNpmDiagnosticTruthStatus', 'fail'],
 
