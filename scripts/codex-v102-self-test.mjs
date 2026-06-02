@@ -2,6 +2,7 @@
 // CODEX_QUALITY_HARNESS_FILE v1.0.3
 import { scanObjectForUnsafe, writeJsonReport, exitFor } from './codex-v080-lib.mjs';
 import * as gates from './codex-v102-gate-lib.mjs';
+import { buildRemoteProductEvidenceRunnerReport } from './codex-v098-gate-lib.mjs';
 
 const baseResume = {
   lastCompletedPhase: 'phase_a',
@@ -64,6 +65,35 @@ const CASES = [
   ['product_pr_evidence_stale_remote_fails', gates.buildProductPrEvidenceValidatorReport, { remoteEvidenceStale: true }, 'productPrEvidenceValidatorStatus', 'fail'],
   ['product_pr_evidence_placeholder_only_fails', gates.buildProductPrEvidenceValidatorReport, { placeholderOnly: true }, 'productPrEvidenceValidatorStatus', 'fail'],
   ['product_pr_evidence_lifeboat_only_fails', gates.buildProductPrEvidenceValidatorReport, { lifeboatOnly: true }, 'productPrEvidenceValidatorStatus', 'fail'],
+  ['formal_backend_evidence_input_false_overrides_remote_env_v102', () => {
+    const previousExecuted = process.env.CODEX_REMOTE_NPM_EXECUTED;
+    const previousExitCode = process.env.CODEX_NPM_EXIT_CODE;
+    try {
+      process.env.CODEX_REMOTE_NPM_EXECUTED = '1';
+      process.env.CODEX_NPM_EXIT_CODE = '0';
+      const report = buildRemoteProductEvidenceRunnerReport({
+        forceCheck: true,
+        productRelevant: true,
+        npmExecuted: false,
+        npmExitCode: 0,
+      });
+      return {
+        formalBackendEvidenceEnvIsolationFixtureStatus: {
+          status: report.remoteProductEvidenceRunnerStatus.status === 'fail' &&
+            report.remoteProductEvidenceRunnerStatus.npmExecuted === false &&
+            report.remoteProductEvidenceRunnerStatus.reasonCodes.includes('remote_npm_not_executed_for_product_pr')
+            ? 'pass'
+            : 'fail',
+          safeSummaryOnly: true,
+        },
+      };
+    } finally {
+      if (previousExecuted === undefined) delete process.env.CODEX_REMOTE_NPM_EXECUTED;
+      else process.env.CODEX_REMOTE_NPM_EXECUTED = previousExecuted;
+      if (previousExitCode === undefined) delete process.env.CODEX_NPM_EXIT_CODE;
+      else process.env.CODEX_NPM_EXIT_CODE = previousExitCode;
+    }
+  }, {}, 'formalBackendEvidenceEnvIsolationFixtureStatus', 'pass'],
 
   ['backup_artifact_repo_external_pass', gates.buildRepoExternalBackupReport, {}, 'repoExternalBackupStatus', 'pass'],
   ['backup_artifact_tracked_file_fails', gates.buildBackupArtifactManagerReport, { tracked: true }, 'backupArtifactManagerStatus', 'fail'],
