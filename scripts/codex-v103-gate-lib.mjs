@@ -3,12 +3,14 @@
 import fs from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { scanObjectForUnsafe, simpleStatus, writeJsonReport, exitFor, readText } from './codex-v080-lib.mjs';
+import { buildRemoteProductSafeArtifacts } from './codex-v098-gate-lib.mjs';
 
 export const V103_STATUS_KEYS = [
   'reasonSummaryFinalAggregationStatus',
   'remoteNpmDiagnosticTruthStatus',
   'localRemoteFailureDeltaClassifierStatus',
   'productSurfaceRouterStatus',
+  'remoteProductEvidenceScopeStatus',
   'activeSelfTestArtifactSourceStatus',
   'prBodyGovernanceAutoRepairStatus',
   'reviewEvidenceTaxonomyStatus',
@@ -202,6 +204,28 @@ export function buildProductSurfaceRouterReport(input = {}) {
   if (bool(input.commandClassMissing) || surfaces.some((surface) => !surface.commandClass)) reasons.push('product_surface_router_missing');
   if (surfaces.length > 1 && !bool(input.multiSurfaceEvidence)) reasons.push('product_surface_router_missing');
   return reasons.length ? fail('productSurfaceRouterStatus', reasons, { surfaces }) : pass('productSurfaceRouterStatus', { surfaces });
+}
+
+export function buildRemoteProductEvidenceScopeReport(input = {}) {
+  const artifacts = buildRemoteProductSafeArtifacts({
+    productRelevant: true,
+    npmExecuted: true,
+    npmExitCode: input.npmExitCode ?? 0,
+    command: input.command || 'npm test -- --runInBand',
+    commandClass: input.commandClass || 'backend_npm_test',
+    cwd: input.cwd || 'apps/backend',
+    packageScope: input.packageScope || 'apps/backend',
+  }, {});
+  const evidence = artifacts.evidence || {};
+  const diagnostic = artifacts.diagnostic || {};
+  const baseline = artifacts.baseline || {};
+  const reasons = [];
+  for (const item of [evidence, diagnostic, baseline]) {
+    if (item.cwd !== 'apps/backend') reasons.push('command_cwd_missing');
+    if (item.packageScope !== 'apps/backend') reasons.push('command_scope_mismatch');
+    if (item.commandClass !== 'backend_npm_test') reasons.push('product_surface_router_missing');
+  }
+  return reasons.length ? fail('remoteProductEvidenceScopeStatus', reasons) : pass('remoteProductEvidenceScopeStatus');
 }
 
 export function buildActiveSelfTestArtifactSourceReport(input = {}) {

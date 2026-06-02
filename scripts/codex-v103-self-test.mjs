@@ -30,6 +30,7 @@ const CASES = [
   ['root_package_missing_never_runs_root_npm', gates.buildProductSurfaceRouterReport, { changedFiles: ['src/a.js'], rootPackageExists: false }, 'productSurfaceRouterStatus', 'pass'],
   ['scripts_run_tests_product_surface_pass', gates.buildProductSurfaceRouterReport, { changedFiles: ['scripts/run-tests.js'] }, 'productSurfaceRouterStatus', 'pass'],
   ['multi_surface_requires_multi_evidence', gates.buildProductSurfaceRouterReport, { changedFiles: ['apps/backend/a.js', 'contracts/a.sol'] }, 'productSurfaceRouterStatus', 'fail'],
+  ['backend_remote_product_evidence_records_apps_backend_scope', gates.buildRemoteProductEvidenceScopeReport, {}, 'remoteProductEvidenceScopeStatus', 'pass'],
 
   ['active_v103_self_test_selected', gates.buildActiveSelfTestArtifactSourceReport, {}, 'activeSelfTestArtifactSourceStatus', 'pass'],
   ['legacy_v102_advisory_for_v103', gates.buildActiveSelfTestArtifactSourceReport, {}, 'activeSelfTestArtifactSourceStatus', 'pass'],
