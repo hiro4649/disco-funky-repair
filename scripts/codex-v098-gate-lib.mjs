@@ -83,7 +83,9 @@ export function buildRemoteProductEvidenceRunnerReport(input = parseJson(process
   if (!parseBool(input.forceCheck) && !productRelevant) return notApplicable('remoteProductEvidenceRunnerStatus', 'remote_product_evidence_runner_not_required');
   const reasonCodes = [];
   const npmExitCode = Number(input.npmExitCode ?? process.env.CODEX_NPM_EXIT_CODE ?? 0);
-  const npmExecuted = parseBool(input.npmExecuted) || process.env.CODEX_REMOTE_NPM_EXECUTED === '1';
+  const npmExecuted = Object.prototype.hasOwnProperty.call(input, 'npmExecuted')
+    ? parseBool(input.npmExecuted)
+    : process.env.CODEX_REMOTE_NPM_EXECUTED === '1';
   const runnerStatus = npmExitCode === 0 ? 'pass' : 'fail';
   if (scanObjectForUnsafe(input).length || parseBool(input.rawLogsIncluded) || parseBool(input.rawStdoutIncluded) || parseBool(input.rawStderrIncluded)) reasonCodes.push('remote_product_evidence_runner_failed');
   if (productRelevant && !npmExecuted) reasonCodes.push('remote_npm_not_executed_for_product_pr');
