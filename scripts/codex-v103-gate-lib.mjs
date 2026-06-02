@@ -225,6 +225,7 @@ export function buildRemoteProductEvidenceScopeReport(input = {}) {
     if (item.packageScope !== 'apps/backend') reasons.push('command_scope_mismatch');
     if (item.commandClass !== 'backend_npm_test') reasons.push('product_surface_router_missing');
   }
+  if (diagnostic.npmExecuted !== true) reasons.push('remote_npm_truth_missing');
   return reasons.length ? fail('remoteProductEvidenceScopeStatus', reasons) : pass('remoteProductEvidenceScopeStatus');
 }
 
