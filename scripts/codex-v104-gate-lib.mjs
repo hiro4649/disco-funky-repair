@@ -2,6 +2,9 @@
 // CODEX_QUALITY_HARNESS_FILE v1.0.4
 import { scanObjectForUnsafe, simpleStatus, writeJsonReport, exitFor, normalizePath } from './codex-v080-lib.mjs';
 import { buildRemoteProductSafeArtifacts } from './codex-v098-gate-lib.mjs';
+import { buildRemoteNpmDiagnosticNormalizationReport } from './codex-v099-gate-lib.mjs';
+
+export { buildRemoteNpmDiagnosticNormalizationReport };
 
 export const V104_STATUS_KEYS = [
   'claimToCodeVerifierStatus',
@@ -450,7 +453,7 @@ export function buildActiveSelfTestSingleSourceReport(input = {}) {
     activeSelfTestStatusKey: 'v104SelfTestStatus',
     activeSelfTestCaseCount: input.caseCount || 0,
     activeSelfTestFailedCaseCount: input.failedCaseCount || 0,
-    legacySuites: { v103: 'advisory', v102: 'advisory' },
+    legacySuites: { v085: 'advisory', v098: 'advisory', v099: 'advisory', v103: 'advisory', v102: 'advisory' },
   };
   const reasons = [];
   if (active.activeHarnessVersion !== '1.0.4' || active.activeSelfTestSuite !== 'v104' || active.activeSelfTestStatusKey !== 'v104SelfTestStatus') reasons.push('active_self_test_single_source_mismatch');
@@ -605,7 +608,7 @@ export function buildDefaultV104Reports(input = {}) {
       activeHarnessVersion: '1.0.4',
       activeSelfTestSuite: 'v104',
       activeSelfTestStatusKey: 'v104SelfTestStatus',
-      legacySuites: { v103: 'advisory', v102: 'advisory' },
+      legacySuites: { v085: 'advisory', v098: 'advisory', v099: 'advisory', v103: 'advisory', v102: 'advisory' },
     }),
   };
 }
@@ -626,6 +629,7 @@ const CLI_BUILDERS = {
   externalBlocked: buildExternalBlockedTerminalReport,
   role: buildRoleToolEvidenceAnnotationReport,
   dynamic: buildDynamicWorkflowLiteReport,
+  remoteNpmDiagnosticNormalization: buildRemoteNpmDiagnosticNormalizationReport,
   default: buildDefaultV104Reports,
 };
 
