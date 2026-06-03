@@ -10684,8 +10684,11 @@ async function runTargetHarnessGate() {
     'activeSelfTestRegistryStatus',
     'knowledgeGovernanceStatus',
     'versionSuccessionStatus',
+    'v085SelfTestStatus',
     'v087SelfTestStatus',
     'v092SelfTestStatus',
+    'v098SelfTestStatus',
+    'v099SelfTestStatus',
     'v100SelfTestStatus',
     'v101SelfTestStatus',
     'v102SelfTestStatus',
@@ -10846,6 +10849,9 @@ async function runTargetHarnessGate() {
     'contractGovernanceStatus',
     'complexityGovernanceStatus',
     'bestOfNEvidenceStatus',
+    'v085SelfTestStatus',
+    'v098SelfTestStatus',
+    'v099SelfTestStatus',
   ]) {
     if (report[key]?.status === 'fail' || report[key]?.status === 'warning' || report[key]?.status === 'manual_confirmation_required') {
       report[key] = {
