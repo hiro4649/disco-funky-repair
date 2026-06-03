@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// CODEX_QUALITY_HARNESS_FILE v1.0.3
+// CODEX_QUALITY_HARNESS_FILE v1.0.4
 import fs from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { HARNESS_VERSION, scanObjectForUnsafe, simpleStatus, writeJsonReport, exitFor, readJson, readText } from './codex-v080-lib.mjs';
@@ -102,28 +102,8 @@ export function buildRemoteNpmDiagnosticNormalizationReport(input = parseJson(pr
   const productRelevant = productRelevantFromInput(input);
   if (!parseBool(input.forceCheck) && !productRelevant) return notApplicable('remoteNpmDiagnosticNormalizationStatus', 'remote_npm_diagnostic_normalization_not_applicable');
   const reasonCodes = [];
-  const has = (object, key) => object && Object.prototype.hasOwnProperty.call(object, key);
-  const diagnostic = input.remoteNpmDiagnosticStatus?.diagnostic;
-  const remoteStatus = input.remoteNpmDiagnosticStatus;
-  const remoteDiagnostic = input.remoteNpmDiagnostic;
-  const npmExecuted = has(input, 'npmExecuted')
-    ? parseBool(input.npmExecuted)
-    : has(diagnostic, 'npmExecuted')
-      ? parseBool(diagnostic.npmExecuted)
-      : has(remoteStatus, 'npmExecuted')
-        ? parseBool(remoteStatus.npmExecuted)
-        : has(remoteDiagnostic, 'npmExecuted')
-          ? parseBool(remoteDiagnostic.npmExecuted)
-          : process.env.CODEX_REMOTE_NPM_EXECUTED === '1';
-  const npmExitCode = Number(has(input, 'npmExitCode')
-    ? input.npmExitCode
-    : has(diagnostic, 'npmExitCode')
-      ? diagnostic.npmExitCode
-      : has(remoteStatus, 'npmExitCode')
-        ? remoteStatus.npmExitCode
-        : has(remoteDiagnostic, 'npmExitCode')
-          ? remoteDiagnostic.npmExitCode
-          : process.env.CODEX_NPM_EXIT_CODE ?? 0);
+  const npmExecuted = parseBool(input.npmExecuted);
+  const npmExitCode = Number(input.npmExitCode ?? 0);
   if (productRelevant && !npmExecuted) reasonCodes.push('remote_npm_not_executed_for_product_pr');
   if (npmExitCode !== 0 || parseBool(input.npmFailMarkedPass)) reasonCodes.push('remote_npm_diagnostic_normalization_failed');
   if (parseBool(input.diagnosticPendingFinalPass) || parseBool(input.diagnosticMissingNoFormalEvidence) || parseBool(input.remoteNpmNotExecutedEmittedDespiteExecuted)) reasonCodes.push('remote_npm_diagnostic_normalization_failed');

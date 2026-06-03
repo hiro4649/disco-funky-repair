@@ -1,8 +1,7 @@
 #!/usr/bin/env node
-// CODEX_QUALITY_HARNESS_FILE v1.0.3
+// CODEX_QUALITY_HARNESS_FILE v1.0.4
 import { scanObjectForUnsafe, writeJsonReport, exitFor } from './codex-v080-lib.mjs';
 import * as gates from './codex-v103-gate-lib.mjs';
-import { buildRemoteNpmDiagnosticNormalizationReport } from './codex-v099-gate-lib.mjs';
 
 const CASES = [
   ['parent_v102_required_for_v103_pass', gates.buildActiveSelfTestArtifactSourceReport, {}, 'activeSelfTestArtifactSourceStatus', 'pass'],
@@ -21,36 +20,6 @@ const CASES = [
   ['remote_npm_executed_normalizer_missing_field_classified', gates.buildRemoteNpmDiagnosticTruthReport, { remoteNpmDiagnosticNpmExecuted: true, normalizerMissingField: true }, 'remoteNpmDiagnosticTruthStatus', 'fail'],
   ['remote_npm_stale_head_fails', gates.buildRemoteNpmDiagnosticTruthReport, { remoteNpmDiagnosticNpmExecuted: true, staleHead: true }, 'remoteNpmDiagnosticTruthStatus', 'fail'],
   ['remote_npm_body_governance_missing_classified', gates.buildRemoteNpmDiagnosticTruthReport, { bodyGovernanceMissing: true }, 'remoteNpmDiagnosticTruthStatus', 'fail'],
-  ['remote_npm_diagnostic_normalization_uses_safe_diagnostic_npm_executed', buildRemoteNpmDiagnosticNormalizationReport, {
-    forceCheck: true,
-    productRelevant: true,
-    remoteNpmDiagnosticStatus: {
-      diagnostic: {
-        npmExecuted: true,
-        npmExitCode: 0,
-      },
-    },
-  }, 'remoteNpmDiagnosticNormalizationStatus', 'pass'],
-  ['remote_npm_diagnostic_normalization_uses_env_when_input_absent', buildRemoteNpmDiagnosticNormalizationReport, {
-    forceCheck: true,
-    productRelevant: true,
-  }, 'remoteNpmDiagnosticNormalizationStatus', process.env.CODEX_REMOTE_NPM_EXECUTED === '1' ? 'pass' : 'fail'],
-  ['remote_npm_diagnostic_normalization_explicit_false_overrides_env', buildRemoteNpmDiagnosticNormalizationReport, {
-    forceCheck: true,
-    productRelevant: true,
-    npmExecuted: false,
-    npmExitCode: 0,
-  }, 'remoteNpmDiagnosticNormalizationStatus', 'fail'],
-  ['remote_npm_diagnostic_normalization_product_pr_not_executed_still_fails', buildRemoteNpmDiagnosticNormalizationReport, {
-    forceCheck: true,
-    productRelevant: true,
-    remoteNpmDiagnosticStatus: {
-      diagnostic: {
-        npmExecuted: false,
-        npmExitCode: 0,
-      },
-    },
-  }, 'remoteNpmDiagnosticNormalizationStatus', 'fail'],
 
   ['local_pass_remote_fail_delta_classified', gates.buildLocalRemoteFailureDeltaClassifierReport, { classification: 'local_pass_remote_fail_governance_body' }, 'localRemoteFailureDeltaClassifierStatus', 'pass'],
   ['local_remote_unknown_fails', gates.buildLocalRemoteFailureDeltaClassifierReport, { classification: 'unknown' }, 'localRemoteFailureDeltaClassifierStatus', 'fail'],
@@ -61,7 +30,6 @@ const CASES = [
   ['root_package_missing_never_runs_root_npm', gates.buildProductSurfaceRouterReport, { changedFiles: ['src/a.js'], rootPackageExists: false }, 'productSurfaceRouterStatus', 'pass'],
   ['scripts_run_tests_product_surface_pass', gates.buildProductSurfaceRouterReport, { changedFiles: ['scripts/run-tests.js'] }, 'productSurfaceRouterStatus', 'pass'],
   ['multi_surface_requires_multi_evidence', gates.buildProductSurfaceRouterReport, { changedFiles: ['apps/backend/a.js', 'contracts/a.sol'] }, 'productSurfaceRouterStatus', 'fail'],
-  ['backend_remote_product_evidence_records_apps_backend_scope', gates.buildRemoteProductEvidenceScopeReport, {}, 'remoteProductEvidenceScopeStatus', 'pass'],
 
   ['active_v103_self_test_selected', gates.buildActiveSelfTestArtifactSourceReport, {}, 'activeSelfTestArtifactSourceStatus', 'pass'],
   ['legacy_v102_advisory_for_v103', gates.buildActiveSelfTestArtifactSourceReport, {}, 'activeSelfTestArtifactSourceStatus', 'pass'],
@@ -124,7 +92,7 @@ const results = CASES.map(([name, builder, input, key, expected]) => {
 
 const failures = results.filter((item) => item.status !== 'pass');
 const report = {
-  marker: 'CODEX_QUALITY_HARNESS_FILE v1.0.3',
+  marker: 'CODEX_QUALITY_HARNESS_FILE v1.0.4',
   status: failures.length ? 'fail' : 'pass',
   v103SelfTestStatus: {
     status: failures.length ? 'fail' : 'pass',

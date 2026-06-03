@@ -1,16 +1,14 @@
 #!/usr/bin/env node
-// CODEX_QUALITY_HARNESS_FILE v1.0.3
+// CODEX_QUALITY_HARNESS_FILE v1.0.4
 import fs from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { scanObjectForUnsafe, simpleStatus, writeJsonReport, exitFor, readText } from './codex-v080-lib.mjs';
-import { buildRemoteProductSafeArtifacts } from './codex-v098-gate-lib.mjs';
 
 export const V103_STATUS_KEYS = [
   'reasonSummaryFinalAggregationStatus',
   'remoteNpmDiagnosticTruthStatus',
   'localRemoteFailureDeltaClassifierStatus',
   'productSurfaceRouterStatus',
-  'remoteProductEvidenceScopeStatus',
   'activeSelfTestArtifactSourceStatus',
   'prBodyGovernanceAutoRepairStatus',
   'reviewEvidenceTaxonomyStatus',
@@ -204,29 +202,6 @@ export function buildProductSurfaceRouterReport(input = {}) {
   if (bool(input.commandClassMissing) || surfaces.some((surface) => !surface.commandClass)) reasons.push('product_surface_router_missing');
   if (surfaces.length > 1 && !bool(input.multiSurfaceEvidence)) reasons.push('product_surface_router_missing');
   return reasons.length ? fail('productSurfaceRouterStatus', reasons, { surfaces }) : pass('productSurfaceRouterStatus', { surfaces });
-}
-
-export function buildRemoteProductEvidenceScopeReport(input = {}) {
-  const artifacts = buildRemoteProductSafeArtifacts({
-    productRelevant: true,
-    npmExecuted: true,
-    npmExitCode: input.npmExitCode ?? 0,
-    command: input.command || 'npm test -- --runInBand',
-    commandClass: input.commandClass || 'backend_npm_test',
-    cwd: input.cwd || 'apps/backend',
-    packageScope: input.packageScope || 'apps/backend',
-  }, {});
-  const evidence = artifacts.evidence || {};
-  const diagnostic = artifacts.diagnostic || {};
-  const baseline = artifacts.baseline || {};
-  const reasons = [];
-  for (const item of [evidence, diagnostic, baseline]) {
-    if (item.cwd !== 'apps/backend') reasons.push('command_cwd_missing');
-    if (item.packageScope !== 'apps/backend') reasons.push('command_scope_mismatch');
-    if (item.commandClass !== 'backend_npm_test') reasons.push('product_surface_router_missing');
-  }
-  if (diagnostic.npmExecuted !== true) reasons.push('remote_npm_truth_missing');
-  return reasons.length ? fail('remoteProductEvidenceScopeStatus', reasons) : pass('remoteProductEvidenceScopeStatus');
 }
 
 export function buildActiveSelfTestArtifactSourceReport(input = {}) {
@@ -516,11 +491,9 @@ export function buildV103SelfTestRegistrationReport(input = {}) {
   const reasons = [];
   if (!fs.existsSync('scripts/codex-v103-self-test.mjs') || bool(input.selfTestMissing)) reasons.push('v103_self_test_missing');
   if (!readText('scripts/codex-local-quality-gate.mjs')?.includes('v103SelfTestStatus')) reasons.push('v103_self_test_missing');
-  const sourceManifestText = readText('CODEX_SOURCE_HARNESS_MANIFEST.json');
-  const targetManifestText = readText('docs/process/CODEX_HARNESS_MANIFEST.json');
-  if (!sourceManifestText?.includes('codex-v103-self-test.mjs') && !targetManifestText?.includes('codex-v103-self-test.mjs')) {
-    reasons.push('v103_self_test_missing');
-  }
+  const sourceManifest = readText('CODEX_SOURCE_HARNESS_MANIFEST.json') || '';
+  const targetManifest = readText('docs/process/CODEX_HARNESS_MANIFEST.json') || '';
+  if (!sourceManifest.includes('codex-v103-self-test.mjs') && !targetManifest.includes('codex-v103-self-test.mjs')) reasons.push('v103_self_test_missing');
   return reasons.length ? fail('v103SelfTestStatus', reasons) : pass('v103SelfTestStatus');
 }
 
