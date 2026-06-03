@@ -7913,6 +7913,9 @@ async function runSourceHarnessGate() {
     'contractGovernanceStatus',
     'complexityGovernanceStatus',
     'bestOfNEvidenceStatus',
+    'v085SelfTestStatus',
+    'v098SelfTestStatus',
+    'v099SelfTestStatus',
   ]) {
     if (report[key]?.status === 'fail' || report[key]?.status === 'warning') {
       report[key] = {
@@ -8625,8 +8628,11 @@ async function runSourceHarnessGate() {
     'activeSelfTestRegistryStatus',
     'knowledgeGovernanceStatus',
     'versionSuccessionStatus',
+    'v085SelfTestStatus',
     'v087SelfTestStatus',
     'v092SelfTestStatus',
+    'v098SelfTestStatus',
+    'v099SelfTestStatus',
     'v100SelfTestStatus',
     'v101SelfTestStatus',
     'v102SelfTestStatus',
@@ -8638,6 +8644,9 @@ async function runSourceHarnessGate() {
     'contractGovernanceStatus',
     'complexityGovernanceStatus',
     'bestOfNEvidenceStatus',
+    'v085SelfTestStatus',
+    'v098SelfTestStatus',
+    'v099SelfTestStatus',
   ]) {
     if (report[key]?.status === 'fail') {
       report[key] = {
