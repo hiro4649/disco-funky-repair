@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// CODEX_QUALITY_HARNESS_FILE v1.0.3
+// CODEX_QUALITY_HARNESS_FILE v1.0.4
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -83,9 +83,7 @@ export function buildRemoteProductEvidenceRunnerReport(input = parseJson(process
   if (!parseBool(input.forceCheck) && !productRelevant) return notApplicable('remoteProductEvidenceRunnerStatus', 'remote_product_evidence_runner_not_required');
   const reasonCodes = [];
   const npmExitCode = Number(input.npmExitCode ?? process.env.CODEX_NPM_EXIT_CODE ?? 0);
-  const npmExecuted = Object.prototype.hasOwnProperty.call(input, 'npmExecuted')
-    ? parseBool(input.npmExecuted)
-    : process.env.CODEX_REMOTE_NPM_EXECUTED === '1';
+  const npmExecuted = parseBool(input.npmExecuted) || process.env.CODEX_REMOTE_NPM_EXECUTED === '1';
   const runnerStatus = npmExitCode === 0 ? 'pass' : 'fail';
   if (scanObjectForUnsafe(input).length || parseBool(input.rawLogsIncluded) || parseBool(input.rawStdoutIncluded) || parseBool(input.rawStderrIncluded)) reasonCodes.push('remote_product_evidence_runner_failed');
   if (productRelevant && !npmExecuted) reasonCodes.push('remote_npm_not_executed_for_product_pr');
@@ -105,16 +103,10 @@ export function buildRemoteProductSafeArtifacts(input = parseJson(process.env.CO
   const evidenceStatus = !productRelevant ? 'not_applicable' : npmExitCode === 0 ? 'pass' : 'fail';
   const failureClass = npmExitCode === 0 ? '' : String(input.failureClass || 'unknown_npm_failure').slice(0, 80);
   const command = String(input.command || 'npm test').slice(0, 80);
-  const commandClass = String(input.commandClass || env.CODEX_NPM_COMMAND_CLASS || 'npm_test').slice(0, 80);
-  const cwd = String(input.cwd || env.CODEX_NPM_COMMAND_CWD || '').slice(0, 120);
-  const packageScope = String(input.packageScope || env.CODEX_NPM_PACKAGE_SCOPE || cwd || '').slice(0, 120);
   const evidence = {
     schemaVersion: '0.8.3', harnessVersion: HARNESS_VERSION, headSha, baseSha,
     eventName: String(input.eventName || env.CODEX_EVENT_NAME || '').slice(0, 60),
     isPullRequest: isPullRequest(input, env), productRelevant, npmExecuted, npmExitCode,
-    cwd,
-    packageScope,
-    commandClass,
     status: evidenceStatus, evidenceType: productRelevant ? 'remote_npm_test' : 'not_applicable',
     commands: productRelevant ? [{ name: command, required: true, result: evidenceStatus === 'pass' ? 'pass' : 'fail', source: 'remote', durationMs: null, testCount: null, safeSummary: evidenceStatus === 'pass' ? 'remote npm test completed' : 'remote npm test failed with safe diagnostic' }] : [],
     failureClass: failureClass || undefined, safeReasonCodes: failureClass ? [failureClass] : [],
@@ -122,12 +114,11 @@ export function buildRemoteProductSafeArtifacts(input = parseJson(process.env.CO
   };
   const diagnostic = {
     schemaVersion: '0.8.3', harnessVersion: HARNESS_VERSION,
-    npmExecuted: productRelevant ? npmExecuted : false,
     npmExitCode: productRelevant ? npmExitCode : null,
     nodeMajor: Number(env.CODEX_NODE_MAJOR || process.versions.node.split('.')[0]),
     platform: String(input.platform || env.RUNNER_OS || process.platform || 'unknown').slice(0, 60),
     os: String(input.os || process.platform || 'unknown').slice(0, 60),
-    packageManager: 'npm', commandClass, cwd, packageScope,
+    packageManager: 'npm', commandClass: 'npm_test',
     safeFailureCategory: npmExitCode === 0 ? 'test_assertion_failure' : failureClass || 'unknown_npm_failure',
     safeMarkerCount: null, testCountDetected: null, durationMs: null, knownBaselineMatched: false,
     rawLogUploaded: false, rawValuesStored: false,
@@ -136,9 +127,6 @@ export function buildRemoteProductSafeArtifacts(input = parseJson(process.env.CO
   const baseline = {
     schemaVersion: '0.8.3', harnessVersion: HARNESS_VERSION, repository, baseSha,
     baselineType: productRelevant ? 'remote_product_verification' : 'not_applicable',
-    cwd,
-    packageScope,
-    commandClass,
     commands: productRelevant ? [command] : [], result: evidenceStatus === 'not_applicable' ? 'pass' : evidenceStatus,
     date: now.toISOString(), source: 'remote_workflow',
     safeSummary: productRelevant ? 'remote product baseline generated from safe npm result' : 'baseline not required for harness-only change',
