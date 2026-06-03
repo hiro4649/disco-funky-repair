@@ -77,6 +77,7 @@ const CASES = [
   ['root_package_missing_never_runs_root_npm', gates.buildProductSurfaceRouterV2Report, { changedFiles: ['src/a.js'], rootPackageExists: false }, 'productSurfaceRouterV2Status', 'fail', 'product_surface_router_v2'],
   ['command_class_metadata_recorded', gates.buildProductSurfaceRouterV2Report, { changedFiles: ['contracts/a.sol'] }, 'productSurfaceRouterV2Status', 'pass', 'product_surface_router_v2'],
   ['package_scope_metadata_recorded', gates.buildProductSurfaceRouterV2Report, { changedFiles: ['apps/backend/a.js'] }, 'productSurfaceRouterV2Status', 'pass', 'product_surface_router_v2'],
+  ['remote_product_safe_artifacts_record_backend_scope', gates.buildRemoteProductSafeArtifactScopeV2Report, {}, 'productSurfaceRouterV2Status', 'pass', 'product_surface_router_v2'],
   ['mixed_surface_requires_split_or_explicit_multi_surface_policy', gates.buildProductSurfaceRouterV2Report, { changedFiles: ['apps/backend/a.js', 'contracts/a.sol'] }, 'productSurfaceRouterV2Status', 'fail', 'product_surface_router_v2'],
 
   ['active_v104_selected', gates.buildActiveSelfTestSingleSourceReport, {}, 'activeSelfTestSingleSourceStatus', 'pass', 'active_self_test_single_source'],

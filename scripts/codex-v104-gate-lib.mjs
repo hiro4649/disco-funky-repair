@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 // CODEX_QUALITY_HARNESS_FILE v1.0.4
 import { scanObjectForUnsafe, simpleStatus, writeJsonReport, exitFor, normalizePath } from './codex-v080-lib.mjs';
+import { buildRemoteProductSafeArtifacts } from './codex-v098-gate-lib.mjs';
 
 export const V104_STATUS_KEYS = [
   'claimToCodeVerifierStatus',
@@ -414,6 +415,32 @@ export function buildProductSurfaceRouterV2Report(input = {}) {
   if (routes.some((route) => !route.cwd || !route.commandClass || !route.packageScope)) reasons.push('product_surface_router_v2_metadata_missing');
   if (routes.length > 1 && !bool(input.explicitMultiSurfacePolicy)) reasons.push('mixed_surface_requires_split_or_policy');
   return reasons.length ? { productSurfaceRouterV2Status: fail('productSurfaceRouterV2Status', reasons, { routes }) } : { productSurfaceRouterV2Status: pass('productSurfaceRouterV2Status', { routes }) };
+}
+
+export function buildRemoteProductSafeArtifactScopeV2Report(input = {}) {
+  const artifacts = buildRemoteProductSafeArtifacts({
+    productRelevant: true,
+    npmExecuted: true,
+    npmExitCode: 0,
+    cwd: input.cwd || 'apps/backend',
+    packageScope: input.packageScope || 'apps/backend',
+    commandClass: input.commandClass || 'backend_npm_test',
+    command: input.command || 'npm test -- --runInBand',
+    headSha: 'fixture-head',
+    repository: 'fixture/repo'
+  });
+  const evidence = artifacts.evidence;
+  const diagnostic = artifacts.diagnostic;
+  const baseline = artifacts.baseline;
+  const reasons = [];
+  for (const artifact of [evidence, diagnostic, baseline]) {
+    if (artifact.cwd !== 'apps/backend') reasons.push('product_surface_router_v2_metadata_missing');
+    if (artifact.packageScope !== 'apps/backend') reasons.push('product_surface_router_v2_metadata_missing');
+    if (artifact.commandClass !== 'backend_npm_test') reasons.push('product_surface_router_v2_metadata_missing');
+  }
+  return reasons.length
+    ? { productSurfaceRouterV2Status: fail('productSurfaceRouterV2Status', reasons) }
+    : { productSurfaceRouterV2Status: pass('productSurfaceRouterV2Status') };
 }
 
 export function buildActiveSelfTestSingleSourceReport(input = {}) {
