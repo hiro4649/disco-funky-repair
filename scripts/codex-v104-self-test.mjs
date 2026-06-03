@@ -84,11 +84,14 @@ const CASES = [
   ['v104_failure_blocks', gates.buildActiveSelfTestSingleSourceReport, { v104Failure: true }, 'activeSuiteMustBlockStatus', 'fail', 'active_self_test_single_source'],
   ['legacy_v103_failure_advisory_only_unless_policy_requires', gates.buildActiveSelfTestSingleSourceReport, { legacyV103Failure: true }, 'legacySelfTestAdvisoryStatus', 'pass', 'active_self_test_single_source'],
   ['legacy_v102_failure_advisory_only', gates.buildActiveSelfTestSingleSourceReport, { legacyV102Failure: true }, 'legacySelfTestAdvisoryStatus', 'pass', 'active_self_test_single_source'],
+  ['legacy_v085_failure_advisory_only', gates.buildActiveSelfTestSingleSourceReport, { legacyV085Failure: true }, 'legacySelfTestAdvisoryStatus', 'pass', 'active_self_test_single_source'],
   ['active_artifact_reports_v104_not_v098', gates.buildActiveSelfTestSingleSourceReport, {}, 'activeSelfTestArtifactExportStatus', 'pass', 'active_self_test_single_source'],
   ['fallback_to_old_suite_when_v104_expected_fails', gates.buildActiveSelfTestSingleSourceReport, { fallbackToOldSuite: true }, 'activeSelfTestSingleSourceStatus', 'fail', 'active_self_test_single_source'],
 
   ['npm_executed_true_source_recorded', gates.buildDiagnosticSourceFieldReport, {}, 'remoteNpmDiagnosticSourceStatus', 'pass', 'diagnostic_source_fields'],
   ['npm_exit_code_zero_source_recorded', gates.buildDiagnosticSourceFieldReport, {}, 'remoteNpmDiagnosticSourceStatus', 'pass', 'diagnostic_source_fields'],
+  ['remote_npm_normalization_uses_safe_diagnostic_executed_true', gates.buildRemoteNpmDiagnosticNormalizationReport, { productRelevant: true, remoteNpmDiagnostic: { status: 'pass', npmExecuted: true, npmExitCode: 0, cwd: 'apps/backend', packageScope: 'apps/backend', commandClass: 'backend_npm_test' } }, 'remoteNpmDiagnosticNormalizationStatus', 'pass', 'diagnostic_source_fields'],
+  ['remote_npm_normalization_executed_false_still_blocks', gates.buildRemoteNpmDiagnosticNormalizationReport, { productRelevant: true, remoteNpmDiagnostic: { status: 'pass', npmExecuted: false, npmExitCode: 0 } }, 'remoteNpmDiagnosticNormalizationStatus', 'fail', 'diagnostic_source_fields'],
   ['formal_remote_product_evidence_precedence_passes', gates.buildDiagnosticSourceFieldReport, {}, 'remoteProductEvidenceSourceStatus', 'pass', 'diagnostic_source_fields'],
   ['diagnostic_missing_field_fails_actionably', gates.buildDiagnosticSourceFieldReport, { diagnostics: [{ field: 'npmExecuted' }] }, 'diagnosticSourceFieldStatus', 'fail', 'diagnostic_source_fields'],
   ['conflicting_evidence_classified', gates.buildDiagnosticSourceFieldReport, { conflictingEvidence: true }, 'normalizationFieldShapeStatus', 'fail', 'diagnostic_source_fields'],
@@ -175,7 +178,7 @@ const report = {
   activeHarnessVersion: '1.0.4',
   activeSelfTestSuite: 'v104',
   activeSelfTestStatusKey: 'v104SelfTestStatus',
-  legacySuites: { v103: 'advisory', v102: 'advisory' },
+  legacySuites: { v085: 'advisory', v098: 'advisory', v099: 'advisory', v103: 'advisory', v102: 'advisory' },
   v104SelfTestStatus: {
     status: failures.length ? 'fail' : 'pass',
     caseCount: allResults.length,

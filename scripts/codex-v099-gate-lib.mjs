@@ -102,8 +102,19 @@ export function buildRemoteNpmDiagnosticNormalizationReport(input = parseJson(pr
   const productRelevant = productRelevantFromInput(input);
   if (!parseBool(input.forceCheck) && !productRelevant) return notApplicable('remoteNpmDiagnosticNormalizationStatus', 'remote_npm_diagnostic_normalization_not_applicable');
   const reasonCodes = [];
-  const npmExecuted = parseBool(input.npmExecuted);
-  const npmExitCode = Number(input.npmExitCode ?? 0);
+  const diagnostic = input.remoteNpmDiagnostic || parseJson(process.env.CODEX_REMOTE_NPM_DIAGNOSTIC_JSON) || {};
+  const npmExecutedSource = Object.hasOwn(input, 'npmExecuted')
+    ? input.npmExecuted
+    : Object.hasOwn(diagnostic, 'npmExecuted')
+      ? diagnostic.npmExecuted
+      : process.env.CODEX_REMOTE_NPM_EXECUTED;
+  const npmExitCodeSource = Object.hasOwn(input, 'npmExitCode')
+    ? input.npmExitCode
+    : Object.hasOwn(diagnostic, 'npmExitCode')
+      ? diagnostic.npmExitCode
+      : process.env.CODEX_REMOTE_NPM_EXIT_CODE;
+  const npmExecuted = parseBool(npmExecutedSource);
+  const npmExitCode = Number(npmExitCodeSource ?? 0);
   if (productRelevant && !npmExecuted) reasonCodes.push('remote_npm_not_executed_for_product_pr');
   if (npmExitCode !== 0 || parseBool(input.npmFailMarkedPass)) reasonCodes.push('remote_npm_diagnostic_normalization_failed');
   if (parseBool(input.diagnosticPendingFinalPass) || parseBool(input.diagnosticMissingNoFormalEvidence) || parseBool(input.remoteNpmNotExecutedEmittedDespiteExecuted)) reasonCodes.push('remote_npm_diagnostic_normalization_failed');
