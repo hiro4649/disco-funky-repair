@@ -7095,10 +7095,27 @@ function isPullRequestContext(env = process.env) {
 
 }
 
+function githubPullRequestEventContext(env = process.env) {
+  if (!env.GITHUB_EVENT_PATH) return {};
+  try {
+    const event = JSON.parse(fs.readFileSync(env.GITHUB_EVENT_PATH, 'utf8'));
+    const pr = event.pull_request || {};
+    return {
+      pr: pr.number || event.number || '',
+      head: pr.head?.sha || '',
+      base: pr.base?.sha || '',
+    };
+  } catch {
+    return {};
+  }
+}
+
 
 
 async function resolveRemoteGateContext(env = process.env) {
 
+
+  const eventContext = githubPullRequestEventContext(env);
 
 
   const args = {
@@ -7109,15 +7126,15 @@ async function resolveRemoteGateContext(env = process.env) {
 
 
 
-    pr: env.CODEX_PR_NUMBER || '',
+    pr: env.CODEX_PR_NUMBER || eventContext.pr || '',
 
 
 
-    head: env.CODEX_PR_HEAD_SHA || env.GITHUB_SHA || '',
+    head: env.CODEX_PR_HEAD_SHA || eventContext.head || env.GITHUB_SHA || '',
 
 
 
-    base: env.CODEX_PR_BASE_SHA || '',
+    base: env.CODEX_PR_BASE_SHA || eventContext.base || '',
 
 
 
