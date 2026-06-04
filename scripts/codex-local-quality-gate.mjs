@@ -11107,6 +11107,7 @@ async function runTargetHarnessGate() {
     'productVerificationContextStatus.failed',
     'contractGovernanceStatus.failed',
     'bestOfNEvidenceStatus.failed',
+    'testCoverageEvidenceStatus.failed',
     'v087SelfTestStatus.failed',
     'v092SelfTestStatus.failed',
     'v100SelfTestStatus.failed',
