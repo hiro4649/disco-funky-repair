@@ -9625,7 +9625,8 @@ async function runTargetHarnessGate() {
 
 
 
-  const gateEnv = { ...process.env };
+  const remoteContext = await resolveRemoteGateContext(process.env);
+  const gateEnv = { ...process.env, ...remoteContext.env };
 
 
 
