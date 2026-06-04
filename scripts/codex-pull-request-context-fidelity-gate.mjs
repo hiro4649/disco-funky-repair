@@ -3,6 +3,9 @@
 import { fileURLToPath } from 'node:url';
 import { isPrContext, scanObjectForUnsafe, simpleStatus, writeJsonReport, exitFor } from './codex-v080-lib.mjs';
 
+const HARNESS_VERSION = '1.0.6';
+const marker = `CODEX_QUALITY_HARNESS_FILE v${HARNESS_VERSION}`;
+
 function parseJson(value) {
   if (!value) return null;
   try { return JSON.parse(value); } catch { return { invalidInput: true }; }
@@ -15,7 +18,15 @@ function parseList(value) {
 function uniq(values) { return [...new Set(values.filter(Boolean))]; }
 function safe(statusKey, status, payload) {
   const out = simpleStatus(statusKey, status, { ...payload, reasonCodes: uniq(payload.reasonCodes || []), safeSummaryOnly: true });
-  return scanObjectForUnsafe(out).length ? simpleStatus(statusKey, 'fail', { reasonCodes: ['unsafe_value_detected'], safeSummaryOnly: true }) : out;
+  out.marker = marker;
+  out.harnessVersion = HARNESS_VERSION;
+  if (scanObjectForUnsafe(out).length) {
+    const report = simpleStatus(statusKey, 'fail', { reasonCodes: ['unsafe_value_detected'], safeSummaryOnly: true });
+    report.marker = marker;
+    report.harnessVersion = HARNESS_VERSION;
+    return report;
+  }
+  return out;
 }
 
 export function buildPullRequestContextFidelityReport(input = parseJson(process.env.CODEX_PULL_REQUEST_CONTEXT_FIDELITY_JSON) || {}, env = process.env) {

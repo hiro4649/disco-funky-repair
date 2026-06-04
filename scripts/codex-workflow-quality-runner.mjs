@@ -805,6 +805,8 @@ const v096StatusKeys = [
 
 
   'v096SelfTestStatus',
+  'v106SelfTestStatus',
+  'activeSelfTestExportStatus',
 
 
 
@@ -4696,6 +4698,16 @@ export function evaluateWorkflowReport(report, options = {}) {
 
 
 
+    v106SelfTestStatus: report.v106SelfTestStatus || { status: 'missing' },
+
+
+
+
+    activeSelfTestExportStatus: report.activeSelfTestExportStatus || { status: 'missing' },
+
+
+
+
 
 
     activeSelfTestRegistryStatus: report.activeSelfTestRegistryStatus || { status: 'missing' },
@@ -5111,7 +5123,7 @@ function writeArtifacts(result, report) {
 
 
 
-  const selfTestStatus = report.v098SelfTestStatus || report.v097SelfTestStatus || report.v096SelfTestStatus || report.v095SelfTestStatus || report.v094SelfTestStatus || report.v093SelfTestStatus || report.v092SelfTestStatus || report.selfTestCaseExportStatus || {};
+  const selfTestStatus = report.v106SelfTestStatus || report.v098SelfTestStatus || report.v097SelfTestStatus || report.v096SelfTestStatus || report.v095SelfTestStatus || report.v094SelfTestStatus || report.v093SelfTestStatus || report.v092SelfTestStatus || report.selfTestCaseExportStatus || {};
 
 
 
