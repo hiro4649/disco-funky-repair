@@ -1,10 +1,6 @@
 #!/usr/bin/env node
-// CODEX_QUALITY_HARNESS_FILE v1.0.4
+// CODEX_QUALITY_HARNESS_FILE v1.0.5
 import { scanObjectForUnsafe, simpleStatus, writeJsonReport, exitFor, normalizePath } from './codex-v080-lib.mjs';
-import { buildRemoteProductSafeArtifacts } from './codex-v098-gate-lib.mjs';
-import { buildRemoteNpmDiagnosticNormalizationReport } from './codex-v099-gate-lib.mjs';
-
-export { buildRemoteNpmDiagnosticNormalizationReport };
 
 export const V104_STATUS_KEYS = [
   'claimToCodeVerifierStatus',
@@ -420,32 +416,6 @@ export function buildProductSurfaceRouterV2Report(input = {}) {
   return reasons.length ? { productSurfaceRouterV2Status: fail('productSurfaceRouterV2Status', reasons, { routes }) } : { productSurfaceRouterV2Status: pass('productSurfaceRouterV2Status', { routes }) };
 }
 
-export function buildRemoteProductSafeArtifactScopeV2Report(input = {}) {
-  const artifacts = buildRemoteProductSafeArtifacts({
-    productRelevant: true,
-    npmExecuted: true,
-    npmExitCode: 0,
-    cwd: input.cwd || 'apps/backend',
-    packageScope: input.packageScope || 'apps/backend',
-    commandClass: input.commandClass || 'backend_npm_test',
-    command: input.command || 'npm test -- --runInBand',
-    headSha: 'fixture-head',
-    repository: 'fixture/repo'
-  });
-  const evidence = artifacts.evidence;
-  const diagnostic = artifacts.diagnostic;
-  const baseline = artifacts.baseline;
-  const reasons = [];
-  for (const artifact of [evidence, diagnostic, baseline]) {
-    if (artifact.cwd !== 'apps/backend') reasons.push('product_surface_router_v2_metadata_missing');
-    if (artifact.packageScope !== 'apps/backend') reasons.push('product_surface_router_v2_metadata_missing');
-    if (artifact.commandClass !== 'backend_npm_test') reasons.push('product_surface_router_v2_metadata_missing');
-  }
-  return reasons.length
-    ? { productSurfaceRouterV2Status: fail('productSurfaceRouterV2Status', reasons) }
-    : { productSurfaceRouterV2Status: pass('productSurfaceRouterV2Status') };
-}
-
 export function buildActiveSelfTestSingleSourceReport(input = {}) {
   const active = input.active || {
     activeHarnessVersion: '1.0.4',
@@ -453,7 +423,7 @@ export function buildActiveSelfTestSingleSourceReport(input = {}) {
     activeSelfTestStatusKey: 'v104SelfTestStatus',
     activeSelfTestCaseCount: input.caseCount || 0,
     activeSelfTestFailedCaseCount: input.failedCaseCount || 0,
-    legacySuites: { v085: 'advisory', v098: 'advisory', v099: 'advisory', v103: 'advisory', v102: 'advisory' },
+    legacySuites: { v103: 'advisory', v102: 'advisory' },
   };
   const reasons = [];
   if (active.activeHarnessVersion !== '1.0.4' || active.activeSelfTestSuite !== 'v104' || active.activeSelfTestStatusKey !== 'v104SelfTestStatus') reasons.push('active_self_test_single_source_mismatch');
@@ -608,7 +578,7 @@ export function buildDefaultV104Reports(input = {}) {
       activeHarnessVersion: '1.0.4',
       activeSelfTestSuite: 'v104',
       activeSelfTestStatusKey: 'v104SelfTestStatus',
-      legacySuites: { v085: 'advisory', v098: 'advisory', v099: 'advisory', v103: 'advisory', v102: 'advisory' },
+      legacySuites: { v103: 'advisory', v102: 'advisory' },
     }),
   };
 }
@@ -629,13 +599,12 @@ const CLI_BUILDERS = {
   externalBlocked: buildExternalBlockedTerminalReport,
   role: buildRoleToolEvidenceAnnotationReport,
   dynamic: buildDynamicWorkflowLiteReport,
-  remoteNpmDiagnosticNormalization: buildRemoteNpmDiagnosticNormalizationReport,
   default: buildDefaultV104Reports,
 };
 
 export function runV104Cli(kind = 'default', envName = 'CODEX_V104_REPORT') {
   const builder = CLI_BUILDERS[kind] || CLI_BUILDERS.default;
-  const report = { marker: 'CODEX_QUALITY_HARNESS_FILE v1.0.4', status: 'pass', ...builder() };
+  const report = { marker: 'CODEX_QUALITY_HARNESS_FILE v1.0.5', status: 'pass', ...builder() };
   const failing = Object.values(report).some((value) => value && typeof value === 'object' && value.status === 'fail');
   report.status = failing ? 'fail' : 'pass';
   writeJsonReport(report, envName);

@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// CODEX_QUALITY_HARNESS_FILE v1.0.4
+// CODEX_QUALITY_HARNESS_FILE v1.0.5
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -103,14 +103,10 @@ export function buildRemoteProductSafeArtifacts(input = parseJson(process.env.CO
   const evidenceStatus = !productRelevant ? 'not_applicable' : npmExitCode === 0 ? 'pass' : 'fail';
   const failureClass = npmExitCode === 0 ? '' : String(input.failureClass || 'unknown_npm_failure').slice(0, 80);
   const command = String(input.command || 'npm test').slice(0, 80);
-  const cwd = String(input.cwd || input.commandCwd || '').slice(0, 80);
-  const packageScope = String(input.packageScope || '').slice(0, 80);
-  const commandClass = String(input.commandClass || 'npm_test').slice(0, 80);
   const evidence = {
     schemaVersion: '0.8.3', harnessVersion: HARNESS_VERSION, headSha, baseSha,
     eventName: String(input.eventName || env.CODEX_EVENT_NAME || '').slice(0, 60),
     isPullRequest: isPullRequest(input, env), productRelevant, npmExecuted, npmExitCode,
-    cwd: cwd || undefined, packageScope: packageScope || undefined, commandClass,
     status: evidenceStatus, evidenceType: productRelevant ? 'remote_npm_test' : 'not_applicable',
     commands: productRelevant ? [{ name: command, required: true, result: evidenceStatus === 'pass' ? 'pass' : 'fail', source: 'remote', durationMs: null, testCount: null, safeSummary: evidenceStatus === 'pass' ? 'remote npm test completed' : 'remote npm test failed with safe diagnostic' }] : [],
     failureClass: failureClass || undefined, safeReasonCodes: failureClass ? [failureClass] : [],
@@ -119,13 +115,10 @@ export function buildRemoteProductSafeArtifacts(input = parseJson(process.env.CO
   const diagnostic = {
     schemaVersion: '0.8.3', harnessVersion: HARNESS_VERSION,
     npmExitCode: productRelevant ? npmExitCode : null,
-    npmExecuted: productRelevant ? npmExecuted : false,
-    cwd: cwd || undefined,
-    packageScope: packageScope || undefined,
     nodeMajor: Number(env.CODEX_NODE_MAJOR || process.versions.node.split('.')[0]),
     platform: String(input.platform || env.RUNNER_OS || process.platform || 'unknown').slice(0, 60),
     os: String(input.os || process.platform || 'unknown').slice(0, 60),
-    packageManager: 'npm', commandClass,
+    packageManager: 'npm', commandClass: 'npm_test',
     safeFailureCategory: npmExitCode === 0 ? 'test_assertion_failure' : failureClass || 'unknown_npm_failure',
     safeMarkerCount: null, testCountDetected: null, durationMs: null, knownBaselineMatched: false,
     rawLogUploaded: false, rawValuesStored: false,
@@ -135,7 +128,6 @@ export function buildRemoteProductSafeArtifacts(input = parseJson(process.env.CO
     schemaVersion: '0.8.3', harnessVersion: HARNESS_VERSION, repository, baseSha,
     baselineType: productRelevant ? 'remote_product_verification' : 'not_applicable',
     commands: productRelevant ? [command] : [], result: evidenceStatus === 'not_applicable' ? 'pass' : evidenceStatus,
-    cwd: cwd || undefined, packageScope: packageScope || undefined, commandClass,
     date: now.toISOString(), source: 'remote_workflow',
     safeSummary: productRelevant ? 'remote product baseline generated from safe npm result' : 'baseline not required for harness-only change',
     knownFailures: evidenceStatus === 'fail' ? [failureClass || 'unknown_npm_failure'] : [],

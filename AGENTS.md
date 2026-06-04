@@ -45,7 +45,7 @@ Low-priority findings may be ignored when they do not affect correctness,
 security, maintainability, or user-facing behavior. After fixing review
 findings, rerun the relevant tests.
 <!-- CODEX_QUALITY_HARNESS_BEGIN -->
-CODEX_QUALITY_HARNESS_FILE v1.0.4
+CODEX_QUALITY_HARNESS_FILE v1.0.5
 
 ## Prime Directive
 
