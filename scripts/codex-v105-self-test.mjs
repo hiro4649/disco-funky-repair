@@ -2,8 +2,26 @@
 // CODEX_QUALITY_HARNESS_FILE v1.0.5
 import { scanObjectForUnsafe, writeJsonReport, exitFor } from './codex-v080-lib.mjs';
 import * as gates from './codex-v105-gate-lib.mjs';
+import { spawnSync } from 'node:child_process';
+
+function buildSecretSafetyScanSelfTestReport() {
+  const result = spawnSync('node', ['scripts/codex-secret-safety-scan.mjs'], {
+    env: { ...process.env, CODEX_SECRET_SCAN_SELF_TEST: '1' },
+    encoding: 'utf8',
+    stdio: ['ignore', 'pipe', 'pipe'],
+    timeout: 120000,
+  });
+  return {
+    secretSafetyScanSelfTestStatus: {
+      status: result.status === 0 ? 'pass' : 'fail',
+      safeSummaryOnly: true,
+    },
+  };
+}
 
 const CASES = [
+  ['harness105_secret_scan_classifier_self_test_pass', buildSecretSafetyScanSelfTestReport, {}, 'secretSafetyScanSelfTestStatus', 'pass', 'secret_scan_classifier'],
+
   ['backend_only_pr_uses_backend_cwd', gates.buildRepresentativeProductPrValidationReport, { kind: 'backend_only' }, 'representativeProductPrValidationStatus', 'pass', 'representative_product_pr_validation'],
   ['contracts_only_pr_uses_contracts_cwd', gates.buildRepresentativeProductPrValidationReport, { kind: 'contracts_only' }, 'representativeProductPrValidationStatus', 'pass', 'representative_product_pr_validation'],
   ['docs_only_pr_does_not_require_product_npm', gates.buildRepresentativeProductPrValidationReport, { kind: 'docs_only' }, 'representativeProductPrValidationStatus', 'pass', 'representative_product_pr_validation'],

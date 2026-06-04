@@ -45,7 +45,7 @@ const highConfidenceChecks = [
   ['npm_token_like', /\bnpm_[A-Za-z0-9]{20,}\b/],
   ['gitlab_token_like', /\bglpat-[A-Za-z0-9_-]{20,}\b/],
 ];
-const assignmentPattern = /(?:^|[^\w])([A-Z0-9_]*(?:PRIVATE_KEY|JWT_SECRET|DATABASE_URL|DB_URL|API_KEY|ACCESS_TOKEN|SECRET_KEY|SLACK_TOKEN|NPM_TOKEN|GITLAB_TOKEN|TOKEN|PASSWORD|CREDENTIAL|CLIENT_SECRET)[A-Z0-9_]*)\s*=\s*([^\r\n]*)/ig;
+const assignmentPattern = /(?:^|[^\w])([A-Z0-9_]*(?:PRIVATE_KEY|JWT_SECRET|DATABASE_URL|DB_URL|API_KEY|ACCESS_TOKEN|SECRET_KEY|SLACK_TOKEN|NPM_TOKEN|GITLAB_TOKEN|TOKEN|PASSWORD|CREDENTIAL|CLIENT_SECRET)[A-Z0-9_]*|apiKey|privateKey)\s*(?:=|:)\s*([^\r\n]*)/g;
 
 function parseAssignmentValue(raw) {
   let value = raw.trim();
@@ -55,9 +55,9 @@ function parseAssignmentValue(raw) {
     const end = value.indexOf(quote, 1);
     value = end >= 0 ? value.slice(1, end) : value.slice(1);
   } else {
-    value = value.split(/[\s,;)\]}]+/, 1)[0];
+    value = value.split(/[\s,;)\]]+/, 1)[0];
   }
-  return value.trim().replace(/^[({[]+/, '').replace(/[)}\].]+$/, '');
+  return value.trim().replace(/^[({[]+/, '').replace(/[)\].]+$/, '');
 }
 function isFixtureContext(file, line) {
   return /(^|\/)(test|tests|__tests__|fixtures?|mocks?)(\/|$)/i.test(file)
@@ -71,6 +71,20 @@ function isPlaceholderValue(value) {
   if (/^(?:your[_-]?)?[a-z0-9_-]*(?:example|sample|dummy|mock|fixture|fake|placeholder|redacted|todo|changeme|unsafe|danger|test)[a-z0-9_-]*$/i.test(value)) return true;
   if (/^(?:REDACTED|TODO|TBD|NONE|NULL|UNDEFINED|XXX+|YOUR_[A-Z0-9_]+)$/i.test(value)) return true;
   return false;
+}
+function isEnvReferenceValue(value) {
+  const compact = value.trim().replace(/^['"`]|['"`]$/g, '').replace(/[;,)}\]]+$/g, '');
+  return /^process\.env\.[A-Z0-9_]+$/i.test(compact);
+}
+function isSensitiveLiteralAssignment(name, rawValue) {
+  if (!/^(?:apiKey|privateKey)$/i.test(name)) return false;
+  const value = rawValue.trim();
+  if (!(value.startsWith('"') || value.startsWith("'") || value.startsWith('`'))) return false;
+  return !isPlaceholderValue(parseAssignmentValue(rawValue));
+}
+function isEnvSecretAssignment(file, name) {
+  if (!/(^|\/)\.env($|\.)/.test(file)) return false;
+  return /(?:PRIVATE_KEY|JWT_SECRET|DATABASE_URL|DB_URL|API_KEY|ACCESS_TOKEN|SECRET_KEY|SLACK_TOKEN|NPM_TOKEN|GITLAB_TOKEN|TOKEN|PASSWORD|CREDENTIAL|CLIENT_SECRET)/i.test(name);
 }
 function charClasses(value) {
   return [
@@ -107,8 +121,11 @@ function scanAssignments(file, text, state) {
     while ((match = assignmentPattern.exec(line))) {
       const value = parseAssignmentValue(match[2]);
       if (!value) continue;
+      if (isEnvReferenceValue(value)) continue;
       if (isPlaceholderValue(value)) continue;
-      if (isFixtureContext(file, line) && !looksCredentialLike(value, state)) continue;
+      if (isEnvSecretAssignment(file, match[1])) fail('secret_assignment_like', file);
+      if (isFixtureContext(file, line)) continue;
+      if (isSensitiveLiteralAssignment(match[1], match[2])) fail('secret_assignment_like', file);
       if (looksCredentialLike(value, state)) fail('secret_assignment_like', file);
     }
   }
@@ -135,7 +152,10 @@ function contentFailureKinds(file, text, state = 'changed') {
     while ((match = assignmentPattern.exec(line))) {
       const value = parseAssignmentValue(match[2]);
       if (!value || isPlaceholderValue(value)) continue;
-      if (isFixtureContext(file, line) && !looksCredentialLike(value, state)) continue;
+      if (isEnvReferenceValue(value)) continue;
+      if (isEnvSecretAssignment(file, match[1])) kinds.add('secret_assignment_like');
+      if (isFixtureContext(file, line)) continue;
+      if (isSensitiveLiteralAssignment(match[1], match[2])) kinds.add('secret_assignment_like');
       if (looksCredentialLike(value, state)) kinds.add('secret_assignment_like');
     }
   }
@@ -163,6 +183,30 @@ function runSelfTest() {
       name: 'env-example-credential-assignment-fails',
       file: '.env.sample',
       text: [['CLIENT_SECRET', 'Ab1_Zy9-Xk8Lm7Qp2Rs5Tu6Vw3Yz4NnB0'].join('=')].join('\n'),
+      shouldFail: true,
+    },
+    {
+      name: 'api-key-env-reference-in-hardhat-config-is-not-secret-risk',
+      file: 'contracts/hardhat.config.js',
+      text: 'etherscan: { apiKey: process.env.BSCSCAN_API_KEY }',
+      shouldFail: false,
+    },
+    {
+      name: 'process-env-reference-is-advisory-or-pass',
+      file: 'contracts/hardhat.config.js',
+      text: 'const apiKey = process.env.ETHERSCAN_API_KEY;',
+      shouldFail: false,
+    },
+    {
+      name: 'api-key-literal-assignment-remains-secret-risk',
+      file: 'contracts/hardhat.config.js',
+      text: ['etherscan: { ', 'apiKey', ': "', 'actual_value', '" }'].join(''),
+      shouldFail: true,
+    },
+    {
+      name: 'env-file-api-key-assignment-remains-secret-risk',
+      file: '.env',
+      text: [['BSCSCAN_API_KEY', 'actual_value'].join('=')].join('\n'),
       shouldFail: true,
     },
   ];
