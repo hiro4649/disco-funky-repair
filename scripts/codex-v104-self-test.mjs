@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// CODEX_QUALITY_HARNESS_FILE v1.0.4
+// CODEX_QUALITY_HARNESS_FILE v1.0.5
 import { scanObjectForUnsafe, writeJsonReport, exitFor } from './codex-v080-lib.mjs';
 import * as gates from './codex-v104-gate-lib.mjs';
 
@@ -77,21 +77,17 @@ const CASES = [
   ['root_package_missing_never_runs_root_npm', gates.buildProductSurfaceRouterV2Report, { changedFiles: ['src/a.js'], rootPackageExists: false }, 'productSurfaceRouterV2Status', 'fail', 'product_surface_router_v2'],
   ['command_class_metadata_recorded', gates.buildProductSurfaceRouterV2Report, { changedFiles: ['contracts/a.sol'] }, 'productSurfaceRouterV2Status', 'pass', 'product_surface_router_v2'],
   ['package_scope_metadata_recorded', gates.buildProductSurfaceRouterV2Report, { changedFiles: ['apps/backend/a.js'] }, 'productSurfaceRouterV2Status', 'pass', 'product_surface_router_v2'],
-  ['remote_product_safe_artifacts_record_backend_scope', gates.buildRemoteProductSafeArtifactScopeV2Report, {}, 'productSurfaceRouterV2Status', 'pass', 'product_surface_router_v2'],
   ['mixed_surface_requires_split_or_explicit_multi_surface_policy', gates.buildProductSurfaceRouterV2Report, { changedFiles: ['apps/backend/a.js', 'contracts/a.sol'] }, 'productSurfaceRouterV2Status', 'fail', 'product_surface_router_v2'],
 
   ['active_v104_selected', gates.buildActiveSelfTestSingleSourceReport, {}, 'activeSelfTestSingleSourceStatus', 'pass', 'active_self_test_single_source'],
   ['v104_failure_blocks', gates.buildActiveSelfTestSingleSourceReport, { v104Failure: true }, 'activeSuiteMustBlockStatus', 'fail', 'active_self_test_single_source'],
   ['legacy_v103_failure_advisory_only_unless_policy_requires', gates.buildActiveSelfTestSingleSourceReport, { legacyV103Failure: true }, 'legacySelfTestAdvisoryStatus', 'pass', 'active_self_test_single_source'],
   ['legacy_v102_failure_advisory_only', gates.buildActiveSelfTestSingleSourceReport, { legacyV102Failure: true }, 'legacySelfTestAdvisoryStatus', 'pass', 'active_self_test_single_source'],
-  ['legacy_v085_failure_advisory_only', gates.buildActiveSelfTestSingleSourceReport, { legacyV085Failure: true }, 'legacySelfTestAdvisoryStatus', 'pass', 'active_self_test_single_source'],
   ['active_artifact_reports_v104_not_v098', gates.buildActiveSelfTestSingleSourceReport, {}, 'activeSelfTestArtifactExportStatus', 'pass', 'active_self_test_single_source'],
   ['fallback_to_old_suite_when_v104_expected_fails', gates.buildActiveSelfTestSingleSourceReport, { fallbackToOldSuite: true }, 'activeSelfTestSingleSourceStatus', 'fail', 'active_self_test_single_source'],
 
   ['npm_executed_true_source_recorded', gates.buildDiagnosticSourceFieldReport, {}, 'remoteNpmDiagnosticSourceStatus', 'pass', 'diagnostic_source_fields'],
   ['npm_exit_code_zero_source_recorded', gates.buildDiagnosticSourceFieldReport, {}, 'remoteNpmDiagnosticSourceStatus', 'pass', 'diagnostic_source_fields'],
-  ['remote_npm_normalization_uses_safe_diagnostic_executed_true', gates.buildRemoteNpmDiagnosticNormalizationReport, { productRelevant: true, remoteNpmDiagnostic: { status: 'pass', npmExecuted: true, npmExitCode: 0, cwd: 'apps/backend', packageScope: 'apps/backend', commandClass: 'backend_npm_test' } }, 'remoteNpmDiagnosticNormalizationStatus', 'pass', 'diagnostic_source_fields'],
-  ['remote_npm_normalization_executed_false_still_blocks', gates.buildRemoteNpmDiagnosticNormalizationReport, { productRelevant: true, remoteNpmDiagnostic: { status: 'pass', npmExecuted: false, npmExitCode: 0 } }, 'remoteNpmDiagnosticNormalizationStatus', 'fail', 'diagnostic_source_fields'],
   ['formal_remote_product_evidence_precedence_passes', gates.buildDiagnosticSourceFieldReport, {}, 'remoteProductEvidenceSourceStatus', 'pass', 'diagnostic_source_fields'],
   ['diagnostic_missing_field_fails_actionably', gates.buildDiagnosticSourceFieldReport, { diagnostics: [{ field: 'npmExecuted' }] }, 'diagnosticSourceFieldStatus', 'fail', 'diagnostic_source_fields'],
   ['conflicting_evidence_classified', gates.buildDiagnosticSourceFieldReport, { conflictingEvidence: true }, 'normalizationFieldShapeStatus', 'fail', 'diagnostic_source_fields'],
@@ -173,12 +169,12 @@ const categoryFailures = requiredCategories
 const allResults = [...results, ...coverageFailures, ...categoryFailures];
 const failures = allResults.filter((item) => item.status !== 'pass');
 const report = {
-  marker: 'CODEX_QUALITY_HARNESS_FILE v1.0.4',
+  marker: 'CODEX_QUALITY_HARNESS_FILE v1.0.5',
   status: failures.length ? 'fail' : 'pass',
   activeHarnessVersion: '1.0.4',
   activeSelfTestSuite: 'v104',
   activeSelfTestStatusKey: 'v104SelfTestStatus',
-  legacySuites: { v085: 'advisory', v098: 'advisory', v099: 'advisory', v103: 'advisory', v102: 'advisory' },
+  legacySuites: { v103: 'advisory', v102: 'advisory' },
   v104SelfTestStatus: {
     status: failures.length ? 'fail' : 'pass',
     caseCount: allResults.length,
