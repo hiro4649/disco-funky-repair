@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// CODEX_QUALITY_HARNESS_FILE v1.0.5
+// CODEX_QUALITY_HARNESS_FILE v1.0.6
 import { scanObjectForUnsafe, simpleStatus, writeJsonReport, exitFor } from './codex-v080-lib.mjs';
 
 export const V105_STATUS_KEYS = [
@@ -28,39 +28,6 @@ export const V105_STATUS_KEYS = [
   'dynamicWorkflowWorkerBoundaryV2Status',
   'toolPermissionBoundaryV2Status',
   'roleProfilePluginV2Status',
-  'funkyNoProductionReadyClaimStatus',
-  'funkyNoRuntimeReadyClaimStatus',
-  'funkyNoFundedTxBoundaryStatus',
-  'funkyRealReceiptFetcherCutoverBoundaryStatus',
-  'funkyStagingNoTxReviewBoundaryStatus',
-  'funkyOperatorRunbookBoundaryStatus',
-  'funkySafeDbReadExportBoundaryStatus',
-  'funkySafeRowJsonlSerializerBoundaryStatus',
-  'funkyRuntimeAdoptionSequenceV2Status',
-  'funkyTaskSizeAdvisorStatus',
-  'funkySafeSuggestedPatchStatus',
-  'funkyTokenDeploymentLadderStateStatus',
-  'funkyOwnerValuesValidatorStatus',
-  'funkyAtomicityDeliveryIntegrityStatus',
-  'funkyChaosLiteRuntimeSimulationStatus',
-  'funkyObservabilityEvidenceGateStatus',
-  'funkyProductionReadinessG4GateStatus',
-  'funkyQualityGateSelfProtectionStatus',
-  'funkyDiagnosticSourceTraceStatus',
-  'funkyActiveLegacySelfTestSummaryStatus',
-  'funkySourceOnlyCompatibilityStatus',
-  'funkyTargetSafeReportContractStatus',
-  'funkyEvidenceDriftCheckerStatus',
-  'funkyEvidenceSingleSourceStatus',
-  'contractNoMainnetClaimStatus',
-  'contractNoFundedTxStatus',
-  'contractDeployReadinessLadderStatus',
-  'contractReadinessProfileV2Status',
-  'funkySafeRowExportStatus',
-  'runtimeReadinessBlockerDigestStatus',
-  'stagingNoTxEvidenceStatus',
-  'receiptFetcherNoSecretPreflightStatus',
-  'funkyRuntimeAdoptionSequenceStatus',
   'v105SelfTestStatus',
 ];
 
@@ -359,7 +326,7 @@ export function buildDefaultV105Reports(input = {}) {
 
 export function buildV105Report(input = {}) {
   const report = {
-    marker: 'CODEX_QUALITY_HARNESS_FILE v1.0.5',
+    marker: 'CODEX_QUALITY_HARNESS_FILE v1.0.6',
     harnessVersion: '1.0.5',
     status: 'pass',
     ...buildDefaultV105Reports(input),
