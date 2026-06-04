@@ -1,51 +1,7 @@
 # AGENTS.md
 
-## FUNKY Authority Boundary
-
-Unreadable legacy guidance was present in this file. Do not interpret that text
-as project authority. For FUNKY product behavior, asset operations, staging,
-wallet, contract, admin, BSC, or release decisions, use the canonical project
-process documents, especially:
-
-- `docs/process/FUNKY_SPEC_AUTHORITY.md`
-- `docs/process/FUNKY_RELEASE_GATE.md`
-- `docs/process/FUNKY_ASSET_OPERATION_RUNBOOK.md`
-- `docs/process/FUNKY_KNOWN_RISKS.md`
-- `docs/process/CODEX_PR_REVIEW_PLAYBOOK.md`
-- `docs/process/CODEX_POST_MERGE_CHECKLIST.md`
-- `docs/process/CODEX_INCIDENT_AND_ROLLBACK_RUNBOOK.md`
-
-If those documents are missing, ambiguous, or conflict with the task, stop and
-report the risk instead of inventing rules.
-
-Harness-only work must stay in harness-managed files. Do not modify FUNKY apps,
-contracts, product source, tests, specs, package files, lockfiles, runtime
-files, or `scripts/run-tests.js` unless the project owner explicitly requests
-product work and required verification evidence is available.
-
-## Review Policy
-
-Do not run Codex review after every small edit. Use Codex review at meaningful
-change boundaries: commit-sized changes, before opening a pull request, and for
-risky changes.
-
-Risky changes include authentication, authorization, permissions, billing,
-payments, database migrations, data deletion, external API calls,
-security-sensitive logic, concurrency, background jobs, shared core logic,
-public API changes, error handling, workflow changes, harness changes, release
-changes, product-relevant changes, external audit findings, and quality-gate
-fixes.
-
-Before running review, run the relevant formatter, linter, typecheck, and tests
-when available. Treat high-priority review findings as blockers unless there is
-a clear reason not to fix them. If a high-priority finding is not fixed, explain
-why.
-
-Low-priority findings may be ignored when they do not affect correctness,
-security, maintainability, or user-facing behavior. After fixing review
-findings, rerun the relevant tests.
 <!-- CODEX_QUALITY_HARNESS_BEGIN -->
-CODEX_QUALITY_HARNESS_FILE v1.0.5
+CODEX_QUALITY_HARNESS_FILE v1.0.6
 
 ## Prime Directive
 
@@ -68,6 +24,11 @@ v2, GitHub hysteresis, tool gap, active self-test, hotfix preservation,
 PR-chain saturation, role/tool, evidence site, annotation, and Dynamic Workflow
 Lite governance, use `docs/process/CODEX_V104_SPEC.md` and the matching
 `docs/process/CODEX_*_POLICY.md` or schema files.
+For v1.0.5 and v1.0.6 integration reliability, lane separation, provenance,
+bounded validation, safe repair mapping, and controlled orchestration, use
+`docs/process/CODEX_V105_INTEGRATION_EVIDENCE_RELIABILITY_POLICY.md`,
+`docs/process/CODEX_V106_LANE_PROVENANCE_RECOVERY_POLICY.md`, and their schema
+files.
 
 ## Plan-First Rule
 

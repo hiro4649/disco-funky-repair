@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// CODEX_QUALITY_HARNESS_FILE v1.0.5
+// CODEX_QUALITY_HARNESS_FILE v1.0.6
 import { fileURLToPath } from 'node:url';
 import {
   HARNESS_VERSION,
@@ -24,7 +24,6 @@ const SAFE_CATEGORIES = new Set([
   'snapshot_mismatch',
   'package_manager_error',
   'baseline_failure',
-  'command_scope_mismatch',
   'unknown_npm_failure',
 ]);
 
@@ -54,20 +53,9 @@ function inputFromEnv(env = process.env) {
       platform: env.CODEX_PLATFORM_LABEL,
       packageManager: env.CODEX_PACKAGE_MANAGER,
       commandClass: env.CODEX_NPM_COMMAND_CLASS,
-      cwd: env.CODEX_NPM_CWD,
-      packageScope: env.CODEX_NPM_PACKAGE_SCOPE,
     };
   }
   return null;
-}
-
-function safeRelative(value, fallback = '') {
-  const text = String(value || '').replace(/\\/g, '/').trim().slice(0, 120);
-  if (!text) return fallback;
-  if (text === '.') return '.';
-  if (/^(?:[A-Za-z]:|\/)/.test(text)) return fallback;
-  if (text.split('/').some((part) => part === '..')) return fallback;
-  return /^[A-Za-z0-9._/-]+$/.test(text) ? text : fallback;
 }
 
 function hasUnsafeKeys(value) {
@@ -95,8 +83,6 @@ export function normalizeRemoteNpmDiagnostic(input = {}) {
     os: String(input.os || 'unknown').slice(0, 60),
     packageManager: String(input.packageManager || input.package_manager || 'unknown').slice(0, 60),
     commandClass: String(input.commandClass || input.command_class || 'npm_test').slice(0, 80),
-    cwd: safeRelative(input.cwd),
-    packageScope: safeRelative(input.packageScope || input.package_scope || input.cwd),
     safeFailureCategory: category,
     safeMarkerCount: numberOrNull(input.safeMarkerCount ?? input.safe_marker_count),
     testCountDetected: numberOrNull(input.testCountDetected ?? input.safe_test_count),

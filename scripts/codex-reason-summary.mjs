@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// CODEX_QUALITY_HARNESS_FILE v1.0.5
+// CODEX_QUALITY_HARNESS_FILE v1.0.6
 import fs from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { HARNESS_VERSION, marker, readJson, scanObjectForUnsafe, simpleStatus, writeJsonReport, exitFor } from './codex-v080-lib.mjs';
@@ -18,21 +18,11 @@ export function buildCompactReasonSummary(report = {}, options = {}) {
   const catalog = loadCatalog();
   const mode = report.targetQualityScoreStatus ? 'target' : 'source';
   const score = report.targetQualityScoreStatus?.score ?? report.qualityScoreStatus?.score ?? null;
-  const targetQualityPass = report.targetQualityScoreStatus?.status === 'pass';
-  const passOptionalGates = new Set((report.targetQualityScoreStatus?.notApplicableStatuses || [])
-    .filter((entry) => entry?.effectiveStatus === 'pass_optional')
-    .map((entry) => entry.key)
-    .filter(Boolean));
   const statusEntries = Object.entries(report).filter(([, value]) => value && typeof value === 'object' && typeof value.status === 'string');
   const blockingReasons = [];
   const manualReasons = [];
   const optionalNotApplicable = [];
   for (const [gate, value] of statusEntries) {
-    if (targetQualityPass && passOptionalGates.has(gate)) {
-      optionalNotApplicable.push(gate);
-      continue;
-    }
-    if (targetQualityPass && gate === 'targetQualityScoreStatus') continue;
     const reasonCodes = value.reasonCodes?.length ? value.reasonCodes : [gate];
     if (value.status === 'fail' || value.status === 'missing') {
       for (const code of reasonCodes) blockingReasons.push({ reasonCode: safeCode(code), gate });
@@ -50,7 +40,7 @@ export function buildCompactReasonSummary(report = {}, options = {}) {
     return known?.nextBestFix || `Review ${item.gate} safe reason ${item.reasonCode}.`;
   });
   const summary = {
-    status: targetQualityPass && !blockingReasons.length ? 'pass' : (report.status || options.status || 'unknown'),
+    status: report.status || options.status || 'unknown',
     mode,
     score,
     blockingReasons: blockingReasons.slice(0, 10),

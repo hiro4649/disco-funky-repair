@@ -1,9 +1,6 @@
 #!/usr/bin/env node
-// CODEX_QUALITY_HARNESS_FILE v1.0.5
+// CODEX_QUALITY_HARNESS_FILE v1.0.6
 import { scanObjectForUnsafe, simpleStatus, writeJsonReport, exitFor } from './codex-v080-lib.mjs';
-import { buildRemoteProductCheckPlan } from './codex-remote-product-checks.mjs';
-import { buildRemoteProductSafeArtifacts } from './codex-v098-gate-lib.mjs';
-import { buildCompactReasonSummary } from './codex-reason-summary.mjs';
 
 export const V105_STATUS_KEYS = [
   'representativeProductPrValidationStatus',
@@ -13,10 +10,6 @@ export const V105_STATUS_KEYS = [
   'sourceOnlyCompatibilityStatus',
   'activeLegacySelfTestSummaryStatus',
   'diagnosticSourceTraceStatus',
-  'remoteProductEvidenceRoutingV105Status',
-  'remoteProductSafeArtifactsScopeV105Status',
-  'targetHotfixPreservationStatus',
-  'reasonSummaryAggregationV105Status',
   'qualityGateSelfProtectionStatus',
   'integrationGovernanceStatus',
   'draftPrInventoryModelStatus',
@@ -35,39 +28,6 @@ export const V105_STATUS_KEYS = [
   'dynamicWorkflowWorkerBoundaryV2Status',
   'toolPermissionBoundaryV2Status',
   'roleProfilePluginV2Status',
-  'funkyNoProductionReadyClaimStatus',
-  'funkyNoRuntimeReadyClaimStatus',
-  'funkyNoFundedTxBoundaryStatus',
-  'funkyRealReceiptFetcherCutoverBoundaryStatus',
-  'funkyStagingNoTxReviewBoundaryStatus',
-  'funkyOperatorRunbookBoundaryStatus',
-  'funkySafeDbReadExportBoundaryStatus',
-  'funkySafeRowJsonlSerializerBoundaryStatus',
-  'funkyRuntimeAdoptionSequenceV2Status',
-  'funkyTaskSizeAdvisorStatus',
-  'funkySafeSuggestedPatchStatus',
-  'funkyTokenDeploymentLadderStateStatus',
-  'funkyOwnerValuesValidatorStatus',
-  'funkyAtomicityDeliveryIntegrityStatus',
-  'funkyChaosLiteRuntimeSimulationStatus',
-  'funkyObservabilityEvidenceGateStatus',
-  'funkyProductionReadinessG4GateStatus',
-  'funkyQualityGateSelfProtectionStatus',
-  'funkyDiagnosticSourceTraceStatus',
-  'funkyActiveLegacySelfTestSummaryStatus',
-  'funkySourceOnlyCompatibilityStatus',
-  'funkyTargetSafeReportContractStatus',
-  'funkyEvidenceDriftCheckerStatus',
-  'funkyEvidenceSingleSourceStatus',
-  'contractNoMainnetClaimStatus',
-  'contractNoFundedTxStatus',
-  'contractDeployReadinessLadderStatus',
-  'contractReadinessProfileV2Status',
-  'funkySafeRowExportStatus',
-  'runtimeReadinessBlockerDigestStatus',
-  'stagingNoTxEvidenceStatus',
-  'receiptFetcherNoSecretPreflightStatus',
-  'funkyRuntimeAdoptionSequenceStatus',
   'v105SelfTestStatus',
 ];
 
@@ -206,107 +166,6 @@ export function buildDiagnosticSourceTraceReport(input = {}) {
   return { diagnosticSourceTraceStatus: stateFromReasons('diagnosticSourceTraceStatus', reasons, { safeSuggestedPatch: reasons.length ? 'add diagnostic source field in normalized evidence' : 'none' }) };
 }
 
-export function buildRemoteProductEvidenceRoutingV105Report(input = {}) {
-  const plan = buildRemoteProductCheckPlan({
-    productRelevant: input.productRelevant ?? true,
-    changedFiles: input.changedFiles || ['apps/backend/src/app/lib/example.ts'],
-    rootPackagePresent: input.rootPackagePresent,
-    backendPackagePresent: input.backendPackagePresent ?? true,
-    contractsPackagePresent: input.contractsPackagePresent,
-  });
-  const reasons = [];
-  if (input.expectCommandScopeMismatch) {
-    if (plan.failureClass !== 'command_scope_mismatch') reasons.push('command_scope_mismatch_classification_missing');
-    if (plan.command !== 'not_run') reasons.push('root_npm_would_run_without_package_scope');
-  } else {
-    if (plan.cwd !== 'apps/backend') reasons.push('backend_product_cwd_not_apps_backend');
-    if (plan.packageScope !== 'apps/backend') reasons.push('backend_product_package_scope_missing');
-    if (plan.commandClass !== 'backend_npm_test') reasons.push('backend_product_command_class_missing');
-    if (plan.command !== 'npm test -- --runInBand') reasons.push('backend_product_command_mismatch');
-  }
-  if (bool(input.rootNpmExecuted)) reasons.push('root_npm_executed_for_backend_product_pr');
-  return {
-    remoteProductEvidenceRoutingV105Status: stateFromReasons('remoteProductEvidenceRoutingV105Status', reasons, {
-      cwd: plan.cwd,
-      packageScope: plan.packageScope,
-      commandClass: plan.commandClass,
-      command: plan.command,
-      failureClass: plan.failureClass,
-    }),
-  };
-}
-
-export function buildRemoteProductSafeArtifactsScopeV105Report(input = {}) {
-  const artifacts = buildRemoteProductSafeArtifacts({
-    productRelevant: true,
-    npmExecuted: true,
-    npmExitCode: input.npmExitCode ?? 0,
-    command: 'npm test -- --runInBand',
-    cwd: input.cwd || 'apps/backend',
-    packageScope: input.packageScope || 'apps/backend',
-    commandClass: input.commandClass || 'backend_npm_test',
-    failureClass: input.failureClass || '',
-  }, {});
-  const evidence = artifacts.evidence || {};
-  const diagnostic = artifacts.diagnostic || {};
-  const baseline = artifacts.baseline || {};
-  const reasons = [];
-  if (evidence.cwd !== 'apps/backend' || evidence.packageScope !== 'apps/backend' || evidence.commandClass !== 'backend_npm_test') reasons.push('remote_product_evidence_scope_missing');
-  if (diagnostic.cwd !== 'apps/backend' || diagnostic.packageScope !== 'apps/backend' || diagnostic.commandClass !== 'backend_npm_test') reasons.push('remote_npm_diagnostic_scope_missing');
-  if (baseline.cwd !== 'apps/backend' || baseline.packageScope !== 'apps/backend' || baseline.commandClass !== 'backend_npm_test') reasons.push('remote_product_baseline_scope_missing');
-  return {
-    remoteProductSafeArtifactsScopeV105Status: stateFromReasons('remoteProductSafeArtifactsScopeV105Status', reasons, {
-      cwd: evidence.cwd,
-      packageScope: evidence.packageScope,
-      commandClass: evidence.commandClass,
-    }),
-  };
-}
-
-export function buildTargetHotfixPreservationReport(input = {}) {
-  const reasons = [];
-  if (bool(input.backendCwdRegression)) reasons.push('backend_cwd_hotfix_not_preserved');
-  if (bool(input.rootNpmRegression)) reasons.push('root_npm_hotfix_not_preserved');
-  return {
-    targetHotfixPreservationStatus: stateFromReasons('targetHotfixPreservationStatus', reasons, {
-      backendCwdRoutingPreserved: reasons.length === 0,
-    }),
-  };
-}
-
-export function buildReasonSummaryAggregationV105Report(input = {}) {
-  const report = {
-    status: input.reportStatus || 'manual_confirmation_required',
-    targetQualityScoreStatus: {
-      status: input.targetQualityStatus || 'pass',
-      score: 89,
-      notApplicableStatuses: [
-        { key: 'v092SelfTestStatus', status: 'fail', effectiveStatus: 'pass_optional' },
-        { key: 'activeSelfTestRegistryStatus', status: 'fail', effectiveStatus: 'pass_optional' },
-      ],
-    },
-    v092SelfTestStatus: { status: input.legacyFail === false ? 'pass' : 'fail', reasonCodes: ['v092SelfTestStatus'] },
-    activeSelfTestRegistryStatus: { status: input.registryFail === false ? 'pass' : 'fail', reasonCodes: ['active_self_test_registry_missing'] },
-  };
-  if (bool(input.activeV105Fail)) report.v105SelfTestStatus = { status: 'fail', reasonCodes: ['active_v105_self_test_failed'] };
-  if (bool(input.productVerificationFail)) report.productVerificationStatus = { status: 'fail', reasonCodes: ['product_verification_failed'] };
-  const result = buildCompactReasonSummary(report);
-  const summary = result.summary || {};
-  const reasons = [];
-  if (bool(input.activeV105Fail) || bool(input.productVerificationFail) || input.targetQualityStatus === 'fail') {
-    if (summary.status !== 'fail' && summary.blockingReasons?.length === 0) reasons.push('blocking_failure_was_dropped');
-  } else {
-    if (summary.status !== 'pass') reasons.push('target_quality_pass_not_preserved');
-    if ((summary.blockingReasons || []).some((item) => ['v092SelfTestStatus', 'active_self_test_registry_missing'].includes(item.reasonCode))) reasons.push('optional_failure_reintroduced');
-  }
-  return {
-    reasonSummaryAggregationV105Status: stateFromReasons('reasonSummaryAggregationV105Status', reasons, {
-      summaryStatus: summary.status,
-      blockingReasonCount: (summary.blockingReasons || []).length,
-    }),
-  };
-}
-
 export function buildQualityGateSelfProtectionReport(input = {}) {
   const weakened = [];
   if (bool(input.removesProductVerification)) weakened.push('product_verification_removed');
@@ -441,10 +300,6 @@ export function buildDefaultV105Reports(input = {}) {
     ...buildSourceOnlyCompatibilityReport({ targetSafeJson: true }),
     ...buildActiveLegacySelfTestSummaryReport({}),
     ...buildDiagnosticSourceTraceReport({ npmExecuted: true, npmExitCode: true, cwd: true, commandClass: true, packageScope: true, remoteProductEvidence: true }),
-    ...buildRemoteProductEvidenceRoutingV105Report({}),
-    ...buildRemoteProductSafeArtifactsScopeV105Report({}),
-    ...buildTargetHotfixPreservationReport({}),
-    ...buildReasonSummaryAggregationV105Report({}),
     ...buildQualityGateSelfProtectionReport({}),
     ...buildIntegrationGovernanceReport({ saturated: false }),
     ...buildProductionReadinessG4GateReport({ stage: 'G4', observability: true, alerts: true, rollback: true, slo: true, chaos: true, secretRotation: true, runbook: true }),
@@ -471,7 +326,7 @@ export function buildDefaultV105Reports(input = {}) {
 
 export function buildV105Report(input = {}) {
   const report = {
-    marker: 'CODEX_QUALITY_HARNESS_FILE v1.0.5',
+    marker: 'CODEX_QUALITY_HARNESS_FILE v1.0.6',
     harnessVersion: '1.0.5',
     status: 'pass',
     ...buildDefaultV105Reports(input),
