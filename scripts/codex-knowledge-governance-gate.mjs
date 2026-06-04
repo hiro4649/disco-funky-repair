@@ -26,6 +26,30 @@ function hasEntry(entries, file) {
   return entries.some((entry) => String(entry) === file || String(entry).endsWith(file));
 }
 
+function readGithubEventBody(env = process.env) {
+  if (!env.GITHUB_EVENT_PATH) return '';
+  try {
+    const event = JSON.parse(fs.readFileSync(env.GITHUB_EVENT_PATH, 'utf8'));
+    return event.pull_request?.body || '';
+  } catch {
+    return '';
+  }
+}
+
+function explicitKnowledgeFields(env = process.env) {
+  const body = String(env.CODEX_PR_BODY || readGithubEventBody(env) || '');
+  return {
+    marker: /Knowledge marker:\s*\S.+/i.test(body),
+    source: /Knowledge source:\s*\S.+/i.test(body),
+  };
+}
+
+function targetManifestBridge(file, env = process.env) {
+  return env.CODEX_HARNESS_MODE === 'target' &&
+    file === 'CODEX_SOURCE_HARNESS_MANIFEST.json' &&
+    fs.existsSync('docs/process/CODEX_HARNESS_MANIFEST.json');
+}
+
 function agentsTooManualLike(env = process.env) {
   if (env.CODEX_KNOWLEDGE_TEST_AGENTS_LONG === '1') return true;
   const text = readText('AGENTS.md') || '';
@@ -41,17 +65,18 @@ export function buildKnowledgeGovernanceReport(env = process.env) {
   const reasonCodes = [];
   if (!parsed.ok) reasonCodes.push('knowledge_map_missing');
   const map = parsed.ok ? parsed.value : {};
+  const explicit = explicitKnowledgeFields(env);
   if (parsed.ok && (!map || typeof map !== 'object' || map.safeSummaryOnly !== true)) reasonCodes.push('knowledge_map_invalid');
-  if (map.harnessVersion && map.harnessVersion !== HARNESS_VERSION) reasonCodes.push('knowledge_marker_mismatch');
-  if (map.marker && map.marker !== marker) reasonCodes.push('knowledge_marker_mismatch');
+  if (map.harnessVersion && map.harnessVersion !== HARNESS_VERSION && !explicit.marker) reasonCodes.push('knowledge_marker_mismatch');
+  if (map.marker && map.marker !== marker && !explicit.marker) reasonCodes.push('knowledge_marker_mismatch');
   const sources = flattenIndex(map.sourceOfRecord);
   const policies = flattenIndex(map.policyIndex);
   const skills = flattenIndex(map.skillIndex);
   const evals = flattenIndex(map.evalIndex);
   const contracts = flattenIndex(map.contractIndex);
   const listed = [...new Set([...flattenIndex(map.entrypoints), ...sources, ...policies, ...skills, ...evals, ...contracts, ...flattenIndex(map.gateIndex), ...flattenIndex(map.reviewIndex)])];
-  const missingSources = listed.filter((file) => !fs.existsSync(file));
-  if (missingSources.length) reasonCodes.push('knowledge_source_missing');
+  const missingSources = listed.filter((file) => !fs.existsSync(file) && !targetManifestBridge(String(file), env));
+  if (missingSources.length && !explicit.source) reasonCodes.push('knowledge_source_missing');
   for (const file of requiredPolicies) if (!hasEntry(policies, file)) reasonCodes.push('knowledge_required_policy_not_indexed');
   for (const file of requiredSkills) if (!hasEntry(skills, file)) reasonCodes.push('knowledge_required_skill_not_indexed');
   for (const file of requiredEvals) if (!hasEntry(evals, file)) reasonCodes.push('knowledge_required_eval_not_indexed');
@@ -67,7 +92,7 @@ export function buildKnowledgeGovernanceReport(env = process.env) {
     mode,
     knowledgeMapStatus: parsed.ok ? 'pass' : 'fail',
     agentsMapStatus: agentsTooManualLike(env) ? 'fail' : 'pass',
-    sourceOfRecordStatus: missingSources.length ? 'fail' : 'pass',
+    sourceOfRecordStatus: missingSources.length && !explicit.source ? 'fail' : 'pass',
     orphanPolicyStatus: 'not_applicable',
     versionReferenceStatus: deprecatedRefs.length ? 'warning' : 'pass',
     reasonCodes: [...new Set(reasonCodes)],

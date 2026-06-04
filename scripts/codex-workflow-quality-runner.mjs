@@ -4857,6 +4857,12 @@ export function evaluateWorkflowReport(report, options = {}) {
 
 
 
+    v105SelfTestStatus: report.v105SelfTestStatus || { status: 'missing' },
+
+
+
+
+
 
     failureCount: Array.isArray(report.failures) ? report.failures.length : 0,
 
@@ -5138,7 +5144,7 @@ function writeArtifacts(result, report) {
 
 
 
-  const selfTestStatus = report.v098SelfTestStatus || report.v097SelfTestStatus || report.v096SelfTestStatus || report.v095SelfTestStatus || report.v094SelfTestStatus || report.v093SelfTestStatus || report.v092SelfTestStatus || report.selfTestCaseExportStatus || {};
+  const selfTestStatus = report.v105SelfTestStatus || report.v104SelfTestStatus || report.v103SelfTestStatus || report.v102SelfTestStatus || report.v101SelfTestStatus || report.v100SelfTestStatus || report.v099SelfTestStatus || report.v098SelfTestStatus || report.v097SelfTestStatus || report.v096SelfTestStatus || report.v095SelfTestStatus || report.v094SelfTestStatus || report.v093SelfTestStatus || report.v092SelfTestStatus || report.selfTestCaseExportStatus || {};
 
 
 

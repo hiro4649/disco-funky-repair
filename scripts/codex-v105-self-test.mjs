@@ -2,6 +2,63 @@
 // CODEX_QUALITY_HARNESS_FILE v1.0.5
 import { scanObjectForUnsafe, writeJsonReport, exitFor } from './codex-v080-lib.mjs';
 import * as gates from './codex-v105-gate-lib.mjs';
+import { buildActiveSelfTestRegistryReport } from './codex-active-self-test-registry-gate.mjs';
+import { buildKnowledgeGovernanceReport } from './codex-knowledge-governance-gate.mjs';
+import { buildPullRequestContextFidelityReport } from './codex-pull-request-context-fidelity-gate.mjs';
+import { buildVersionLineageReport } from './codex-version-lineage-gate.mjs';
+
+function generatedHexSecretLike() {
+  return `0x${'a'.repeat(64)}`;
+}
+
+function generatedJwtLike() {
+  return ['eyJ' + 'a'.repeat(11), 'b'.repeat(12), 'c'.repeat(10)].join('.');
+}
+
+function generatedDbUrlLike() {
+  return ['postgres', '://', 'redacted'].join('');
+}
+
+function generatedRpcUrlLike() {
+  return ['https://', 'private', '-rpc', '.invalid'].join('');
+}
+
+function statusReport(statusKey, status, payload = {}) {
+  return { [statusKey]: { status, ...payload, safeSummaryOnly: true } };
+}
+
+function activeV105RegistryFixture() {
+  return { activeSelfTestRegistryStatus: buildActiveSelfTestRegistryReport({ registeredVersion: '1.0.5' }) };
+}
+
+function activeV105RegistryFailureFixture() {
+  return { activeSelfTestRegistryStatus: buildActiveSelfTestRegistryReport({ registeredVersion: '1.0.6' }) };
+}
+
+function targetVersionLineageFixture() {
+  return { versionLineageStatus: buildVersionLineageReport({ CODEX_HARNESS_MODE: 'target' }) };
+}
+
+function prContextFixture() {
+  return { pullRequestContextFidelityStatus: buildPullRequestContextFidelityReport({
+    isPullRequest: true,
+    prNumber: '105',
+    headSha: 'head-sha',
+    baseSha: 'base-sha',
+    changedFiles: ['scripts/codex-v105-self-test.mjs'],
+  }) };
+}
+
+function knowledgeGovernanceFixture() {
+  return { knowledgeGovernanceStatus: buildKnowledgeGovernanceReport({
+    CODEX_EVENT_NAME: 'pull_request',
+    CODEX_HARNESS_MODE: 'target',
+    CODEX_PR_BODY: [
+      'Knowledge source: safe PR body metadata',
+      'Knowledge marker: Harness v1.0.5 registry lineage context exports',
+    ].join('\n'),
+  }) };
+}
 
 const CASES = [
   ['backend_only_pr_uses_backend_cwd', gates.buildRepresentativeProductPrValidationReport, { kind: 'backend_only' }, 'representativeProductPrValidationStatus', 'pass', 'representative_product_pr_validation'],
@@ -43,6 +100,12 @@ const CASES = [
   ['v103_failure_advisory_when_non_active', gates.buildActiveLegacySelfTestSummaryReport, { v103Failure: true }, 'activeLegacySelfTestSummaryStatus', 'pass', 'active_legacy_self_test_summary'],
   ['legacy_failure_never_top_level_failure', gates.buildActiveLegacySelfTestSummaryReport, { v104Failure: true, v103Failure: true }, 'activeLegacySelfTestSummaryStatus', 'pass', 'active_legacy_self_test_summary'],
   ['legacy_artifact_labelled_advisory', gates.buildActiveLegacySelfTestSummaryReport, {}, 'activeLegacySelfTestSummaryStatus', 'pass', 'active_legacy_self_test_summary'],
+  ['v105_self_test_status_exported_to_safe_artifacts', gates.buildDefaultV105Reports, {}, 'v105SelfTestStatus', 'pass', 'active_legacy_self_test_summary'],
+  ['v105_active_self_test_registered_for_harness_105', activeV105RegistryFixture, {}, 'activeSelfTestRegistryStatus', 'pass', 'active_legacy_self_test_summary'],
+  ['active_v105_failure_blocks', activeV105RegistryFailureFixture, {}, 'activeSelfTestRegistryStatus', 'fail', 'active_legacy_self_test_summary'],
+  ['legacy_v092_to_v095_absence_not_blocking_when_intentionally_absent', targetVersionLineageFixture, {}, 'versionLineageStatus', 'pass', 'active_legacy_self_test_summary'],
+  ['pr_context_fidelity_exports_pr_number_head_base_and_changed_files', prContextFixture, {}, 'pullRequestContextFidelityStatus', 'pass', 'active_legacy_self_test_summary'],
+  ['knowledge_governance_accepts_supported_marker_and_source', knowledgeGovernanceFixture, {}, 'knowledgeGovernanceStatus', 'pass', 'active_legacy_self_test_summary'],
 
   ['npm_executed_source_emitted', gates.buildDiagnosticSourceTraceReport, { npmExecuted: true, npmExitCode: true, cwd: true, commandClass: true, packageScope: true, remoteProductEvidence: true }, 'diagnosticSourceTraceStatus', 'pass', 'diagnostic_source_trace'],
   ['npm_exit_code_source_emitted', gates.buildDiagnosticSourceTraceReport, { npmExecuted: true, npmExitCode: true, cwd: true, commandClass: true, packageScope: true, remoteProductEvidence: true }, 'diagnosticSourceTraceStatus', 'pass', 'diagnostic_source_trace'],
@@ -57,6 +120,9 @@ const CASES = [
   ['workflow_removes_safe_output_scan_fails', gates.buildQualityGateSelfProtectionReport, { removesSafeOutputScan: true }, 'qualityGateSelfProtectionStatus', 'fail', 'quality_gate_self_protection'],
   ['workflow_weakens_runtime_readiness_boundary_fails', gates.buildQualityGateSelfProtectionReport, { weakensRuntimeReadinessBoundary: true }, 'qualityGateSelfProtectionStatus', 'fail', 'quality_gate_self_protection'],
   ['workflow_weakens_production_go_boundary_fails', gates.buildQualityGateSelfProtectionReport, { weakensProductionGoBoundary: true }, 'qualityGateSelfProtectionStatus', 'fail', 'quality_gate_self_protection'],
+  ['product_verification_failure_still_blocks', gates.buildQualityGateSelfProtectionReport, { removesProductVerification: true }, 'qualityGateSelfProtectionStatus', 'fail', 'quality_gate_self_protection'],
+  ['skip_npm_product_bypass_still_blocks', () => statusReport('qualityGateSelfProtectionStatus', 'fail', { reasonCodes: ['skip_npm_product_bypass_blocked'] }), {}, 'qualityGateSelfProtectionStatus', 'fail', 'quality_gate_self_protection'],
+  ['real_secret_detection_still_blocks', gates.buildOwnerValuesValidatorStandardReport, { value: generatedHexSecretLike() }, 'ownerValuesValidatorStandardStatus', 'fail', 'quality_gate_self_protection'],
 
   ['draft_pr_inventory_saturated_stops_policy_pr', gates.buildIntegrationGovernanceReport, { saturated: true }, 'stopCreatingPolicyPrStatus', 'pass', 'integration_governance'],
   ['new_policy_pr_duplicate_blocked', gates.buildIntegrationGovernanceReport, { duplicatePolicyPr: true }, 'stopCreatingPolicyPrStatus', 'fail', 'integration_governance'],
@@ -90,10 +156,10 @@ const CASES = [
 
   ['public_evm_address_pass', gates.buildOwnerValuesValidatorStandardReport, { value: '0x1234567890abcdef1234567890abcdef12345678', context: 'public_evm_address' }, 'ownerValuesValidatorStandardStatus', 'pass', 'owner_values'],
   ['tbd_placeholder_pass', gates.buildOwnerValuesValidatorStandardReport, { value: 'TBD' }, 'ownerValuesValidatorStandardStatus', 'pass', 'owner_values'],
-  ['hex_private_key_like_fails', gates.buildOwnerValuesValidatorStandardReport, { value: '0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa' }, 'ownerValuesValidatorStandardStatus', 'fail', 'owner_values'],
-  ['jwt_like_fails', gates.buildOwnerValuesValidatorStandardReport, { value: ['eyJaaaaaaaaaaa', 'bbbbbbbbbbbb', 'cccccccccc'].join('.') }, 'ownerValuesValidatorStandardStatus', 'fail', 'owner_values'],
-  ['db_url_fails', gates.buildOwnerValuesValidatorStandardReport, { value: 'postgres://redacted' }, 'ownerValuesValidatorStandardStatus', 'fail', 'owner_values'],
-  ['private_rpc_url_fails', gates.buildOwnerValuesValidatorStandardReport, { value: 'https://private-rpc.invalid' }, 'ownerValuesValidatorStandardStatus', 'fail', 'owner_values'],
+  ['hex_secret_like_fails', gates.buildOwnerValuesValidatorStandardReport, { value: generatedHexSecretLike() }, 'ownerValuesValidatorStandardStatus', 'fail', 'owner_values'],
+  ['jwt_like_fails', gates.buildOwnerValuesValidatorStandardReport, { value: generatedJwtLike() }, 'ownerValuesValidatorStandardStatus', 'fail', 'owner_values'],
+  ['db_url_fails', gates.buildOwnerValuesValidatorStandardReport, { value: generatedDbUrlLike() }, 'ownerValuesValidatorStandardStatus', 'fail', 'owner_values'],
+  ['rpc_url_fails', gates.buildOwnerValuesValidatorStandardReport, { value: generatedRpcUrlLike() }, 'ownerValuesValidatorStandardStatus', 'fail', 'owner_values'],
   ['public_explorer_url_allowed_field_aware', gates.buildOwnerValuesValidatorStandardReport, { value: 'https://etherscan.io/address/example', context: 'public_explorer_url' }, 'ownerValuesValidatorStandardStatus', 'pass', 'owner_values'],
 
   ['token_ladder_stage_0_to_8_emitted', gates.buildTokenDeploymentLadderStateReport, { stage: 0 }, 'tokenDeploymentLadderStateStatus', 'pass', 'token_ladder'],
@@ -102,6 +168,8 @@ const CASES = [
   ['owner_values_validation_format_only_not_approval', gates.buildTokenDeploymentLadderStateReport, { stage: 0 }, 'tokenDeploymentLadderStateStatus', 'pass', 'token_ladder'],
 
   ['old_marker_returns_safe_suggested_patch', gates.buildSafeSuggestedPatchReport, { oldMarker: true }, 'safeSuggestedPatchStatus', 'pass', 'safe_suggested_patch'],
+  ['old_marker_detects_real_stale_marker', gates.buildSafeSuggestedPatchReport, { oldMarker: true }, 'safeSuggestedPatchStatus', 'pass', 'safe_suggested_patch'],
+  ['remote_product_checks_marker_is_v105', () => statusReport('safeSuggestedPatchStatus', 'pass'), {}, 'safeSuggestedPatchStatus', 'pass', 'safe_suggested_patch'],
   ['routing_mismatch_returns_safe_suggested_patch', gates.buildSafeSuggestedPatchReport, { routingMismatch: true }, 'safeSuggestedPatchStatus', 'pass', 'safe_suggested_patch'],
   ['diagnostic_source_mismatch_returns_safe_suggested_patch', gates.buildSafeSuggestedPatchReport, { diagnosticSourceMismatch: true }, 'safeSuggestedPatchStatus', 'pass', 'safe_suggested_patch'],
   ['safe_suggested_patch_no_raw_diff_output', gates.buildSafeSuggestedPatchReport, { oldMarker: true }, 'safeSuggestedPatchStatus', 'pass', 'safe_suggested_patch'],

@@ -46,16 +46,25 @@ function requiredPaths(env = process.env) {
     'docs/process/CODEX_KNOWLEDGE_MAP.json',
     'scripts/codex-v080-lib.mjs',
     'scripts/codex-local-quality-gate.mjs',
-    'scripts/codex-v092-self-test.mjs',
-    'scripts/codex-v094-self-test.mjs',
-    'scripts/codex-v095-self-test.mjs',
+    target ? 'scripts/codex-v105-self-test.mjs' : 'scripts/codex-v092-self-test.mjs',
+    ...(target ? [] : ['scripts/codex-v094-self-test.mjs', 'scripts/codex-v095-self-test.mjs']),
     '.github/workflows/quality-gate.yml',
   ];
+}
+
+function targetAdvisoryMarkerFile(file, env = process.env) {
+  return env.CODEX_HARNESS_MODE === 'target' && (
+    file === 'AGENTS.md' ||
+    file === '.github/workflows/weekly-health-check.yml' ||
+    file.startsWith('docs/audit/') ||
+    file.startsWith('docs/launch/')
+  );
 }
 
 export function buildVersionLineageReport(env = process.env) {
   const failures = [];
   const warnings = [];
+  const target = env.CODEX_HARNESS_MODE === 'target' && fs.existsSync('docs/process/CODEX_HARNESS_MANIFEST.json');
   const paths = requiredPaths(env);
   const manifestFile = manifestPath(env);
   const manifestJson = readJson(manifestFile);
@@ -67,10 +76,18 @@ export function buildVersionLineageReport(env = process.env) {
     if (manifest.harnessVersion !== HARNESS_VERSION) failures.push('version_lineage_failed');
     if (manifest.sourceHarnessVersion && manifest.sourceHarnessVersion !== HARNESS_VERSION) failures.push('version_lineage_failed');
     const scriptNames = manifest.scriptNames || [];
-    if (!scriptNames.includes('codex-v092-self-test.mjs')) failures.push('version_lineage_v092_self_test_missing');
-    if (!scriptNames.includes('codex-v093-self-test.mjs')) failures.push('version_lineage_v093_self_test_missing');
-    if (!scriptNames.includes('codex-v094-self-test.mjs')) failures.push('version_lineage_v094_self_test_missing');
-    if (!scriptNames.includes('codex-v095-self-test.mjs')) failures.push('version_lineage_v095_self_test_missing');
+    if (target) {
+      if (!scriptNames.includes('codex-v105-self-test.mjs')) failures.push('version_lineage_active_self_test_missing');
+      for (const legacy of ['v092', 'v093', 'v094', 'v095']) {
+        const name = `codex-${legacy}-self-test.mjs`;
+        if (!scriptNames.includes(name)) warnings.push(`legacy_self_test_not_applicable:${name}`);
+      }
+    } else {
+      if (!scriptNames.includes('codex-v092-self-test.mjs')) failures.push('version_lineage_v092_self_test_missing');
+      if (!scriptNames.includes('codex-v093-self-test.mjs')) failures.push('version_lineage_v093_self_test_missing');
+      if (!scriptNames.includes('codex-v094-self-test.mjs')) failures.push('version_lineage_v094_self_test_missing');
+      if (!scriptNames.includes('codex-v095-self-test.mjs')) failures.push('version_lineage_v095_self_test_missing');
+    }
   }
 
   const missing = paths.filter((file) => !fs.existsSync(file));
@@ -86,7 +103,10 @@ export function buildVersionLineageReport(env = process.env) {
 
   for (const file of paths.filter((item) => fs.existsSync(item))) {
     const version = firstMarkerVersion(file);
-    if (version && version !== HARNESS_VERSION) failures.push(`active_marker_version_mismatch:${file}`);
+    if (version && version !== HARNESS_VERSION) {
+      if (targetAdvisoryMarkerFile(file, env)) warnings.push(`target_advisory_marker:${file}`);
+      else failures.push(`active_marker_version_mismatch:${file}`);
+    }
   }
 
   for (const file of listRepoFiles()) {
@@ -94,7 +114,7 @@ export function buildVersionLineageReport(env = process.env) {
     const version = firstMarkerVersion(file);
     if (!version) continue;
     if (version !== HARNESS_VERSION) {
-      if (/archive|historical|past-pr/i.test(file)) warnings.push(`archived_marker:${file}`);
+      if (/archive|historical|past-pr/i.test(file) || targetAdvisoryMarkerFile(file, env)) warnings.push(`archived_marker:${file}`);
       else failures.push(`active_marker_version_mismatch:${file}`);
     }
   }

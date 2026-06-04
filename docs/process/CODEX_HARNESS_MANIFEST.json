@@ -88,5 +88,8 @@
     "fundedTransactionAllowed": false,
     "runtimeReadinessClaimed": false,
     "productionReadinessClaimed": false
-  }
+  },
+  "scriptNames": [
+    "codex-v105-self-test.mjs"
+  ]
 }
