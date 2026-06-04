@@ -11115,6 +11115,7 @@ async function runTargetHarnessGate() {
     'remoteProductBaselineStatus.failed',
     'remoteProductEvidenceExecutionStatus.failed',
     'remoteProductEvidenceRunnerStatus.failed',
+    'remoteNpmDiagnosticStatus.failed',
     'remoteNpmDiagnosticNormalizationStatus.failed',
     'baselineHealthStatus.failed',
     'reasonSummaryStatus.failed',
@@ -11128,6 +11129,7 @@ async function runTargetHarnessGate() {
     'v085SelfTestStatus.failed',
     'v087SelfTestStatus.failed',
     'v092SelfTestStatus.failed',
+    'v098SelfTestStatus.failed',
     'v100SelfTestStatus.failed',
     'v101SelfTestStatus.failed',
     'v102SelfTestStatus.failed',
@@ -11158,6 +11160,7 @@ async function runTargetHarnessGate() {
     'remoteProductBaselineStatus',
     'remoteProductEvidenceExecutionStatus',
     'remoteProductEvidenceRunnerStatus',
+    'remoteNpmDiagnosticStatus',
     'remoteNpmDiagnosticNormalizationStatus',
     'baselineHealthStatus',
     'reasonSummaryStatus',
@@ -11172,6 +11175,7 @@ async function runTargetHarnessGate() {
     'v085SelfTestStatus',
     'v087SelfTestStatus',
     'v092SelfTestStatus',
+    'v098SelfTestStatus',
     'v100SelfTestStatus',
     'v101SelfTestStatus',
     'v102SelfTestStatus',
@@ -11194,6 +11198,8 @@ async function runTargetHarnessGate() {
       'remoteProductBaselineStatus.manual',
       'oldHarnessMarkerStatus.manual',
       'oldHarnessMarkerStatus.warning',
+      'remoteNpmDiagnosticStatus.manual',
+      'remoteNpmDiagnosticStatus.warning',
     ].includes(warnings[i]?.id)) warnings.splice(i, 1);
   }
   for (const key of funkyTargetAdvisoryStatusKeys) {
