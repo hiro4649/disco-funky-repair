@@ -103,10 +103,16 @@ export function buildRemoteProductSafeArtifacts(input = parseJson(process.env.CO
   const evidenceStatus = !productRelevant ? 'not_applicable' : npmExitCode === 0 ? 'pass' : 'fail';
   const failureClass = npmExitCode === 0 ? '' : String(input.failureClass || 'unknown_npm_failure').slice(0, 80);
   const command = String(input.command || 'npm test').slice(0, 80);
+  const cwd = String(input.cwd || '').slice(0, 120);
+  const packageScope = String(input.packageScope || input.package_scope || cwd || '').slice(0, 120);
+  const commandClass = String(input.commandClass || input.command_class || 'npm_test').slice(0, 80);
   const evidence = {
     schemaVersion: '0.8.3', harnessVersion: HARNESS_VERSION, headSha, baseSha,
     eventName: String(input.eventName || env.CODEX_EVENT_NAME || '').slice(0, 60),
     isPullRequest: isPullRequest(input, env), productRelevant, npmExecuted, npmExitCode,
+    cwd,
+    packageScope,
+    commandClass,
     status: evidenceStatus, evidenceType: productRelevant ? 'remote_npm_test' : 'not_applicable',
     commands: productRelevant ? [{ name: command, required: true, result: evidenceStatus === 'pass' ? 'pass' : 'fail', source: 'remote', durationMs: null, testCount: null, safeSummary: evidenceStatus === 'pass' ? 'remote npm test completed' : 'remote npm test failed with safe diagnostic' }] : [],
     failureClass: failureClass || undefined, safeReasonCodes: failureClass ? [failureClass] : [],
@@ -118,7 +124,7 @@ export function buildRemoteProductSafeArtifacts(input = parseJson(process.env.CO
     nodeMajor: Number(env.CODEX_NODE_MAJOR || process.versions.node.split('.')[0]),
     platform: String(input.platform || env.RUNNER_OS || process.platform || 'unknown').slice(0, 60),
     os: String(input.os || process.platform || 'unknown').slice(0, 60),
-    packageManager: 'npm', commandClass: 'npm_test',
+    packageManager: 'npm', commandClass,
     safeFailureCategory: npmExitCode === 0 ? 'test_assertion_failure' : failureClass || 'unknown_npm_failure',
     safeMarkerCount: null, testCountDetected: null, durationMs: null, knownBaselineMatched: false,
     rawLogUploaded: false, rawValuesStored: false,
