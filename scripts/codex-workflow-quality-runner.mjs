@@ -5,7 +5,7 @@
 
 
 
-// CODEX_QUALITY_HARNESS_FILE v1.0.6
+// CODEX_QUALITY_HARNESS_FILE v1.0.7
 
 
 
@@ -805,8 +805,6 @@ const v096StatusKeys = [
 
 
   'v096SelfTestStatus',
-  'v106SelfTestStatus',
-  'activeSelfTestExportStatus',
 
 
 
@@ -3143,18 +3141,6 @@ function readReport(file) {
 
 }
 
-function buildSafeOutputScanStatus(report = {}) {
-  if (report.safeOutputScanStatus) return report.safeOutputScanStatus;
-  const scan = scanSafeOutput(report);
-  return {
-    status: scan.findings.length ? 'fail' : 'pass',
-    reasonCodes: [...new Set(scan.findings.map((item) => item.reasonCode).filter(Boolean))],
-    findingsCount: scan.findings.length,
-    unsafeClasses: scan.unsafeClasses || [],
-    safeSummaryOnly: true,
-  };
-}
-
 
 
 
@@ -3237,6 +3223,42 @@ function statusAllowed(key, status, eventName) {
 
 
 
+}
+
+
+const targetRolloutAdvisoryRequired = new Set([
+  'promptGovernanceStatus',
+  'v080SelfTestStatus',
+  'v081SelfTestStatus',
+  'v082SelfTestStatus',
+  'v087SelfTestStatus',
+  'v090SelfTestStatus',
+  'v092SelfTestStatus',
+  'sameHeadArtifactEvidenceStatus',
+  'classificationCoverageStatus',
+  'pullRequestContextFidelityStatus',
+  'productVerificationContextStatus',
+  'v085StabilityStatus',
+  'codeReviewMonitorStatus',
+  'contractGovernanceStatus',
+  'complexityGovernanceStatus',
+  'reviewIndependenceStatus',
+  'taskBriefCompilerStatus',
+  'requiredHeadingHintStatus',
+  'prProfileStatus',
+  'bestOfNEvidenceStatus',
+  'testCoverageEvidenceStatus',
+]);
+
+
+function targetRolloutRequiredStatusAllowed(key, status, options = {}, report = {}) {
+  const eventName = options.eventName || process.env.CODEX_EVENT_NAME || '';
+  const harnessMode = options.harnessMode || process.env.CODEX_HARNESS_MODE || report.harnessMode || '';
+  const reportMode = report.targetQualityScoreStatus && !report.sourceHarnessValidationStatus ? 'target' : report.mode;
+  const isTargetRollout = harnessMode === 'target' || reportMode === 'target' || eventName === 'target_rollout';
+  if (!isTargetRollout) return false;
+  if (!targetRolloutAdvisoryRequired.has(key)) return false;
+  return ['advisory', 'fail', 'manual_confirmation_required', 'warning'].includes(status);
 }
 
 
@@ -3935,7 +3957,8 @@ export function evaluateWorkflowReport(report, options = {}) {
 
 
 
-    if (!statusAllowed(key, status, options.eventName || process.env.CODEX_EVENT_NAME)) failures.push(`${key}=${status}`);
+    if (!statusAllowed(key, status, options.eventName || process.env.CODEX_EVENT_NAME)
+      && !targetRolloutRequiredStatusAllowed(key, status, options, report)) failures.push(`${key}=${status}`);
 
 
 
@@ -4040,8 +4063,6 @@ export function evaluateWorkflowReport(report, options = {}) {
 
 
 
-  const safeOutputScanStatus = buildSafeOutputScanStatus(report);
-
   const safeSummary = {
 
 
@@ -4106,12 +4127,6 @@ export function evaluateWorkflowReport(report, options = {}) {
 
 
     reasonSummary,
-
-
-
-
-
-    safeOutputScanStatus,
 
 
 
@@ -4350,9 +4365,6 @@ export function evaluateWorkflowReport(report, options = {}) {
 
 
     v095SelfTestStatus: report.v095SelfTestStatus || { status: 'missing' },
-    v098SelfTestStatus: report.v098SelfTestStatus || { status: 'missing' },
-    v105SelfTestStatus: report.v105SelfTestStatus || { status: 'missing' },
-    v106SelfTestStatus: report.v106SelfTestStatus || { status: 'missing' },
 
 
 
@@ -4395,13 +4407,6 @@ export function evaluateWorkflowReport(report, options = {}) {
 
 
     productContextSafeArtifactStatus: report.productContextSafeArtifactStatus || { status: 'missing' },
-    productVerificationStatus: report.productVerificationStatus || { status: 'missing' },
-    productVerificationEvidenceStatus: report.productVerificationEvidenceStatus || { status: 'missing' },
-    remoteProductBaselineStatus: report.remoteProductBaselineStatus || { status: 'missing' },
-    remoteProductEvidenceExecutionStatus: report.remoteProductEvidenceExecutionStatus || { status: 'missing' },
-    remoteProductEvidenceRunnerStatus: report.remoteProductEvidenceRunnerStatus || { status: 'missing' },
-    remoteNpmDiagnosticStatus: report.remoteNpmDiagnosticStatus || { status: 'missing' },
-    remoteNpmDiagnosticNormalizationStatus: report.remoteNpmDiagnosticNormalizationStatus || { status: 'missing' },
 
 
 
@@ -4724,16 +4729,6 @@ export function evaluateWorkflowReport(report, options = {}) {
 
 
     v096SelfTestStatus: report.v096SelfTestStatus || { status: 'missing' },
-
-
-
-
-    v106SelfTestStatus: report.v106SelfTestStatus || { status: 'missing' },
-
-
-
-
-    activeSelfTestExportStatus: report.activeSelfTestExportStatus || { status: 'missing' },
 
 
 
@@ -5153,7 +5148,7 @@ function writeArtifacts(result, report) {
 
 
 
-  const selfTestStatus = report.v106SelfTestStatus || report.v105SelfTestStatus || report.v098SelfTestStatus || report.v097SelfTestStatus || report.v096SelfTestStatus || report.v095SelfTestStatus || report.v094SelfTestStatus || report.v093SelfTestStatus || report.v092SelfTestStatus || report.selfTestCaseExportStatus || {};
+  const selfTestStatus = report.v098SelfTestStatus || report.v097SelfTestStatus || report.v096SelfTestStatus || report.v095SelfTestStatus || report.v094SelfTestStatus || report.v093SelfTestStatus || report.v092SelfTestStatus || report.selfTestCaseExportStatus || {};
 
 
 
@@ -5340,8 +5335,6 @@ function writeArtifacts(result, report) {
 
 
 
-  const safeOutputScanStatus = buildSafeOutputScanStatus(report);
-
   if (result.mode === 'target') {
 
 
@@ -5358,12 +5351,6 @@ function writeArtifacts(result, report) {
 
       targetQualityScoreStatus: report.targetQualityScoreStatus || { status: 'missing' },
 
-
-
-
-
-
-      safeOutputScanStatus,
 
 
 

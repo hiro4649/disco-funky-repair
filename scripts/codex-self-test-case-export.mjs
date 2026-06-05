@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// CODEX_QUALITY_HARNESS_FILE v1.0.6
+// CODEX_QUALITY_HARNESS_FILE v1.0.7
 import fs from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { scanObjectForUnsafe, simpleStatus, writeJsonReport, exitFor } from './codex-v080-lib.mjs';
@@ -27,18 +27,12 @@ function safeCases(report) {
 }
 
 export function buildSelfTestCaseExportReport(env = process.env) {
-  const report = envJson(env, 'CODEX_SELF_TEST_REPORT_JSON') ||
-    envJson(env, 'CODEX_V106_SELF_TEST_REPORT') ||
-    envJson(env, 'CODEX_V105_SELF_TEST_REPORT') ||
-    envJson(env, 'CODEX_V098_SELF_TEST_REPORT') ||
-    envJson(env, 'CODEX_V089_SELF_TEST_REPORT') ||
-    {};
-  const active = report.activeSelfTest || report.v106SelfTestStatus || report.v105SelfTestStatus || report.v098SelfTestStatus || report.v089SelfTestStatus || {};
-  const suite = String(report.suite || active.suite || report.activeSelfTestSuite || env.CODEX_SELF_TEST_SUITE || 'local_quality_gate');
+  const report = envJson(env, 'CODEX_SELF_TEST_REPORT_JSON') || envJson(env, 'CODEX_V089_SELF_TEST_REPORT') || {};
+  const suite = String(report.suite || report.v089SelfTestStatus?.suite || env.CODEX_SELF_TEST_SUITE || 'local_quality_gate');
   const failedCases = safeCases(report);
-  const failedCaseCount = Number(report.failedCaseCount ?? active.failedCaseCount ?? failedCases.length);
-  const caseCount = Number(report.caseCount ?? active.caseCount ?? (Array.isArray(report.cases) ? report.cases.length : failedCases.length));
-  const reportedFailure = report.status === 'fail' || active.status === 'fail' || failedCaseCount > 0;
+  const failedCaseCount = Number(report.failedCaseCount ?? failedCases.length);
+  const caseCount = Number(report.caseCount ?? (Array.isArray(report.cases) ? report.cases.length : failedCases.length));
+  const reportedFailure = report.status === 'fail' || report.v089SelfTestStatus?.status === 'fail' || failedCaseCount > 0;
   const reasonCodes = [];
   if (reportedFailure && !failedCases.length) reasonCodes.push('self_test_failed_case_export_missing');
   const payload = {

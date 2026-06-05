@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// CODEX_QUALITY_HARNESS_FILE v1.0.6
+// CODEX_QUALITY_HARNESS_FILE v1.0.7
 import { fileURLToPath } from 'node:url';
 import {
   HARNESS_VERSION,
@@ -25,7 +25,6 @@ const SAFE_CATEGORIES = new Set([
   'package_manager_error',
   'baseline_failure',
   'unknown_npm_failure',
-  'command_scope_mismatch',
 ]);
 
 function numberOrNull(value) {
