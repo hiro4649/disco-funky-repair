@@ -805,6 +805,8 @@ const v096StatusKeys = [
 
 
   'v096SelfTestStatus',
+  'v106SelfTestStatus',
+  'activeSelfTestExportStatus',
 
 
 
@@ -4702,6 +4704,16 @@ export function evaluateWorkflowReport(report, options = {}) {
 
 
     v096SelfTestStatus: report.v096SelfTestStatus || { status: 'missing' },
+
+
+
+
+    v106SelfTestStatus: report.v106SelfTestStatus || { status: 'missing' },
+
+
+
+
+    activeSelfTestExportStatus: report.activeSelfTestExportStatus || { status: 'missing' },
 
 
 

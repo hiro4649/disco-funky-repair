@@ -1,8 +1,60 @@
 #!/usr/bin/env node
 // CODEX_QUALITY_HARNESS_FILE v1.0.6
-import fs from 'node:fs';
+import { readFileSync } from 'node:fs';
 import { scanObjectForUnsafe, writeJsonReport, exitFor } from './codex-v080-lib.mjs';
 import * as gates from './codex-v106-gate-lib.mjs';
+import { buildActiveSelfTestRegistryReport } from './codex-active-self-test-registry-gate.mjs';
+import { buildKnowledgeGovernanceReport } from './codex-knowledge-governance-gate.mjs';
+import { buildPullRequestContextFidelityReport } from './codex-pull-request-context-fidelity-gate.mjs';
+import { buildVersionLineageReport } from './codex-version-lineage-gate.mjs';
+import { buildWorkflowProductVerificationInvariantReport } from './codex-v097-gate-lib.mjs';
+
+function legacyAbsenceIsAdvisoryReport() {
+  const report = buildVersionLineageReport({ CODEX_HARNESS_MODE: 'target' });
+  const reasons = report.versionLineageStatus?.reasonCodes || [];
+  const legacyMissingBlocking = reasons.some((code) => /^version_lineage_v09[2-5]_self_test_missing$/.test(code));
+  return {
+    legacyV092ToV095AbsenceStatus: {
+      status: legacyMissingBlocking ? 'fail' : 'pass',
+      reasonCodes: legacyMissingBlocking ? ['legacy_absence_blocking'] : [],
+      safeSummaryOnly: true,
+    },
+  };
+}
+
+function remoteProductMarkerReport() {
+  const text = readFileSync('scripts/codex-remote-product-checks.mjs', 'utf8');
+  const pass = /CODEX_QUALITY_HARNESS_FILE v1\.0\.6/.test(text) && !/CODEX_QUALITY_HARNESS_FILE v1\.0\.3/.test(text);
+  return {
+    remoteProductChecksMarkerStatus: {
+      status: pass ? 'pass' : 'fail',
+      reasonCodes: pass ? [] : ['remote_product_checks_marker_not_v106'],
+      safeSummaryOnly: true,
+    },
+  };
+}
+
+function oldMarkerFixtureReport(input = {}) {
+  const stale = input.markerVersion && input.markerVersion !== '1.0.6';
+  return {
+    oldMarkerFixtureStatus: {
+      status: stale ? 'fail' : 'pass',
+      reasonCodes: stale ? ['old_source_marker_detected'] : [],
+      safeSummaryOnly: true,
+    },
+  };
+}
+
+function activeV106FailureBlocksReport() {
+  return {
+    v106SelfTestStatus: {
+      status: 'fail',
+      reasonCodes: ['active_v106_failure_blocks'],
+      blocking: true,
+      safeSummaryOnly: true,
+    },
+  };
+}
 
 function staticStatus(statusKey, pass, reasonCodes = []) {
   return { [statusKey]: { status: pass ? 'pass' : 'fail', reasonCodes: pass ? [] : reasonCodes, safeSummaryOnly: true } };
@@ -10,7 +62,7 @@ function staticStatus(statusKey, pass, reasonCodes = []) {
 
 function fileText(path) {
   try {
-    return fs.readFileSync(path, 'utf8');
+    return readFileSync(path, 'utf8');
   } catch {
     return '';
   }
@@ -45,11 +97,20 @@ function buildFormalBackendEvidenceMetadataFixture() {
 
 const CASES = [
   ['v106_active_self_test_exported_to_safe_artifact', gates.buildActiveSelfTestExportReport, {}, 'activeSelfTestExportStatus', 'pass'],
+  ['v106_self_test_status_exported_to_safe_artifacts', gates.buildDefaultV106Reports, { caseCount: 1, failedCaseCount: 0 }, 'v106SelfTestStatus', 'pass'],
+  ['active_v106_failure_blocks', activeV106FailureBlocksReport, {}, 'v106SelfTestStatus', 'fail'],
+  ['v106_active_self_test_registry_passes', () => ({ activeSelfTestRegistryStatus: buildActiveSelfTestRegistryReport({}, { CODEX_HARNESS_MODE: 'target' }) }), {}, 'activeSelfTestRegistryStatus', 'pass'],
   ['active_registry_uses_target_manifest_by_default', gates.buildActiveSelfTestExportReport, {}, 'activeRegistryManifestSourceStatus', 'pass'],
   ['source_manifest_and_target_manifest_sources_are_reported', gates.buildDiagnosticProvenanceReport, {}, 'diagnosticProvenanceStatus', 'pass'],
   ['legacy_v085_uses_current_safe_shape_adapter', gates.buildLegacySelfTestCompatibilityAdapterReport, {}, 'legacySelfTestCompatibilityAdapterStatus', 'pass'],
   ['legacy_v087_fixture_local_context_does_not_read_default_repo', gates.buildLegacySelfTestCompatibilityAdapterReport, { liveRepoRead: true }, 'legacySelfTestCompatibilityAdapterStatus', 'fail'],
   ['legacy_v092_absent_if_not_required_is_advisory', gates.buildLegacySelfTestCompatibilityAdapterReport, {}, 'legacySelfTestCompatibilityAdapterStatus', 'pass'],
+  ['legacy_v092_to_v095_absence_is_advisory_or_not_applicable', legacyAbsenceIsAdvisoryReport, {}, 'legacyV092ToV095AbsenceStatus', 'pass'],
+  ['version_lineage_v106_current_active_passes', () => buildVersionLineageReport({ CODEX_HARNESS_MODE: 'target' }), {}, 'versionLineageStatus', 'pass'],
+  ['pr_context_fidelity_exports_pr_number_head_base_changed_files', () => ({ pullRequestContextFidelityStatus: buildPullRequestContextFidelityReport({ isPullRequest: true, prNumber: 1, headSha: 'head', baseSha: 'base', changedFiles: ['scripts/codex-v106-self-test.mjs'] }, {}) }), {}, 'pullRequestContextFidelityStatus', 'pass'],
+  ['knowledge_governance_accepts_supported_marker_source', () => ({ knowledgeGovernanceStatus: buildKnowledgeGovernanceReport({ CODEX_PR_BODY: 'Knowledge source: safe artifact\nKnowledge marker: Harness v1.0.6\nKnowledge boundary: safe summary only\nKnowledge update: marker recognized' }) }), {}, 'knowledgeGovernanceStatus', 'pass'],
+  ['remote_product_checks_marker_is_v106', remoteProductMarkerReport, {}, 'remoteProductChecksMarkerStatus', 'pass'],
+  ['old_marker_detection_still_catches_real_stale_marker', oldMarkerFixtureReport, { markerVersion: '1.0.3' }, 'oldMarkerFixtureStatus', 'fail'],
   ['fixture_failed_without_safe_label_fails', gates.buildSafeAttributionEverywhereReport, { safe_case_label: false }, 'safeAttributionEverywhereStatus', 'fail'],
   ['npm_failure_without_safe_label_fails', gates.buildSafeAttributionEverywhereReport, { safe_reason_code: false }, 'safeAttributionEverywhereStatus', 'fail'],
   ['target_quality_breakdown_drives_reason_summary', gates.buildTargetQualityScoreBreakdownReport, {}, 'reasonSummaryAuthoritativeStatus', 'pass'],
@@ -68,6 +129,9 @@ const CASES = [
   ['quality_gate_run_id_not_required_in_pr_body', gates.buildEvidenceSingleSourceV2Report, {}, 'evidenceSingleSourceV2Status', 'pass'],
   ['secret_env_reference_not_committed_secret', gates.buildSecretFindingContextClassifierReport, { context: 'env_reference', value: 'process.env.SECRET_NAME' }, 'secretFindingContextClassifierStatus', 'pass'],
   ['secret_negative_fixture_not_committed_secret', gates.buildSecretFindingContextClassifierReport, { context: 'generated_negative_fixture', value: 'fixture_redacted' }, 'secretFindingContextClassifierStatus', 'pass'],
+  ['real_secret_detection_still_blocks', gates.buildSecretFindingContextClassifierReport, { context: 'committed_secret_value', value: `${'s'}${'k'}-${'A'.repeat(24)}` }, 'secretFindingContextClassifierStatus', 'fail'],
+  ['product_verification_failure_still_blocks', buildWorkflowProductVerificationInvariantReport, { stepRemoved: true }, 'workflowProductVerificationInvariantStatus', 'fail'],
+  ['skip_npm_product_bypass_still_blocks', buildWorkflowProductVerificationInvariantReport, { productRelevant: true, skipNpmOnly: true }, 'workflowProductVerificationInvariantStatus', 'fail'],
   ['knowledge_governance_schema_required', gates.buildKnowledgeGovernanceSchemaReport, { schema: { marker: 'CODEX_QUALITY_HARNESS_FILE v1.0.6' } }, 'knowledgeGovernanceSchemaStatus', 'fail'],
   ['bounded_validation_timeout_is_evidence_limitation', gates.buildBoundedValidationRunnerReport, { fullTargetTimeout: true }, 'boundedValidationRunnerStatus', 'pass'],
   ['full_target_timeout_not_product_failure', gates.buildBoundedValidationRunnerReport, { fullTargetTimeout: true }, 'boundedValidationRunnerStatus', 'pass'],
