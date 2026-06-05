@@ -805,6 +805,8 @@ const v096StatusKeys = [
 
 
   'v096SelfTestStatus',
+  'v106SelfTestStatus',
+  'activeSelfTestExportStatus',
 
 
 
@@ -4328,6 +4330,9 @@ export function evaluateWorkflowReport(report, options = {}) {
 
 
     v095SelfTestStatus: report.v095SelfTestStatus || { status: 'missing' },
+    v098SelfTestStatus: report.v098SelfTestStatus || { status: 'missing' },
+    v105SelfTestStatus: report.v105SelfTestStatus || { status: 'missing' },
+    v106SelfTestStatus: report.v106SelfTestStatus || { status: 'missing' },
 
 
 
@@ -4370,6 +4375,13 @@ export function evaluateWorkflowReport(report, options = {}) {
 
 
     productContextSafeArtifactStatus: report.productContextSafeArtifactStatus || { status: 'missing' },
+    productVerificationStatus: report.productVerificationStatus || { status: 'missing' },
+    productVerificationEvidenceStatus: report.productVerificationEvidenceStatus || { status: 'missing' },
+    remoteProductBaselineStatus: report.remoteProductBaselineStatus || { status: 'missing' },
+    remoteProductEvidenceExecutionStatus: report.remoteProductEvidenceExecutionStatus || { status: 'missing' },
+    remoteProductEvidenceRunnerStatus: report.remoteProductEvidenceRunnerStatus || { status: 'missing' },
+    remoteNpmDiagnosticStatus: report.remoteNpmDiagnosticStatus || { status: 'missing' },
+    remoteNpmDiagnosticNormalizationStatus: report.remoteNpmDiagnosticNormalizationStatus || { status: 'missing' },
 
 
 
@@ -4692,6 +4704,16 @@ export function evaluateWorkflowReport(report, options = {}) {
 
 
     v096SelfTestStatus: report.v096SelfTestStatus || { status: 'missing' },
+
+
+
+
+    v106SelfTestStatus: report.v106SelfTestStatus || { status: 'missing' },
+
+
+
+
+    activeSelfTestExportStatus: report.activeSelfTestExportStatus || { status: 'missing' },
 
 
 
@@ -5111,7 +5133,7 @@ function writeArtifacts(result, report) {
 
 
 
-  const selfTestStatus = report.v098SelfTestStatus || report.v097SelfTestStatus || report.v096SelfTestStatus || report.v095SelfTestStatus || report.v094SelfTestStatus || report.v093SelfTestStatus || report.v092SelfTestStatus || report.selfTestCaseExportStatus || {};
+  const selfTestStatus = report.v106SelfTestStatus || report.v105SelfTestStatus || report.v098SelfTestStatus || report.v097SelfTestStatus || report.v096SelfTestStatus || report.v095SelfTestStatus || report.v094SelfTestStatus || report.v093SelfTestStatus || report.v092SelfTestStatus || report.selfTestCaseExportStatus || {};
 
 
 

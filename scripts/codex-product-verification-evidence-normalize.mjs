@@ -150,6 +150,13 @@ export function normalizeProductVerificationEvidence(env = process.env) {
     skipAllowed,
     skipReason,
     commands,
+    remoteProductEvidenceMetadata: fileEvidence && typeof fileEvidence === 'object' ? {
+      cwd: String(fileEvidence.cwd || '').slice(0, 120),
+      packageScope: String(fileEvidence.packageScope || '').slice(0, 120),
+      commandClass: String(fileEvidence.commandClass || '').slice(0, 80),
+      npmExecuted: Boolean(fileEvidence.npmExecuted),
+      npmExitCode: Number.isFinite(Number(fileEvidence.npmExitCode)) ? Number(fileEvidence.npmExitCode) : null,
+    } : null,
     baseline: {
       status: baseline.status,
       required: Boolean(baseline.baselineRequired),
