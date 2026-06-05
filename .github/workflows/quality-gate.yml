@@ -1,4 +1,4 @@
-# CODEX_QUALITY_HARNESS_FILE v1.0.6
+# CODEX_QUALITY_HARNESS_FILE v1.0.7
 name: quality-gate
 
 on:
@@ -130,38 +130,18 @@ jobs:
           export CODEX_CHANGED_FILES="$changed_files"
           classification_json="$(CODEX_QUALITY_REPORT=json node scripts/codex-change-classification-gate.mjs || true)"
           product_relevant="$(CLASSIFICATION_JSON="$classification_json" node -e "const r=JSON.parse(process.env.CLASSIFICATION_JSON||'{}'); const s=r.changeClassificationStatus||{}; process.stdout.write(s.productRelevantChanged||s.runtimeReadinessClaimed||s.packageOrLockfileChanged?'1':'0')")"
-          plan_json="$(node scripts/codex-remote-product-checks.mjs --plan-json 2>/dev/null || true)"
-          if [ -z "$plan_json" ]; then
-            plan_json='{"status":"fail","productRelevant":true,"command":"not_run","cwd":"","packageScope":"","commandClass":"command_scope_mismatch","failureClass":"command_scope_mismatch","reasonCodes":["remote_product_command_scope_mismatch"],"safeSummaryOnly":true}'
-          fi
-          printf '%s\n' "$plan_json" > "$RUNNER_TEMP/codex-remote-product-checks.safe.json"
-          plan_status="$(PLAN_JSON="$plan_json" node -e "const p=JSON.parse(process.env.PLAN_JSON||'{}'); process.stdout.write(String(p.status||''));")"
-          plan_cwd="$(PLAN_JSON="$plan_json" node -e "const p=JSON.parse(process.env.PLAN_JSON||'{}'); process.stdout.write(String(p.cwd||''));")"
-          plan_command="$(PLAN_JSON="$plan_json" node -e "const p=JSON.parse(process.env.PLAN_JSON||'{}'); process.stdout.write(String(p.command||''));")"
-          plan_package_scope="$(PLAN_JSON="$plan_json" node -e "const p=JSON.parse(process.env.PLAN_JSON||'{}'); process.stdout.write(String(p.packageScope||''));")"
-          plan_command_class="$(PLAN_JSON="$plan_json" node -e "const p=JSON.parse(process.env.PLAN_JSON||'{}'); process.stdout.write(String(p.commandClass||''));")"
-          plan_failure_class="$(PLAN_JSON="$plan_json" node -e "const p=JSON.parse(process.env.PLAN_JSON||'{}'); process.stdout.write(String(p.failureClass||''));")"
           npm_exit=0
           npm_executed=0
           if [ "$product_relevant" = "1" ]; then
+            npm_executed=1
             echo "CODEX_SKIP_NPM=0" >> "$GITHUB_ENV"
-            if [ "$plan_status" = "pass" ] && [ -n "$plan_cwd" ] && [ "$plan_command_class" != "root_npm_test" ]; then
-              npm_executed=1
-              (cd "$plan_cwd" && npm test -- --runInBand) > "$RUNNER_TEMP/codex-npm-test.raw.log" 2>&1 || npm_exit=$?
-            elif [ "$plan_status" = "pass" ] && [ "$plan_command_class" = "root_npm_test" ] && [ -f package.json ]; then
-              npm_executed=1
-              npm test > "$RUNNER_TEMP/codex-npm-test.raw.log" 2>&1 || npm_exit=$?
-            else
-              npm_exit=254
-              plan_failure_class="${plan_failure_class:-command_scope_mismatch}"
-            fi
+            npm test > "$RUNNER_TEMP/codex-npm-test.raw.log" 2>&1 || npm_exit=$?
           else
             echo "CODEX_SKIP_NPM=1" >> "$GITHUB_ENV"
           fi
           echo "CODEX_REMOTE_NPM_EXECUTED=$npm_executed" >> "$GITHUB_ENV"
           echo "CODEX_NPM_EXIT_CODE=$npm_exit" >> "$GITHUB_ENV"
-          echo "CODEX_NPM_COMMAND_CLASS=$plan_command_class" >> "$GITHUB_ENV"
-          runner_json="$(PRODUCT_RELEVANT="$product_relevant" NPM_EXECUTED="$npm_executed" NPM_EXIT_CODE="$npm_exit" PLAN_JSON="$plan_json" FAILURE_CLASS="$plan_failure_class" node -e "const p=JSON.parse(process.env.PLAN_JSON||'{}'); const input={productRelevant:process.env.PRODUCT_RELEVANT==='1',isPullRequest:process.env.CODEX_EVENT_NAME==='pull_request',eventName:process.env.CODEX_EVENT_NAME||'',headSha:process.env.CODEX_PR_HEAD_SHA||'',baseSha:process.env.CODEX_PR_BASE_SHA||'',repository:process.env.CODEX_REPOSITORY||'',npmExecuted:process.env.NPM_EXECUTED==='1',npmExitCode:Number(process.env.NPM_EXIT_CODE||0),command:p.command||'',cwd:p.cwd||'',packageScope:p.packageScope||'',commandClass:p.commandClass||'',failureClass:process.env.FAILURE_CLASS||p.failureClass||''}; process.stdout.write(JSON.stringify(input));")"
+          runner_json="$(PRODUCT_RELEVANT="$product_relevant" NPM_EXECUTED="$npm_executed" NPM_EXIT_CODE="$npm_exit" node -e "const input={productRelevant:process.env.PRODUCT_RELEVANT==='1',isPullRequest:process.env.CODEX_EVENT_NAME==='pull_request',eventName:process.env.CODEX_EVENT_NAME||'',headSha:process.env.CODEX_PR_HEAD_SHA||'',baseSha:process.env.CODEX_PR_BASE_SHA||'',repository:process.env.CODEX_REPOSITORY||'',npmExecuted:process.env.NPM_EXECUTED==='1',npmExitCode:Number(process.env.NPM_EXIT_CODE||0)}; process.stdout.write(JSON.stringify(input));")"
           CODEX_REMOTE_PRODUCT_EVIDENCE_OUT_DIR="$RUNNER_TEMP" CODEX_REMOTE_PRODUCT_EVIDENCE_RUNNER_JSON="$runner_json" node scripts/codex-remote-product-evidence-runner.mjs --write-artifacts
       - name: Run Codex quality gate
         shell: bash
@@ -296,7 +276,7 @@ jobs:
             console.log(`- browserSmokeVisualSafetyArtifactStatus: ${summary.browserSmokeVisualSafetyArtifactStatus?.status || 'missing'}`);
             console.log(`- openPrRebaseReadinessStatus: ${summary.openPrRebaseReadinessStatus?.status || 'missing'}`);
             console.log(`- fiveLineOwnerDigestStatus: ${summary.fiveLineOwnerDigestStatus?.status || 'missing'}`);
-            console.log(`- v106SelfTestStatus: ${summary.v106SelfTestStatus?.status || 'missing'}`);
+            console.log(`- v098SelfTestStatus: ${summary.v098SelfTestStatus?.status || 'missing'}`);
             console.log(`- formalEvidencePrecedenceStatus: ${summary.formalEvidencePrecedenceStatus?.status || 'missing'}`);
             console.log(`- lifeboatSemanticsStatus: ${summary.lifeboatSemanticsStatus?.status || 'missing'}`);
             console.log(`- placeholderOnlyEvidenceStatus: ${summary.placeholderOnlyEvidenceStatus?.status || 'missing'}`);

@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// CODEX_QUALITY_HARNESS_FILE v1.0.6
+// CODEX_QUALITY_HARNESS_FILE v1.0.7
 import fs from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { HARNESS_VERSION, readJson, scanObjectForUnsafe, simpleStatus, writeJsonReport, exitFor } from './codex-v080-lib.mjs';
@@ -106,7 +106,6 @@ export function buildFinalSummary(report = {}, mode = report.targetQualityScoreS
     prBodySurfaceNormalizer: report.prBodySurfaceNormalizerStatus?.status || 'missing',
     prTemplateCompiler: report.prTemplateCompilerStatus?.status || 'missing',
     selfTestCaseExport: report.selfTestCaseExportStatus?.status || 'missing',
-    safeOutputScan: report.safeOutputScanStatus?.status || 'missing',
     scoreDecomposition: report.scoreDecompositionStatus?.status || 'missing',
     gateDecisionTrace: report.gateDecisionTraceStatus?.status || 'missing',
     oldHarnessMarker: report.oldHarnessMarkerStatus?.status || 'missing',

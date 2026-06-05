@@ -1,0 +1,245 @@
+{
+  "marker": "CODEX_QUALITY_HARNESS_FILE v1.0.7",
+  "schemaVersion": "1.0.7",
+  "harnessVersion": "1.0.7",
+  "source_head_sha": "safe_hash_required",
+  "base_sha": "safe_hash_required",
+  "pr_number": 0,
+  "run_id": 0,
+  "artifact_id": 0,
+  "test_summary_json": {
+    "status": "not_applicable",
+    "safeSummaryOnly": true
+  },
+  "quality_score": 0,
+  "status_summary": {},
+  "risk_register": [],
+  "manual_gate_summary": [],
+  "readiness_claims": {
+    "runtime": false,
+    "production": false
+  },
+  "product_code_changed": false,
+  "target_repos_touched": false,
+  "raw_logs_stored": false,
+  "raw_pr_body_stored": false,
+  "safe_summary_only": true,
+  "sourceHarnessVersion": "1.0.7",
+  "sourceMain": "07dbc9618dca4d6845f5db6ea3b312b3ab06e63d",
+  "targetRepo": "hiro4649/disco-funky-repair",
+  "targetName": "FUNKY",
+  "targetShortName": "FUNKY",
+  "productSurface": "FUNKY backend, contracts, VGC FUNKY token surface",
+  "productCodeChanged": false,
+  "runtimeReadinessClaimed": false,
+  "productionReadinessClaimed": false,
+  "stagingNoTxPassClaimed": false,
+  "representativeLivePrValidationStatus": "not_started",
+  "representativeRealPrValidationStatus": "not_started",
+  "representativeRealPrReplayStatus": "source_pass",
+  "targetRollout": "in_progress",
+  "targetRepoMode": true,
+  "sourceOnlyRelease": false,
+  "targetReposTouched": false,
+  "selfApproval": false,
+  "selfMerge": false,
+  "subagentMergeAuthority": false,
+  "localAgentSecretAccess": false,
+  "walletRpcDeployAccess": false,
+  "pr225Touched": false,
+  "pr249Touched": false,
+  "pr259Touched": false,
+  "d7aTouched": false,
+  "d7bTouched": false,
+  "d8aTouched": false,
+  "d8bTouched": false,
+  "d8cTouched": false,
+  "d8dTouched": false,
+  "productBranchTouched": false,
+  "packageOrLockfileChanged": false,
+  "migrationChanged": false,
+  "prismaSchemaChanged": false,
+  "appsBackendProductChanged": false,
+  "contractsChanged": false,
+  "trackingServiceChanged": false,
+  "receiptFetcherImplemented": false,
+  "safeRowJsonlSerializerImplemented": false,
+  "dbSafeExportImplemented": false,
+  "routeCronCliMainWorkerChanged": false,
+  "walletRpcChanged": false,
+  "providerWalletContractCreated": false,
+  "fundedTxImplemented": false,
+  "productionGoPerformed": false,
+  "vgcFunkyTokenHarnessStatus": "included_as_FUNKY_product_surface",
+  "vgcTokenIndependentRepo": "not_applicable",
+  "statuses": {
+    "funkyRuntimeAdoptionSequenceStatus": {
+      "status": "policy_registered",
+      "safeSummaryOnly": true
+    },
+    "receiptFetcherNoSecretPreflightStatus": {
+      "status": "policy_registered",
+      "safeSummaryOnly": true
+    },
+    "stagingNoTxEvidenceStatus": {
+      "status": "policy_registered",
+      "safeSummaryOnly": true
+    },
+    "runtimeReadinessBlockerDigestStatus": {
+      "status": "policy_registered",
+      "safeSummaryOnly": true
+    },
+    "funkySafeRowExportStatus": {
+      "status": "policy_registered",
+      "safeSummaryOnly": true
+    },
+    "contractReadinessProfileV2Status": {
+      "status": "policy_registered",
+      "safeSummaryOnly": true
+    },
+    "contractDeployReadinessLadderStatus": {
+      "status": "policy_registered",
+      "safeSummaryOnly": true
+    },
+    "contractNoFundedTxStatus": {
+      "status": "policy_registered",
+      "safeSummaryOnly": true
+    },
+    "contractNoMainnetClaimStatus": {
+      "status": "policy_registered",
+      "safeSummaryOnly": true
+    },
+    "funkyEvidenceSingleSourceStatus": {
+      "status": "policy_registered",
+      "safeSummaryOnly": true
+    },
+    "funkyObservabilityEvidenceGateStatus": {
+      "status": "policy_registered",
+      "safeSummaryOnly": true
+    },
+    "funkyChaosLiteRuntimeSimulationStatus": {
+      "status": "policy_registered",
+      "safeSummaryOnly": true
+    },
+    "funkyAtomicityDeliveryIntegrityStatus": {
+      "status": "policy_registered",
+      "safeSummaryOnly": true
+    },
+    "funkyRuntimeReadinessBlockerDigestV2Status": {
+      "status": "policy_registered",
+      "safeSummaryOnly": true
+    },
+    "funkyWorkflowPathMatchesSelfTestFixtureStatus": {
+      "status": "policy_registered",
+      "safeSummaryOnly": true
+    },
+    "funkyTargetHotfixContractStatus": {
+      "status": "policy_registered",
+      "safeSummaryOnly": true
+    },
+    "funkyHarnessRegressionLoopLimitStatus": {
+      "status": "policy_registered",
+      "safeSummaryOnly": true
+    },
+    "funkyRuntimeAdoptionSequenceV2Status": {
+      "status": "policy_registered",
+      "safeSummaryOnly": true
+    },
+    "funkySafeDbReadExportStatus": {
+      "status": "policy_registered",
+      "safeSummaryOnly": true
+    },
+    "funkyStagingNoTxOwnerReviewStatus": {
+      "status": "policy_registered",
+      "safeSummaryOnly": true
+    },
+    "funkyRuntimeReadinessBlockerDigestV3Status": {
+      "status": "policy_registered",
+      "safeSummaryOnly": true
+    },
+    "funkyRemoteProductEvidencePlanStatus": {
+      "status": "policy_registered",
+      "safeSummaryOnly": true
+    },
+    "funkyBackendCwdPreservationStatus": {
+      "status": "policy_registered",
+      "safeSummaryOnly": true
+    },
+    "funkyRootNpmRegressionGuardStatus": {
+      "status": "policy_registered",
+      "safeSummaryOnly": true
+    },
+    "funkyTokenStageArtifactStatus": {
+      "status": "policy_registered",
+      "safeSummaryOnly": true
+    },
+    "funkySafeDbReadExportStageStatus": {
+      "status": "policy_registered",
+      "safeSummaryOnly": true
+    },
+    "funkyStagingNoTxOwnerReviewStateStatus": {
+      "status": "policy_registered",
+      "safeSummaryOnly": true
+    },
+    "funkyRuntimeReadinessBlockerDigestV4Status": {
+      "status": "policy_registered",
+      "safeSummaryOnly": true
+    },
+    "funkyLocalAgentNoTxBoundaryStatus": {
+      "status": "policy_registered",
+      "safeSummaryOnly": true
+    },
+    "funkyProviderCredentialNoMountStatus": {
+      "status": "policy_registered",
+      "safeSummaryOnly": true
+    },
+    "funkyAgentRuntimeGovernanceStatus": {
+      "status": "policy_registered",
+      "safeSummaryOnly": true
+    },
+    "funkyExtensionCapabilityRegistryStatus": {
+      "status": "policy_registered",
+      "safeSummaryOnly": true
+    },
+    "funkyPermissionModeMatrixStatus": {
+      "status": "policy_registered",
+      "safeSummaryOnly": true
+    },
+    "funkyGooseIgnoreLikeFileBoundaryStatus": {
+      "status": "policy_registered",
+      "safeSummaryOnly": true
+    },
+    "funkyNoTxLocalAgentStatus": {
+      "status": "policy_registered",
+      "safeSummaryOnly": true
+    },
+    "funkyNoWalletRpcDeployAgentStatus": {
+      "status": "policy_registered",
+      "safeSummaryOnly": true
+    },
+    "funkyOperatorReviewPacketBoundaryStatus": {
+      "status": "policy_registered",
+      "safeSummaryOnly": true
+    },
+    "funkyOwnerValuesSafeInputBoundaryStatus": {
+      "status": "policy_registered",
+      "safeSummaryOnly": true
+    },
+    "funkySafeRowEvidenceBundleStatus": {
+      "status": "policy_registered",
+      "safeSummaryOnly": true
+    },
+    "funkyProductEvidenceBundleStatus": {
+      "status": "policy_registered",
+      "safeSummaryOnly": true
+    },
+    "funkyEvidencePackV3Status": {
+      "status": "policy_registered",
+      "safeSummaryOnly": true
+    },
+    "funkyOneSafeNextActionOptimizerStatus": {
+      "status": "policy_registered",
+      "safeSummaryOnly": true
+    }
+  }
+}
