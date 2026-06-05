@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 // CODEX_QUALITY_HARNESS_FILE v1.0.7
 
+import fs from 'node:fs';
 import { scanObjectForUnsafe, writeJsonReport, exitFor } from './codex-v080-lib.mjs';
 import * as gates from './codex-v107-gate-lib.mjs';
 import { buildHarnessVersionRegistry } from './codex-harness-version.mjs';
@@ -16,6 +17,8 @@ const generatedBody = renderFromPack(evidencePack);
 const safeSummary = buildSafeSummary([
   { changed_files: ['docs/process/example.md'], endpoint: 'redacted', token: 'redacted', secret: 'redacted', raw_payload: 'redacted' },
 ]);
+const qualityGateWorkflow = fs.readFileSync('.github/workflows/quality-gate.yml', 'utf8');
+const remoteEvidenceRunner = fs.readFileSync('scripts/codex-v098-gate-lib.mjs', 'utf8');
 
 const CASES = [
   ['typed_status_schema_accepts_allowed_statuses', () => gates.buildTypedStatusSchemaReport({ status: validStatus }), 'typedStatusSchemaStatus', 'pass'],
@@ -66,6 +69,10 @@ const CASES = [
   ['readiness_firewall_rejects_runtime_ready_claim_from_fixture', () => gates.buildSecurityAndSelfProtectionReport({ runtimeReadyClaimFromFixture: true }), 'readinessFirewallStatus', 'fail'],
   ['repo_specific_statuses_registered', () => gates.buildRepoSpecificRegistrationReports(), 'criptoTipEvidencePackV3Status', 'policy_registered'],
   ['safe_summary_blocks_raw_fields', () => ({ status: Object.keys(safeSummary).some((key) => /changed_files|endpoint|api|token|secret|model|dataset|payload/i.test(key)) ? 'fail' : 'pass', safeSummaryOnly: true }), 'status', 'pass'],
+  ['backend_product_pr_uses_apps_backend_cwd_v107', () => ({ status: /package_scope="apps\/backend"/.test(qualityGateWorkflow) && /\(cd "\$npm_cwd" && npm test/.test(qualityGateWorkflow) ? 'pass' : 'fail', safeSummaryOnly: true }), 'status', 'pass'],
+  ['backend_product_pr_records_backend_npm_test_command_class_v107', () => ({ status: /npm_command_class="backend_npm_test"/.test(qualityGateWorkflow) && /commandClass/.test(remoteEvidenceRunner) ? 'pass' : 'fail', safeSummaryOnly: true }), 'status', 'pass'],
+  ['remote_product_safe_artifacts_record_backend_scope_v107', () => ({ status: /packageScope/.test(remoteEvidenceRunner) && /cwd/.test(remoteEvidenceRunner) && /commandClass/.test(remoteEvidenceRunner) ? 'pass' : 'fail', safeSummaryOnly: true }), 'status', 'pass'],
+  ['root_package_missing_does_not_run_root_npm_test_v107', () => ({ status: /\[ -f package\.json \]/.test(qualityGateWorkflow) && /command_scope_mismatch/.test(qualityGateWorkflow) ? 'pass' : 'fail', safeSummaryOnly: true }), 'status', 'pass'],
 ];
 
 const defaultReport = gates.buildDefaultV107Reports({ caseCount: CASES.length, failedCaseCount: 0 });
