@@ -25,6 +25,7 @@ const SAFE_CATEGORIES = new Set([
   'package_manager_error',
   'baseline_failure',
   'unknown_npm_failure',
+  'command_scope_mismatch',
 ]);
 
 function numberOrNull(value) {

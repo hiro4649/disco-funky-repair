@@ -8505,7 +8505,7 @@ async function runSourceHarnessGate() {
 
 
 
-    CODEX_SELF_TEST_REPORT_JSON: JSON.stringify(report.v089SelfTestStatus),
+    CODEX_SELF_TEST_REPORT_JSON: JSON.stringify(report.v106SelfTestStatus || report.v105SelfTestStatus || report.v098SelfTestStatus || report.v089SelfTestStatus),
 
 
 
@@ -10652,7 +10652,7 @@ async function runTargetHarnessGate() {
 
 
 
-    CODEX_SELF_TEST_REPORT_JSON: JSON.stringify(report.v089SelfTestStatus),
+    CODEX_SELF_TEST_REPORT_JSON: JSON.stringify(report.v106SelfTestStatus || report.v105SelfTestStatus || report.v098SelfTestStatus || report.v089SelfTestStatus),
 
 
 
