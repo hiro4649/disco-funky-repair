@@ -4,6 +4,7 @@
 import fs from 'node:fs';
 import { scanObjectForUnsafe, writeJsonReport, exitFor } from './codex-v080-lib.mjs';
 import * as gates from './codex-v107-gate-lib.mjs';
+import * as v099Gates from './codex-v099-gate-lib.mjs';
 import { buildHarnessVersionRegistry } from './codex-harness-version.mjs';
 
 function statusOf(report, key) {
@@ -19,6 +20,23 @@ const safeSummary = buildSafeSummary([
 ]);
 const qualityGateWorkflow = fs.readFileSync('.github/workflows/quality-gate.yml', 'utf8');
 const remoteEvidenceRunner = fs.readFileSync('scripts/codex-v098-gate-lib.mjs', 'utf8');
+const formalBackendEvidencePass = {
+  status: 'pass',
+  npmExecuted: true,
+  npmExitCode: 0,
+  cwd: 'apps/backend',
+  packageScope: 'apps/backend',
+  commandClass: 'backend_npm_test',
+  safeSummaryOnly: true,
+};
+const formalBackendDiagnosticPass = {
+  status: 'pass',
+  npmExitCode: 0,
+  cwd: 'apps/backend',
+  packageScope: 'apps/backend',
+  commandClass: 'backend_npm_test',
+  safeSummaryOnly: true,
+};
 
 const CASES = [
   ['typed_status_schema_accepts_allowed_statuses', () => gates.buildTypedStatusSchemaReport({ status: validStatus }), 'typedStatusSchemaStatus', 'pass'],
@@ -73,6 +91,13 @@ const CASES = [
   ['backend_product_pr_records_backend_npm_test_command_class_v107', () => ({ status: /npm_command_class="backend_npm_test"/.test(qualityGateWorkflow) && /commandClass/.test(remoteEvidenceRunner) ? 'pass' : 'fail', safeSummaryOnly: true }), 'status', 'pass'],
   ['remote_product_safe_artifacts_record_backend_scope_v107', () => ({ status: /packageScope/.test(remoteEvidenceRunner) && /cwd/.test(remoteEvidenceRunner) && /commandClass/.test(remoteEvidenceRunner) ? 'pass' : 'fail', safeSummaryOnly: true }), 'status', 'pass'],
   ['root_package_missing_does_not_run_root_npm_test_v107', () => ({ status: /\[ -f package\.json \]/.test(qualityGateWorkflow) && /command_scope_mismatch/.test(qualityGateWorkflow) ? 'pass' : 'fail', safeSummaryOnly: true }), 'status', 'pass'],
+  ['remote_npm_diagnostic_passes_when_formal_backend_evidence_npm_executed_true_exit_0_v107', () => v099Gates.buildRemoteNpmDiagnosticNormalizationReport({ forceCheck: true, productRelevant: true, formalEvidence: formalBackendEvidencePass, remoteNpmDiagnostic: formalBackendDiagnosticPass }), 'remoteNpmDiagnosticNormalizationStatus', 'pass'],
+  ['formal_backend_evidence_overrides_temp_remote_npm_not_executed_v107', () => v099Gates.buildRemoteNpmDiagnosticNormalizationReport({ forceCheck: true, productRelevant: true, formalEvidence: formalBackendEvidencePass, remoteNpmDiagnostic: formalBackendDiagnosticPass, remoteNpmNotExecutedEmittedDespiteExecuted: true }), 'remoteNpmDiagnosticNormalizationStatus', 'pass'],
+  ['stale_temp_npm_test_254_not_top_level_when_formal_backend_passes_v107', () => v099Gates.buildRemoteNpmDiagnosticNormalizationReport({ forceCheck: true, productRelevant: true, formalEvidence: formalBackendEvidencePass, remoteNpmDiagnostic: { ...formalBackendDiagnosticPass, npmExitCode: 254 }, remoteNpmNotExecutedEmittedDespiteExecuted: true }), 'remoteNpmDiagnosticNormalizationStatus', 'pass'],
+  ['remote_npm_not_executed_still_blocks_when_formal_evidence_missing_v107', () => v099Gates.buildRemoteNpmDiagnosticNormalizationReport({ forceCheck: true, productRelevant: true }), 'remoteNpmDiagnosticNormalizationStatus', 'fail'],
+  ['remote_npm_not_executed_still_blocks_when_npmExecuted_false_v107', () => v099Gates.buildRemoteNpmDiagnosticNormalizationReport({ forceCheck: true, productRelevant: true, formalEvidence: { ...formalBackendEvidencePass, npmExecuted: false } }), 'remoteNpmDiagnosticNormalizationStatus', 'fail'],
+  ['backend_npm_exit_nonzero_still_blocks_v107', () => v099Gates.buildRemoteNpmDiagnosticNormalizationReport({ forceCheck: true, productRelevant: true, formalEvidence: { ...formalBackendEvidencePass, npmExitCode: 1 } }), 'remoteNpmDiagnosticNormalizationStatus', 'fail'],
+  ['root_npm_test_for_backend_pr_still_blocks_v107', () => v099Gates.buildRemoteNpmDiagnosticNormalizationReport({ forceCheck: true, productRelevant: true, formalEvidence: { ...formalBackendEvidencePass, cwd: '.', packageScope: '.', commandClass: 'npm_test' }, npmFailMarkedPass: true }), 'remoteNpmDiagnosticNormalizationStatus', 'fail'],
 ];
 
 const defaultReport = gates.buildDefaultV107Reports({ caseCount: CASES.length, failedCaseCount: 0 });

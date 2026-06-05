@@ -23,6 +23,10 @@ function readMaybeJson(file) {
 function statusOf(value) { return value?.status || value?.productVerificationEvidenceStatus?.status || value?.remoteProductBaselineStatus?.status || value?.remoteNpmDiagnosticStatus?.status || ''; }
 function isPassLike(value) { return ['pass', 'superseded_by_formal_evidence'].includes(statusOf(value)); }
 function isFailLike(value) { return statusOf(value) === 'fail'; }
+function numberOrNull(value) {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : null;
+}
 function isPlaceholder(value) {
   if (!value || typeof value !== 'object') return false;
   const type = String(value.evidenceType || value.baselineType || value.diagnosticType || '').toLowerCase();
@@ -49,13 +53,43 @@ function activeSelfTestFile(version) {
   const normalized = String(version || HARNESS_VERSION).replace(/\./g, '');
   return `scripts/codex-v${normalized}-self-test.mjs`;
 }
+function formalEvidenceFromInput(input, env = process.env) {
+  return input.formalEvidence ||
+    input.productEvidence ||
+    parseJson(env.CODEX_PRODUCT_VERIFICATION_EVIDENCE_JSON) ||
+    readMaybeJson(input.evidencePath || env.CODEX_PRODUCT_VERIFICATION_EVIDENCE_PATH);
+}
+function remoteNpmDiagnosticFromInput(input, env = process.env) {
+  return input.formalDiagnostic ||
+    input.remoteNpmDiagnostic ||
+    parseJson(env.CODEX_REMOTE_NPM_DIAGNOSTIC_JSON) ||
+    readMaybeJson(input.diagnosticPath || env.CODEX_NPM_TEST_SAFE_SUMMARY_PATH);
+}
+function formalBackendNpmEvidence(input, env = process.env) {
+  const evidence = formalEvidenceFromInput(input, env);
+  const diagnostic = remoteNpmDiagnosticFromInput(input, env);
+  const evidenceExit = numberOrNull(evidence?.npmExitCode ?? evidence?.npm_exit_code);
+  const diagnosticExit = numberOrNull(diagnostic?.npmExitCode ?? diagnostic?.npm_exit_code ?? diagnostic?.diagnostic?.npmExitCode);
+  const npmExecuted = parseBool(input.npmExecuted) ||
+    parseBool(evidence?.npmExecuted) ||
+    parseBool(evidence?.npm_executed) ||
+    parseBool(diagnostic?.npmExecuted) ||
+    parseBool(diagnostic?.npm_executed) ||
+    parseBool(env.CODEX_REMOTE_NPM_EXECUTED);
+  const npmExitCode = numberOrNull(input.npmExitCode) ?? evidenceExit ?? diagnosticExit ?? numberOrNull(env.CODEX_NPM_EXIT_CODE) ?? 0;
+  const cwd = String(input.cwd || evidence?.cwd || diagnostic?.cwd || diagnostic?.diagnostic?.cwd || env.CODEX_NPM_CWD || '').slice(0, 120);
+  const packageScope = String(input.packageScope || evidence?.packageScope || diagnostic?.packageScope || diagnostic?.diagnostic?.packageScope || env.CODEX_NPM_PACKAGE_SCOPE || '').slice(0, 120);
+  const commandClass = String(input.commandClass || evidence?.commandClass || diagnostic?.commandClass || diagnostic?.diagnostic?.commandClass || env.CODEX_NPM_COMMAND_CLASS || '').slice(0, 80);
+  const formalPass = isPassLike(evidence) && npmExecuted && npmExitCode === 0;
+  return { evidence, diagnostic, npmExecuted, npmExitCode, cwd, packageScope, commandClass, formalPass };
+}
 
 export function buildFormalEvidencePrecedenceReport(input = parseJson(process.env.CODEX_FORMAL_EVIDENCE_PRECEDENCE_JSON) || {}) {
   const productRelevant = productRelevantFromInput(input);
   const force = parseBool(input.forceCheck);
-  const evidence = input.formalEvidence || input.productEvidence || parseJson(process.env.CODEX_PRODUCT_VERIFICATION_EVIDENCE_JSON) || readMaybeJson(input.evidencePath || process.env.CODEX_PRODUCT_VERIFICATION_EVIDENCE_PATH);
+  const evidence = formalEvidenceFromInput(input);
   const baseline = input.formalBaseline || input.remoteBaseline || parseJson(process.env.CODEX_REMOTE_PRODUCT_BASELINE_JSON) || readMaybeJson(input.baselinePath || process.env.CODEX_REMOTE_PRODUCT_BASELINE_PATH);
-  const diagnostic = input.formalDiagnostic || input.remoteNpmDiagnostic || parseJson(process.env.CODEX_REMOTE_NPM_DIAGNOSTIC_JSON) || readMaybeJson(input.diagnosticPath || process.env.CODEX_NPM_TEST_SAFE_SUMMARY_PATH);
+  const diagnostic = remoteNpmDiagnosticFromInput(input);
   if (!force && !productRelevant && !evidence && !baseline && !diagnostic) return notApplicable('formalEvidencePrecedenceStatus', 'formal_evidence_precedence_not_applicable');
   const reasonCodes = [];
   const evidencePresent = parseBool(input.formalEvidencePresent) || Boolean(evidence);
@@ -102,12 +136,23 @@ export function buildRemoteNpmDiagnosticNormalizationReport(input = parseJson(pr
   const productRelevant = productRelevantFromInput(input);
   if (!parseBool(input.forceCheck) && !productRelevant) return notApplicable('remoteNpmDiagnosticNormalizationStatus', 'remote_npm_diagnostic_normalization_not_applicable');
   const reasonCodes = [];
-  const npmExecuted = parseBool(input.npmExecuted);
-  const npmExitCode = Number(input.npmExitCode ?? 0);
+  const formal = formalBackendNpmEvidence(input);
+  const npmExecuted = formal.npmExecuted;
+  const npmExitCode = formal.npmExitCode;
   if (productRelevant && !npmExecuted) reasonCodes.push('remote_npm_not_executed_for_product_pr');
   if (npmExitCode !== 0 || parseBool(input.npmFailMarkedPass)) reasonCodes.push('remote_npm_diagnostic_normalization_failed');
-  if (parseBool(input.diagnosticPendingFinalPass) || parseBool(input.diagnosticMissingNoFormalEvidence) || parseBool(input.remoteNpmNotExecutedEmittedDespiteExecuted)) reasonCodes.push('remote_npm_diagnostic_normalization_failed');
-  return safe('remoteNpmDiagnosticNormalizationStatus', reasonCodes.length ? 'fail' : 'pass', { reasonCodes, productRelevant, npmExecuted, npmExitCode });
+  const staleNotExecuted = parseBool(input.remoteNpmNotExecutedEmittedDespiteExecuted);
+  if (parseBool(input.diagnosticPendingFinalPass) || parseBool(input.diagnosticMissingNoFormalEvidence) || (staleNotExecuted && !formal.formalPass)) reasonCodes.push('remote_npm_diagnostic_normalization_failed');
+  return safe('remoteNpmDiagnosticNormalizationStatus', reasonCodes.length ? 'fail' : 'pass', {
+    reasonCodes,
+    productRelevant,
+    npmExecuted,
+    npmExitCode,
+    cwd: formal.cwd,
+    packageScope: formal.packageScope,
+    commandClass: formal.commandClass,
+    formalEvidenceStatus: statusOf(formal.evidence) || 'missing',
+  });
 }
 
 export function buildLegacySelfTestAdvisoryReport(input = parseJson(process.env.CODEX_LEGACY_SELF_TEST_ADVISORY_JSON) || {}) {
