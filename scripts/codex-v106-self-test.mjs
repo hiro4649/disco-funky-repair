@@ -8,6 +8,7 @@ import { buildKnowledgeGovernanceReport } from './codex-knowledge-governance-gat
 import { buildPullRequestContextFidelityReport } from './codex-pull-request-context-fidelity-gate.mjs';
 import { buildVersionLineageReport } from './codex-version-lineage-gate.mjs';
 import { buildWorkflowProductVerificationInvariantReport } from './codex-v097-gate-lib.mjs';
+import { buildCompactReasonSummary } from './codex-reason-summary.mjs';
 
 function legacyAbsenceIsAdvisoryReport() {
   const report = buildVersionLineageReport({ CODEX_HARNESS_MODE: 'target' });
@@ -108,6 +109,48 @@ function buildSafeOutputScanStatusExportFixture() {
   return staticStatus('safeOutputScanStatus', reasons.length === 0, reasons);
 }
 
+function buildV085AdvisoryReasonSummaryFixture() {
+  const result = buildCompactReasonSummary({
+    status: 'fail',
+    targetQualityScoreStatus: { status: 'pass', score: 95, safeSummaryOnly: true },
+    v106SelfTestStatus: { status: 'pass', safeSummaryOnly: true },
+    safeOutputScanStatus: { status: 'pass', safeSummaryOnly: true },
+    productVerificationStatus: { status: 'pass', safeSummaryOnly: true },
+    productVerificationEvidenceStatus: { status: 'pass', safeSummaryOnly: true },
+    remoteProductBaselineStatus: { status: 'pass', safeSummaryOnly: true },
+    baselineHealthStatus: { status: 'pass', safeSummaryOnly: true },
+    v085StabilityStatus: {
+      status: 'pass',
+      targetCompatibilityAdvisory: true,
+      reasonCodes: ['target_rollout_legacy_status_advisory'],
+      safeSummaryOnly: true,
+    },
+    failures: [{ id: 'v085StabilityStatus.failed' }],
+  });
+  const blockingReasons = result.summary?.blockingReasons || [];
+  const pass = result.summary?.status === 'pass'
+    && !blockingReasons.some((item) => item.reasonCode === 'v085StabilityStatus.failed');
+  return staticStatus('reasonSummaryStatus', pass, ['v085_advisory_reentered_reason_summary_blockers']);
+}
+
+function buildV085NonAdvisoryReasonSummaryFixture() {
+  const result = buildCompactReasonSummary({
+    status: 'fail',
+    targetQualityScoreStatus: { status: 'pass', score: 95, safeSummaryOnly: true },
+    v106SelfTestStatus: { status: 'pass', safeSummaryOnly: true },
+    v085StabilityStatus: {
+      status: 'fail',
+      reasonCodes: ['v085StabilityStatus.failed'],
+      safeSummaryOnly: true,
+    },
+    failures: [{ id: 'v085StabilityStatus.failed' }],
+  });
+  const blockingReasons = result.summary?.blockingReasons || [];
+  const pass = result.summary?.status === 'fail'
+    && blockingReasons.some((item) => item.reasonCode === 'v085StabilityStatus.failed');
+  return staticStatus('reasonSummaryStatus', pass, ['non_advisory_v085_failure_not_blocking']);
+}
+
 const CASES = [
   ['v106_active_self_test_exported_to_safe_artifact', gates.buildActiveSelfTestExportReport, {}, 'activeSelfTestExportStatus', 'pass'],
   ['v106_self_test_status_exported_to_safe_artifacts', gates.buildDefaultV106Reports, { caseCount: 1, failedCaseCount: 0 }, 'v106SelfTestStatus', 'pass'],
@@ -172,6 +215,11 @@ const CASES = [
   ['safe_output_scan_status_exported_to_formal_safe_summary_v106', buildSafeOutputScanStatusExportFixture, {}, 'safeOutputScanStatus', 'pass'],
   ['safe_output_scan_pass_visible_in_quality_safe_summary_v106', buildSafeOutputScanStatusExportFixture, {}, 'safeOutputScanStatus', 'pass'],
   ['safe_output_scan_pass_visible_in_target_final_summary_v106', buildSafeOutputScanStatusExportFixture, {}, 'safeOutputScanStatus', 'pass'],
+  ['v085_stability_pass_advisory_not_reason_summary_blocker_v106', buildV085AdvisoryReasonSummaryFixture, {}, 'reasonSummaryStatus', 'pass'],
+  ['legacy_v085_nested_failure_not_top_level_when_active_v106_passes', buildV085AdvisoryReasonSummaryFixture, {}, 'reasonSummaryStatus', 'pass'],
+  ['target_quality_pass_drops_legacy_v085_blocking_reason_v106', buildV085AdvisoryReasonSummaryFixture, {}, 'reasonSummaryStatus', 'pass'],
+  ['reason_summary_does_not_reinject_v085_stability_failed_when_status_pass', buildV085AdvisoryReasonSummaryFixture, {}, 'reasonSummaryStatus', 'pass'],
+  ['non_advisory_v085_failure_still_blocks_v106', buildV085NonAdvisoryReasonSummaryFixture, {}, 'reasonSummaryStatus', 'pass'],
   ['contracts_only_product_pr_expects_contracts_cwd', gates.buildRemoteProductEvidencePlanReport, { plan: { packageScope: 'contracts', cwd: 'contracts', commandClass: 'contracts_npm_test', command: 'npm test', source: 'generated_evidence_pack', surface: 'contracts', reason: 'contracts_product_pr' } }, 'remoteProductEvidencePlanStatus', 'pass'],
   ['docs_only_planning_pr_no_product_npm_required', gates.buildDevelopmentLaneSeparationReport, { lane: 'docs_only_planning', changedFiles: ['docs/process/PLAN.md'], is_draft: true, explicit_user_scope_change: true }, 'developmentLaneSeparationStatus', 'pass'],
   ['harness_only_pr_product_verification_not_applicable', gates.buildProductR3SchemaV2Report, {}, 'productR3SchemaV2Status', 'pass'],
