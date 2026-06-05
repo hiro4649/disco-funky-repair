@@ -95,6 +95,19 @@ function buildFormalBackendEvidenceMetadataFixture() {
   return staticStatus('remoteProductEvidencePlanStatus', reasons.length === 0, reasons);
 }
 
+function buildSafeOutputScanStatusExportFixture() {
+  const runner = fileText('scripts/codex-workflow-quality-runner.mjs');
+  const finalSummary = fileText('scripts/codex-target-final-summary.mjs');
+  const reasons = [];
+  if (!runner.includes('function buildSafeOutputScanStatus(report = {})')) reasons.push('safe_output_scan_status_helper_missing');
+  if (!runner.includes('const safeOutputScanStatus = buildSafeOutputScanStatus(report);')) reasons.push('safe_output_scan_status_not_derived_in_workflow_runner');
+  if (!runner.includes('safeOutputScanStatus,')) reasons.push('safe_output_scan_status_not_exported_to_quality_safe_summary');
+  if (!runner.includes('targetQualityScoreStatus: report.targetQualityScoreStatus')) reasons.push('target_quality_summary_missing_target_quality_status');
+  if (!runner.includes('safeOutputScanStatus,')) reasons.push('safe_output_scan_status_not_exported_to_target_quality_summary');
+  if (!finalSummary.includes("safeOutputScan: report.safeOutputScanStatus?.status || 'missing'")) reasons.push('safe_output_scan_status_not_visible_in_target_final_summary');
+  return staticStatus('safeOutputScanStatus', reasons.length === 0, reasons);
+}
+
 const CASES = [
   ['v106_active_self_test_exported_to_safe_artifact', gates.buildActiveSelfTestExportReport, {}, 'activeSelfTestExportStatus', 'pass'],
   ['v106_self_test_status_exported_to_safe_artifacts', gates.buildDefaultV106Reports, { caseCount: 1, failedCaseCount: 0 }, 'v106SelfTestStatus', 'pass'],
@@ -156,6 +169,9 @@ const CASES = [
   ['active_v106_artifact_selected_over_legacy_v098', buildV106SafeSummaryExportFixture, {}, 'v106SelfTestStatus', 'pass'],
   ['backend_product_evidence_metadata_exported_to_safe_summary_v106', buildFormalBackendEvidenceMetadataFixture, {}, 'remoteProductEvidencePlanStatus', 'pass'],
   ['formal_backend_evidence_overrides_temp_npm_test_artifact_v106', buildFormalBackendEvidenceMetadataFixture, {}, 'remoteProductEvidencePlanStatus', 'pass'],
+  ['safe_output_scan_status_exported_to_formal_safe_summary_v106', buildSafeOutputScanStatusExportFixture, {}, 'safeOutputScanStatus', 'pass'],
+  ['safe_output_scan_pass_visible_in_quality_safe_summary_v106', buildSafeOutputScanStatusExportFixture, {}, 'safeOutputScanStatus', 'pass'],
+  ['safe_output_scan_pass_visible_in_target_final_summary_v106', buildSafeOutputScanStatusExportFixture, {}, 'safeOutputScanStatus', 'pass'],
   ['contracts_only_product_pr_expects_contracts_cwd', gates.buildRemoteProductEvidencePlanReport, { plan: { packageScope: 'contracts', cwd: 'contracts', commandClass: 'contracts_npm_test', command: 'npm test', source: 'generated_evidence_pack', surface: 'contracts', reason: 'contracts_product_pr' } }, 'remoteProductEvidencePlanStatus', 'pass'],
   ['docs_only_planning_pr_no_product_npm_required', gates.buildDevelopmentLaneSeparationReport, { lane: 'docs_only_planning', changedFiles: ['docs/process/PLAN.md'], is_draft: true, explicit_user_scope_change: true }, 'developmentLaneSeparationStatus', 'pass'],
   ['harness_only_pr_product_verification_not_applicable', gates.buildProductR3SchemaV2Report, {}, 'productR3SchemaV2Status', 'pass'],
