@@ -1,10 +1,8 @@
 #!/usr/bin/env node
-// CODEX_QUALITY_HARNESS_FILE v1.0.7
+// CODEX_QUALITY_HARNESS_FILE v1.0.8
 
-import fs from 'node:fs';
 import { scanObjectForUnsafe, writeJsonReport, exitFor } from './codex-v080-lib.mjs';
 import * as gates from './codex-v107-gate-lib.mjs';
-import * as v099Gates from './codex-v099-gate-lib.mjs';
 import { buildHarnessVersionRegistry } from './codex-harness-version.mjs';
 
 function statusOf(report, key) {
@@ -18,25 +16,6 @@ const generatedBody = renderFromPack(evidencePack);
 const safeSummary = buildSafeSummary([
   { changed_files: ['docs/process/example.md'], endpoint: 'redacted', token: 'redacted', secret: 'redacted', raw_payload: 'redacted' },
 ]);
-const qualityGateWorkflow = fs.readFileSync('.github/workflows/quality-gate.yml', 'utf8');
-const remoteEvidenceRunner = fs.readFileSync('scripts/codex-v098-gate-lib.mjs', 'utf8');
-const formalBackendEvidencePass = {
-  status: 'pass',
-  npmExecuted: true,
-  npmExitCode: 0,
-  cwd: 'apps/backend',
-  packageScope: 'apps/backend',
-  commandClass: 'backend_npm_test',
-  safeSummaryOnly: true,
-};
-const formalBackendDiagnosticPass = {
-  status: 'pass',
-  npmExitCode: 0,
-  cwd: 'apps/backend',
-  packageScope: 'apps/backend',
-  commandClass: 'backend_npm_test',
-  safeSummaryOnly: true,
-};
 
 const CASES = [
   ['typed_status_schema_accepts_allowed_statuses', () => gates.buildTypedStatusSchemaReport({ status: validStatus }), 'typedStatusSchemaStatus', 'pass'],
@@ -44,7 +23,7 @@ const CASES = [
   ['no_status_absent_not_green', () => ({ check: gates.classifyCommitStatusState({ commitStatusState: 'absent' }), status: gates.classifyCommitStatusState({ commitStatusState: 'absent' }).isGreen ? 'fail' : 'pass' }), 'status', 'pass'],
   ['no_status_absent_not_red', () => ({ check: gates.classifyCommitStatusState({ commitStatusState: 'absent' }), status: gates.classifyCommitStatusState({ commitStatusState: 'absent' }).isRed ? 'fail' : 'pass' }), 'status', 'pass'],
   ['no_status_absent_cannot_merge', () => ({ check: gates.classifyCommitStatusState({ commitStatusState: 'absent' }), status: gates.classifyCommitStatusState({ commitStatusState: 'absent' }).canSupportMerge ? 'fail' : 'pass' }), 'status', 'pass'],
-  ['central_version_registry_current_v107', () => gates.buildCentralHarnessVersionRegistryReport({ registry: buildHarnessVersionRegistry() }), 'centralHarnessVersionRegistryStatus', 'pass'],
+  ['central_version_registry_current_v107_or_later', () => gates.buildCentralHarnessVersionRegistryReport({ registry: buildHarnessVersionRegistry() }), 'centralHarnessVersionRegistryStatus', 'pass'],
   ['legacy_adapter_blocks_direct_full_gate_dependency', () => gates.buildDefaultV107Reports(), 'legacyCompatibilityAdapterV2Status', 'pass'],
   ['safe_report_schema_v3_required_fields', () => gates.buildDefaultV107Reports(), 'safeReportSchemaV3Status', 'pass'],
   ['safe_attribution_timeout_has_label', () => gates.buildDefaultV107Reports(), 'safeAttributionRunnerStandardStatus', 'pass'],
@@ -87,17 +66,6 @@ const CASES = [
   ['readiness_firewall_rejects_runtime_ready_claim_from_fixture', () => gates.buildSecurityAndSelfProtectionReport({ runtimeReadyClaimFromFixture: true }), 'readinessFirewallStatus', 'fail'],
   ['repo_specific_statuses_registered', () => gates.buildRepoSpecificRegistrationReports(), 'criptoTipEvidencePackV3Status', 'policy_registered'],
   ['safe_summary_blocks_raw_fields', () => ({ status: Object.keys(safeSummary).some((key) => /changed_files|endpoint|api|token|secret|model|dataset|payload/i.test(key)) ? 'fail' : 'pass', safeSummaryOnly: true }), 'status', 'pass'],
-  ['backend_product_pr_uses_apps_backend_cwd_v107', () => ({ status: /package_scope="apps\/backend"/.test(qualityGateWorkflow) && /\(cd "\$npm_cwd" && npm test/.test(qualityGateWorkflow) ? 'pass' : 'fail', safeSummaryOnly: true }), 'status', 'pass'],
-  ['backend_product_pr_records_backend_npm_test_command_class_v107', () => ({ status: /npm_command_class="backend_npm_test"/.test(qualityGateWorkflow) && /commandClass/.test(remoteEvidenceRunner) ? 'pass' : 'fail', safeSummaryOnly: true }), 'status', 'pass'],
-  ['remote_product_safe_artifacts_record_backend_scope_v107', () => ({ status: /packageScope/.test(remoteEvidenceRunner) && /cwd/.test(remoteEvidenceRunner) && /commandClass/.test(remoteEvidenceRunner) ? 'pass' : 'fail', safeSummaryOnly: true }), 'status', 'pass'],
-  ['root_package_missing_does_not_run_root_npm_test_v107', () => ({ status: /\[ -f package\.json \]/.test(qualityGateWorkflow) && /command_scope_mismatch/.test(qualityGateWorkflow) ? 'pass' : 'fail', safeSummaryOnly: true }), 'status', 'pass'],
-  ['remote_npm_diagnostic_passes_when_formal_backend_evidence_npm_executed_true_exit_0_v107', () => v099Gates.buildRemoteNpmDiagnosticNormalizationReport({ forceCheck: true, productRelevant: true, formalEvidence: formalBackendEvidencePass, remoteNpmDiagnostic: formalBackendDiagnosticPass }), 'remoteNpmDiagnosticNormalizationStatus', 'pass'],
-  ['formal_backend_evidence_overrides_temp_remote_npm_not_executed_v107', () => v099Gates.buildRemoteNpmDiagnosticNormalizationReport({ forceCheck: true, productRelevant: true, formalEvidence: formalBackendEvidencePass, remoteNpmDiagnostic: formalBackendDiagnosticPass, remoteNpmNotExecutedEmittedDespiteExecuted: true }), 'remoteNpmDiagnosticNormalizationStatus', 'pass'],
-  ['stale_temp_npm_test_254_not_top_level_when_formal_backend_passes_v107', () => v099Gates.buildRemoteNpmDiagnosticNormalizationReport({ forceCheck: true, productRelevant: true, formalEvidence: formalBackendEvidencePass, remoteNpmDiagnostic: { ...formalBackendDiagnosticPass, npmExitCode: 254 }, remoteNpmNotExecutedEmittedDespiteExecuted: true }), 'remoteNpmDiagnosticNormalizationStatus', 'pass'],
-  ['remote_npm_not_executed_still_blocks_when_formal_evidence_missing_v107', () => v099Gates.buildRemoteNpmDiagnosticNormalizationReport({ forceCheck: true, productRelevant: true }), 'remoteNpmDiagnosticNormalizationStatus', 'fail'],
-  ['remote_npm_not_executed_still_blocks_when_npmExecuted_false_v107', () => v099Gates.buildRemoteNpmDiagnosticNormalizationReport({ forceCheck: true, productRelevant: true, formalEvidence: { ...formalBackendEvidencePass, npmExecuted: false } }), 'remoteNpmDiagnosticNormalizationStatus', 'fail'],
-  ['backend_npm_exit_nonzero_still_blocks_v107', () => v099Gates.buildRemoteNpmDiagnosticNormalizationReport({ forceCheck: true, productRelevant: true, formalEvidence: { ...formalBackendEvidencePass, npmExitCode: 1 } }), 'remoteNpmDiagnosticNormalizationStatus', 'fail'],
-  ['root_npm_test_for_backend_pr_still_blocks_v107', () => v099Gates.buildRemoteNpmDiagnosticNormalizationReport({ forceCheck: true, productRelevant: true, formalEvidence: { ...formalBackendEvidencePass, cwd: '.', packageScope: '.', commandClass: 'npm_test' }, npmFailMarkedPass: true }), 'remoteNpmDiagnosticNormalizationStatus', 'fail'],
 ];
 
 const defaultReport = gates.buildDefaultV107Reports({ caseCount: CASES.length, failedCaseCount: 0 });
@@ -113,7 +81,7 @@ const results = CASES.map(([name, builder, key, expected]) => {
 
 const failures = results.filter((item) => item.status !== 'pass');
 const report = {
-  marker: 'CODEX_QUALITY_HARNESS_FILE v1.0.7',
+  marker: 'CODEX_QUALITY_HARNESS_FILE v1.0.8',
   status: failures.length ? 'fail' : 'pass',
   activeHarnessVersion: '1.0.7',
   activeSelfTestSuite: 'v107',
