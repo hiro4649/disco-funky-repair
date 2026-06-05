@@ -106,6 +106,7 @@ export function buildFinalSummary(report = {}, mode = report.targetQualityScoreS
     prBodySurfaceNormalizer: report.prBodySurfaceNormalizerStatus?.status || 'missing',
     prTemplateCompiler: report.prTemplateCompilerStatus?.status || 'missing',
     selfTestCaseExport: report.selfTestCaseExportStatus?.status || 'missing',
+    safeOutputScan: report.safeOutputScanStatus?.status || 'missing',
     scoreDecomposition: report.scoreDecompositionStatus?.status || 'missing',
     gateDecisionTrace: report.gateDecisionTraceStatus?.status || 'missing',
     oldHarnessMarker: report.oldHarnessMarkerStatus?.status || 'missing',

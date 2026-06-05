@@ -3143,6 +3143,18 @@ function readReport(file) {
 
 }
 
+function buildSafeOutputScanStatus(report = {}) {
+  if (report.safeOutputScanStatus) return report.safeOutputScanStatus;
+  const scan = scanSafeOutput(report);
+  return {
+    status: scan.findings.length ? 'fail' : 'pass',
+    reasonCodes: [...new Set(scan.findings.map((item) => item.reasonCode).filter(Boolean))],
+    findingsCount: scan.findings.length,
+    unsafeClasses: scan.unsafeClasses || [],
+    safeSummaryOnly: true,
+  };
+}
+
 
 
 
@@ -4028,6 +4040,8 @@ export function evaluateWorkflowReport(report, options = {}) {
 
 
 
+  const safeOutputScanStatus = buildSafeOutputScanStatus(report);
+
   const safeSummary = {
 
 
@@ -4092,6 +4106,12 @@ export function evaluateWorkflowReport(report, options = {}) {
 
 
     reasonSummary,
+
+
+
+
+
+    safeOutputScanStatus,
 
 
 
@@ -5320,6 +5340,8 @@ function writeArtifacts(result, report) {
 
 
 
+  const safeOutputScanStatus = buildSafeOutputScanStatus(report);
+
   if (result.mode === 'target') {
 
 
@@ -5336,6 +5358,12 @@ function writeArtifacts(result, report) {
 
       targetQualityScoreStatus: report.targetQualityScoreStatus || { status: 'missing' },
 
+
+
+
+
+
+      safeOutputScanStatus,
 
 
 
