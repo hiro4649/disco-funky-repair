@@ -14,6 +14,18 @@ function safeCode(value) {
   return String(value || 'unknown_reason').replace(/[^A-Za-z0-9_.:-]/g, '_').slice(0, 120);
 }
 
+function isV085TargetCompatibilityAdvisory(report, failure) {
+  const code = safeCode(failure?.id || failure?.reasonCode);
+  const v085 = report?.v085StabilityStatus;
+  const reasonCodes = Array.isArray(v085?.reasonCodes) ? v085.reasonCodes : [];
+  return /^v085StabilityStatus\.(failed|manual)$/.test(code)
+    && v085?.status === 'pass'
+    && (
+      v085.targetCompatibilityAdvisory === true
+      || reasonCodes.includes('target_rollout_legacy_status_advisory')
+    );
+}
+
 export function buildCompactReasonSummary(report = {}, options = {}) {
   const catalog = loadCatalog();
   const mode = report.targetQualityScoreStatus ? 'target' : 'source';
@@ -22,6 +34,8 @@ export function buildCompactReasonSummary(report = {}, options = {}) {
   const blockingReasons = [];
   const manualReasons = [];
   const optionalNotApplicable = [];
+  let ignoredAdvisoryFailureCount = 0;
+  let retainedFailureCount = 0;
   for (const [gate, value] of statusEntries) {
     const reasonCodes = value.reasonCodes?.length ? value.reasonCodes : [gate];
     if (value.status === 'fail' || value.status === 'missing') {
@@ -33,14 +47,27 @@ export function buildCompactReasonSummary(report = {}, options = {}) {
     }
   }
   for (const failure of report.failures || []) {
+    if (isV085TargetCompatibilityAdvisory(report, failure)) {
+      ignoredAdvisoryFailureCount += 1;
+      continue;
+    }
+    retainedFailureCount += 1;
     blockingReasons.push({ reasonCode: safeCode(failure.id || failure.reasonCode), gate: 'localQualityGate' });
   }
+  const rawStatus = report.status || options.status || 'unknown';
+  const effectiveStatus = rawStatus === 'fail'
+    && ignoredAdvisoryFailureCount > 0
+    && retainedFailureCount === 0
+    && blockingReasons.length === 0
+    && manualReasons.length === 0
+      ? 'pass'
+      : rawStatus;
   const nextActions = [...blockingReasons, ...manualReasons].slice(0, 5).map((item) => {
     const known = catalog.get(item.reasonCode);
     return known?.nextBestFix || `Review ${item.gate} safe reason ${item.reasonCode}.`;
   });
   const summary = {
-    status: report.status || options.status || 'unknown',
+    status: effectiveStatus,
     mode,
     score,
     blockingReasons: blockingReasons.slice(0, 10),
