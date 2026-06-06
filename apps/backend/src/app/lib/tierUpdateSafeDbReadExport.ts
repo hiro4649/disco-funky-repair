@@ -170,7 +170,11 @@ export const TIER_UPDATE_SAFE_DB_READ_EXPORT_FORBIDDEN_KEYS = [
   'providerResponse',
   'requestBody',
   'responseBody',
-  'stackTrace'
+  'stackTrace',
+  'rawCheckpoint',
+  'rawTxHash',
+  'rawWallet',
+  'rawDbRow'
 ] as const;
 
 const FORBIDDEN_SOURCE_KEYS = new Set([
