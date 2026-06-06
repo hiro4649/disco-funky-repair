@@ -70,6 +70,7 @@ import { buildDiagnosticConsolidatedSummary } from './codex-diagnostic-consolida
 
 import { buildInvalidReportRecoverySummary } from './codex-invalid-report-recovery.mjs';
 import { V101_STATUS_KEYS } from './codex-v101-gate-lib.mjs';
+import { buildRemoteNpmReport } from './codex-v108-gate-lib.mjs';
 
 
 
@@ -3244,6 +3245,58 @@ function statusValue(value) {
   return value?.status || 'missing';
 }
 
+function readSafeJsonArtifact(file) {
+  if (!file) return null;
+  try {
+    return JSON.parse(fs.readFileSync(file, 'utf8'));
+  } catch {
+    return null;
+  }
+}
+
+function passFailStatus(statusKey, status, extra = {}) {
+  return { status, safeSummaryOnly: true, ...extra };
+}
+
+function enrichFormalProductEvidenceStatuses(report = {}, env = process.env) {
+  const evidence = readSafeJsonArtifact(env.CODEX_PRODUCT_VERIFICATION_EVIDENCE_PATH);
+  const baseline = readSafeJsonArtifact(env.CODEX_REMOTE_PRODUCT_BASELINE_PATH);
+  const diagnostic = readSafeJsonArtifact(env.CODEX_NPM_TEST_SAFE_SUMMARY_PATH);
+  const productRelevant = Boolean(evidence?.productRelevant);
+  if (!evidence && !baseline && !diagnostic) return report;
+  const evidenceStatus = productRelevant ? (evidence?.status === 'pass' ? 'pass' : 'fail') : 'not_applicable';
+  const baselineStatus = productRelevant ? ((baseline?.result || baseline?.status) === 'pass' ? 'pass' : 'fail') : 'not_applicable';
+  const npmExitCode = Number(evidence?.npmExitCode ?? diagnostic?.npmExitCode ?? 0);
+  const npmExecuted = Boolean(evidence?.npmExecuted);
+  const cwd = evidence?.cwd || diagnostic?.cwd || '.';
+  const packageScope = evidence?.packageScope || diagnostic?.packageScope || '.';
+  const commandClass = evidence?.commandClass || diagnostic?.commandClass || 'npm_test';
+  const npmReport = buildRemoteNpmReport({
+    npmRequired: productRelevant,
+    npmExecuted,
+    npmExitCode,
+    cwd,
+    packageScope,
+    commandClass,
+    expectedCwd: packageScope === 'apps/backend' ? 'apps/backend' : undefined,
+    formalEvidencePresent: Boolean(evidence),
+    formalBackendEvidencePass: productRelevant && evidenceStatus === 'pass' && packageScope === 'apps/backend' && commandClass === 'backend_npm_test',
+    evidenceSource: 'formal_remote_product_evidence',
+  });
+  Object.assign(report, {
+    productVerificationStatus: report.productVerificationStatus || passFailStatus('productVerificationStatus', evidenceStatus, { productRelevant }),
+    productVerificationEvidenceStatus: report.productVerificationEvidenceStatus || passFailStatus('productVerificationEvidenceStatus', evidenceStatus, { productRelevant }),
+    remoteProductBaselineStatus: report.remoteProductBaselineStatus || passFailStatus('remoteProductBaselineStatus', baselineStatus, { productRelevant }),
+    baselineHealthStatus: report.baselineHealthStatus || passFailStatus('baselineHealthStatus', baselineStatus, { productRelevant }),
+    remoteNpmDiagnosticStatus: report.remoteNpmDiagnosticStatus || passFailStatus('remoteNpmDiagnosticStatus', productRelevant ? (npmExecuted && npmExitCode === 0 ? 'pass' : 'fail') : 'not_applicable', { productRelevant, cwd, packageScope, commandClass, npmExecuted, npmExitCode }),
+    remoteProductEvidenceExecutionStatus: report.remoteProductEvidenceExecutionStatus || passFailStatus('remoteProductEvidenceExecutionStatus', productRelevant ? (npmExecuted && npmExitCode === 0 ? 'pass' : 'fail') : 'not_applicable', { productRelevant, npmExecuted, npmExitCode }),
+    remoteProductEvidenceRunnerStatus: report.remoteProductEvidenceRunnerStatus || passFailStatus('remoteProductEvidenceRunnerStatus', productRelevant ? (npmExecuted && npmExitCode === 0 ? 'pass' : 'fail') : 'not_applicable', { productRelevant, cwd, packageScope, commandClass, npmExecuted, npmExitCode }),
+    remoteFormalEvidencePrecedenceStatus: report.remoteFormalEvidencePrecedenceStatus || passFailStatus('remoteFormalEvidencePrecedenceStatus', productRelevant ? (evidenceStatus === 'pass' && baselineStatus === 'pass' && npmExecuted && npmExitCode === 0 ? 'pass' : 'fail') : 'not_applicable', { productRelevant }),
+    ...npmReport,
+  });
+  return report;
+}
+
 function buildCanonicalMergeEvidenceStatus(report = {}, reasonSummary = null) {
   const reasonSummaryStatus = report.reasonSummaryStatus || (
     reasonSummary?.status
@@ -3263,6 +3316,7 @@ function buildCanonicalMergeEvidenceStatus(report = {}, reasonSummary = null) {
     report.changeClassificationStatus?.productRelevantChanged ||
     report.changeClassificationStatus?.packageOrLockfileChanged ||
     report.changeClassificationStatus?.runtimeReadinessClaimed ||
+    productEvidenceKeys.some((key) => report[key]?.productRelevant === true || report[key]?.safeSummary?.productRelevant === true) ||
     productEvidenceKeys.some((key) => statusValue(report[key]) === 'fail')
   );
   const statuses = {
@@ -4079,6 +4133,8 @@ export function evaluateWorkflowReport(report, options = {}) {
 
   }
 
+  enrichFormalProductEvidenceStatuses(report);
+
 
 
 
@@ -4248,6 +4304,32 @@ export function evaluateWorkflowReport(report, options = {}) {
     safeOutputScanStatus: canonicalReport.safeOutputScanStatus,
 
     canonicalMergeEvidenceStatus,
+
+    productVerificationStatus: report.productVerificationStatus || { status: 'missing' },
+
+    productVerificationEvidenceStatus: report.productVerificationEvidenceStatus || { status: 'missing' },
+
+    remoteProductBaselineStatus: report.remoteProductBaselineStatus || { status: 'missing' },
+
+    baselineHealthStatus: report.baselineHealthStatus || { status: 'missing' },
+
+    remoteNpmDiagnosticStatus: report.remoteNpmDiagnosticStatus || { status: 'missing' },
+
+    remoteProductEvidenceExecutionStatus: report.remoteProductEvidenceExecutionStatus || { status: 'missing' },
+
+    remoteProductEvidenceRunnerStatus: report.remoteProductEvidenceRunnerStatus || { status: 'missing' },
+
+    remoteNpmDiagnosticNormalizationV2Status: report.remoteNpmDiagnosticNormalizationV2Status || { status: 'missing' },
+
+    remoteFormalEvidencePrecedenceStatus: report.remoteFormalEvidencePrecedenceStatus || { status: 'missing' },
+
+    remoteNpmFormalEvidencePriorityStatus: report.remoteNpmFormalEvidencePriorityStatus || { status: 'missing' },
+
+    remoteNpmStaleDiagnosticSuppressionStatus: report.remoteNpmStaleDiagnosticSuppressionStatus || { status: 'missing' },
+
+    wrongCwdNpmExecutionStatus: report.wrongCwdNpmExecutionStatus || { status: 'missing' },
+
+    rootNpmRegressionStatus: report.rootNpmRegressionStatus || { status: 'missing' },
 
 
 
