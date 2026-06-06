@@ -328,6 +328,53 @@ describe('tierUpdateSafeDbReadExport', () => {
     ]));
   });
 
+  it('blocks D8H raw-row findings as global D8G forbidden keys', async () => {
+    const result = await runTierUpdateSafeDbReadExportFromSource({
+      plan: buildTierUpdateSafeDbReadExportPlan({
+        entities: ['scheduled_tier_update', 'job_run'],
+        rowLimit: 10,
+        auditExportId: 'audit-export-1',
+        sourceHeadSha: SOURCE_HEAD_SHA,
+        sourceHash: SOURCE_HASH,
+        exportedAt: EXPORTED_AT
+      }),
+      readOnlySource: {
+        readScheduledTierUpdates: () => [{
+          id: 1,
+          status: 'PENDING',
+          rawTxHash: '0x' + '9'.repeat(64),
+          rawWallet: '0x' + '8'.repeat(40),
+          rawDbRow: { id: 1 }
+        }],
+        readJobRuns: () => [{
+          id: 2,
+          status: 'SUCCEEDED',
+          rawCheckpoint: { rawPayload: 'raw payload' }
+        }]
+      },
+      operatorId: 'operator-1',
+      reviewerId: 'reviewer-1',
+      runKey: 'run-1'
+    });
+
+    expect(result.status).toBe('BLOCKED');
+    expect(result.unsafeReasonCodes).toEqual(expect.arrayContaining([
+      'forbidden_key:scheduled_tier_update.rawDbRow',
+      'forbidden_key:scheduled_tier_update.rawTxHash',
+      'forbidden_key:scheduled_tier_update.rawWallet',
+      'forbidden_key:job_run.rawCheckpoint'
+    ]));
+  });
+
+  it('preserves safe summary aliases while blocking raw fields', () => {
+    expect(TIER_UPDATE_SAFE_DB_READ_EXPORT_FORBIDDEN_KEYS).not.toContain('tx_hash_summary');
+    expect(TIER_UPDATE_SAFE_DB_READ_EXPORT_FORBIDDEN_KEYS).not.toContain('tx_contract_address_summary');
+    expect(TIER_UPDATE_SAFE_DB_READ_EXPORT_FORBIDDEN_KEYS).not.toContain('tx_from_summary');
+    expect(TIER_UPDATE_SAFE_DB_READ_EXPORT_FORBIDDEN_KEYS).not.toContain('tx_to_summary');
+    expect(TIER_UPDATE_SAFE_DB_READ_EXPORT_FORBIDDEN_KEYS).not.toContain('user_identity_summary');
+    expect(TIER_UPDATE_SAFE_DB_READ_EXPORT_FORBIDDEN_KEYS).not.toContain('checkpoint_summary');
+  });
+
   it('exports allowlist and forbidden key policy constants', () => {
     expect(TIER_UPDATE_SAFE_DB_READ_EXPORT_FIELD_ALLOWLIST.scheduled_tier_update).toContain('txHash');
     expect(TIER_UPDATE_SAFE_DB_READ_EXPORT_FIELD_ALLOWLIST.job_run).toContain('checkpoint');
@@ -335,6 +382,12 @@ describe('tierUpdateSafeDbReadExport', () => {
     expect(TIER_UPDATE_SAFE_DB_READ_EXPORT_FIELD_ALLOWLIST.staging_evidence).toContain('noTxExecution');
     expect(TIER_UPDATE_SAFE_DB_READ_EXPORT_FORBIDDEN_KEYS).toContain('DATABASE_URL');
     expect(TIER_UPDATE_SAFE_DB_READ_EXPORT_FORBIDDEN_KEYS).toContain('rawReceipt');
+    expect(TIER_UPDATE_SAFE_DB_READ_EXPORT_FORBIDDEN_KEYS).toEqual(expect.arrayContaining([
+      'rawCheckpoint',
+      'rawTxHash',
+      'rawWallet',
+      'rawDbRow'
+    ]));
   });
 
   it('keeps the module disconnected from Prisma, env DB URLs, file writes, routes, cron, runtime, RPC, tx, and Docker smoke', () => {
