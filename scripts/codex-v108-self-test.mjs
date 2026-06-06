@@ -6,6 +6,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { scanObjectForUnsafe, writeJsonReport, exitFor } from './codex-v080-lib.mjs';
 import * as gates from './codex-v108-gate-lib.mjs';
+import { buildFinalSummary } from './codex-target-final-summary.mjs';
 
 function statusOf(report, key) {
   return report[key]?.status || report.status;
@@ -89,6 +90,14 @@ const cases = [
   expect('repo_cripto_no_custody_registered', () => gates.buildRepoSpecificV108Reports(), 'criptoTipCryptoNoCustodyStateMachineStatus', 'policy_registered'),
   expect('repo_vgc_no_deploy_no_tx_registered', () => gates.buildRepoSpecificV108Reports(), 'vgcNoDeployNoTxBoundaryStatus', 'policy_registered'),
   expect('safe_summary_blocks_raw_fields', () => ({ status: safeSummaryNoRawFields() ? 'pass' : 'fail' }), 'status', 'pass'),
+  expect('v108_self_test_status_exported_to_target_final_summary', () => ({ status: buildV108ArtifactExportFixture().v108SelfTestStatus === 'pass' ? 'pass' : 'fail' }), 'status', 'pass'),
+  expect('safe_output_scan_status_exported_to_target_final_summary_v108', () => ({ status: buildV108ArtifactExportFixture().safeOutputScanStatus === 'pass' ? 'pass' : 'fail' }), 'status', 'pass'),
+  expect('canonical_merge_evidence_status_exported_v108', () => ({ status: buildV108ArtifactExportFixture().canonicalMergeEvidenceStatus === 'pass' ? 'pass' : 'fail' }), 'status', 'pass'),
+  expect('canonical_merge_evidence_required_statuses_present_v108', () => ({ status: buildV108ArtifactExportFixture().canonicalMergeEvidence?.requiredStatusKeys?.includes('v108SelfTestStatus') ? 'pass' : 'fail' }), 'status', 'pass'),
+  expect('missing_canonical_merge_evidence_blocks_success_v108', () => ({ status: buildFinalSummary({ targetQualityScoreStatus: { status: 'pass' } }).summary.canonicalMergeEvidenceStatus === 'fail' ? 'pass' : 'fail' }), 'status', 'pass'),
+  expect('quality_safe_summary_exports_v108_status_keys_v108', () => ({ status: workflowRunnerExportsV108SafeArtifactFields() ? 'pass' : 'fail' }), 'status', 'pass'),
+  expect('safe_artifact_index_lists_canonical_merge_evidence_v108', () => ({ status: workflowRunnerListsCanonicalMergeEvidenceArtifact() ? 'pass' : 'fail' }), 'status', 'pass'),
+  expect('artifact_run_id_and_head_sha_present_v108', () => ({ status: buildV108ArtifactExportFixture().canonicalMergeEvidence?.headSha && buildV108ArtifactExportFixture().canonicalMergeEvidence?.runId ? 'pass' : 'fail' }), 'status', 'pass'),
 ];
 
 const defaultReport = gates.buildDefaultV108Reports({ caseCount: cases.length, failedCaseCount: 0 });
@@ -156,4 +165,28 @@ function safeSummaryNoRawFields() {
   const text = fs.readFileSync(file, 'utf8');
   fs.rmSync(tmp, { recursive: true, force: true });
   return !/(raw changed files|endpoint|API key|token|secret|model path|dataset path|raw payload)/i.test(text);
+}
+
+function buildV108ArtifactExportFixture() {
+  return buildFinalSummary({
+    headSha: 'safe_head_sha',
+    runId: 'safe_run_id',
+    v108SelfTestStatus: { status: 'pass', safeSummaryOnly: true },
+    safeOutputScanStatus: { status: 'pass', safeSummaryOnly: true },
+    targetQualityScoreStatus: { status: 'pass', score: 95, safeSummaryOnly: true },
+    reasonSummaryStatus: { status: 'pass', safeSummaryOnly: true },
+    selfTestCaseExportStatus: { status: 'pass', safeSummaryOnly: true },
+  }).summary;
+}
+
+function workflowRunnerExportsV108SafeArtifactFields() {
+  const text = fs.readFileSync(new URL('./codex-workflow-quality-runner.mjs', import.meta.url), 'utf8');
+  return text.includes('v108SelfTestStatus: report.v108SelfTestStatus')
+    && text.includes('safeOutputScanStatus: report.safeOutputScanStatus')
+    && text.includes('canonicalMergeEvidenceStatus');
+}
+
+function workflowRunnerListsCanonicalMergeEvidenceArtifact() {
+  const text = fs.readFileSync(new URL('./codex-workflow-quality-runner.mjs', import.meta.url), 'utf8');
+  return text.includes('codex-canonical-merge-evidence.safe.json');
 }
