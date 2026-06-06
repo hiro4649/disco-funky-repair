@@ -117,6 +117,7 @@ const cases = [
   expect('canonical_merge_evidence_required_statuses_present_v108', () => ({ status: buildV108ArtifactExportFixture().canonicalMergeEvidence?.requiredStatusKeys?.includes('v108SelfTestStatus') ? 'pass' : 'fail' }), 'status', 'pass'),
   expect('missing_canonical_merge_evidence_blocks_success_v108', () => ({ status: buildFinalSummary({ targetQualityScoreStatus: { status: 'pass' } }).summary.canonicalMergeEvidenceStatus === 'fail' ? 'pass' : 'fail' }), 'status', 'pass'),
   expect('quality_safe_summary_exports_v108_status_keys_v108', () => ({ status: workflowRunnerExportsV108SafeArtifactFields() ? 'pass' : 'fail' }), 'status', 'pass'),
+  expect('quality_safe_summary_exports_formal_product_evidence_statuses_v108', () => ({ status: workflowRunnerExportsFormalProductEvidenceFields() ? 'pass' : 'fail' }), 'status', 'pass'),
   expect('safe_artifact_index_lists_canonical_merge_evidence_v108', () => ({ status: workflowRunnerListsCanonicalMergeEvidenceArtifact() ? 'pass' : 'fail' }), 'status', 'pass'),
   expect('artifact_run_id_and_head_sha_present_v108', () => ({ status: buildV108ArtifactExportFixture().canonicalMergeEvidence?.headSha && buildV108ArtifactExportFixture().canonicalMergeEvidence?.runId ? 'pass' : 'fail' }), 'status', 'pass'),
   expect('backend_product_pr_uses_apps_backend_cwd_v108', () => ({ status: workflowUsesBackendCwdRouting() ? 'pass' : 'fail' }), 'status', 'pass'),
@@ -217,6 +218,14 @@ function workflowRunnerExportsV108SafeArtifactFields() {
 function workflowRunnerListsCanonicalMergeEvidenceArtifact() {
   const text = fs.readFileSync(new URL('./codex-workflow-quality-runner.mjs', import.meta.url), 'utf8');
   return text.includes('codex-canonical-merge-evidence.safe.json');
+}
+
+function workflowRunnerExportsFormalProductEvidenceFields() {
+  const text = fs.readFileSync(new URL('./codex-workflow-quality-runner.mjs', import.meta.url), 'utf8');
+  return text.includes('productVerificationEvidenceStatus: report.productVerificationEvidenceStatus')
+    && text.includes('remoteNpmDiagnosticNormalizationV2Status: report.remoteNpmDiagnosticNormalizationV2Status')
+    && text.includes('wrongCwdNpmExecutionStatus: report.wrongCwdNpmExecutionStatus')
+    && text.includes('rootNpmRegressionStatus: report.rootNpmRegressionStatus');
 }
 
 function workflowUsesBackendCwdRouting() {
