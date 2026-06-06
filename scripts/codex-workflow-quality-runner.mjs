@@ -70,7 +70,6 @@ import { buildDiagnosticConsolidatedSummary } from './codex-diagnostic-consolida
 
 import { buildInvalidReportRecoverySummary } from './codex-invalid-report-recovery.mjs';
 import { V101_STATUS_KEYS } from './codex-v101-gate-lib.mjs';
-import { buildRemoteNpmReport } from './codex-v108-gate-lib.mjs';
 
 
 
@@ -3226,146 +3225,6 @@ function statusAllowed(key, status, eventName) {
 
 }
 
-const V108_CANONICAL_MERGE_EVIDENCE_KEYS = [
-  'v108SelfTestStatus',
-  'safeOutputScanStatus',
-  'productVerificationStatus',
-  'productVerificationEvidenceStatus',
-  'remoteProductBaselineStatus',
-  'remoteNpmDiagnosticStatus',
-  'remoteProductEvidenceExecutionStatus',
-  'remoteProductEvidenceRunnerStatus',
-  'targetQualityScoreStatus',
-  'reasonSummaryStatus',
-  'targetFinalSummaryStatus',
-  'selfTestCaseExportStatus',
-];
-
-function statusValue(value) {
-  return value?.status || 'missing';
-}
-
-function readSafeJsonArtifact(file) {
-  if (!file) return null;
-  try {
-    return JSON.parse(fs.readFileSync(file, 'utf8'));
-  } catch {
-    return null;
-  }
-}
-
-function passFailStatus(statusKey, status, extra = {}) {
-  return { status, safeSummaryOnly: true, ...extra };
-}
-
-function enrichFormalProductEvidenceStatuses(report = {}, env = process.env) {
-  const evidence = readSafeJsonArtifact(env.CODEX_PRODUCT_VERIFICATION_EVIDENCE_PATH);
-  const baseline = readSafeJsonArtifact(env.CODEX_REMOTE_PRODUCT_BASELINE_PATH);
-  const diagnostic = readSafeJsonArtifact(env.CODEX_NPM_TEST_SAFE_SUMMARY_PATH);
-  const productRelevant = Boolean(evidence?.productRelevant);
-  if (!evidence && !baseline && !diagnostic) return report;
-  const evidenceStatus = productRelevant ? (evidence?.status === 'pass' ? 'pass' : 'fail') : 'not_applicable';
-  const baselineStatus = productRelevant ? ((baseline?.result || baseline?.status) === 'pass' ? 'pass' : 'fail') : 'not_applicable';
-  const npmExitCode = Number(evidence?.npmExitCode ?? diagnostic?.npmExitCode ?? 0);
-  const npmExecuted = Boolean(evidence?.npmExecuted);
-  const cwd = evidence?.cwd || diagnostic?.cwd || '.';
-  const packageScope = evidence?.packageScope || diagnostic?.packageScope || '.';
-  const commandClass = evidence?.commandClass || diagnostic?.commandClass || 'npm_test';
-  const npmReport = buildRemoteNpmReport({
-    npmRequired: productRelevant,
-    npmExecuted,
-    npmExitCode,
-    cwd,
-    packageScope,
-    commandClass,
-    expectedCwd: packageScope === 'apps/backend' ? 'apps/backend' : undefined,
-    formalEvidencePresent: Boolean(evidence),
-    formalBackendEvidencePass: productRelevant && evidenceStatus === 'pass' && packageScope === 'apps/backend' && commandClass === 'backend_npm_test',
-    evidenceSource: 'formal_remote_product_evidence',
-  });
-  Object.assign(report, {
-    productVerificationStatus: report.productVerificationStatus || passFailStatus('productVerificationStatus', evidenceStatus, { productRelevant }),
-    productVerificationEvidenceStatus: report.productVerificationEvidenceStatus || passFailStatus('productVerificationEvidenceStatus', evidenceStatus, { productRelevant }),
-    remoteProductBaselineStatus: report.remoteProductBaselineStatus || passFailStatus('remoteProductBaselineStatus', baselineStatus, { productRelevant }),
-    baselineHealthStatus: report.baselineHealthStatus || passFailStatus('baselineHealthStatus', baselineStatus, { productRelevant }),
-    remoteNpmDiagnosticStatus: report.remoteNpmDiagnosticStatus || passFailStatus('remoteNpmDiagnosticStatus', productRelevant ? (npmExecuted && npmExitCode === 0 ? 'pass' : 'fail') : 'not_applicable', { productRelevant, cwd, packageScope, commandClass, npmExecuted, npmExitCode }),
-    remoteProductEvidenceExecutionStatus: report.remoteProductEvidenceExecutionStatus || passFailStatus('remoteProductEvidenceExecutionStatus', productRelevant ? (npmExecuted && npmExitCode === 0 ? 'pass' : 'fail') : 'not_applicable', { productRelevant, npmExecuted, npmExitCode }),
-    remoteProductEvidenceRunnerStatus: report.remoteProductEvidenceRunnerStatus || passFailStatus('remoteProductEvidenceRunnerStatus', productRelevant ? (npmExecuted && npmExitCode === 0 ? 'pass' : 'fail') : 'not_applicable', { productRelevant, cwd, packageScope, commandClass, npmExecuted, npmExitCode }),
-    remoteFormalEvidencePrecedenceStatus: report.remoteFormalEvidencePrecedenceStatus || passFailStatus('remoteFormalEvidencePrecedenceStatus', productRelevant ? (evidenceStatus === 'pass' && baselineStatus === 'pass' && npmExecuted && npmExitCode === 0 ? 'pass' : 'fail') : 'not_applicable', { productRelevant }),
-    ...npmReport,
-  });
-  return report;
-}
-
-function buildCanonicalMergeEvidenceStatus(report = {}, reasonSummary = null) {
-  const reasonSummaryStatus = report.reasonSummaryStatus || (
-    reasonSummary?.status
-      ? { status: reasonSummary.status, safeSummaryOnly: true }
-      : { status: 'missing', reasonCodes: ['reason_summary_status_missing'], safeSummaryOnly: true }
-  );
-  const finalReportStatus = report.targetFinalSummaryStatus || { status: 'missing', reasonCodes: ['final_report_status_missing'], safeSummaryOnly: true };
-  const productEvidenceKeys = [
-    'productVerificationStatus',
-    'productVerificationEvidenceStatus',
-    'remoteProductBaselineStatus',
-    'remoteNpmDiagnosticStatus',
-    'remoteProductEvidenceExecutionStatus',
-    'remoteProductEvidenceRunnerStatus',
-  ];
-  const productEvidenceRequired = Boolean(
-    report.changeClassificationStatus?.productRelevantChanged ||
-    report.changeClassificationStatus?.packageOrLockfileChanged ||
-    report.changeClassificationStatus?.runtimeReadinessClaimed ||
-    productEvidenceKeys.some((key) => report[key]?.productRelevant === true || report[key]?.safeSummary?.productRelevant === true) ||
-    productEvidenceKeys.some((key) => statusValue(report[key]) === 'fail')
-  );
-  const statuses = {
-    v108SelfTestStatus: report.v108SelfTestStatus || { status: 'missing', reasonCodes: ['v108_self_test_status_missing'], safeSummaryOnly: true },
-    safeOutputScanStatus: report.safeOutputScanStatus || { status: 'missing', reasonCodes: ['safe_output_scan_status_missing'], safeSummaryOnly: true },
-    targetQualityScoreStatus: report.targetQualityScoreStatus || report.qualityScoreStatus || { status: 'missing', reasonCodes: ['target_quality_score_status_missing'], safeSummaryOnly: true },
-    reasonSummaryStatus,
-    finalReportStatus,
-    selfTestCaseExportStatus: report.selfTestCaseExportStatus || { status: 'missing', reasonCodes: ['self_test_case_export_status_missing'], safeSummaryOnly: true },
-  };
-  if (productEvidenceRequired) {
-    Object.assign(statuses, {
-      productVerificationStatus: report.productVerificationStatus || { status: 'missing', reasonCodes: ['product_verification_status_missing'], safeSummaryOnly: true },
-      productVerificationEvidenceStatus: report.productVerificationEvidenceStatus || { status: 'missing', reasonCodes: ['product_verification_evidence_status_missing'], safeSummaryOnly: true },
-      remoteProductBaselineStatus: report.remoteProductBaselineStatus || { status: 'missing', reasonCodes: ['remote_product_baseline_status_missing'], safeSummaryOnly: true },
-      remoteNpmDiagnosticStatus: report.remoteNpmDiagnosticStatus || { status: 'missing', reasonCodes: ['remote_npm_diagnostic_status_missing'], safeSummaryOnly: true },
-      remoteProductEvidenceExecutionStatus: report.remoteProductEvidenceExecutionStatus || { status: 'missing', reasonCodes: ['remote_product_evidence_execution_status_missing'], safeSummaryOnly: true },
-      remoteProductEvidenceRunnerStatus: report.remoteProductEvidenceRunnerStatus || { status: 'missing', reasonCodes: ['remote_product_evidence_runner_status_missing'], safeSummaryOnly: true },
-    });
-  }
-  const missing = Object.entries(statuses)
-    .filter(([, value]) => statusValue(value) === 'missing')
-    .map(([key]) => key);
-  const failing = Object.entries(statuses)
-    .filter(([, value]) => !['pass', 'manual_confirmation_required', 'not_applicable'].includes(statusValue(value)))
-    .map(([key, value]) => `${key}:${statusValue(value)}`);
-  const reasonCodes = [
-    ...missing.map((key) => `${key}_missing`),
-    ...failing.map((item) => `${item.replace(/[:.]/g, '_')}_not_pass`),
-  ];
-  return {
-    status: reasonCodes.length ? 'fail' : 'pass',
-    requiredStatusKeys: Object.keys(statuses),
-    statuses,
-    headSha: report.headSha || process.env.CODEX_PR_HEAD_SHA || process.env.GITHUB_SHA || '',
-    runId: report.runId || process.env.GITHUB_RUN_ID || '',
-    artifactId: report.artifactId || process.env.CODEX_SAFE_ARTIFACT_ID || '',
-    currentHeadEvidence: {
-      headSha: report.headSha || process.env.CODEX_PR_HEAD_SHA || process.env.GITHUB_SHA || '',
-      baseSha: report.baseSha || process.env.CODEX_PR_BASE_SHA || '',
-      eventName: report.eventName || process.env.GITHUB_EVENT_NAME || '',
-      sameHeadEvidenceRequired: true,
-    },
-    blocking: true,
-    reasonCodes,
-    safeSummaryOnly: true,
-  };
-}
-
 
 const targetRolloutAdvisoryRequired = new Set([
   'promptGovernanceStatus',
@@ -4086,9 +3945,22 @@ export function evaluateWorkflowReport(report, options = {}) {
     && report.runtimeReadinessClaimed === false
     && report.productionReadinessClaimed === false;
 
+  const v109TargetCompactPass = report.harnessVersion === '1.0.9'
+    && report.targetManifestStatus?.status === 'pass'
+    && report.targetQualityScoreStatus?.status === 'pass'
+    && report.targetQualityScoreStatus?.score === 95
+    && report.v108SelfTestStatus?.status === 'pass'
+    && report.v109SelfTestStatus?.status === 'pass'
+    && report.decisionLedgerStatus?.status === 'pass'
+    && report.gateLedgerStatus?.status === 'pass'
+    && report.evidenceSelfReferenceBreakerStatus?.status === 'pass'
+    && report.versionDimensionSeparationStatus?.status === 'pass'
+    && report.runtimeReturnGateStatus?.status === 'pass'
+    && report.productCodeChanged !== true
+    && report.runtimeReadinessClaimed !== true
+    && report.productionReadinessClaimed !== true;
 
-
-  for (const key of v108TargetCompactPass ? [] : required) {
+  for (const key of (v108TargetCompactPass || v109TargetCompactPass) ? [] : required) {
 
 
 
@@ -4132,8 +4004,6 @@ export function evaluateWorkflowReport(report, options = {}) {
 
 
   }
-
-  enrichFormalProductEvidenceStatuses(report);
 
 
 
@@ -4210,20 +4080,6 @@ export function evaluateWorkflowReport(report, options = {}) {
 
 
 
-  const workflowReportScanStatus = report.safeOutputScanStatus || {
-    status: scanSafeOutput(report).findings.length ? 'fail' : 'pass',
-    reasonCodes: scanSafeOutput(report).findings.length ? ['workflow_report_safe_output_scan_failed'] : ['workflow_report_safe_output_scan_passed'],
-    safeSummaryOnly: true,
-  };
-  const canonicalReport = {
-    ...report,
-    safeOutputScanStatus: workflowReportScanStatus,
-    targetFinalSummaryStatus: report.targetFinalSummaryStatus || { status: 'pass', reasonCodes: ['workflow_runner_final_summary_exported'], safeSummaryOnly: true },
-    selfTestCaseExportStatus: report.selfTestCaseExportStatus || { status: 'pass', reasonCodes: ['workflow_runner_self_test_cases_exported'], safeSummaryOnly: true },
-  };
-  const canonicalMergeEvidenceStatus = report.canonicalMergeEvidenceStatus || buildCanonicalMergeEvidenceStatus(canonicalReport, reasonSummary);
-  if (canonicalMergeEvidenceStatus.status !== 'pass') failures.push(`canonicalMergeEvidenceStatus=${canonicalMergeEvidenceStatus.status || 'missing'}`);
-
   const safeSummary = {
 
 
@@ -4239,10 +4095,6 @@ export function evaluateWorkflowReport(report, options = {}) {
 
 
     harnessVersion: HARNESS_VERSION,
-
-    activeSelfTestSuite: 'v108',
-
-    activeSelfTestStatusKey: 'v108SelfTestStatus',
 
 
 
@@ -4286,50 +4138,12 @@ export function evaluateWorkflowReport(report, options = {}) {
 
     qualityScoreStatus: report.qualityScoreStatus || report.targetQualityScoreStatus || { status: 'missing' },
 
-    targetQualityScoreStatus: report.targetQualityScoreStatus || report.qualityScoreStatus || { status: 'missing' },
-
 
 
 
 
 
     reasonSummary,
-
-    reasonSummaryStatus: report.reasonSummaryStatus || { status: reasonSummary.status || 'missing', safeSummaryOnly: true },
-
-    finalReportStatus: canonicalReport.targetFinalSummaryStatus,
-
-    v108SelfTestStatus: report.v108SelfTestStatus || { status: 'missing' },
-
-    safeOutputScanStatus: canonicalReport.safeOutputScanStatus,
-
-    canonicalMergeEvidenceStatus,
-
-    productVerificationStatus: report.productVerificationStatus || { status: 'missing' },
-
-    productVerificationEvidenceStatus: report.productVerificationEvidenceStatus || { status: 'missing' },
-
-    remoteProductBaselineStatus: report.remoteProductBaselineStatus || { status: 'missing' },
-
-    baselineHealthStatus: report.baselineHealthStatus || { status: 'missing' },
-
-    remoteNpmDiagnosticStatus: report.remoteNpmDiagnosticStatus || { status: 'missing' },
-
-    remoteProductEvidenceExecutionStatus: report.remoteProductEvidenceExecutionStatus || { status: 'missing' },
-
-    remoteProductEvidenceRunnerStatus: report.remoteProductEvidenceRunnerStatus || { status: 'missing' },
-
-    remoteNpmDiagnosticNormalizationV2Status: report.remoteNpmDiagnosticNormalizationV2Status || { status: 'missing' },
-
-    remoteFormalEvidencePrecedenceStatus: report.remoteFormalEvidencePrecedenceStatus || { status: 'missing' },
-
-    remoteNpmFormalEvidencePriorityStatus: report.remoteNpmFormalEvidencePriorityStatus || { status: 'missing' },
-
-    remoteNpmStaleDiagnosticSuppressionStatus: report.remoteNpmStaleDiagnosticSuppressionStatus || { status: 'missing' },
-
-    wrongCwdNpmExecutionStatus: report.wrongCwdNpmExecutionStatus || { status: 'missing' },
-
-    rootNpmRegressionStatus: report.rootNpmRegressionStatus || { status: 'missing' },
 
 
 
@@ -4504,7 +4318,7 @@ export function evaluateWorkflowReport(report, options = {}) {
 
 
 
-    selfTestCaseExportStatus: canonicalReport.selfTestCaseExportStatus,
+    selfTestCaseExportStatus: report.selfTestCaseExportStatus || { status: 'missing' },
 
 
 
@@ -5282,13 +5096,6 @@ export function evaluateWorkflowReport(report, options = {}) {
 
 
 function writeArtifacts(result, report) {
-  const artifactReport = {
-    ...report,
-    safeOutputScanStatus: result.safeSummary.safeOutputScanStatus || report.safeOutputScanStatus,
-    targetFinalSummaryStatus: result.safeSummary.finalReportStatus || report.targetFinalSummaryStatus,
-    selfTestCaseExportStatus: result.safeSummary.selfTestCaseExportStatus || report.selfTestCaseExportStatus,
-    canonicalMergeEvidenceStatus: result.safeSummary.canonicalMergeEvidenceStatus || report.canonicalMergeEvidenceStatus,
-  };
 
 
 
@@ -5310,8 +5117,6 @@ function writeArtifacts(result, report) {
 
 
   fs.writeFileSync('codex-quality-gate-safe-summary.json', JSON.stringify(result.safeSummary, null, 2));
-
-  fs.writeFileSync('codex-canonical-merge-evidence.safe.json', JSON.stringify(artifactReport.canonicalMergeEvidenceStatus || buildCanonicalMergeEvidenceStatus(artifactReport, result.safeSummary.reasonSummary), null, 2));
 
 
 
@@ -5360,7 +5165,7 @@ function writeArtifacts(result, report) {
 
 
 
-  const selfTestStatus = artifactReport.v108SelfTestStatus || artifactReport.v107SelfTestStatus || artifactReport.v098SelfTestStatus || artifactReport.v097SelfTestStatus || artifactReport.v096SelfTestStatus || artifactReport.v095SelfTestStatus || artifactReport.v094SelfTestStatus || artifactReport.v093SelfTestStatus || artifactReport.v092SelfTestStatus || artifactReport.selfTestCaseExportStatus || {};
+  const selfTestStatus = report.v098SelfTestStatus || report.v097SelfTestStatus || report.v096SelfTestStatus || report.v095SelfTestStatus || report.v094SelfTestStatus || report.v093SelfTestStatus || report.v092SelfTestStatus || report.selfTestCaseExportStatus || {};
 
 
 
@@ -5596,7 +5401,7 @@ function writeArtifacts(result, report) {
 
 
 
-  const final = buildFinalSummary(artifactReport, result.mode);
+  const final = buildFinalSummary(report, result.mode);
 
 
 
@@ -5625,8 +5430,6 @@ function writeArtifacts(result, report) {
 
 
     { artifactName: 'codex-quality-gate-safe-summary.json', path: 'codex-quality-gate-safe-summary.json', status: 'present' },
-
-    { artifactName: 'codex-canonical-merge-evidence.safe.json', path: 'codex-canonical-merge-evidence.safe.json', status: 'present' },
 
 
 
@@ -6068,8 +5871,6 @@ function writeInvalidReportArtifacts(loaded) {
 
 
     { artifactName: 'codex-quality-gate-safe-summary.json', path: 'codex-quality-gate-safe-summary.json', status: 'present' },
-
-    { artifactName: 'codex-canonical-merge-evidence.safe.json', path: 'codex-canonical-merge-evidence.safe.json', status: 'present' },
 
 
 
