@@ -85,11 +85,14 @@ export function buildRemoteProductEvidenceRunnerReport(input = parseJson(process
   const npmExitCode = Number(input.npmExitCode ?? process.env.CODEX_NPM_EXIT_CODE ?? 0);
   const npmExecuted = parseBool(input.npmExecuted) || process.env.CODEX_REMOTE_NPM_EXECUTED === '1';
   const runnerStatus = npmExitCode === 0 ? 'pass' : 'fail';
+  const commandClass = String(input.commandClass || process.env.CODEX_NPM_COMMAND_CLASS || 'npm_test').slice(0, 80);
+  const packageScope = String(input.packageScope || process.env.CODEX_NPM_PACKAGE_SCOPE || '.').slice(0, 120);
+  const cwd = String(input.cwd || process.env.CODEX_NPM_CWD || '.').slice(0, 120);
   if (scanObjectForUnsafe(input).length || parseBool(input.rawLogsIncluded) || parseBool(input.rawStdoutIncluded) || parseBool(input.rawStderrIncluded)) reasonCodes.push('remote_product_evidence_runner_failed');
   if (productRelevant && !npmExecuted) reasonCodes.push('remote_npm_not_executed_for_product_pr');
   if (productRelevant && input.headSha === '') reasonCodes.push('remote_product_evidence_runner_failed');
-  if (productRelevant && npmExitCode !== 0 && parseBool(input.reportedPass)) reasonCodes.push('remote_product_evidence_runner_failed');
-  return safe('remoteProductEvidenceRunnerStatus', reasonCodes.length ? 'fail' : 'pass', { reasonCodes, productRelevant, npmExecuted, npmExitCode, runnerStatus });
+  if (productRelevant && npmExitCode !== 0) reasonCodes.push('remote_product_evidence_runner_failed');
+  return safe('remoteProductEvidenceRunnerStatus', reasonCodes.length ? 'fail' : 'pass', { reasonCodes, productRelevant, npmExecuted, npmExitCode, runnerStatus, cwd, packageScope, commandClass });
 }
 
 export function buildRemoteProductSafeArtifacts(input = parseJson(process.env.CODEX_REMOTE_PRODUCT_EVIDENCE_RUNNER_JSON) || {}, env = process.env) {

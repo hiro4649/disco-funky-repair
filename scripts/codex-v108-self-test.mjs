@@ -7,6 +7,7 @@ import path from 'node:path';
 import { scanObjectForUnsafe, writeJsonReport, exitFor } from './codex-v080-lib.mjs';
 import * as gates from './codex-v108-gate-lib.mjs';
 import { buildFinalSummary } from './codex-target-final-summary.mjs';
+import { buildRemoteProductEvidenceRunnerReport, buildRemoteProductSafeArtifacts } from './codex-v098-gate-lib.mjs';
 
 function statusOf(report, key) {
   return report[key]?.status || report.status;
@@ -41,6 +42,26 @@ const cases = [
   expect('wrong_cwd_npm_fails', () => gates.buildRemoteNpmReport({ npmRequired: true, npmExecuted: true, cwd: 'root', expectedCwd: 'apps/backend', npmExitCode: 0 }), 'wrongCwdNpmExecutionStatus', 'fail'),
   expect('root_npm_regression_fails', () => gates.buildRemoteNpmReport({ rootNpmAttemptedIncorrectly: true }), 'rootNpmRegressionStatus', 'fail'),
   expect('genuine_npm_failure_preserved', () => gates.buildRemoteNpmReport({ npmExecuted: true, npmExitCode: 254 }), 'remoteNpmDiagnosticNormalizationV2Status', 'fail'),
+  expect('backend_product_pr_records_backend_npm_test_command_class_v108', () => {
+    const artifacts = buildRemoteProductSafeArtifacts({ productRelevant: true, npmExecuted: true, npmExitCode: 0, cwd: 'apps/backend', packageScope: 'apps/backend', commandClass: 'backend_npm_test' });
+    return { status: artifacts.evidence.cwd === 'apps/backend' && artifacts.evidence.packageScope === 'apps/backend' && artifacts.evidence.commandClass === 'backend_npm_test' ? 'pass' : 'fail' };
+  }, 'status', 'pass'),
+  expect('formal_product_evidence_failure_blocks_runner_v108', () => buildRemoteProductEvidenceRunnerReport({ productRelevant: true, npmExecuted: true, npmExitCode: 254, cwd: '.', packageScope: '.', commandClass: 'npm_test' }), 'remoteProductEvidenceRunnerStatus', 'fail'),
+  expect('formal_product_evidence_failure_blocks_canonical_merge_evidence_v108', () => ({ status: buildFinalSummary({
+    headSha: 'safe_head_sha',
+    runId: 'safe_run_id',
+    v108SelfTestStatus: { status: 'pass', safeSummaryOnly: true },
+    safeOutputScanStatus: { status: 'pass', safeSummaryOnly: true },
+    productVerificationStatus: { status: 'pass', safeSummaryOnly: true },
+    productVerificationEvidenceStatus: { status: 'fail', safeSummaryOnly: true },
+    remoteProductBaselineStatus: { status: 'fail', safeSummaryOnly: true },
+    remoteNpmDiagnosticStatus: { status: 'pass', safeSummaryOnly: true },
+    remoteProductEvidenceExecutionStatus: { status: 'fail', safeSummaryOnly: true },
+    remoteProductEvidenceRunnerStatus: { status: 'fail', safeSummaryOnly: true },
+    targetQualityScoreStatus: { status: 'pass', score: 95, safeSummaryOnly: true },
+    reasonSummaryStatus: { status: 'pass', safeSummaryOnly: true },
+    selfTestCaseExportStatus: { status: 'pass', safeSummaryOnly: true },
+  }).summary.canonicalMergeEvidenceStatus === 'fail' ? 'pass' : 'fail' }), 'status', 'pass'),
   expect('body_head_stale_exact_field', () => gates.buildStaleAuditReport({ bodyHeadSha: { expected: 'a', actual: 'b', bodyOnly: true } }), 'bodyHeadShaStaleStatus', 'fail'),
   expect('artifact_head_stale_exact_field', () => gates.buildStaleAuditReport({ artifactHeadSha: { expected: 'a', actual: 'b' } }), 'artifactHeadShaStaleStatus', 'fail'),
   expect('review_evidence_stale_exact_field', () => gates.buildStaleAuditReport({ reviewEvidenceHead: { expected: 'a', actual: 'b' } }), 'reviewEvidenceHeadMismatchStatus', 'fail'),
@@ -98,6 +119,7 @@ const cases = [
   expect('quality_safe_summary_exports_v108_status_keys_v108', () => ({ status: workflowRunnerExportsV108SafeArtifactFields() ? 'pass' : 'fail' }), 'status', 'pass'),
   expect('safe_artifact_index_lists_canonical_merge_evidence_v108', () => ({ status: workflowRunnerListsCanonicalMergeEvidenceArtifact() ? 'pass' : 'fail' }), 'status', 'pass'),
   expect('artifact_run_id_and_head_sha_present_v108', () => ({ status: buildV108ArtifactExportFixture().canonicalMergeEvidence?.headSha && buildV108ArtifactExportFixture().canonicalMergeEvidence?.runId ? 'pass' : 'fail' }), 'status', 'pass'),
+  expect('backend_product_pr_uses_apps_backend_cwd_v108', () => ({ status: workflowUsesBackendCwdRouting() ? 'pass' : 'fail' }), 'status', 'pass'),
 ];
 
 const defaultReport = gates.buildDefaultV108Reports({ caseCount: cases.length, failedCaseCount: 0 });
@@ -173,6 +195,12 @@ function buildV108ArtifactExportFixture() {
     runId: 'safe_run_id',
     v108SelfTestStatus: { status: 'pass', safeSummaryOnly: true },
     safeOutputScanStatus: { status: 'pass', safeSummaryOnly: true },
+    productVerificationStatus: { status: 'pass', safeSummaryOnly: true },
+    productVerificationEvidenceStatus: { status: 'pass', safeSummaryOnly: true },
+    remoteProductBaselineStatus: { status: 'pass', safeSummaryOnly: true },
+    remoteNpmDiagnosticStatus: { status: 'pass', safeSummaryOnly: true },
+    remoteProductEvidenceExecutionStatus: { status: 'pass', safeSummaryOnly: true },
+    remoteProductEvidenceRunnerStatus: { status: 'pass', safeSummaryOnly: true },
     targetQualityScoreStatus: { status: 'pass', score: 95, safeSummaryOnly: true },
     reasonSummaryStatus: { status: 'pass', safeSummaryOnly: true },
     selfTestCaseExportStatus: { status: 'pass', safeSummaryOnly: true },
@@ -189,4 +217,11 @@ function workflowRunnerExportsV108SafeArtifactFields() {
 function workflowRunnerListsCanonicalMergeEvidenceArtifact() {
   const text = fs.readFileSync(new URL('./codex-workflow-quality-runner.mjs', import.meta.url), 'utf8');
   return text.includes('codex-canonical-merge-evidence.safe.json');
+}
+
+function workflowUsesBackendCwdRouting() {
+  const text = fs.readFileSync(new URL('../.github/workflows/quality-gate.yml', import.meta.url), 'utf8');
+  return text.includes('npm_cwd="apps/backend"')
+    && text.includes('npm_command_class="backend_npm_test"')
+    && text.includes('NPM_CWD="$npm_cwd"');
 }
