@@ -3228,6 +3228,12 @@ function statusAllowed(key, status, eventName) {
 const V108_CANONICAL_MERGE_EVIDENCE_KEYS = [
   'v108SelfTestStatus',
   'safeOutputScanStatus',
+  'productVerificationStatus',
+  'productVerificationEvidenceStatus',
+  'remoteProductBaselineStatus',
+  'remoteNpmDiagnosticStatus',
+  'remoteProductEvidenceExecutionStatus',
+  'remoteProductEvidenceRunnerStatus',
   'targetQualityScoreStatus',
   'reasonSummaryStatus',
   'targetFinalSummaryStatus',
@@ -3245,6 +3251,20 @@ function buildCanonicalMergeEvidenceStatus(report = {}, reasonSummary = null) {
       : { status: 'missing', reasonCodes: ['reason_summary_status_missing'], safeSummaryOnly: true }
   );
   const finalReportStatus = report.targetFinalSummaryStatus || { status: 'missing', reasonCodes: ['final_report_status_missing'], safeSummaryOnly: true };
+  const productEvidenceKeys = [
+    'productVerificationStatus',
+    'productVerificationEvidenceStatus',
+    'remoteProductBaselineStatus',
+    'remoteNpmDiagnosticStatus',
+    'remoteProductEvidenceExecutionStatus',
+    'remoteProductEvidenceRunnerStatus',
+  ];
+  const productEvidenceRequired = Boolean(
+    report.changeClassificationStatus?.productRelevantChanged ||
+    report.changeClassificationStatus?.packageOrLockfileChanged ||
+    report.changeClassificationStatus?.runtimeReadinessClaimed ||
+    productEvidenceKeys.some((key) => statusValue(report[key]) === 'fail')
+  );
   const statuses = {
     v108SelfTestStatus: report.v108SelfTestStatus || { status: 'missing', reasonCodes: ['v108_self_test_status_missing'], safeSummaryOnly: true },
     safeOutputScanStatus: report.safeOutputScanStatus || { status: 'missing', reasonCodes: ['safe_output_scan_status_missing'], safeSummaryOnly: true },
@@ -3253,6 +3273,16 @@ function buildCanonicalMergeEvidenceStatus(report = {}, reasonSummary = null) {
     finalReportStatus,
     selfTestCaseExportStatus: report.selfTestCaseExportStatus || { status: 'missing', reasonCodes: ['self_test_case_export_status_missing'], safeSummaryOnly: true },
   };
+  if (productEvidenceRequired) {
+    Object.assign(statuses, {
+      productVerificationStatus: report.productVerificationStatus || { status: 'missing', reasonCodes: ['product_verification_status_missing'], safeSummaryOnly: true },
+      productVerificationEvidenceStatus: report.productVerificationEvidenceStatus || { status: 'missing', reasonCodes: ['product_verification_evidence_status_missing'], safeSummaryOnly: true },
+      remoteProductBaselineStatus: report.remoteProductBaselineStatus || { status: 'missing', reasonCodes: ['remote_product_baseline_status_missing'], safeSummaryOnly: true },
+      remoteNpmDiagnosticStatus: report.remoteNpmDiagnosticStatus || { status: 'missing', reasonCodes: ['remote_npm_diagnostic_status_missing'], safeSummaryOnly: true },
+      remoteProductEvidenceExecutionStatus: report.remoteProductEvidenceExecutionStatus || { status: 'missing', reasonCodes: ['remote_product_evidence_execution_status_missing'], safeSummaryOnly: true },
+      remoteProductEvidenceRunnerStatus: report.remoteProductEvidenceRunnerStatus || { status: 'missing', reasonCodes: ['remote_product_evidence_runner_status_missing'], safeSummaryOnly: true },
+    });
+  }
   const missing = Object.entries(statuses)
     .filter(([, value]) => statusValue(value) === 'missing')
     .map(([key]) => key);
@@ -3265,7 +3295,7 @@ function buildCanonicalMergeEvidenceStatus(report = {}, reasonSummary = null) {
   ];
   return {
     status: reasonCodes.length ? 'fail' : 'pass',
-    requiredStatusKeys: V108_CANONICAL_MERGE_EVIDENCE_KEYS,
+    requiredStatusKeys: Object.keys(statuses),
     statuses,
     headSha: report.headSha || process.env.CODEX_PR_HEAD_SHA || process.env.GITHUB_SHA || '',
     runId: report.runId || process.env.GITHUB_RUN_ID || '',

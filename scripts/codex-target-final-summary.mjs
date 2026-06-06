@@ -9,6 +9,20 @@ function statusOf(value) {
 }
 
 function buildCanonicalMergeEvidenceStatus(report = {}) {
+  const productEvidenceKeys = [
+    'productVerificationStatus',
+    'productVerificationEvidenceStatus',
+    'remoteProductBaselineStatus',
+    'remoteNpmDiagnosticStatus',
+    'remoteProductEvidenceExecutionStatus',
+    'remoteProductEvidenceRunnerStatus',
+  ];
+  const productEvidenceRequired = Boolean(
+    report.changeClassificationStatus?.productRelevantChanged ||
+    report.changeClassificationStatus?.packageOrLockfileChanged ||
+    report.changeClassificationStatus?.runtimeReadinessClaimed ||
+    productEvidenceKeys.some((key) => statusOf(report[key]) === 'fail')
+  );
   const statuses = {
     v108SelfTestStatus: report.v108SelfTestStatus || { status: 'missing', safeSummaryOnly: true },
     safeOutputScanStatus: report.safeOutputScanStatus || { status: 'missing', safeSummaryOnly: true },
@@ -17,6 +31,16 @@ function buildCanonicalMergeEvidenceStatus(report = {}) {
     finalReportStatus: report.targetFinalSummaryStatus || { status: 'not_applicable', reasonCodes: ['final_summary_current_artifact'], safeSummaryOnly: true },
     selfTestCaseExportStatus: report.selfTestCaseExportStatus || { status: 'missing', safeSummaryOnly: true },
   };
+  if (productEvidenceRequired) {
+    Object.assign(statuses, {
+      productVerificationStatus: report.productVerificationStatus || { status: 'missing', safeSummaryOnly: true },
+      productVerificationEvidenceStatus: report.productVerificationEvidenceStatus || { status: 'missing', safeSummaryOnly: true },
+      remoteProductBaselineStatus: report.remoteProductBaselineStatus || { status: 'missing', safeSummaryOnly: true },
+      remoteNpmDiagnosticStatus: report.remoteNpmDiagnosticStatus || { status: 'missing', safeSummaryOnly: true },
+      remoteProductEvidenceExecutionStatus: report.remoteProductEvidenceExecutionStatus || { status: 'missing', safeSummaryOnly: true },
+      remoteProductEvidenceRunnerStatus: report.remoteProductEvidenceRunnerStatus || { status: 'missing', safeSummaryOnly: true },
+    });
+  }
   const reasonCodes = Object.entries(statuses)
     .filter(([, value]) => !['pass', 'manual_confirmation_required', 'not_applicable'].includes(statusOf(value)))
     .map(([key, value]) => `${key}_${statusOf(value)}_not_pass`);
