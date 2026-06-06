@@ -1,7 +1,7 @@
 # AGENTS.md
 
 <!-- CODEX_QUALITY_HARNESS_BEGIN -->
-CODEX_QUALITY_HARNESS_FILE v1.0.8
+CODEX_QUALITY_HARNESS_FILE v1.0.9
 
 ## Prime Directive
 
@@ -24,10 +24,10 @@ v2, GitHub hysteresis, tool gap, active self-test, hotfix preservation,
 PR-chain saturation, role/tool, evidence site, annotation, and Dynamic Workflow
 Lite governance, use `docs/process/CODEX_V104_SPEC.md` and the matching
 `docs/process/CODEX_*_POLICY.md` or schema files.
-For v1.0.5 through v1.0.8 integration reliability, lane separation,
+For v1.0.5 through v1.0.9 integration reliability, lane separation,
 provenance, evidence closure, bounded validation, safe repair mapping,
-branch isolation, review intake, manual gate audit, and controlled
-orchestration, use
+branch isolation, review intake, manual gate audit, controlled
+orchestration, decision ledger, and evidence convergence, use
 `docs/process/CODEX_V105_INTEGRATION_EVIDENCE_RELIABILITY_POLICY.md`,
 `docs/process/CODEX_V106_LANE_PROVENANCE_RECOVERY_POLICY.md`,
 `docs/process/CODEX_V107_GEAR_POLICY.md`,
