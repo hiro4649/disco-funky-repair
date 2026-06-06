@@ -85,14 +85,11 @@ export function buildRemoteProductEvidenceRunnerReport(input = parseJson(process
   const npmExitCode = Number(input.npmExitCode ?? process.env.CODEX_NPM_EXIT_CODE ?? 0);
   const npmExecuted = parseBool(input.npmExecuted) || process.env.CODEX_REMOTE_NPM_EXECUTED === '1';
   const runnerStatus = npmExitCode === 0 ? 'pass' : 'fail';
-  const commandClass = String(input.commandClass || process.env.CODEX_NPM_COMMAND_CLASS || 'npm_test').slice(0, 80);
-  const packageScope = String(input.packageScope || process.env.CODEX_NPM_PACKAGE_SCOPE || '.').slice(0, 120);
-  const cwd = String(input.cwd || process.env.CODEX_NPM_CWD || '.').slice(0, 120);
   if (scanObjectForUnsafe(input).length || parseBool(input.rawLogsIncluded) || parseBool(input.rawStdoutIncluded) || parseBool(input.rawStderrIncluded)) reasonCodes.push('remote_product_evidence_runner_failed');
   if (productRelevant && !npmExecuted) reasonCodes.push('remote_npm_not_executed_for_product_pr');
   if (productRelevant && input.headSha === '') reasonCodes.push('remote_product_evidence_runner_failed');
-  if (productRelevant && npmExitCode !== 0) reasonCodes.push('remote_product_evidence_runner_failed');
-  return safe('remoteProductEvidenceRunnerStatus', reasonCodes.length ? 'fail' : 'pass', { reasonCodes, productRelevant, npmExecuted, npmExitCode, runnerStatus, cwd, packageScope, commandClass });
+  if (productRelevant && npmExitCode !== 0 && parseBool(input.reportedPass)) reasonCodes.push('remote_product_evidence_runner_failed');
+  return safe('remoteProductEvidenceRunnerStatus', reasonCodes.length ? 'fail' : 'pass', { reasonCodes, productRelevant, npmExecuted, npmExitCode, runnerStatus });
 }
 
 export function buildRemoteProductSafeArtifacts(input = parseJson(process.env.CODEX_REMOTE_PRODUCT_EVIDENCE_RUNNER_JSON) || {}, env = process.env) {
@@ -106,14 +103,10 @@ export function buildRemoteProductSafeArtifacts(input = parseJson(process.env.CO
   const evidenceStatus = !productRelevant ? 'not_applicable' : npmExitCode === 0 ? 'pass' : 'fail';
   const failureClass = npmExitCode === 0 ? '' : String(input.failureClass || 'unknown_npm_failure').slice(0, 80);
   const command = String(input.command || 'npm test').slice(0, 80);
-  const commandClass = String(input.commandClass || env.CODEX_NPM_COMMAND_CLASS || 'npm_test').slice(0, 80);
-  const packageScope = String(input.packageScope || env.CODEX_NPM_PACKAGE_SCOPE || '.').slice(0, 120);
-  const cwd = String(input.cwd || env.CODEX_NPM_CWD || '.').slice(0, 120);
   const evidence = {
     schemaVersion: '0.8.3', harnessVersion: HARNESS_VERSION, headSha, baseSha,
     eventName: String(input.eventName || env.CODEX_EVENT_NAME || '').slice(0, 60),
     isPullRequest: isPullRequest(input, env), productRelevant, npmExecuted, npmExitCode,
-    cwd, packageScope, commandClass,
     status: evidenceStatus, evidenceType: productRelevant ? 'remote_npm_test' : 'not_applicable',
     commands: productRelevant ? [{ name: command, required: true, result: evidenceStatus === 'pass' ? 'pass' : 'fail', source: 'remote', durationMs: null, testCount: null, safeSummary: evidenceStatus === 'pass' ? 'remote npm test completed' : 'remote npm test failed with safe diagnostic' }] : [],
     failureClass: failureClass || undefined, safeReasonCodes: failureClass ? [failureClass] : [],
@@ -125,7 +118,7 @@ export function buildRemoteProductSafeArtifacts(input = parseJson(process.env.CO
     nodeMajor: Number(env.CODEX_NODE_MAJOR || process.versions.node.split('.')[0]),
     platform: String(input.platform || env.RUNNER_OS || process.platform || 'unknown').slice(0, 60),
     os: String(input.os || process.platform || 'unknown').slice(0, 60),
-    packageManager: 'npm', commandClass, packageScope, cwd,
+    packageManager: 'npm', commandClass: 'npm_test',
     safeFailureCategory: npmExitCode === 0 ? 'test_assertion_failure' : failureClass || 'unknown_npm_failure',
     safeMarkerCount: null, testCountDetected: null, durationMs: null, knownBaselineMatched: false,
     rawLogUploaded: false, rawValuesStored: false,
