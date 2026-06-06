@@ -4,19 +4,58 @@ import fs from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { HARNESS_VERSION, readJson, scanObjectForUnsafe, simpleStatus, writeJsonReport, exitFor } from './codex-v080-lib.mjs';
 
+function statusOf(value) {
+  return value?.status || 'missing';
+}
+
+function buildCanonicalMergeEvidenceStatus(report = {}) {
+  const statuses = {
+    v108SelfTestStatus: report.v108SelfTestStatus || { status: 'missing', safeSummaryOnly: true },
+    safeOutputScanStatus: report.safeOutputScanStatus || { status: 'missing', safeSummaryOnly: true },
+    targetQualityScoreStatus: report.targetQualityScoreStatus || report.qualityScoreStatus || { status: 'missing', safeSummaryOnly: true },
+    reasonSummaryStatus: report.reasonSummaryStatus || (report.reasonSummary?.status ? { status: report.reasonSummary.status, safeSummaryOnly: true } : { status: 'missing', safeSummaryOnly: true }),
+    finalReportStatus: report.targetFinalSummaryStatus || { status: 'not_applicable', reasonCodes: ['final_summary_current_artifact'], safeSummaryOnly: true },
+    selfTestCaseExportStatus: report.selfTestCaseExportStatus || { status: 'missing', safeSummaryOnly: true },
+  };
+  const reasonCodes = Object.entries(statuses)
+    .filter(([, value]) => !['pass', 'manual_confirmation_required', 'not_applicable'].includes(statusOf(value)))
+    .map(([key, value]) => `${key}_${statusOf(value)}_not_pass`);
+  return {
+    status: reasonCodes.length ? 'fail' : 'pass',
+    requiredStatusKeys: Object.keys(statuses),
+    statuses,
+    headSha: report.headSha || process.env.CODEX_PR_HEAD_SHA || process.env.GITHUB_SHA || '',
+    runId: report.runId || process.env.GITHUB_RUN_ID || '',
+    artifactId: report.artifactId || process.env.CODEX_SAFE_ARTIFACT_ID || '',
+    reasonCodes,
+    safeSummaryOnly: true,
+  };
+}
+
 export function buildFinalSummary(report = {}, mode = report.targetQualityScoreStatus ? 'target' : 'source') {
+  const canonicalMergeEvidenceStatus = report.canonicalMergeEvidenceStatus || buildCanonicalMergeEvidenceStatus(report);
   const summary = {
     schemaVersion: '0.8.3',
     harnessVersion: HARNESS_VERSION,
+    activeSelfTestSuite: 'v108',
+    activeSelfTestStatusKey: 'v108SelfTestStatus',
     repo: report.repository || process.env.CODEX_REPOSITORY || '',
     mode,
     headSha: report.headSha || process.env.CODEX_PR_HEAD_SHA || process.env.GITHUB_SHA || '',
     targetQualityScore: report.targetQualityScoreStatus?.score ?? null,
+    targetQualityScoreStatus: statusOf(report.targetQualityScoreStatus || report.qualityScoreStatus),
     sourceQualityScore: report.qualityScoreStatus?.score ?? null,
     agentsContext: report.agentsContextStatus?.status || 'missing',
     changeClassification: report.changeClassificationStatus?.status || 'missing',
     productVerification: report.productVerificationStatus?.status || 'missing',
     baselineStatus: report.remoteProductBaselineStatus?.status || 'not_applicable',
+    v108SelfTestStatus: statusOf(report.v108SelfTestStatus),
+    safeOutputScanStatus: statusOf(report.safeOutputScanStatus),
+    canonicalMergeEvidenceStatus: canonicalMergeEvidenceStatus.status,
+    canonicalMergeEvidence: canonicalMergeEvidenceStatus,
+    reasonSummaryStatus: report.reasonSummaryStatus?.status || report.reasonSummary?.status || 'missing',
+    finalReportStatus: statusOf(report.targetFinalSummaryStatus) === 'missing' ? 'current_artifact' : statusOf(report.targetFinalSummaryStatus),
+    selfTestCaseExportStatus: statusOf(report.selfTestCaseExportStatus),
     npmDiagnostic: report.remoteNpmDiagnosticStatus?.status || 'not_applicable',
     codeReviewMonitor: report.codeReviewMonitorStatus?.status || 'missing',
     promptGovernance: report.promptGovernanceStatus?.status || 'missing',

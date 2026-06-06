@@ -361,6 +361,7 @@ jobs:
             codex-source-final-summary.json
             codex-target-final-summary.json
             codex-safe-artifact-index.json
+            codex-canonical-merge-evidence.safe.json
             codex-safe-artifact-classification.safe.json
             codex-pr-evidence-rendered.safe.json
             codex-evidence-auto-repair-hint.safe.json
