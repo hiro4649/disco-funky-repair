@@ -130,42 +130,18 @@ jobs:
           export CODEX_CHANGED_FILES="$changed_files"
           classification_json="$(CODEX_QUALITY_REPORT=json node scripts/codex-change-classification-gate.mjs || true)"
           product_relevant="$(CLASSIFICATION_JSON="$classification_json" node -e "const r=JSON.parse(process.env.CLASSIFICATION_JSON||'{}'); const s=r.changeClassificationStatus||{}; process.stdout.write(s.productRelevantChanged||s.runtimeReadinessClaimed||s.packageOrLockfileChanged?'1':'0')")"
-          backend_changed="$(printf '%s\n' "$changed_files" | grep -E '^apps/backend/' >/dev/null && echo 1 || echo 0)"
-          frontend_changed="$(printf '%s\n' "$changed_files" | grep -E '^apps/frontend/' >/dev/null && echo 1 || echo 0)"
-          contracts_changed="$(printf '%s\n' "$changed_files" | grep -E '^contracts/' >/dev/null && echo 1 || echo 0)"
-          root_package_changed="$(printf '%s\n' "$changed_files" | grep -E '^(package.json|package-lock.json|yarn.lock|pnpm-lock.yaml)$' >/dev/null && echo 1 || echo 0)"
-          package_scope="."
-          npm_cwd="."
-          npm_command_class="npm_test"
-          npm_command="npm test"
-          if [ "$backend_changed" = "1" ] && [ "$frontend_changed" = "0" ] && [ "$contracts_changed" = "0" ] && [ "$root_package_changed" = "0" ] && [ -f "apps/backend/package.json" ]; then
-            package_scope="apps/backend"
-            npm_cwd="apps/backend"
-            npm_command_class="backend_npm_test"
-            npm_command="cd apps/backend && npm test"
-          fi
           npm_exit=0
           npm_executed=0
           if [ "$product_relevant" = "1" ]; then
             npm_executed=1
             echo "CODEX_SKIP_NPM=0" >> "$GITHUB_ENV"
-            if [ "$npm_cwd" != "." ]; then
-              (cd "$npm_cwd" && npm test > "$RUNNER_TEMP/codex-npm-test.raw.log" 2>&1) || npm_exit=$?
-            elif [ -f package.json ]; then
-              npm test > "$RUNNER_TEMP/codex-npm-test.raw.log" 2>&1 || npm_exit=$?
-            else
-              npm_exit=254
-              npm_command_class="command_scope_mismatch"
-            fi
+            npm test > "$RUNNER_TEMP/codex-npm-test.raw.log" 2>&1 || npm_exit=$?
           else
             echo "CODEX_SKIP_NPM=1" >> "$GITHUB_ENV"
           fi
           echo "CODEX_REMOTE_NPM_EXECUTED=$npm_executed" >> "$GITHUB_ENV"
           echo "CODEX_NPM_EXIT_CODE=$npm_exit" >> "$GITHUB_ENV"
-          echo "CODEX_NPM_COMMAND_CLASS=$npm_command_class" >> "$GITHUB_ENV"
-          echo "CODEX_NPM_PACKAGE_SCOPE=$package_scope" >> "$GITHUB_ENV"
-          echo "CODEX_NPM_CWD=$npm_cwd" >> "$GITHUB_ENV"
-          runner_json="$(PRODUCT_RELEVANT="$product_relevant" NPM_EXECUTED="$npm_executed" NPM_EXIT_CODE="$npm_exit" NPM_COMMAND="$npm_command" NPM_COMMAND_CLASS="$npm_command_class" NPM_PACKAGE_SCOPE="$package_scope" NPM_CWD="$npm_cwd" node -e "const input={productRelevant:process.env.PRODUCT_RELEVANT==='1',isPullRequest:process.env.CODEX_EVENT_NAME==='pull_request',eventName:process.env.CODEX_EVENT_NAME||'',headSha:process.env.CODEX_PR_HEAD_SHA||'',baseSha:process.env.CODEX_PR_BASE_SHA||'',repository:process.env.CODEX_REPOSITORY||'',npmExecuted:process.env.NPM_EXECUTED==='1',npmExitCode:Number(process.env.NPM_EXIT_CODE||0),command:process.env.NPM_COMMAND||'npm test',commandClass:process.env.NPM_COMMAND_CLASS||'npm_test',packageScope:process.env.NPM_PACKAGE_SCOPE||'.',cwd:process.env.NPM_CWD||'.'}; process.stdout.write(JSON.stringify(input));")"
+          runner_json="$(PRODUCT_RELEVANT="$product_relevant" NPM_EXECUTED="$npm_executed" NPM_EXIT_CODE="$npm_exit" node -e "const input={productRelevant:process.env.PRODUCT_RELEVANT==='1',isPullRequest:process.env.CODEX_EVENT_NAME==='pull_request',eventName:process.env.CODEX_EVENT_NAME||'',headSha:process.env.CODEX_PR_HEAD_SHA||'',baseSha:process.env.CODEX_PR_BASE_SHA||'',repository:process.env.CODEX_REPOSITORY||'',npmExecuted:process.env.NPM_EXECUTED==='1',npmExitCode:Number(process.env.NPM_EXIT_CODE||0)}; process.stdout.write(JSON.stringify(input));")"
           CODEX_REMOTE_PRODUCT_EVIDENCE_OUT_DIR="$RUNNER_TEMP" CODEX_REMOTE_PRODUCT_EVIDENCE_RUNNER_JSON="$runner_json" node scripts/codex-remote-product-evidence-runner.mjs --write-artifacts
       - name: Run Codex quality gate
         shell: bash
@@ -385,6 +361,7 @@ jobs:
             codex-source-final-summary.json
             codex-target-final-summary.json
             codex-safe-artifact-index.json
+            codex-canonical-merge-evidence.safe.json
             codex-safe-artifact-classification.safe.json
             codex-pr-evidence-rendered.safe.json
             codex-evidence-auto-repair-hint.safe.json
