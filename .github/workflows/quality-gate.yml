@@ -132,16 +132,39 @@ jobs:
           product_relevant="$(CLASSIFICATION_JSON="$classification_json" node -e "const r=JSON.parse(process.env.CLASSIFICATION_JSON||'{}'); const s=r.changeClassificationStatus||{}; process.stdout.write(s.productRelevantChanged||s.runtimeReadinessClaimed||s.packageOrLockfileChanged?'1':'0')")"
           npm_exit=0
           npm_executed=0
+          command_cwd="."
+          package_scope="."
+          command_class="root_npm_test"
+          if printf '%s\n' "$changed_files" | grep -q '^apps/backend/'; then
+            command_cwd="apps/backend"
+            package_scope="apps/backend"
+            command_class="backend_npm_test"
+          elif printf '%s\n' "$changed_files" | grep -q '^contracts/'; then
+            command_cwd="contracts"
+            package_scope="contracts"
+            command_class="contracts_npm_test"
+          elif printf '%s\n' "$changed_files" | grep -q '^apps/frontend/'; then
+            command_cwd="apps/frontend"
+            package_scope="apps/frontend"
+            command_class="frontend_test_or_build"
+          fi
           if [ "$product_relevant" = "1" ]; then
             npm_executed=1
             echo "CODEX_SKIP_NPM=0" >> "$GITHUB_ENV"
-            npm test > "$RUNNER_TEMP/codex-npm-test.raw.log" 2>&1 || npm_exit=$?
+            if [ -f "$command_cwd/package.json" ]; then
+              (cd "$command_cwd" && npm test > "$RUNNER_TEMP/codex-npm-test.raw.log" 2>&1) || npm_exit=$?
+            else
+              npm_exit=254
+            fi
           else
             echo "CODEX_SKIP_NPM=1" >> "$GITHUB_ENV"
           fi
           echo "CODEX_REMOTE_NPM_EXECUTED=$npm_executed" >> "$GITHUB_ENV"
           echo "CODEX_NPM_EXIT_CODE=$npm_exit" >> "$GITHUB_ENV"
-          runner_json="$(PRODUCT_RELEVANT="$product_relevant" NPM_EXECUTED="$npm_executed" NPM_EXIT_CODE="$npm_exit" node -e "const input={productRelevant:process.env.PRODUCT_RELEVANT==='1',isPullRequest:process.env.CODEX_EVENT_NAME==='pull_request',eventName:process.env.CODEX_EVENT_NAME||'',headSha:process.env.CODEX_PR_HEAD_SHA||'',baseSha:process.env.CODEX_PR_BASE_SHA||'',repository:process.env.CODEX_REPOSITORY||'',npmExecuted:process.env.NPM_EXECUTED==='1',npmExitCode:Number(process.env.NPM_EXIT_CODE||0)}; process.stdout.write(JSON.stringify(input));")"
+          echo "CODEX_NPM_COMMAND_CLASS=$command_class" >> "$GITHUB_ENV"
+          echo "CODEX_NPM_COMMAND_CWD=$command_cwd" >> "$GITHUB_ENV"
+          echo "CODEX_NPM_PACKAGE_SCOPE=$package_scope" >> "$GITHUB_ENV"
+          runner_json="$(PRODUCT_RELEVANT="$product_relevant" NPM_EXECUTED="$npm_executed" NPM_EXIT_CODE="$npm_exit" COMMAND_CWD="$command_cwd" PACKAGE_SCOPE="$package_scope" COMMAND_CLASS="$command_class" node -e "const input={productRelevant:process.env.PRODUCT_RELEVANT==='1',isPullRequest:process.env.CODEX_EVENT_NAME==='pull_request',eventName:process.env.CODEX_EVENT_NAME||'',headSha:process.env.CODEX_PR_HEAD_SHA||'',baseSha:process.env.CODEX_PR_BASE_SHA||'',repository:process.env.CODEX_REPOSITORY||'',npmExecuted:process.env.NPM_EXECUTED==='1',npmExitCode:Number(process.env.NPM_EXIT_CODE||0),cwd:process.env.COMMAND_CWD||'',packageScope:process.env.PACKAGE_SCOPE||'',commandClass:process.env.COMMAND_CLASS||'',command:process.env.COMMAND_CWD?`cd ${process.env.COMMAND_CWD} && npm test`:'npm test'}; process.stdout.write(JSON.stringify(input));")"
           CODEX_REMOTE_PRODUCT_EVIDENCE_OUT_DIR="$RUNNER_TEMP" CODEX_REMOTE_PRODUCT_EVIDENCE_RUNNER_JSON="$runner_json" node scripts/codex-remote-product-evidence-runner.mjs --write-artifacts
       - name: Run Codex quality gate
         shell: bash
