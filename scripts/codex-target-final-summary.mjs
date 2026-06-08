@@ -2,7 +2,15 @@
 // CODEX_QUALITY_HARNESS_FILE v1.0.7
 import fs from 'node:fs';
 import { fileURLToPath } from 'node:url';
-import { HARNESS_VERSION, readJson, scanObjectForUnsafe, simpleStatus, writeJsonReport, exitFor } from './codex-v080-lib.mjs';
+import { readJson, scanObjectForUnsafe, simpleStatus, writeJsonReport, exitFor } from './codex-v080-lib.mjs';
+import { currentVersion } from './codex-harness-version.mjs';
+
+const HARNESS_VERSION = currentVersion;
+const marker = `CODEX_QUALITY_HARNESS_FILE v${HARNESS_VERSION}`;
+
+function currentStatus(field, status, extras = {}) {
+  return { ...simpleStatus(field, status, extras), marker, harnessVersion: HARNESS_VERSION };
+}
 
 export function buildFinalSummary(report = {}, mode = report.targetQualityScoreStatus ? 'target' : 'source') {
   const summary = {
@@ -184,11 +192,11 @@ export function buildFinalSummary(report = {}, mode = report.targetQualityScoreS
 
 export function buildFinalSummaryReport(env = process.env) {
   const file = env.CODEX_FINAL_SUMMARY_REPORT_PATH || env.CODEX_WORKFLOW_REPORT_PATH || process.argv[2];
-  if (!file) return simpleStatus('targetFinalSummaryStatus', 'not_applicable', { reasonCodes: ['final_summary_not_requested'] });
+  if (!file) return currentStatus('targetFinalSummaryStatus', 'not_applicable', { reasonCodes: ['final_summary_not_requested'] });
   const parsed = readJson(file);
-  if (!parsed.ok) return simpleStatus('targetFinalSummaryStatus', 'fail', { reasonCodes: ['target_final_summary_invalid'] });
+  if (!parsed.ok) return currentStatus('targetFinalSummaryStatus', 'fail', { reasonCodes: ['target_final_summary_invalid'] });
   const built = buildFinalSummary(parsed.value);
-  return simpleStatus('targetFinalSummaryStatus', built.status, {
+  return currentStatus('targetFinalSummaryStatus', built.status, {
     reasonCodes: built.reasonCodes,
     summary: built.summary,
   });
@@ -204,7 +212,7 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
     writeJsonReport(report, 'CODEX_TARGET_FINAL_SUMMARY_REPORT');
     exitFor(report);
   } catch {
-    const report = simpleStatus('targetFinalSummaryStatus', 'fail', { reasonCodes: ['target_final_summary_invalid'] });
+    const report = currentStatus('targetFinalSummaryStatus', 'fail', { reasonCodes: ['target_final_summary_invalid'] });
     writeJsonReport(report, 'CODEX_TARGET_FINAL_SUMMARY_REPORT');
     process.exit(1);
   }

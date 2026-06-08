@@ -8436,7 +8436,11 @@ async function runSourceHarnessGate() {
 
 
 
-  report.testCoverageEvidenceStatus = runGateScript('scripts/codex-test-coverage-evidence-gate.mjs', 'testCoverageEvidenceStatus', 'CODEX_TEST_COVERAGE_EVIDENCE_REPORT', gateEnv);
+  report.testCoverageEvidenceStatus = runGateScript('scripts/codex-test-coverage-evidence-gate.mjs', 'testCoverageEvidenceStatus', 'CODEX_TEST_COVERAGE_EVIDENCE_REPORT', {
+    ...gateEnv,
+    CODEX_PRODUCT_VERIFICATION_JSON: JSON.stringify(report.productVerificationStatus),
+    CODEX_PRODUCT_VERIFICATION_EVIDENCE_JSON: JSON.stringify(report.productVerificationEvidenceStatus),
+  });
 
 
 
@@ -10559,7 +10563,11 @@ async function runTargetHarnessGate() {
 
 
 
-  report.testCoverageEvidenceStatus = runGateScript('scripts/codex-test-coverage-evidence-gate.mjs', 'testCoverageEvidenceStatus', 'CODEX_TEST_COVERAGE_EVIDENCE_REPORT', gateEnv);
+  report.testCoverageEvidenceStatus = runGateScript('scripts/codex-test-coverage-evidence-gate.mjs', 'testCoverageEvidenceStatus', 'CODEX_TEST_COVERAGE_EVIDENCE_REPORT', {
+    ...gateEnv,
+    CODEX_PRODUCT_VERIFICATION_JSON: JSON.stringify(report.productVerificationStatus),
+    CODEX_PRODUCT_VERIFICATION_EVIDENCE_JSON: JSON.stringify(report.productVerificationEvidenceStatus),
+  });
 
 
 
