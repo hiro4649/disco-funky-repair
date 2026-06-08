@@ -2,6 +2,7 @@
 // CODEX_QUALITY_HARNESS_FILE v1.0.7
 import { prBodyText, isPrContext, readJson, simpleStatus, writeJsonReport, exitFor } from './codex-v080-lib.mjs';
 import { currentVersion } from './codex-harness-version.mjs';
+import { fileURLToPath } from 'node:url';
 
 const HARNESS_VERSION = currentVersion;
 const marker = `CODEX_QUALITY_HARNESS_FILE v${HARNESS_VERSION}`;
@@ -74,18 +75,20 @@ export function buildReport(env = process.env) {
   });
 }
 
-try {
-  const report = buildReport();
-  writeJsonReport(report, 'CODEX_TEST_COVERAGE_EVIDENCE_REPORT');
-  exitFor(report);
-} catch {
-  const report = {
-    marker,
-    harnessVersion: HARNESS_VERSION,
-    testCoverageEvidenceStatus: { status: 'fail', reasonCodes: ['unexpected_error'], safeSummaryOnly: true },
-    valuesPrinted: false,
-    status: 'fail',
-  };
-  writeJsonReport(report, 'CODEX_TEST_COVERAGE_EVIDENCE_REPORT');
-  process.exit(1);
+if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
+  try {
+    const report = buildReport();
+    writeJsonReport(report, 'CODEX_TEST_COVERAGE_EVIDENCE_REPORT');
+    exitFor(report);
+  } catch {
+    const report = {
+      marker,
+      harnessVersion: HARNESS_VERSION,
+      testCoverageEvidenceStatus: { status: 'fail', reasonCodes: ['unexpected_error'], safeSummaryOnly: true },
+      valuesPrinted: false,
+      status: 'fail',
+    };
+    writeJsonReport(report, 'CODEX_TEST_COVERAGE_EVIDENCE_REPORT');
+    process.exit(1);
+  }
 }
