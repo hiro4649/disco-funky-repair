@@ -117,7 +117,7 @@ export function buildRemoteProductSafeArtifacts(input = parseJson(process.env.CO
     activeSelfTestStatusKey,
   };
   const evidence = {
-    schemaVersion: '1.1.2', ...versionFields, headSha, baseSha,
+    schemaVersion: artifactHarnessVersion, ...versionFields, headSha, baseSha,
     eventName: String(input.eventName || env.CODEX_EVENT_NAME || '').slice(0, 60),
     isPullRequest: isPullRequest(input, env), productRelevant, npmExecuted, npmExitCode,
     cwd, packageScope, commandClass,
@@ -127,7 +127,7 @@ export function buildRemoteProductSafeArtifacts(input = parseJson(process.env.CO
     rawLogsIncluded: false, safeSummaryOnly: true,
   };
   const diagnostic = {
-    schemaVersion: '1.1.2', ...versionFields,
+    schemaVersion: artifactHarnessVersion, ...versionFields,
     npmExitCode: productRelevant ? npmExitCode : null,
     npmExecuted,
     cwd,
@@ -142,7 +142,7 @@ export function buildRemoteProductSafeArtifacts(input = parseJson(process.env.CO
     diagnosticType: productRelevant ? 'remote_npm_diagnostic' : 'not_applicable', safeSummaryOnly: true,
   };
   const baseline = {
-    schemaVersion: '1.1.2', ...versionFields, repository, baseSha,
+    schemaVersion: artifactHarnessVersion, ...versionFields, repository, baseSha,
     baselineType: productRelevant ? 'remote_product_verification' : 'not_applicable',
     cwd, packageScope, commandClass,
     commands: productRelevant ? [command] : [], result: evidenceStatus === 'not_applicable' ? 'pass' : evidenceStatus,
