@@ -5,6 +5,8 @@ import { writeJsonReport, exitFor } from './codex-v080-lib.mjs';
 import { buildRemoteProductSafeArtifacts } from './codex-v098-gate-lib.mjs';
 import { buildFormalEvidencePrecedenceReport, buildRemoteNpmDiagnosticNormalizationReport } from './codex-v099-gate-lib.mjs';
 import { buildRemoteProductBaselineReport } from './codex-remote-product-baseline-gate.mjs';
+import { buildFinalSummary } from './codex-target-final-summary.mjs';
+import { buildReport as buildTestCoverageEvidenceReport } from './codex-test-coverage-evidence-gate.mjs';
 import {
   BOUNDARY_PROFILES,
   V113_STATUS_KEYS,
@@ -103,6 +105,24 @@ const formalBackendClassifiedDiagnostic = buildRemoteNpmDiagnosticNormalizationR
     safeSummaryOnly: true,
   },
 }).remoteNpmDiagnosticNormalizationStatus;
+const formalBackendCoverage = buildTestCoverageEvidenceReport({
+  CODEX_EVENT_NAME: 'pull_request',
+  CODEX_PR_BODY: 'Product code changed: yes\nimplementation change',
+  CODEX_PRODUCT_VERIFICATION_JSON: JSON.stringify({ status: 'pass' }),
+  CODEX_PRODUCT_VERIFICATION_EVIDENCE_JSON: JSON.stringify({ status: 'pass' }),
+}).testCoverageEvidenceStatus;
+const missingCoverage = buildTestCoverageEvidenceReport({
+  CODEX_EVENT_NAME: 'pull_request',
+  CODEX_PR_BODY: 'Product code changed: yes\nimplementation change',
+}).testCoverageEvidenceStatus;
+const targetFinalSummary = buildFinalSummary({
+  targetQualityScoreStatus: { status: 'pass', score: 95 },
+  productVerificationStatus: { status: 'pass' },
+  productVerificationEvidenceStatus: { status: 'pass' },
+  remoteProductBaselineStatus: { status: 'pass' },
+  remoteNpmDiagnosticStatus: { status: 'pass' },
+  testCoverageEvidenceStatus: { status: 'pass' },
+}, 'target');
 
 const cases = [
   test('all_v113_status_keys_default_pass', () => V113_STATUS_KEYS.every((key) => statuses[key]?.status === 'pass')),
@@ -144,6 +164,9 @@ const cases = [
   test('remote_evidence_state_split_not_required', () => splitRemoteEvidenceState({ required: false }) === 'not_required'),
   test('remote_evidence_state_split_failed_execution', () => splitRemoteEvidenceState({ required: true, executed: true, artifactPresent: true, pass: false }) === 'executed_fail'),
   test('formal_backend_evidence_v113_consumed_as_pass', () => formalBackendEvidence.evidence.schemaVersion === '1.1.3' && formalBackendBaseline.status === 'pass' && formalBackendPrecedence.status === 'pass' && formalBackendDiagnostic.status === 'pass' && formalBackendClassifiedDiagnostic.status === 'pass'),
+  test('target_final_summary_uses_active_v113_version', () => targetFinalSummary.summary.harnessVersion === '1.1.3' && targetFinalSummary.status === 'pass'),
+  test('test_coverage_accepts_formal_product_evidence_pass', () => formalBackendCoverage.status === 'pass' && formalBackendCoverage.source === 'formal_product_evidence'),
+  test('test_coverage_without_body_or_formal_evidence_still_fails', () => missingCoverage.status === 'fail'),
   test('non_runtime_shared_utility_profile_passes_safe_common_path', () => buildNonRuntimeSharedUtilityProfile({ files: ['src/common/safe-helper.ts'] }).status === 'pass'),
   test('non_runtime_shared_utility_profile_blocks_runtime_import', () => buildNonRuntimeSharedUtilityProfile({ runtimeImport: true }).status === 'fail'),
   test('artifact_payloads_are_safe_summary_only', () => report.artifacts.safeArtifactIndex.safeSummaryOnly === true && report.artifacts.minimalBlockers.safeSummaryOnly === true && report.artifacts.decisionObject.safeSummaryOnly === true),
