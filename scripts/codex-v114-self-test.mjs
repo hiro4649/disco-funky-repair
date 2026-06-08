@@ -1,7 +1,11 @@
 #!/usr/bin/env node
 // CODEX_QUALITY_HARNESS_FILE v1.1.4
 
+import fs from 'node:fs';
 import { writeJsonReport, exitFor } from './codex-v080-lib.mjs';
+import { currentVersion, activeSelfTestSuite, activeSelfTestStatusKey, buildHarnessVersionRegistry } from './codex-harness-version.mjs';
+import { buildRemoteProductSafeArtifacts } from './codex-v098-gate-lib.mjs';
+import { buildSafeArtifactIndex } from './codex-safe-artifact-index.mjs';
 import {
   V114_STATUS_KEYS,
   buildLoopBudget,
@@ -154,6 +158,25 @@ const funkyMissingRegistry = applyTargetActiveSelfTestRegistryMapping(funkyMissi
   localGateText: 'v114SelfTestStatus',
   selfTestPresent: true,
 });
+const harnessVersionRegistry = buildHarnessVersionRegistry();
+const remoteProductArtifacts = buildRemoteProductSafeArtifacts({
+  productRelevant: true,
+  isPullRequest: true,
+  eventName: 'pull_request',
+  headSha: 'head-v114',
+  repository: 'hiro4649/disco-funky-repair',
+  npmExecuted: true,
+  npmExitCode: 0,
+  cwd: 'apps/backend',
+  packageScope: 'apps/backend',
+  commandClass: 'backend_npm_test',
+});
+const safeArtifactIndex = buildSafeArtifactIndex([
+  { artifactName: 'codex-quality-gate-safe-summary.json', path: 'codex-quality-gate-safe-summary.json', status: 'present' },
+], 'target');
+const workflowText = fs.existsSync('.github/workflows/quality-gate.yml')
+  ? fs.readFileSync('.github/workflows/quality-gate.yml', 'utf8')
+  : '';
 
 const cases = [
   test('all_v114_status_keys_default_pass', () => V114_STATUS_KEYS.every((key) => report[key]?.status === 'pass')),
@@ -216,6 +239,11 @@ const cases = [
   test('funky_target_active_v114_registry_required', () => funkyActiveRegistry.status === 'pass' && funkyActiveRegistryFailures.length === 0 && funkyActiveRegistryReport.activeSelfTestRegistryStatus.targetModeMapping === true),
   test('funky_target_manifest_active_key_mismatch_remains_hard', () => funkyMissingRegistry.status === 'fail' && funkyMissingRegistryReport.activeSelfTestRegistryStatus.status === 'fail'),
   test('product_runtime_package_workflow_blockers_remain_hard', () => classifyGuardrailOperation('workflow_scope_violation').status === 'fail' && classifyGuardrailOperation('package_lockfile_scope_violation').status === 'fail'),
+  test('remote_artifacts_emit_v114_harness_version', () => currentVersion === '1.1.4' && activeSelfTestSuite === 'v114' && activeSelfTestStatusKey === 'v114SelfTestStatus'),
+  test('harness_version_registry_uses_current_v114_metadata', () => harnessVersionRegistry.currentVersion === '1.1.4' && harnessVersionRegistry.previousVersion === '1.1.3' && harnessVersionRegistry.activeSelfTestSuite === 'v114' && harnessVersionRegistry.activeSelfTestStatusKey === 'v114SelfTestStatus'),
+  test('remote_product_evidence_uses_current_v114_version', () => remoteProductArtifacts.evidence.harnessVersion === '1.1.4' && remoteProductArtifacts.evidence.activeSelfTestSuite === 'v114' && remoteProductArtifacts.evidence.activeSelfTestStatusKey === 'v114SelfTestStatus'),
+  test('safe_artifact_index_uses_current_v114_version', () => safeArtifactIndex.harnessVersion === '1.1.4'),
+  test('workflow_remote_product_checks_uses_current_v114_version', () => workflowText.includes('"schemaVersion":"1.1.4"') && workflowText.includes('"harnessVersion":"1.1.4"') && workflowText.includes('"activeSelfTestSuite":"v114"') && workflowText.includes('"activeSelfTestStatusKey":"v114SelfTestStatus"')),
 ];
 
 const failures = cases.filter((item) => item.status !== 'pass');
