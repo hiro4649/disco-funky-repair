@@ -11,6 +11,7 @@ import {
   exitFor,
 } from './codex-v080-lib.mjs';
 import { classifyChange, changedFiles } from './codex-change-classification-gate.mjs';
+import { currentVersion } from './codex-harness-version.mjs';
 
 const MAX_BASELINE_AGE_DAYS = 14;
 
@@ -70,8 +71,10 @@ function validateBaseline(input, env = process.env) {
   }
   if (scanObjectForUnsafe(baseline).length) failures.push('remote_product_baseline_invalid');
   if (baseline.rawValuesStored !== false || baseline.safeSummaryOnly !== true) failures.push('remote_product_baseline_invalid');
-  if (baseline.schemaVersion && baseline.schemaVersion !== '0.8.3') failures.push('remote_product_baseline_invalid');
-  if (baseline.harnessVersion && baseline.harnessVersion !== HARNESS_VERSION) failures.push('remote_product_baseline_invalid');
+  const acceptedSchemaVersions = new Set(['0.8.3', currentVersion]);
+  const acceptedHarnessVersions = new Set([HARNESS_VERSION, currentVersion]);
+  if (baseline.schemaVersion && !acceptedSchemaVersions.has(String(baseline.schemaVersion))) failures.push('remote_product_baseline_invalid');
+  if (baseline.harnessVersion && !acceptedHarnessVersions.has(String(baseline.harnessVersion))) failures.push('remote_product_baseline_invalid');
   if (env.CODEX_REPOSITORY && baseline.repository !== env.CODEX_REPOSITORY) failures.push('remote_product_baseline_invalid');
   if (env.CODEX_PR_BASE_SHA && baseline.baseSha !== env.CODEX_PR_BASE_SHA) failures.push('remote_product_baseline_invalid');
   if (!Array.isArray(baseline.commands) || !Array.isArray(baseline.knownFailures)) failures.push('remote_product_baseline_invalid');
