@@ -1,6 +1,32 @@
 #!/usr/bin/env node
 // CODEX_QUALITY_HARNESS_FILE v1.0.7
-import { HARNESS_VERSION, marker, prBodyText, isPrContext, simpleStatus, writeJsonReport, exitFor } from './codex-v080-lib.mjs';
+import { prBodyText, isPrContext, readJson, simpleStatus, writeJsonReport, exitFor } from './codex-v080-lib.mjs';
+import { currentVersion } from './codex-harness-version.mjs';
+import { fileURLToPath } from 'node:url';
+
+const HARNESS_VERSION = currentVersion;
+const marker = `CODEX_QUALITY_HARNESS_FILE v${HARNESS_VERSION}`;
+
+function currentStatus(field, status, extras = {}) {
+  return { ...simpleStatus(field, status, extras), marker, harnessVersion: HARNESS_VERSION };
+}
+
+function parseJsonValue(value) {
+  if (!value) return null;
+  try {
+    return JSON.parse(value);
+  } catch {
+    return null;
+  }
+}
+
+function readJsonValueOrFile(value) {
+  const inline = parseJsonValue(value);
+  if (inline) return inline;
+  if (!value) return null;
+  const parsed = readJson(value);
+  return parsed.ok ? parsed.value : null;
+}
 
 function docsOnly(body) {
   return /\b(docs-only|policy-only|documentation only|harness-only)\b/i.test(body) &&
@@ -21,32 +47,48 @@ function hasTestEvidence(body) {
     /edge cases|failure paths|reason if no test/i.test(body);
 }
 
-function buildReport(env = process.env) {
+function formalProductEvidencePass(env = process.env) {
+  const evidence = readJsonValueOrFile(env.CODEX_PRODUCT_VERIFICATION_EVIDENCE_JSON);
+  const productVerification = readJsonValueOrFile(env.CODEX_PRODUCT_VERIFICATION_JSON);
+  const evidenceStatus = evidence?.status || evidence?.productVerificationEvidenceStatus?.status;
+  const verificationStatus = productVerification?.status || productVerification?.productVerificationStatus?.status;
+  return evidenceStatus === 'pass' && (!verificationStatus || verificationStatus === 'pass');
+}
+
+export function buildReport(env = process.env) {
   const body = prBodyText(env);
   if (!isPrContext(env) && !body.trim()) {
-    return simpleStatus('testCoverageEvidenceStatus', 'not_applicable', { reasonCodes: ['non_pr_context'] });
+    return currentStatus('testCoverageEvidenceStatus', 'not_applicable', { reasonCodes: ['non_pr_context'] });
   }
   if (!requiresTestEvidence(body)) {
-    return simpleStatus('testCoverageEvidenceStatus', 'not_applicable', { reasonCodes: ['test_coverage_not_required'] });
+    return currentStatus('testCoverageEvidenceStatus', 'not_applicable', { reasonCodes: ['test_coverage_not_required'] });
+  }
+  if (formalProductEvidencePass(env)) {
+    return currentStatus('testCoverageEvidenceStatus', 'pass', {
+      reasonCodes: ['formal_product_evidence_pass'],
+      source: 'formal_product_evidence',
+    });
   }
   const status = hasTestEvidence(body) ? 'pass' : 'fail';
-  return simpleStatus('testCoverageEvidenceStatus', status, {
+  return currentStatus('testCoverageEvidenceStatus', status, {
     reasonCodes: status === 'pass' ? [] : ['test_coverage_evidence_missing'],
   });
 }
 
-try {
-  const report = buildReport();
-  writeJsonReport(report, 'CODEX_TEST_COVERAGE_EVIDENCE_REPORT');
-  exitFor(report);
-} catch {
-  const report = {
-    marker,
-    harnessVersion: HARNESS_VERSION,
-    testCoverageEvidenceStatus: { status: 'fail', reasonCodes: ['unexpected_error'], safeSummaryOnly: true },
-    valuesPrinted: false,
-    status: 'fail',
-  };
-  writeJsonReport(report, 'CODEX_TEST_COVERAGE_EVIDENCE_REPORT');
-  process.exit(1);
+if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
+  try {
+    const report = buildReport();
+    writeJsonReport(report, 'CODEX_TEST_COVERAGE_EVIDENCE_REPORT');
+    exitFor(report);
+  } catch {
+    const report = {
+      marker,
+      harnessVersion: HARNESS_VERSION,
+      testCoverageEvidenceStatus: { status: 'fail', reasonCodes: ['unexpected_error'], safeSummaryOnly: true },
+      valuesPrinted: false,
+      status: 'fail',
+    };
+    writeJsonReport(report, 'CODEX_TEST_COVERAGE_EVIDENCE_REPORT');
+    process.exit(1);
+  }
 }
