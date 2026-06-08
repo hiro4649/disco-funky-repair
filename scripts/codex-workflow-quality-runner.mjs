@@ -26,7 +26,11 @@ import { fileURLToPath } from 'node:url';
 
 
 
-import { HARNESS_VERSION, marker, parseArgs, simpleStatus, writeJsonReport } from './codex-v080-lib.mjs';
+import { parseArgs, simpleStatus, writeJsonReport } from './codex-v080-lib.mjs';
+import { currentVersion } from './codex-harness-version.mjs';
+
+const HARNESS_VERSION = currentVersion;
+const marker = `CODEX_QUALITY_HARNESS_FILE v${HARNESS_VERSION}`;
 
 
 
