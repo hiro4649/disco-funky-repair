@@ -95,6 +95,14 @@ const formalBackendDiagnostic = buildRemoteNpmDiagnosticNormalizationReport({
   productRelevant: true,
   remoteNpmDiagnostic: formalBackendEvidence.diagnostic,
 }).remoteNpmDiagnosticNormalizationStatus;
+const formalBackendClassifiedDiagnostic = buildRemoteNpmDiagnosticNormalizationReport({
+  productRelevant: true,
+  remoteNpmDiagnostic: {
+    status: 'pass',
+    diagnostic: formalBackendEvidence.diagnostic,
+    safeSummaryOnly: true,
+  },
+}).remoteNpmDiagnosticNormalizationStatus;
 
 const cases = [
   test('all_v113_status_keys_default_pass', () => V113_STATUS_KEYS.every((key) => statuses[key]?.status === 'pass')),
@@ -135,7 +143,7 @@ const cases = [
   test('repair_loop_prevention_blocks_third_repair', () => buildRepairLoopReport({ repairPrCount: 3 }).status === 'fail'),
   test('remote_evidence_state_split_not_required', () => splitRemoteEvidenceState({ required: false }) === 'not_required'),
   test('remote_evidence_state_split_failed_execution', () => splitRemoteEvidenceState({ required: true, executed: true, artifactPresent: true, pass: false }) === 'executed_fail'),
-  test('formal_backend_evidence_v113_consumed_as_pass', () => formalBackendEvidence.evidence.schemaVersion === '1.1.3' && formalBackendBaseline.status === 'pass' && formalBackendPrecedence.status === 'pass' && formalBackendDiagnostic.status === 'pass'),
+  test('formal_backend_evidence_v113_consumed_as_pass', () => formalBackendEvidence.evidence.schemaVersion === '1.1.3' && formalBackendBaseline.status === 'pass' && formalBackendPrecedence.status === 'pass' && formalBackendDiagnostic.status === 'pass' && formalBackendClassifiedDiagnostic.status === 'pass'),
   test('non_runtime_shared_utility_profile_passes_safe_common_path', () => buildNonRuntimeSharedUtilityProfile({ files: ['src/common/safe-helper.ts'] }).status === 'pass'),
   test('non_runtime_shared_utility_profile_blocks_runtime_import', () => buildNonRuntimeSharedUtilityProfile({ runtimeImport: true }).status === 'fail'),
   test('artifact_payloads_are_safe_summary_only', () => report.artifacts.safeArtifactIndex.safeSummaryOnly === true && report.artifacts.minimalBlockers.safeSummaryOnly === true && report.artifacts.decisionObject.safeSummaryOnly === true),
