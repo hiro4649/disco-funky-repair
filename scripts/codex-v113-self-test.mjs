@@ -2,6 +2,9 @@
 // CODEX_QUALITY_HARNESS_FILE v1.1.3
 
 import { writeJsonReport, exitFor } from './codex-v080-lib.mjs';
+import { buildRemoteProductSafeArtifacts } from './codex-v098-gate-lib.mjs';
+import { buildFormalEvidencePrecedenceReport, buildRemoteNpmDiagnosticNormalizationReport } from './codex-v099-gate-lib.mjs';
+import { buildRemoteProductBaselineReport } from './codex-remote-product-baseline-gate.mjs';
 import {
   BOUNDARY_PROFILES,
   V113_STATUS_KEYS,
@@ -60,6 +63,38 @@ const decisionAllowed = buildDecisionObject();
 const decisionBlocked = buildDecisionObject({ requiredCheckFailed: true });
 const artifactIndex = buildSafeArtifactIndex();
 const costLedger = buildConversationCostLedger();
+const formalBackendEvidence = buildRemoteProductSafeArtifacts({
+  productRelevant: true,
+  isPullRequest: true,
+  eventName: 'pull_request',
+  headSha: 'a'.repeat(40),
+  baseSha: 'b'.repeat(40),
+  repository: 'hiro4649/disco-funky-repair',
+  npmExecuted: true,
+  npmExitCode: 0,
+  cwd: 'apps/backend',
+  packageScope: 'apps/backend',
+  commandClass: 'backend_npm_test',
+  command: 'cd apps/backend && npm test',
+}, { CODEX_HARNESS_MODE: 'target' });
+const formalBackendBaseline = buildRemoteProductBaselineReport({
+  CODEX_HARNESS_MODE: 'target',
+  CODEX_EVENT_NAME: 'pull_request',
+  CODEX_REPOSITORY: 'hiro4649/disco-funky-repair',
+  CODEX_PR_BASE_SHA: 'b'.repeat(40),
+  CODEX_CHANGED_FILES: 'apps/backend/src/app/lib/tierUpdateSafeDbReadExportJsonlPackage.ts',
+  CODEX_REMOTE_PRODUCT_BASELINE_JSON: JSON.stringify(formalBackendEvidence.baseline),
+}).remoteProductBaselineStatus;
+const formalBackendPrecedence = buildFormalEvidencePrecedenceReport({
+  productRelevant: true,
+  formalEvidence: formalBackendEvidence.evidence,
+  formalBaseline: formalBackendEvidence.baseline,
+  formalDiagnostic: formalBackendEvidence.diagnostic,
+}).formalEvidencePrecedenceStatus;
+const formalBackendDiagnostic = buildRemoteNpmDiagnosticNormalizationReport({
+  productRelevant: true,
+  remoteNpmDiagnostic: formalBackendEvidence.diagnostic,
+}).remoteNpmDiagnosticNormalizationStatus;
 
 const cases = [
   test('all_v113_status_keys_default_pass', () => V113_STATUS_KEYS.every((key) => statuses[key]?.status === 'pass')),
@@ -100,6 +135,7 @@ const cases = [
   test('repair_loop_prevention_blocks_third_repair', () => buildRepairLoopReport({ repairPrCount: 3 }).status === 'fail'),
   test('remote_evidence_state_split_not_required', () => splitRemoteEvidenceState({ required: false }) === 'not_required'),
   test('remote_evidence_state_split_failed_execution', () => splitRemoteEvidenceState({ required: true, executed: true, artifactPresent: true, pass: false }) === 'executed_fail'),
+  test('formal_backend_evidence_v113_consumed_as_pass', () => formalBackendEvidence.evidence.schemaVersion === '1.1.3' && formalBackendBaseline.status === 'pass' && formalBackendPrecedence.status === 'pass' && formalBackendDiagnostic.status === 'pass'),
   test('non_runtime_shared_utility_profile_passes_safe_common_path', () => buildNonRuntimeSharedUtilityProfile({ files: ['src/common/safe-helper.ts'] }).status === 'pass'),
   test('non_runtime_shared_utility_profile_blocks_runtime_import', () => buildNonRuntimeSharedUtilityProfile({ runtimeImport: true }).status === 'fail'),
   test('artifact_payloads_are_safe_summary_only', () => report.artifacts.safeArtifactIndex.safeSummaryOnly === true && report.artifacts.minimalBlockers.safeSummaryOnly === true && report.artifacts.decisionObject.safeSummaryOnly === true),
