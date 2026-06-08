@@ -677,6 +677,31 @@ export const runTierUpdateSafeDbReadExportFromSource = async (
 
   const reviewPacket = buildTierUpdateOperatorReviewPacket({
     operatorPackage,
+    safeDbReadExportPackage: {
+      status: operatorPackage.status === 'pass' && blockers.size === 0 && unsafeReasonCodes.size === 0
+        ? 'EXPORT_PACKAGE_READY'
+        : 'BLOCKED',
+      packageKind: 'tier_update_safe_db_read_export_foundation',
+      recordCount: operatorPackage.recordCount,
+      entityCounts: operatorPackage.entityCounts,
+      readinessClaimCounts: operatorPackage.readinessClaimCounts,
+      evidenceOriginCounts: operatorPackage.evidenceOriginCounts,
+      jsonlSha256Summary: operatorPackage.status === 'pass' ? operatorPackage.jsonlSha256Summary : null,
+      readinessClaim: 'none',
+      stagingNoTxPreflightStatus: 'BLOCKED',
+      runtimeReadinessClaimed: false,
+      productionReadinessClaimed: false,
+      actualDbExport: false,
+      realDbQuery: false,
+      prismaClientUsed: false,
+      fileExported: false,
+      artifactUploaded: false,
+      dockerSmoke: false,
+      blockers: Array.from(blockers).sort(),
+      missingEvidence: Array.from(missingEvidence).sort(),
+      unsafeReasonCodes: Array.from(unsafeReasonCodes).sort(),
+      safeSummaryOnly: true
+    },
     stagingNoTxEvidence: makeStagingEvidenceForPacket(stagingEvidenceForPacket, input.plan),
     auditExportId: input.plan.auditExportId,
     sourceHeadSha: input.plan.sourceHeadSha,

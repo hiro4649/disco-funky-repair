@@ -165,10 +165,38 @@ const makeOperatorPackage = (
   includeJsonl
 });
 
+const makeSafeDbReadExportPackage = (
+  overrides: Record<string, unknown> = {}
+): NonNullable<Parameters<typeof buildTierUpdateOperatorReviewPacket>[0]['safeDbReadExportPackage']> => ({
+  status: 'EXPORT_PACKAGE_READY',
+  packageKind: 'tier_update_safe_db_read_export_jsonl_package',
+  recordCount: 2,
+  entityCounts: { scheduled_tier_update: 1, job_run: 1 },
+  readinessClaimCounts: { none: 2 },
+  evidenceOriginCounts: { db_safe_summary: 2 },
+  jsonlSha256Summary: `sha256:${'a'.repeat(64)}`,
+  readinessClaim: 'none',
+  stagingNoTxPreflightStatus: 'BLOCKED',
+  runtimeReadinessClaimed: false,
+  productionReadinessClaimed: false,
+  actualDbExport: false,
+  realDbQuery: false,
+  prismaClientUsed: false,
+  fileExported: false,
+  artifactUploaded: false,
+  dockerSmoke: false,
+  blockers: [],
+  missingEvidence: [],
+  unsafeReasonCodes: [],
+  safeSummaryOnly: true,
+  ...overrides
+});
+
 const buildPacket = (
   overrides: Partial<Parameters<typeof buildTierUpdateOperatorReviewPacket>[0]> = {}
 ) => buildTierUpdateOperatorReviewPacket({
   operatorPackage: makeOperatorPackage(),
+  safeDbReadExportPackage: makeSafeDbReadExportPackage(),
   stagingNoTxEvidence: makeStagingEvidence(),
   auditExportId,
   sourceHeadSha,
@@ -214,6 +242,32 @@ describe('tierUpdateOperatorReviewPacket', () => {
       includeJsonl: false
     }));
     expect(packet.packageSummary.jsonlSha256Summary).toMatch(/^sha256:[a-f0-9]{64}$/);
+    expect(packet.safeDbReadExportEvidenceStatus).toBe('OWNER_REVIEW_READY');
+    expect(packet.safeDbReadExportPackageStatus).toBe('EXPORT_PACKAGE_READY');
+    expect(packet.safeDbReadExportRecordCount).toBe(2);
+    expect(packet.safeDbReadExportEntityCounts).toEqual({ scheduled_tier_update: 1, job_run: 1 });
+    expect(packet.safeDbReadExportReadinessClaimCounts).toEqual({ none: 2 });
+    expect(packet.safeDbReadExportEvidenceOriginCounts).toEqual({ db_safe_summary: 2 });
+    expect(packet.safeDbReadExportJsonlSha256Summary).toMatch(/^sha256:[a-f0-9]{64}$/);
+    expect(packet.safeDbReadExportOwnerReviewBoundary).toEqual({
+      ownerReviewReadyIsPass: false,
+      ownerReviewReadyIsStagingReady: false,
+      ownerReviewReadyIsRuntimeReady: false,
+      ownerReviewReadyIsProductionReady: false,
+      safeSummaryOnly: true
+    });
+    expect(packet.safeDbReadExportNoRuntimeBoundary).toEqual({
+      actualDbExport: false,
+      realDbQuery: false,
+      prismaClientUsed: false,
+      fileExported: false,
+      artifactUploaded: false,
+      dockerSmoke: false,
+      runtimeReadinessClaimed: false,
+      productionReadinessClaimed: false,
+      stagingNoTxPassClaimed: false,
+      safeSummaryOnly: true
+    });
     expect(packet.stagingNoTxEvidenceSummary).toEqual(expect.objectContaining({
       stagingNoTxPreflightStatus: 'BLOCKED',
       readinessClaim: 'none',
@@ -243,6 +297,7 @@ describe('tierUpdateOperatorReviewPacket', () => {
     expect(serialized).not.toContain(reviewerId);
     expect(serialized).not.toContain(runKey);
     expect(serialized).not.toContain('"jsonl"');
+    expect(serialized).not.toContain('{"schema_version"');
     expect(serialized).not.toContain('rawReceipt');
     expect(serialized).not.toContain('rawError');
     expect(serialized).not.toContain('rpcUrl');
@@ -251,13 +306,19 @@ describe('tierUpdateOperatorReviewPacket', () => {
 
   it.each([
     ['operatorPackage', { operatorPackage: undefined }, 'operator_package_missing'],
+    ['safeDbReadExportPackage', { safeDbReadExportPackage: undefined }, 'safeDbReadExportPackage'],
     ['stagingNoTxEvidence', { stagingNoTxEvidence: undefined }, 'staging_no_tx_evidence_missing']
   ])('blocks when %s is missing', (_label, override, blocker) => {
     const packet = buildPacket(override);
 
-    expect(packet.status).toBe('BLOCKED');
-    expect(packet.nextActionLabel).toBe('stay_blocked');
-    expect(packet.blockers).toContain(blocker);
+    if (_label === 'safeDbReadExportPackage') {
+      expect(packet.status).toBe('NEEDS_REVIEW');
+      expect(packet.missingEvidence).toContain(blocker);
+    } else {
+      expect(packet.status).toBe('BLOCKED');
+      expect(packet.nextActionLabel).toBe('stay_blocked');
+      expect(packet.blockers).toContain(blocker);
+    }
   });
 
   it.each([
@@ -340,6 +401,65 @@ describe('tierUpdateOperatorReviewPacket', () => {
     expect(zeroRecords.nextActionLabel).toBe('collect_missing_evidence');
     expect(stagingNeedsReview.status).toBe('NEEDS_REVIEW');
     expect(stagingNeedsReview.missingEvidence).toContain('staging:owner_review_note');
+  });
+
+  it.each([
+    ['package BLOCKED', { status: 'BLOCKED' }, 'safe_db_read_export_package_blocked'],
+    ['unsafe reason codes', { unsafeReasonCodes: ['duplicate_row_id'] }, 'safe_db_read_export:duplicate_row_id'],
+    ['blockers', { blockers: ['jsonl_package_blocked'] }, 'safe_db_read_export:jsonl_package_blocked'],
+    ['runtime readiness claim', { readinessClaim: 'runtime_ready' }, 'safe_db_read_export_readiness_claim_not_none'],
+    ['staging readiness claim', { readinessClaim: 'staging_ready' }, 'safe_db_read_export_readiness_claim_not_none'],
+    ['production readiness claim', { readinessClaim: 'production_ready' }, 'safe_db_read_export_readiness_claim_not_none'],
+    ['runtimeReadinessClaimed', { runtimeReadinessClaimed: true }, 'safe_db_read_export_runtime_readiness_claimed'],
+    ['productionReadinessClaimed', { productionReadinessClaimed: true }, 'safe_db_read_export_production_readiness_claimed'],
+    ['actualDbExport', { actualDbExport: true }, 'safe_db_read_export_actual_db_export'],
+    ['realDbQuery', { realDbQuery: true }, 'safe_db_read_export_real_db_query'],
+    ['prismaClientUsed', { prismaClientUsed: true }, 'safe_db_read_export_prisma_client_used'],
+    ['fileExported', { fileExported: true }, 'safe_db_read_export_file_exported'],
+    ['artifactUploaded', { artifactUploaded: true }, 'safe_db_read_export_artifact_uploaded'],
+    ['dockerSmoke', { dockerSmoke: true }, 'safe_db_read_export_docker_smoke'],
+    ['stagingNoTxPreflightStatus', { stagingNoTxPreflightStatus: 'PASS' }, 'safe_db_read_export_staging_status_not_blocked']
+  ])('blocks unsafe safe DB read export package boundary: %s', (_label, packageOverride, blocker) => {
+    const packet = buildPacket({ safeDbReadExportPackage: makeSafeDbReadExportPackage(packageOverride) });
+
+    expect(packet.status).toBe('BLOCKED');
+    expect([...packet.blockers, ...packet.unsafeReasonCodes]).toContain(blocker);
+    expect(packet.safeDbReadExportJsonlSha256Summary).toBeNull();
+    expect(packet.stagingNoTxPreflightStatus).toBe('BLOCKED');
+    expect(packet.readinessClaim).toBe('none');
+  });
+
+  it('needs review for safe DB read export package NEEDS_REVIEW or zero records', () => {
+    const needsReview = buildPacket({ safeDbReadExportPackage: makeSafeDbReadExportPackage({ status: 'NEEDS_REVIEW' }) });
+    const zeroRecords = buildPacket({ safeDbReadExportPackage: makeSafeDbReadExportPackage({ recordCount: 0 }) });
+
+    expect(needsReview.status).toBe('NEEDS_REVIEW');
+    expect(needsReview.safeDbReadExportEvidenceStatus).toBe('NEEDS_REVIEW');
+    expect(zeroRecords.status).toBe('NEEDS_REVIEW');
+    expect(zeroRecords.missingEvidence).toContain('safeDbReadExportPackage.records');
+  });
+
+  it('does not expose raw safe DB read export payload values', () => {
+    const packet = buildPacket({
+      safeDbReadExportPackage: makeSafeDbReadExportPackage({
+        jsonl: '{"rawWallet":"unsafe"}',
+        rawTxHash: 'unsafe',
+        rawCheckpoint: 'unsafe',
+        rawEnv: 'DATABASE_URL=unsafe',
+        rawPath: 'C:\\Users\\secret\\file',
+        rawProviderError: 'raw provider error'
+      })
+    });
+    const serialized = JSON.stringify(packet);
+
+    expect(packet.status).toBe('BLOCKED');
+    expect(packet.unsafeReasonCodes).toContain('safe_db_read_export_unsafe_value');
+    expect(serialized).not.toContain('rawWallet');
+    expect(serialized).not.toContain('rawTxHash');
+    expect(serialized).not.toContain('rawCheckpoint');
+    expect(serialized).not.toContain('DATABASE_URL=');
+    expect(serialized).not.toContain('C:\\Users\\');
+    expect(serialized).not.toContain('raw provider error');
   });
 
   it.each([
