@@ -30,10 +30,6 @@ class DualApiKeyManager {
     constructor() {
         this.apiKeys = getExplorerApiKeys();
 
-        if (this.apiKeys.length === 0) {
-            throw new Error('No explorer API keys configured!');
-        }
-
         this.apiKeys.forEach(key => {
             this.rateLimitStates.set(key, {
                 lastRequestTime: 0,
@@ -45,6 +41,8 @@ class DualApiKeyManager {
     }
 
     async getNextApiKey(): Promise<string> {
+        this.assertConfigured();
+
         const startIndex = this.currentKeyIndex;
 
         while (true) {
@@ -109,6 +107,12 @@ class DualApiKeyManager {
 
     private sleep(ms: number): Promise<void> {
         return new Promise(resolve => setTimeout(resolve, ms));
+    }
+
+    private assertConfigured(): void {
+        if (this.apiKeys.length === 0) {
+            throw new Error('No explorer API keys configured!');
+        }
     }
 }
 
