@@ -42,6 +42,7 @@ import {
   applyTargetActiveSelfTestRegistryMapping,
   applyTargetCompatibilityShadowStatuses,
   applyTargetModeLegacyCompatibilityShadow,
+  buildV114HarnessOnlyEvidenceNormalization,
   buildRemoteProductEvidenceExecutionInput,
   buildSafeArtifactIndexInputForQualityGate,
   shouldAutoSelectTargetHarnessMode,
@@ -177,6 +178,52 @@ const safeArtifactIndex = buildSafeArtifactIndex([
 const workflowText = fs.existsSync('.github/workflows/quality-gate.yml')
   ? fs.readFileSync('.github/workflows/quality-gate.yml', 'utf8')
   : '';
+const harnessOnlyEvidenceBody = `
+PR profile: harness_workflow_r3
+Risk level: R3
+deterministic harness metadata bugfix
+
+## Best-of-N Evidence
+Decision: deterministic harness metadata bugfix.
+Option A: body-only repair was attempted and is not allowed by current safe artifact state.
+Option B: current state-delta repair keeps harness-only scope.
+Rejected options: weakening product verification, making test coverage optional, merging product PRs without current artifacts.
+Chosen option: state-delta harness-only repair.
+
+## Test Coverage Evidence
+Changed area: v1.1.4 harness artifact version, minimal blockers, decision object, profile/test coverage aggregation.
+Commands:
+node --check scripts/codex-v114-self-test.mjs
+CODEX_HARNESS_MODE=target CODEX_PROFILE_COMPAT_MODE=off CODEX_QUALITY_REPORT=json node scripts/codex-v114-self-test.mjs --json
+node scripts/codex-secret-safety-scan.mjs
+git diff --check
+Coverage: active v114 self-test and safe artifact metadata.
+Edge cases: product PR coverage remains required and manual confirmation cannot override missing tests.
+`;
+const harnessOnlyEvidenceReport = {
+  bestOfNEvidenceStatus: { status: 'fail', reasonCodes: ['best_of_n_required'] },
+  testCoverageEvidenceStatus: { status: 'fail', reasonCodes: ['test_coverage_evidence_missing'] },
+};
+const harnessOnlyEvidenceNormalization = buildV114HarnessOnlyEvidenceNormalization(harnessOnlyEvidenceReport, {
+  CODEX_CHANGED_FILES: '.github/workflows/quality-gate.yml\nscripts/codex-v114-self-test.mjs\nscripts/codex-local-quality-gate.mjs',
+  CODEX_PR_BODY: harnessOnlyEvidenceBody,
+});
+const productScopeEvidenceReport = {
+  bestOfNEvidenceStatus: { status: 'fail', reasonCodes: ['best_of_n_required'] },
+  testCoverageEvidenceStatus: { status: 'fail', reasonCodes: ['test_coverage_evidence_missing'] },
+};
+const productScopeEvidenceNormalization = buildV114HarnessOnlyEvidenceNormalization(productScopeEvidenceReport, {
+  CODEX_CHANGED_FILES: 'apps/backend/src/app/lib/tierUpdateSafeDbReadExport.ts',
+  CODEX_PR_BODY: harnessOnlyEvidenceBody,
+});
+const missingHarnessEvidenceReport = {
+  bestOfNEvidenceStatus: { status: 'fail', reasonCodes: ['best_of_n_required'] },
+  testCoverageEvidenceStatus: { status: 'fail', reasonCodes: ['test_coverage_evidence_missing'] },
+};
+const missingHarnessEvidenceNormalization = buildV114HarnessOnlyEvidenceNormalization(missingHarnessEvidenceReport, {
+  CODEX_CHANGED_FILES: 'scripts/codex-v114-self-test.mjs',
+  CODEX_PR_BODY: 'deterministic harness metadata bugfix',
+});
 
 const cases = [
   test('all_v114_status_keys_default_pass', () => V114_STATUS_KEYS.every((key) => report[key]?.status === 'pass')),
@@ -244,6 +291,10 @@ const cases = [
   test('remote_product_evidence_uses_current_v114_version', () => remoteProductArtifacts.evidence.harnessVersion === '1.1.4' && remoteProductArtifacts.evidence.activeSelfTestSuite === 'v114' && remoteProductArtifacts.evidence.activeSelfTestStatusKey === 'v114SelfTestStatus'),
   test('safe_artifact_index_uses_current_v114_version', () => safeArtifactIndex.harnessVersion === '1.1.4'),
   test('workflow_remote_product_checks_uses_current_v114_version', () => workflowText.includes('"schemaVersion":"1.1.4"') && workflowText.includes('"harnessVersion":"1.1.4"') && workflowText.includes('"activeSelfTestSuite":"v114"') && workflowText.includes('"activeSelfTestStatusKey":"v114SelfTestStatus"')),
+  test('harness_only_deterministic_bugfix_can_satisfy_best_of_n_v114', () => harnessOnlyEvidenceReport.bestOfNEvidenceStatus.status === 'pass' && harnessOnlyEvidenceNormalization.bestOfNEvidenceNormalized === true),
+  test('harness_only_test_coverage_evidence_from_compact_safe_sections_v114', () => harnessOnlyEvidenceReport.testCoverageEvidenceStatus.status === 'pass' && harnessOnlyEvidenceNormalization.testCoverageEvidenceNormalized === true),
+  test('product_pr_still_requires_product_test_coverage_v114', () => productScopeEvidenceReport.testCoverageEvidenceStatus.status === 'fail' && productScopeEvidenceNormalization.harnessOnly === false),
+  test('manual_confirmation_does_not_override_missing_tests_v114', () => missingHarnessEvidenceReport.testCoverageEvidenceStatus.status === 'fail' && missingHarnessEvidenceNormalization.status === 'manual_confirmation_required'),
 ];
 
 const failures = cases.filter((item) => item.status !== 'pass');
