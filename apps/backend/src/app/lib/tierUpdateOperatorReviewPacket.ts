@@ -33,8 +33,52 @@ type StagingNoTxReviewMetadata = {
 type ReviewableStagingNoTxEvidence =
   TierUpdateStagingNoTxPreflightEvidence & StagingNoTxReviewMetadata;
 
+type SafeDbReadExportPackageStatus =
+  | 'BLOCKED'
+  | 'NEEDS_REVIEW'
+  | 'EXPORT_PACKAGE_READY';
+
+type SafeDbReadExportReviewPackage = {
+  status?: SafeDbReadExportPackageStatus;
+  packageKind?: string;
+  recordCount?: number;
+  entityCounts?: Record<string, number>;
+  readinessClaimCounts?: Record<string, number>;
+  evidenceOriginCounts?: Record<string, number>;
+  jsonlSha256Summary?: string | null;
+  readinessClaim?: string;
+  stagingNoTxPreflightStatus?: string;
+  runtimeReadinessClaimed?: boolean;
+  productionReadinessClaimed?: boolean;
+  actualDbExport?: boolean;
+  realDbQuery?: boolean;
+  prismaClientUsed?: boolean;
+  fileExported?: boolean;
+  artifactUploaded?: boolean;
+  dockerSmoke?: boolean;
+  blockers?: string[];
+  missingEvidence?: string[];
+  unsafeReasonCodes?: string[];
+  safeSummaryOnly?: boolean;
+};
+
+type SafeDbReadExportReviewSummary = {
+  status: SafeDbReadExportPackageStatus | 'not_provided';
+  packageKind: string | null;
+  recordCount: number;
+  entityCounts: Record<string, number>;
+  readinessClaimCounts: Record<string, number>;
+  evidenceOriginCounts: Record<string, number>;
+  jsonlSha256Summary: string | null;
+  unsafeReasonCodes: string[];
+  blockers: string[];
+  missingEvidence: string[];
+  ownerReviewReadyCandidate: boolean;
+};
+
 export type BuildTierUpdateOperatorReviewPacketInput = {
   operatorPackage?: OperatorControlledTierUpdateSafeRowPackage;
+  safeDbReadExportPackage?: SafeDbReadExportReviewPackage;
   stagingNoTxEvidence?: ReviewableStagingNoTxEvidence;
   auditExportId?: string | null;
   sourceHeadSha?: string | null;
@@ -66,6 +110,43 @@ export type TierUpdateOperatorReviewPacket = {
     evidenceOriginCounts: Record<string, number>;
     jsonlSha256Summary: string | null;
     includeJsonl: false;
+  };
+  safeDbReadExportEvidenceStatus: 'not_provided' | 'BLOCKED' | 'NEEDS_REVIEW' | 'OWNER_REVIEW_READY';
+  safeDbReadExportEvidenceSummary: {
+    safeSummaryOnly: true;
+    ownerReviewReadyCandidate: boolean;
+    ownerReviewReadyIsPass: false;
+    ownerReviewReadyIsStagingReady: false;
+    ownerReviewReadyIsRuntimeReady: false;
+    ownerReviewReadyIsProductionReady: false;
+  };
+  safeDbReadExportPackageStatus: SafeDbReadExportPackageStatus | 'not_provided';
+  safeDbReadExportPackageKind: string | null;
+  safeDbReadExportRecordCount: number;
+  safeDbReadExportEntityCounts: Record<string, number>;
+  safeDbReadExportReadinessClaimCounts: Record<string, number>;
+  safeDbReadExportEvidenceOriginCounts: Record<string, number>;
+  safeDbReadExportJsonlSha256Summary: string | null;
+  safeDbReadExportUnsafeReasonCodesSummary: string[];
+  safeDbReadExportBlockersSummary: string[];
+  safeDbReadExportOwnerReviewBoundary: {
+    ownerReviewReadyIsPass: false;
+    ownerReviewReadyIsStagingReady: false;
+    ownerReviewReadyIsRuntimeReady: false;
+    ownerReviewReadyIsProductionReady: false;
+    safeSummaryOnly: true;
+  };
+  safeDbReadExportNoRuntimeBoundary: {
+    actualDbExport: false;
+    realDbQuery: false;
+    prismaClientUsed: false;
+    fileExported: false;
+    artifactUploaded: false;
+    dockerSmoke: false;
+    runtimeReadinessClaimed: false;
+    productionReadinessClaimed: false;
+    stagingNoTxPassClaimed: false;
+    safeSummaryOnly: true;
   };
   stagingNoTxEvidenceSummary: {
     stagingNoTxPreflightStatus: 'BLOCKED';
@@ -127,6 +208,20 @@ const EMPTY_PACKAGE_SUMMARY = {
   jsonlSha256Summary: null,
   includeJsonl: false
 } as const;
+
+const EMPTY_SAFE_DB_READ_EXPORT_SUMMARY = {
+  status: 'not_provided' as const,
+  packageKind: null,
+  recordCount: 0,
+  entityCounts: {},
+  readinessClaimCounts: {},
+  evidenceOriginCounts: {},
+  jsonlSha256Summary: null,
+  unsafeReasonCodes: [] as string[],
+  blockers: [] as string[],
+  missingEvidence: [] as string[],
+  ownerReviewReadyCandidate: false
+};
 
 const EMPTY_STAGING_SUMMARY = {
   stagingNoTxPreflightStatus: 'BLOCKED' as const,
@@ -209,6 +304,23 @@ const hasUnsafeValue = (value: unknown): boolean => {
   }
 
   return true;
+};
+
+const hasUnsafeReasonText = (value: unknown): boolean => (
+  typeof value !== 'string' ||
+  value.trim().length === 0 ||
+  value.length > 128 ||
+  UNSAFE_TEXT_PATTERNS.some((pattern) => pattern.test(value))
+);
+
+const hasAllowedSafeDbReadExportEntities = (entityCounts: Record<string, number> | undefined): boolean => {
+  const entries = Object.entries(entityCounts || {});
+  return entries.length > 0 &&
+    entries.every(([entity, count]) => (
+      ['scheduled_tier_update', 'job_run', 'tx_receipt_evidence', 'staging_evidence'].includes(entity) &&
+      Number.isInteger(count) &&
+      count >= 0
+    ));
 };
 
 const validateIdentifiers = (
@@ -322,6 +434,110 @@ const validateOperatorPackage = (
   }
 };
 
+const summarizeSafeDbReadExportPackage = (
+  safeDbReadExportPackage: SafeDbReadExportReviewPackage | undefined,
+  blockers: Set<string>,
+  missingEvidence: Set<string>,
+  unsafeReasonCodes: Set<string>
+): SafeDbReadExportReviewSummary => {
+  if (safeDbReadExportPackage === undefined) {
+    add(missingEvidence, 'safeDbReadExportPackage');
+    return EMPTY_SAFE_DB_READ_EXPORT_SUMMARY;
+  }
+
+  const packageBlockers = [...(safeDbReadExportPackage.blockers || [])].filter((value) => !hasUnsafeReasonText(value));
+  const packageUnsafeReasons = [...(safeDbReadExportPackage.unsafeReasonCodes || [])].filter((value) => !hasUnsafeReasonText(value));
+  const packageMissingEvidence = [...(safeDbReadExportPackage.missingEvidence || [])].filter((value) => !hasUnsafeReasonText(value));
+
+  if (safeDbReadExportPackage.safeSummaryOnly !== true) add(blockers, 'safe_db_read_export_safe_summary_required');
+  if (safeDbReadExportPackage.status === undefined) add(blockers, 'safe_db_read_export_status_required');
+  if (safeDbReadExportPackage.status === 'BLOCKED') add(blockers, 'safe_db_read_export_package_blocked');
+  if (safeDbReadExportPackage.status === 'NEEDS_REVIEW') add(missingEvidence, 'safeDbReadExportPackage.review');
+  if (safeDbReadExportPackage.status !== undefined && !['BLOCKED', 'NEEDS_REVIEW', 'EXPORT_PACKAGE_READY'].includes(safeDbReadExportPackage.status)) {
+    add(blockers, 'safe_db_read_export_status_unexpected');
+  }
+
+  if (!Number.isInteger(safeDbReadExportPackage.recordCount) || (safeDbReadExportPackage.recordCount ?? 0) < 0) {
+    add(blockers, 'safe_db_read_export_record_count_invalid');
+  } else if ((safeDbReadExportPackage.recordCount ?? 0) === 0) {
+    add(missingEvidence, 'safeDbReadExportPackage.records');
+  }
+
+  if (!hasAllowedSafeDbReadExportEntities(safeDbReadExportPackage.entityCounts)) {
+    add(blockers, 'safe_db_read_export_entities_not_allowed');
+  }
+
+  if (safeDbReadExportPackage.readinessClaim !== 'none') add(blockers, 'safe_db_read_export_readiness_claim_not_none');
+  if (safeDbReadExportPackage.stagingNoTxPreflightStatus !== 'BLOCKED') add(blockers, 'safe_db_read_export_staging_status_not_blocked');
+  if (safeDbReadExportPackage.runtimeReadinessClaimed !== false) add(blockers, 'safe_db_read_export_runtime_readiness_claimed');
+  if (safeDbReadExportPackage.productionReadinessClaimed !== false) add(blockers, 'safe_db_read_export_production_readiness_claimed');
+
+  const forbiddenRuntimeFlags: Array<[keyof SafeDbReadExportReviewPackage, string]> = [
+    ['actualDbExport', 'safe_db_read_export_actual_db_export'],
+    ['realDbQuery', 'safe_db_read_export_real_db_query'],
+    ['prismaClientUsed', 'safe_db_read_export_prisma_client_used'],
+    ['fileExported', 'safe_db_read_export_file_exported'],
+    ['artifactUploaded', 'safe_db_read_export_artifact_uploaded'],
+    ['dockerSmoke', 'safe_db_read_export_docker_smoke']
+  ];
+
+  for (const [key, reason] of forbiddenRuntimeFlags) {
+    if (safeDbReadExportPackage[key] !== false) add(blockers, reason);
+  }
+
+  if (safeDbReadExportPackage.jsonlSha256Summary !== null && safeDbReadExportPackage.jsonlSha256Summary !== undefined) {
+    if (!/^sha256:[a-f0-9]{64}$/i.test(safeDbReadExportPackage.jsonlSha256Summary)) {
+      add(blockers, 'safe_db_read_export_jsonl_hash_summary_invalid');
+    }
+  } else {
+    add(missingEvidence, 'safeDbReadExportPackage.jsonlSha256Summary');
+  }
+
+  for (const reason of packageBlockers) add(blockers, `safe_db_read_export:${reason}`);
+  for (const reason of packageUnsafeReasons) add(unsafeReasonCodes, `safe_db_read_export:${reason}`);
+  for (const item of packageMissingEvidence) add(missingEvidence, `safeDbReadExportPackage:${item}`);
+
+  if ((safeDbReadExportPackage.blockers || []).some(hasUnsafeReasonText) || (safeDbReadExportPackage.unsafeReasonCodes || []).some(hasUnsafeReasonText)) {
+    add(blockers, 'safe_db_read_export_reason_unsafe');
+    add(unsafeReasonCodes, 'safe_db_read_export_reason_unsafe');
+  }
+
+  if (hasUnsafeValue(safeDbReadExportPackage)) {
+    add(blockers, 'safe_db_read_export_unsafe_value');
+    add(unsafeReasonCodes, 'safe_db_read_export_unsafe_value');
+  }
+
+  const ownerReviewReadyCandidate =
+    safeDbReadExportPackage.status === 'EXPORT_PACKAGE_READY' &&
+    (safeDbReadExportPackage.recordCount ?? 0) > 0 &&
+    packageBlockers.length === 0 &&
+    packageUnsafeReasons.length === 0 &&
+    safeDbReadExportPackage.readinessClaim === 'none' &&
+    safeDbReadExportPackage.stagingNoTxPreflightStatus === 'BLOCKED' &&
+    safeDbReadExportPackage.runtimeReadinessClaimed === false &&
+    safeDbReadExportPackage.productionReadinessClaimed === false &&
+    safeDbReadExportPackage.actualDbExport === false &&
+    safeDbReadExportPackage.realDbQuery === false &&
+    safeDbReadExportPackage.prismaClientUsed === false &&
+    safeDbReadExportPackage.fileExported === false &&
+    safeDbReadExportPackage.artifactUploaded === false &&
+    safeDbReadExportPackage.dockerSmoke === false;
+
+  return {
+    status: safeDbReadExportPackage.status ?? 'not_provided',
+    packageKind: typeof safeDbReadExportPackage.packageKind === 'string' ? safeDbReadExportPackage.packageKind : null,
+    recordCount: safeDbReadExportPackage.recordCount ?? 0,
+    entityCounts: safeDbReadExportPackage.entityCounts || {},
+    readinessClaimCounts: safeDbReadExportPackage.readinessClaimCounts || {},
+    evidenceOriginCounts: safeDbReadExportPackage.evidenceOriginCounts || {},
+    jsonlSha256Summary: safeDbReadExportPackage.jsonlSha256Summary ?? null,
+    unsafeReasonCodes: packageUnsafeReasons.sort(),
+    blockers: packageBlockers.sort(),
+    missingEvidence: packageMissingEvidence.sort(),
+    ownerReviewReadyCandidate
+  };
+};
+
 const validateStagingEvidence = (
   staging: ReviewableStagingNoTxEvidence | undefined,
   blockers: Set<string>,
@@ -363,15 +579,18 @@ const validateStagingEvidence = (
 const classifyStatus = (
   blockers: Set<string>,
   missingEvidence: Set<string>,
+  unsafeReasonCodes: Set<string>,
   operatorPackage: OperatorControlledTierUpdateSafeRowPackage | undefined,
-  staging: ReviewableStagingNoTxEvidence | undefined
+  staging: ReviewableStagingNoTxEvidence | undefined,
+  safeDbReadExportSummary: SafeDbReadExportReviewSummary
 ): OperatorReviewPacketStatus => {
-  if (blockers.size > 0) return 'BLOCKED';
+  if (blockers.size > 0 || unsafeReasonCodes.size > 0) return 'BLOCKED';
   if (
     missingEvidence.size > 0 ||
     (operatorPackage?.recordCount ?? 0) === 0 ||
     Object.keys(operatorPackage?.entityCounts || {}).length === 0 ||
-    staging?.status === 'NEEDS_REVIEW'
+    staging?.status === 'NEEDS_REVIEW' ||
+    !safeDbReadExportSummary.ownerReviewReadyCandidate
   ) {
     return 'NEEDS_REVIEW';
   }
@@ -399,9 +618,10 @@ export const buildTierUpdateOperatorReviewPacket = (
   validateIdentifiers(input, blockers, missingEvidence, unsafeReasonCodes);
   validateMetadata(input, auditExportId, sourceHeadSha, sourceHash, exportedAt, blockers, missingEvidence);
   validateOperatorPackage(input.operatorPackage, blockers, missingEvidence, unsafeReasonCodes);
+  const safeDbReadExportSummary = summarizeSafeDbReadExportPackage(input.safeDbReadExportPackage, blockers, missingEvidence, unsafeReasonCodes);
   validateStagingEvidence(input.stagingNoTxEvidence, blockers, missingEvidence, unsafeReasonCodes);
 
-  const status = classifyStatus(blockers, missingEvidence, input.operatorPackage, input.stagingNoTxEvidence);
+  const status = classifyStatus(blockers, missingEvidence, unsafeReasonCodes, input.operatorPackage, input.stagingNoTxEvidence, safeDbReadExportSummary);
 
   if (status !== 'OWNER_REVIEW_READY') {
     input.logger?.warn?.('tier_update_operator_review_packet_not_ready', {
@@ -431,6 +651,49 @@ export const buildTierUpdateOperatorReviewPacket = (
       jsonlSha256Summary: status === 'BLOCKED' ? null : input.operatorPackage.jsonlSha256Summary,
       includeJsonl: false
     } : EMPTY_PACKAGE_SUMMARY,
+    safeDbReadExportEvidenceStatus: safeDbReadExportSummary.status === 'not_provided'
+      ? 'not_provided'
+      : status === 'BLOCKED'
+        ? 'BLOCKED'
+        : safeDbReadExportSummary.ownerReviewReadyCandidate
+          ? 'OWNER_REVIEW_READY'
+          : 'NEEDS_REVIEW',
+    safeDbReadExportEvidenceSummary: {
+      safeSummaryOnly: true,
+      ownerReviewReadyCandidate: safeDbReadExportSummary.ownerReviewReadyCandidate,
+      ownerReviewReadyIsPass: false,
+      ownerReviewReadyIsStagingReady: false,
+      ownerReviewReadyIsRuntimeReady: false,
+      ownerReviewReadyIsProductionReady: false
+    },
+    safeDbReadExportPackageStatus: safeDbReadExportSummary.status,
+    safeDbReadExportPackageKind: safeDbReadExportSummary.packageKind,
+    safeDbReadExportRecordCount: safeDbReadExportSummary.recordCount,
+    safeDbReadExportEntityCounts: safeDbReadExportSummary.entityCounts,
+    safeDbReadExportReadinessClaimCounts: safeDbReadExportSummary.readinessClaimCounts,
+    safeDbReadExportEvidenceOriginCounts: safeDbReadExportSummary.evidenceOriginCounts,
+    safeDbReadExportJsonlSha256Summary: status === 'BLOCKED' ? null : safeDbReadExportSummary.jsonlSha256Summary,
+    safeDbReadExportUnsafeReasonCodesSummary: safeDbReadExportSummary.unsafeReasonCodes,
+    safeDbReadExportBlockersSummary: safeDbReadExportSummary.blockers,
+    safeDbReadExportOwnerReviewBoundary: {
+      ownerReviewReadyIsPass: false,
+      ownerReviewReadyIsStagingReady: false,
+      ownerReviewReadyIsRuntimeReady: false,
+      ownerReviewReadyIsProductionReady: false,
+      safeSummaryOnly: true
+    },
+    safeDbReadExportNoRuntimeBoundary: {
+      actualDbExport: false,
+      realDbQuery: false,
+      prismaClientUsed: false,
+      fileExported: false,
+      artifactUploaded: false,
+      dockerSmoke: false,
+      runtimeReadinessClaimed: false,
+      productionReadinessClaimed: false,
+      stagingNoTxPassClaimed: false,
+      safeSummaryOnly: true
+    },
     stagingNoTxEvidenceSummary: input.stagingNoTxEvidence ? {
       stagingNoTxPreflightStatus: 'BLOCKED',
       readinessClaim: 'none',

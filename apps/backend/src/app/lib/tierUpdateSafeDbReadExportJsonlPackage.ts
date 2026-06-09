@@ -388,6 +388,17 @@ const classifyStatus = (
   return 'EXPORT_PACKAGE_READY';
 };
 
+const preliminaryPackageStatus = (
+  blockers: Set<string>,
+  missingEvidence: Set<string>,
+  unsafeReasonCodes: Set<string>,
+  operatorPackage: OperatorControlledTierUpdateSafeRowPackage
+): SafeDbReadExportJsonlPackageStatus => {
+  if (blockers.size > 0 || unsafeReasonCodes.size > 0 || operatorPackage.status === 'fail') return 'BLOCKED';
+  if (missingEvidence.size > 0 || operatorPackage.status !== 'pass') return 'NEEDS_REVIEW';
+  return 'EXPORT_PACKAGE_READY';
+};
+
 export const buildTierUpdateSafeDbReadExportJsonlPackage = (
   input: BuildTierUpdateSafeDbReadExportJsonlPackageInput
 ): TierUpdateSafeDbReadExportJsonlPackageResult => {
@@ -437,9 +448,33 @@ export const buildTierUpdateSafeDbReadExportJsonlPackage = (
     runKey: input.runKey,
     includeJsonl
   });
+  const preliminaryStatus = preliminaryPackageStatus(blockers, missingEvidence, unsafeReasonCodes, operatorPackage);
   const stagingEvidence = input.stagingEvidence ?? makeDefaultStagingEvidence(input, metadata);
   const reviewPacket = buildTierUpdateOperatorReviewPacket({
     operatorPackage,
+    safeDbReadExportPackage: {
+      status: preliminaryStatus,
+      packageKind: TIER_UPDATE_SAFE_DB_READ_EXPORT_JSONL_PACKAGE_KIND,
+      recordCount: records.length,
+      entityCounts: evidencePackage.entityCounts,
+      readinessClaimCounts: evidencePackage.readinessClaimCounts,
+      evidenceOriginCounts: evidencePackage.evidenceOriginCounts,
+      jsonlSha256Summary: preliminaryStatus === 'EXPORT_PACKAGE_READY' ? evidencePackage.jsonlSha256Summary : null,
+      readinessClaim: 'none',
+      stagingNoTxPreflightStatus: 'BLOCKED',
+      runtimeReadinessClaimed: false,
+      productionReadinessClaimed: false,
+      actualDbExport: false,
+      realDbQuery: false,
+      prismaClientUsed: false,
+      fileExported: false,
+      artifactUploaded: false,
+      dockerSmoke: false,
+      blockers: Array.from(blockers).sort(),
+      missingEvidence: Array.from(missingEvidence).sort(),
+      unsafeReasonCodes: Array.from(unsafeReasonCodes).sort(),
+      safeSummaryOnly: true
+    },
     stagingNoTxEvidence: stagingEvidence,
     auditExportId: metadata.auditExportId,
     sourceHeadSha: metadata.sourceHeadSha,
