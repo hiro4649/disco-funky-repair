@@ -40,6 +40,8 @@ import {
   validateOneSafeNextAction,
 } from './codex-v114-loop-kernel.mjs';
 import { classifyGuardrailOperation, validateHookGuardrailRegistry } from './codex-v114-guardrail-registry.mjs';
+import { renderPrEvidenceBlocks } from './codex-pr-evidence-block-renderer.mjs';
+import { classifyTargetModeCompatibilityStatus } from './codex-v111-token-hard-cap.mjs';
 import { evaluateWorkflowReport } from './codex-workflow-quality-runner.mjs';
 import {
   applyTargetActiveSelfTestRegistryMapping,
@@ -48,6 +50,7 @@ import {
   buildV114HarnessOnlyEvidenceNormalization,
   buildRemoteProductEvidenceExecutionInput,
   buildSafeArtifactIndexInputForQualityGate,
+  computeTargetQualityScoreStatus,
   shouldAutoSelectTargetHarnessMode,
 } from './codex-local-quality-gate.mjs';
 
@@ -288,6 +291,49 @@ const workflowRunnerNormalizationFixture = withTemporaryEnv({
     { id: 'targetQualityScoreStatus.failed' },
   ],
 }, { gateExit: 1, eventName: 'pull_request' }));
+const localQualityGateText = fs.existsSync('scripts/codex-local-quality-gate.mjs')
+  ? fs.readFileSync('scripts/codex-local-quality-gate.mjs', 'utf8')
+  : '';
+const legacySelfTestV114DemotionFixture = {
+  v099: classifyTargetModeCompatibilityStatus('v099SelfTestStatus', { status: 'fail', reasonCodes: ['legacy_self_test_advisory_failed'] }, buildV114Report()),
+  v085: classifyTargetModeCompatibilityStatus('v085SelfTestStatus', { status: 'fail', reasonCodes: ['legacy_self_test_advisory_failed'] }, buildV114Report()),
+  scoringUsesV114Compatibility: localQualityGateText.includes("HARNESS_VERSION === '1.1.4'") && String(computeTargetQualityScoreStatus).includes('classifyTargetModeCompatibilityStatus'),
+};
+const staleV105RendererFixture = renderPrEvidenceBlocks({
+  repository: 'hiro4649/disco-funky-repair',
+  prNumber: '282',
+  headSha: '8eb1a50b8566c1b21e112f894b9997c9d0a120f2',
+  currentHeadSha: '8eb1a50b8566c1b21e112f894b9997c9d0a120f2',
+  baseSha: '6f72733bad79e06855425577aab86f97ff6c23df',
+  changedFiles: ['apps/backend/src/app/lib/tierUpdateOperatorReviewPacket.ts'],
+  productCodeChanged: true,
+  runtimeReadinessClaimed: false,
+  harnessVersion: '1.0.5',
+  prBody: 'OWNER_REVIEW_READY is not runtime ready. Runtime readiness claimed: no.',
+  humanConfirmation: { present: true, confirmedByRole: 'project-owner', headSha: '8eb1a50b8566c1b21e112f894b9997c9d0a120f2' },
+}, {
+  CODEX_EVENT_NAME: 'pull_request',
+  CODEX_PR_NUMBER: '282',
+  CODEX_PR_HEAD_SHA: '8eb1a50b8566c1b21e112f894b9997c9d0a120f2',
+  CODEX_PR_BASE_SHA: '6f72733bad79e06855425577aab86f97ff6c23df',
+});
+const realRuntimeClaimRendererFixture = renderPrEvidenceBlocks({
+  repository: 'hiro4649/disco-funky-repair',
+  prNumber: '282',
+  headSha: '8eb1a50b8566c1b21e112f894b9997c9d0a120f2',
+  currentHeadSha: '8eb1a50b8566c1b21e112f894b9997c9d0a120f2',
+  baseSha: '6f72733bad79e06855425577aab86f97ff6c23df',
+  changedFiles: ['apps/backend/src/app/lib/tierUpdateOperatorReviewPacket.ts'],
+  productCodeChanged: true,
+  runtimeReadinessClaimed: false,
+  prBody: 'Runtime readiness claimed: yes.',
+  humanConfirmation: { present: true, confirmedByRole: 'project-owner', headSha: '8eb1a50b8566c1b21e112f894b9997c9d0a120f2' },
+}, {
+  CODEX_EVENT_NAME: 'pull_request',
+  CODEX_PR_NUMBER: '282',
+  CODEX_PR_HEAD_SHA: '8eb1a50b8566c1b21e112f894b9997c9d0a120f2',
+  CODEX_PR_BASE_SHA: '6f72733bad79e06855425577aab86f97ff6c23df',
+});
 
 const cases = [
   test('all_v114_status_keys_default_pass', () => V114_STATUS_KEYS.every((key) => report[key]?.status === 'pass')),
@@ -357,6 +403,11 @@ const cases = [
   test('workflow_remote_product_checks_uses_current_v114_version', () => workflowText.includes('"schemaVersion":"1.1.4"') && workflowText.includes('"harnessVersion":"1.1.4"') && workflowText.includes('"activeSelfTestSuite":"v114"') && workflowText.includes('"activeSelfTestStatusKey":"v114SelfTestStatus"')),
   test('workflow_quality_runner_receives_changed_files_for_v114_normalization', () => workflowText.includes('CODEX_CHANGED_FILES<<CODEX_CHANGED_FILES_EOF') && workflowText.includes('export CODEX_CHANGED_FILES="$changed_files"')),
   test('workflow_quality_runner_emits_harness_only_evidence_normalization_v114', () => workflowRunnerNormalizationFixture.safeSummary.v114HarnessOnlyEvidenceNormalizationStatus.status === 'pass' && workflowRunnerNormalizationFixture.safeSummary.bestOfNEvidenceStatus.status === 'pass' && workflowRunnerNormalizationFixture.safeSummary.testCoverageEvidenceStatus.status === 'pass'),
+  test('legacy_v099_v085_not_current_blocker_when_v114_formal_product_evidence_passes', () => legacySelfTestV114DemotionFixture.v099.effectiveStatus === 'pass_advisory' && legacySelfTestV114DemotionFixture.v085.effectiveStatus === 'pass_advisory' && legacySelfTestV114DemotionFixture.scoringUsesV114Compatibility === true),
+  test('stale_v105_pr_evidence_renderer_not_current_blocker_v114', () => staleV105RendererFixture.prEvidenceRendererStatus.status === 'pass' && staleV105RendererFixture.prEvidenceRendererStatus.blocks.evidencePack.harnessVersion === '1.1.4'),
+  test('runtime_claim_mismatch_uses_current_pr_body_v114', () => !staleV105RendererFixture.prEvidenceRendererStatus.reasonCodes.includes('pr_evidence_runtime_claim_mismatch')),
+  test('runtime_claim_false_positive_from_stale_artifact_demoted_v114', () => staleV105RendererFixture.prEvidenceRendererStatus.blocks.evidencePack.productCodeChanged === true && staleV105RendererFixture.prEvidenceRendererStatus.blocks.evidencePack.runtimeReadinessClaimed === false),
+  test('real_runtime_readiness_claim_still_blocks_v114', () => realRuntimeClaimRendererFixture.prEvidenceRendererStatus.status === 'fail' && realRuntimeClaimRendererFixture.prEvidenceRendererStatus.reasonCodes.includes('pr_evidence_runtime_claim_mismatch')),
   test('harness_only_deterministic_bugfix_can_satisfy_best_of_n_v114', () => harnessOnlyEvidenceReport.bestOfNEvidenceStatus.status === 'pass' && harnessOnlyEvidenceNormalization.bestOfNEvidenceNormalized === true),
   test('harness_only_test_coverage_evidence_from_compact_safe_sections_v114', () => harnessOnlyEvidenceReport.testCoverageEvidenceStatus.status === 'pass' && harnessOnlyEvidenceNormalization.testCoverageEvidenceNormalized === true),
   test('harness_only_evidence_accepts_json_changed_files_v114', () => jsonChangedFilesEvidenceReport.bestOfNEvidenceStatus.status === 'pass' && jsonChangedFilesEvidenceReport.testCoverageEvidenceStatus.status === 'pass' && jsonChangedFilesEvidenceNormalization.harnessOnly === true),

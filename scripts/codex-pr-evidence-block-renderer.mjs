@@ -2,10 +2,12 @@
 // CODEX_QUALITY_HARNESS_FILE v1.0.7
 import fs from 'node:fs';
 import { fileURLToPath } from 'node:url';
-import { HARNESS_VERSION, marker, prBodyText, scanObjectForUnsafe, simpleStatus, writeJsonReport, exitFor, normalizePath } from './codex-v080-lib.mjs';
+import { marker, prBodyText, scanObjectForUnsafe, simpleStatus, writeJsonReport, exitFor, normalizePath } from './codex-v080-lib.mjs';
+import { currentVersion } from './codex-harness-version.mjs';
 
 const PRODUCT_PATH = /^(src|apps|contracts|runtime|profiles\/|package\.json|package-lock\.json|npm-shrinkwrap\.json|yarn\.lock|pnpm-lock\.yaml)(\/|$)/;
 const RAW_FIELD = /raw(?:Log|Diff|Payload|Stdout|Stderr)|token|secret|endpoint|privatePath/i;
+const AFFIRMATIVE_RUNTIME_CLAIM = /runtime readiness claimed:\s*yes|runtime readiness:\s*(?:yes|true|claimed)|runtime ready:\s*(?:yes|true|claimed)|runtime_readiness_claimed\s*[:=]\s*true/i;
 
 function parseJson(value, fallback) {
   try {
@@ -63,13 +65,13 @@ export function renderPrEvidenceBlocks(input = evidenceInput(), env = process.en
   if (input.runHeadSha && input.runHeadSha !== headSha) failures.push('pr_evidence_stale_head');
   if (input.artifactHeadSha && input.artifactHeadSha !== headSha) failures.push('pr_evidence_stale_head');
   if (productCodeChanged === false && productChanged) failures.push('pr_evidence_product_scope_mismatch');
-  if (runtimeReadinessClaimed === false && /runtime readiness claimed:\s*yes|runtime ready/i.test(String(input.prBody || ''))) failures.push('pr_evidence_runtime_claim_mismatch');
+  if (runtimeReadinessClaimed === false && AFFIRMATIVE_RUNTIME_CLAIM.test(String(input.prBody || ''))) failures.push('pr_evidence_runtime_claim_mismatch');
   if (hasRawField(input)) failures.push('pr_evidence_unsafe_output');
   if (!input.artifactId && (env.CODEX_EVENT_NAME === 'pull_request' || prNumber)) warnings.push('artifact_id_pending');
 
   const evidencePack = {
     schemaVersion: '0.9.2',
-    harnessVersion: HARNESS_VERSION,
+    harnessVersion: currentVersion,
     repository: String(input.repository || '').slice(0, 120),
     prNumber,
     baseSha,
