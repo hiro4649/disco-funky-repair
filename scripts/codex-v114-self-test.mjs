@@ -1,7 +1,13 @@
 #!/usr/bin/env node
 // CODEX_QUALITY_HARNESS_FILE v1.1.4
 
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
 import { writeJsonReport, exitFor } from './codex-v080-lib.mjs';
+import { currentVersion, activeSelfTestSuite, activeSelfTestStatusKey, buildHarnessVersionRegistry } from './codex-harness-version.mjs';
+import { buildRemoteProductSafeArtifacts } from './codex-v098-gate-lib.mjs';
+import { buildSafeArtifactIndex } from './codex-safe-artifact-index.mjs';
 import {
   V114_STATUS_KEYS,
   buildLoopBudget,
@@ -34,10 +40,12 @@ import {
   validateOneSafeNextAction,
 } from './codex-v114-loop-kernel.mjs';
 import { classifyGuardrailOperation, validateHookGuardrailRegistry } from './codex-v114-guardrail-registry.mjs';
+import { evaluateWorkflowReport } from './codex-workflow-quality-runner.mjs';
 import {
   applyTargetActiveSelfTestRegistryMapping,
   applyTargetCompatibilityShadowStatuses,
   applyTargetModeLegacyCompatibilityShadow,
+  buildV114HarnessOnlyEvidenceNormalization,
   buildRemoteProductEvidenceExecutionInput,
   buildSafeArtifactIndexInputForQualityGate,
   shouldAutoSelectTargetHarnessMode,
@@ -48,6 +56,20 @@ function test(name, fn) {
     return { name, status: fn() ? 'pass' : 'fail', safeSummaryOnly: true };
   } catch {
     return { name, status: 'fail', reasonCodes: ['self_test_exception'], safeSummaryOnly: true };
+  }
+}
+
+function withTemporaryEnv(values, fn) {
+  const previous = {};
+  for (const key of Object.keys(values)) previous[key] = process.env[key];
+  try {
+    Object.assign(process.env, values);
+    return fn();
+  } finally {
+    for (const key of Object.keys(values)) {
+      if (previous[key] === undefined) delete process.env[key];
+      else process.env[key] = previous[key];
+    }
   }
 }
 
@@ -154,6 +176,118 @@ const funkyMissingRegistry = applyTargetActiveSelfTestRegistryMapping(funkyMissi
   localGateText: 'v114SelfTestStatus',
   selfTestPresent: true,
 });
+const harnessVersionRegistry = buildHarnessVersionRegistry();
+const remoteProductArtifacts = buildRemoteProductSafeArtifacts({
+  productRelevant: true,
+  isPullRequest: true,
+  eventName: 'pull_request',
+  headSha: 'head-v114',
+  repository: 'hiro4649/disco-funky-repair',
+  npmExecuted: true,
+  npmExitCode: 0,
+  cwd: 'apps/backend',
+  packageScope: 'apps/backend',
+  commandClass: 'backend_npm_test',
+});
+const safeArtifactIndex = buildSafeArtifactIndex([
+  { artifactName: 'codex-quality-gate-safe-summary.json', path: 'codex-quality-gate-safe-summary.json', status: 'present' },
+], 'target');
+const workflowText = fs.existsSync('.github/workflows/quality-gate.yml')
+  ? fs.readFileSync('.github/workflows/quality-gate.yml', 'utf8')
+  : '';
+const harnessOnlyEvidenceBody = `
+PR profile: harness_workflow_r3
+Risk level: R3
+deterministic harness metadata bugfix
+
+## Best-of-N Evidence
+Decision: deterministic harness metadata bugfix.
+Option A: body-only repair was attempted and is not allowed by current safe artifact state.
+Option B: current state-delta repair keeps harness-only scope.
+Rejected options: weakening product verification, making test coverage optional, merging product PRs without current artifacts.
+Chosen option: state-delta harness-only repair.
+
+## Test Coverage Evidence
+Changed area: v1.1.4 harness artifact version, minimal blockers, decision object, profile/test coverage aggregation.
+Commands:
+node --check scripts/codex-v114-self-test.mjs
+CODEX_HARNESS_MODE=target CODEX_PROFILE_COMPAT_MODE=off CODEX_QUALITY_REPORT=json node scripts/codex-v114-self-test.mjs --json
+node scripts/codex-secret-safety-scan.mjs
+git diff --check
+Coverage: active v114 self-test and safe artifact metadata.
+Edge cases: product PR coverage remains required and manual confirmation cannot override missing tests.
+`;
+const harnessOnlyEvidenceReport = {
+  bestOfNEvidenceStatus: { status: 'fail', reasonCodes: ['best_of_n_required'] },
+  testCoverageEvidenceStatus: { status: 'fail', reasonCodes: ['test_coverage_evidence_missing'] },
+};
+const harnessOnlyEvidenceNormalization = buildV114HarnessOnlyEvidenceNormalization(harnessOnlyEvidenceReport, {
+  CODEX_CHANGED_FILES: '.github/workflows/quality-gate.yml\nscripts/codex-v114-self-test.mjs\nscripts/codex-local-quality-gate.mjs',
+  CODEX_PR_BODY: harnessOnlyEvidenceBody,
+});
+const productScopeEvidenceReport = {
+  bestOfNEvidenceStatus: { status: 'fail', reasonCodes: ['best_of_n_required'] },
+  testCoverageEvidenceStatus: { status: 'fail', reasonCodes: ['test_coverage_evidence_missing'] },
+};
+const productScopeEvidenceNormalization = buildV114HarnessOnlyEvidenceNormalization(productScopeEvidenceReport, {
+  CODEX_CHANGED_FILES: 'apps/backend/src/app/lib/tierUpdateSafeDbReadExport.ts',
+  CODEX_PR_BODY: harnessOnlyEvidenceBody,
+});
+const missingHarnessEvidenceReport = {
+  bestOfNEvidenceStatus: { status: 'fail', reasonCodes: ['best_of_n_required'] },
+  testCoverageEvidenceStatus: { status: 'fail', reasonCodes: ['test_coverage_evidence_missing'] },
+};
+const missingHarnessEvidenceNormalization = buildV114HarnessOnlyEvidenceNormalization(missingHarnessEvidenceReport, {
+  CODEX_CHANGED_FILES: 'scripts/codex-v114-self-test.mjs',
+  CODEX_PR_BODY: 'deterministic harness metadata bugfix',
+});
+const jsonChangedFilesEvidenceReport = {
+  bestOfNEvidenceStatus: { status: 'fail', reasonCodes: ['best_of_n_required'] },
+  testCoverageEvidenceStatus: { status: 'fail', reasonCodes: ['test_coverage_evidence_missing'] },
+};
+const jsonChangedFilesEvidenceNormalization = buildV114HarnessOnlyEvidenceNormalization(jsonChangedFilesEvidenceReport, {
+  CODEX_CHANGED_FILES: JSON.stringify([
+    '.github/workflows/quality-gate.yml',
+    'scripts/codex-local-quality-gate.mjs',
+    'scripts/codex-v114-self-test.mjs',
+  ]),
+  CODEX_PR_BODY: harnessOnlyEvidenceBody,
+});
+const eventBodyEvidenceReport = {
+  bestOfNEvidenceStatus: { status: 'fail', reasonCodes: ['best_of_n_required'] },
+  testCoverageEvidenceStatus: { status: 'fail', reasonCodes: ['test_coverage_evidence_missing'] },
+};
+const eventBodyFixtureDir = fs.mkdtempSync(path.join(os.tmpdir(), 'codex-v114-pr-body-'));
+const eventBodyFixturePath = path.join(eventBodyFixtureDir, 'event.json');
+fs.writeFileSync(eventBodyFixturePath, JSON.stringify({ pull_request: { body: harnessOnlyEvidenceBody } }));
+const eventBodyEvidenceNormalization = buildV114HarnessOnlyEvidenceNormalization(eventBodyEvidenceReport, {
+  CODEX_CHANGED_FILES: '.github/workflows/quality-gate.yml\nscripts/codex-local-quality-gate.mjs\nscripts/codex-v114-self-test.mjs',
+  GITHUB_EVENT_PATH: eventBodyFixturePath,
+});
+const workflowRunnerNormalizationFixture = withTemporaryEnv({
+  CODEX_CHANGED_FILES: '.github/workflows/quality-gate.yml\nscripts/codex-local-quality-gate.mjs\nscripts/codex-workflow-quality-runner.mjs\nscripts/codex-v114-self-test.mjs',
+  CODEX_PR_BODY: harnessOnlyEvidenceBody,
+}, () => evaluateWorkflowReport({
+  status: 'fail',
+  targetQualityScoreStatus: {
+    status: 'fail',
+    score: 70,
+    blockingStatuses: [
+      { key: 'bestOfNEvidenceStatus', status: 'fail', effectiveStatus: 'fail' },
+      { key: 'testCoverageEvidenceStatus', status: 'fail', effectiveStatus: 'fail' },
+    ],
+    manualStatuses: [],
+    notApplicableStatuses: [],
+    safeSummaryOnly: true,
+  },
+  bestOfNEvidenceStatus: { status: 'fail', reasonCodes: ['best_of_n_required'] },
+  testCoverageEvidenceStatus: { status: 'fail', reasonCodes: ['test_coverage_evidence_missing'] },
+  failures: [
+    { id: 'bestOfNEvidenceStatus.failed' },
+    { id: 'testCoverageEvidenceStatus.failed' },
+    { id: 'targetQualityScoreStatus.failed' },
+  ],
+}, { gateExit: 1, eventName: 'pull_request' }));
 
 const cases = [
   test('all_v114_status_keys_default_pass', () => V114_STATUS_KEYS.every((key) => report[key]?.status === 'pass')),
@@ -216,6 +350,19 @@ const cases = [
   test('funky_target_active_v114_registry_required', () => funkyActiveRegistry.status === 'pass' && funkyActiveRegistryFailures.length === 0 && funkyActiveRegistryReport.activeSelfTestRegistryStatus.targetModeMapping === true),
   test('funky_target_manifest_active_key_mismatch_remains_hard', () => funkyMissingRegistry.status === 'fail' && funkyMissingRegistryReport.activeSelfTestRegistryStatus.status === 'fail'),
   test('product_runtime_package_workflow_blockers_remain_hard', () => classifyGuardrailOperation('workflow_scope_violation').status === 'fail' && classifyGuardrailOperation('package_lockfile_scope_violation').status === 'fail'),
+  test('remote_artifacts_emit_v114_harness_version', () => currentVersion === '1.1.4' && activeSelfTestSuite === 'v114' && activeSelfTestStatusKey === 'v114SelfTestStatus'),
+  test('harness_version_registry_uses_current_v114_metadata', () => harnessVersionRegistry.currentVersion === '1.1.4' && harnessVersionRegistry.previousVersion === '1.1.3' && harnessVersionRegistry.activeSelfTestSuite === 'v114' && harnessVersionRegistry.activeSelfTestStatusKey === 'v114SelfTestStatus'),
+  test('remote_product_evidence_uses_current_v114_version', () => remoteProductArtifacts.evidence.harnessVersion === '1.1.4' && remoteProductArtifacts.evidence.activeSelfTestSuite === 'v114' && remoteProductArtifacts.evidence.activeSelfTestStatusKey === 'v114SelfTestStatus'),
+  test('safe_artifact_index_uses_current_v114_version', () => safeArtifactIndex.harnessVersion === '1.1.4'),
+  test('workflow_remote_product_checks_uses_current_v114_version', () => workflowText.includes('"schemaVersion":"1.1.4"') && workflowText.includes('"harnessVersion":"1.1.4"') && workflowText.includes('"activeSelfTestSuite":"v114"') && workflowText.includes('"activeSelfTestStatusKey":"v114SelfTestStatus"')),
+  test('workflow_quality_runner_receives_changed_files_for_v114_normalization', () => workflowText.includes('CODEX_CHANGED_FILES<<CODEX_CHANGED_FILES_EOF') && workflowText.includes('export CODEX_CHANGED_FILES="$changed_files"')),
+  test('workflow_quality_runner_emits_harness_only_evidence_normalization_v114', () => workflowRunnerNormalizationFixture.safeSummary.v114HarnessOnlyEvidenceNormalizationStatus.status === 'pass' && workflowRunnerNormalizationFixture.safeSummary.bestOfNEvidenceStatus.status === 'pass' && workflowRunnerNormalizationFixture.safeSummary.testCoverageEvidenceStatus.status === 'pass'),
+  test('harness_only_deterministic_bugfix_can_satisfy_best_of_n_v114', () => harnessOnlyEvidenceReport.bestOfNEvidenceStatus.status === 'pass' && harnessOnlyEvidenceNormalization.bestOfNEvidenceNormalized === true),
+  test('harness_only_test_coverage_evidence_from_compact_safe_sections_v114', () => harnessOnlyEvidenceReport.testCoverageEvidenceStatus.status === 'pass' && harnessOnlyEvidenceNormalization.testCoverageEvidenceNormalized === true),
+  test('harness_only_evidence_accepts_json_changed_files_v114', () => jsonChangedFilesEvidenceReport.bestOfNEvidenceStatus.status === 'pass' && jsonChangedFilesEvidenceReport.testCoverageEvidenceStatus.status === 'pass' && jsonChangedFilesEvidenceNormalization.harnessOnly === true),
+  test('harness_only_evidence_reads_pull_request_body_from_event_payload_v114', () => eventBodyEvidenceReport.bestOfNEvidenceStatus.status === 'pass' && eventBodyEvidenceReport.testCoverageEvidenceStatus.status === 'pass' && eventBodyEvidenceNormalization.status === 'pass'),
+  test('product_pr_still_requires_product_test_coverage_v114', () => productScopeEvidenceReport.testCoverageEvidenceStatus.status === 'fail' && productScopeEvidenceNormalization.harnessOnly === false),
+  test('manual_confirmation_does_not_override_missing_tests_v114', () => missingHarnessEvidenceReport.testCoverageEvidenceStatus.status === 'fail' && missingHarnessEvidenceNormalization.status === 'manual_confirmation_required'),
 ];
 
 const failures = cases.filter((item) => item.status !== 'pass');

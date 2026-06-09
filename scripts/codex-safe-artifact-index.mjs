@@ -6,7 +6,10 @@ import fs from 'node:fs';
 
 import { fileURLToPath } from 'node:url';
 
-import { HARNESS_VERSION, scanObjectForUnsafe, simpleStatus, writeJsonReport, exitFor } from './codex-v080-lib.mjs';
+import { scanObjectForUnsafe, simpleStatus, writeJsonReport, exitFor } from './codex-v080-lib.mjs';
+import { currentVersion } from './codex-harness-version.mjs';
+
+const HARNESS_VERSION = currentVersion;
 
 
 
