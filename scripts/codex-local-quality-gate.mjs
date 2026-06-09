@@ -1568,6 +1568,18 @@ function changedFilesFromEnv(env = process.env) {
   return uniqueSorted(text.split(/[\r\n,]+/).map((item) => item.trim()).filter(Boolean));
 }
 
+function prBodyFromEnv(env = process.env) {
+  if (env.CODEX_PR_BODY) return String(env.CODEX_PR_BODY);
+  const eventPath = env.GITHUB_EVENT_PATH;
+  if (!eventPath) return '';
+  try {
+    const event = JSON.parse(fs.readFileSync(eventPath, 'utf8'));
+    return String(event?.pull_request?.body || '');
+  } catch {
+    return '';
+  }
+}
+
 function isHarnessOnlyChangedFile(file) {
   const normalized = normalizePath(file);
   return normalized === 'AGENTS.md' ||
@@ -1629,7 +1641,7 @@ function isDeterministicHarnessRepairBody(body = '') {
 
 export function buildV114HarnessOnlyEvidenceNormalization(report = {}, env = process.env) {
   const files = changedFilesFromEnv(env);
-  const body = String(env.CODEX_PR_BODY || '');
+  const body = prBodyFromEnv(env);
   const harnessOnly = files.length > 0 &&
     files.every(isHarnessOnlyChangedFile) &&
     !hasForbiddenProductScope(files);

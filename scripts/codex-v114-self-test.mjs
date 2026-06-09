@@ -2,6 +2,8 @@
 // CODEX_QUALITY_HARNESS_FILE v1.1.4
 
 import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
 import { writeJsonReport, exitFor } from './codex-v080-lib.mjs';
 import { currentVersion, activeSelfTestSuite, activeSelfTestStatusKey, buildHarnessVersionRegistry } from './codex-harness-version.mjs';
 import { buildRemoteProductSafeArtifacts } from './codex-v098-gate-lib.mjs';
@@ -251,6 +253,17 @@ const jsonChangedFilesEvidenceNormalization = buildV114HarnessOnlyEvidenceNormal
   ]),
   CODEX_PR_BODY: harnessOnlyEvidenceBody,
 });
+const eventBodyEvidenceReport = {
+  bestOfNEvidenceStatus: { status: 'fail', reasonCodes: ['best_of_n_required'] },
+  testCoverageEvidenceStatus: { status: 'fail', reasonCodes: ['test_coverage_evidence_missing'] },
+};
+const eventBodyFixtureDir = fs.mkdtempSync(path.join(os.tmpdir(), 'codex-v114-pr-body-'));
+const eventBodyFixturePath = path.join(eventBodyFixtureDir, 'event.json');
+fs.writeFileSync(eventBodyFixturePath, JSON.stringify({ pull_request: { body: harnessOnlyEvidenceBody } }));
+const eventBodyEvidenceNormalization = buildV114HarnessOnlyEvidenceNormalization(eventBodyEvidenceReport, {
+  CODEX_CHANGED_FILES: '.github/workflows/quality-gate.yml\nscripts/codex-local-quality-gate.mjs\nscripts/codex-v114-self-test.mjs',
+  GITHUB_EVENT_PATH: eventBodyFixturePath,
+});
 const workflowRunnerNormalizationFixture = withTemporaryEnv({
   CODEX_CHANGED_FILES: '.github/workflows/quality-gate.yml\nscripts/codex-local-quality-gate.mjs\nscripts/codex-workflow-quality-runner.mjs\nscripts/codex-v114-self-test.mjs',
   CODEX_PR_BODY: harnessOnlyEvidenceBody,
@@ -347,6 +360,7 @@ const cases = [
   test('harness_only_deterministic_bugfix_can_satisfy_best_of_n_v114', () => harnessOnlyEvidenceReport.bestOfNEvidenceStatus.status === 'pass' && harnessOnlyEvidenceNormalization.bestOfNEvidenceNormalized === true),
   test('harness_only_test_coverage_evidence_from_compact_safe_sections_v114', () => harnessOnlyEvidenceReport.testCoverageEvidenceStatus.status === 'pass' && harnessOnlyEvidenceNormalization.testCoverageEvidenceNormalized === true),
   test('harness_only_evidence_accepts_json_changed_files_v114', () => jsonChangedFilesEvidenceReport.bestOfNEvidenceStatus.status === 'pass' && jsonChangedFilesEvidenceReport.testCoverageEvidenceStatus.status === 'pass' && jsonChangedFilesEvidenceNormalization.harnessOnly === true),
+  test('harness_only_evidence_reads_pull_request_body_from_event_payload_v114', () => eventBodyEvidenceReport.bestOfNEvidenceStatus.status === 'pass' && eventBodyEvidenceReport.testCoverageEvidenceStatus.status === 'pass' && eventBodyEvidenceNormalization.status === 'pass'),
   test('product_pr_still_requires_product_test_coverage_v114', () => productScopeEvidenceReport.testCoverageEvidenceStatus.status === 'fail' && productScopeEvidenceNormalization.harnessOnly === false),
   test('manual_confirmation_does_not_override_missing_tests_v114', () => missingHarnessEvidenceReport.testCoverageEvidenceStatus.status === 'fail' && missingHarnessEvidenceNormalization.status === 'manual_confirmation_required'),
 ];
