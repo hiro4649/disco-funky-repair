@@ -37,6 +37,10 @@ import {
   validatePermissionProfileMatrix,
   validateSkillProfileRegistry,
 } from './codex-v115-policy-hooks.mjs';
+import {
+  backendDockerSmokeRequiredForFiles,
+  buildBackendDockerSmokeReport,
+} from './codex-backend-docker-smoke.mjs';
 
 function test(name, fn) {
   try {
@@ -175,6 +179,27 @@ const cases = [
   test('package_lockfile_change_hard_fail_outside_scope', () => classifyLegacyCompatibility({ reasonCode: 'package_or_lockfile_changed' }).status === 'fail'),
   test('workflow_change_hard_fail_outside_scope', () => classifyLegacyCompatibility({ reasonCode: 'workflow_change_outside_scope' }).status === 'fail'),
   test('policy_hook_contract_status_pass', () => buildPolicyHookContractStatus().status === 'pass'),
+  test('backend_docker_smoke_required_for_backend_dockerfile_v115', () => backendDockerSmokeRequiredForFiles(['apps/backend/Dockerfile']) === true),
+  test('backend_docker_smoke_required_for_backend_runtime_entry_v115', () => backendDockerSmokeRequiredForFiles(['apps/backend/src/main.ts']) === true),
+  test('backend_docker_smoke_required_for_workflow_v115', () => backendDockerSmokeRequiredForFiles(['.github/workflows/quality-gate.yml']) === true),
+  test('backend_docker_smoke_skips_d8_lib_only_v115', () => backendDockerSmokeRequiredForFiles(['apps/backend/src/app/lib/tierUpdateSafeDbReadExport.ts']) === false),
+  test('backend_docker_smoke_skips_docs_only_v115', () => backendDockerSmokeRequiredForFiles(['docs/process/FUNKY_SAFE_DB_READ_EXPORT_DESIGN.md']) === false),
+  test('backend_docker_smoke_not_applicable_safe_v115', () => buildBackendDockerSmokeReport({ changedFiles: ['docs/process/x.md'] }).backendDockerSmokeStatus.status === 'not_applicable'),
+  test('backend_docker_cli_unavailable_blocks_v115', () => buildBackendDockerSmokeReport({ dockerSmokeRequired: true, dockerCliAvailable: false }).dockerSmokeFailureClass === 'docker_cli_unavailable'),
+  test('backend_docker_build_failed_blocks_v115', () => buildBackendDockerSmokeReport({ dockerSmokeRequired: true, dockerBuildStatus: 'fail' }).dockerSmokeFailureClass === 'docker_build_failed'),
+  test('backend_docker_run_failed_blocks_v115', () => buildBackendDockerSmokeReport({ dockerSmokeRequired: true, dockerRunStatus: 'fail' }).dockerSmokeFailureClass === 'docker_run_failed'),
+  test('backend_docker_container_exited_blocks_v115', () => buildBackendDockerSmokeReport({ dockerSmokeRequired: true, containerExited: true }).dockerSmokeFailureClass === 'docker_container_exited'),
+  test('backend_docker_http_timeout_blocks_v115', () => buildBackendDockerSmokeReport({ dockerSmokeRequired: true, dockerHttpStatus: 'timeout' }).dockerSmokeFailureClass === 'docker_http_timeout'),
+  test('backend_docker_http_unexpected_status_blocks_v115', () => buildBackendDockerSmokeReport({ dockerSmokeRequired: true, httpStatusCode: 404 }).dockerSmokeFailureClass === 'docker_http_unexpected_status'),
+  test('backend_docker_http_503_passes_process_response_with_db_unavailable_v115', () => buildBackendDockerSmokeReport({ dockerSmokeRequired: true, httpStatusCode: 503 }).backendDockerSmokeStatus.status === 'pass'),
+  test('backend_docker_cleanup_failed_blocks_v115', () => buildBackendDockerSmokeReport({ dockerSmokeRequired: true, httpStatusCode: 200, dockerCleanupStatus: 'fail' }).dockerSmokeFailureClass === 'docker_cleanup_failed'),
+  test('backend_docker_secret_like_output_blocks_v115', () => buildBackendDockerSmokeReport({ dockerSmokeRequired: true, secretLikeOutput: true }).dockerSmokeFailureClass === 'docker_secret_like_output'),
+  test('backend_docker_smoke_pass_has_current_head_artifact_v115', () => buildBackendDockerSmokeReport({ dockerSmokeRequired: true, httpStatusCode: 200, headSha: 'abc' }).artifactHeadSha === 'abc'),
+  test('backend_docker_smoke_uses_safe_app_entrypoint_mode_v115', () => buildBackendDockerSmokeReport({ dockerSmokeRequired: true, httpStatusCode: 200 }).backendDockerSmokeStatus.dockerRunMode === 'safe_app_entrypoint'),
+  test('backend_docker_smoke_never_claims_readiness_v115', () => {
+    const result = buildBackendDockerSmokeReport({ dockerSmokeRequired: true, httpStatusCode: 200 });
+    return result.runtimeReadinessClaimed === false && result.productionReadinessClaimed === false && result.stagingNoTxPassClaimed === false;
+  }),
 ];
 
 const failures = cases.filter((item) => item.status !== 'pass');

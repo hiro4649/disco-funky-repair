@@ -211,6 +211,7 @@ const V093_STATUS_KEYS = [
 
 
   'dockerSmokeCurrentHeadArtifactStatus',
+  'backendDockerSmokeStatus',
 
 
 
@@ -255,6 +256,7 @@ const V093_OPTIONAL_NOT_APPLICABLE_STATUS_KEYS = [
 
 
   'dockerSmokeCurrentHeadArtifactStatus',
+  'backendDockerSmokeStatus',
 
 
 
@@ -2340,6 +2342,9 @@ function runV093Gates(report, gateEnv) {
 
 
   report.dockerSmokeCurrentHeadArtifactStatus = runGateScript('scripts/codex-docker-smoke-artifact-gate.mjs', 'dockerSmokeCurrentHeadArtifactStatus', 'CODEX_DOCKER_SMOKE_ARTIFACT_REPORT', gateEnv);
+
+  const backendDockerSmokeReport = readJsonFileIfPresent(gateEnv.CODEX_BACKEND_DOCKER_SMOKE_PATH || gateEnv.CODEX_BACKEND_DOCKER_SMOKE_REPORT);
+  report.backendDockerSmokeStatus = backendDockerSmokeReport?.backendDockerSmokeStatus || { status: 'not_applicable', dockerSmokeRequired: false, safeSummaryOnly: true };
 
 
 

@@ -172,6 +172,16 @@ jobs:
           runner_json="$(PRODUCT_RELEVANT="$product_relevant" NPM_EXECUTED="$npm_executed" NPM_EXIT_CODE="$npm_exit" COMMAND_CWD="$command_cwd" PACKAGE_SCOPE="$package_scope" COMMAND_CLASS="$command_class" node -e "const cwd=process.env.COMMAND_CWD||''; const input={productRelevant:process.env.PRODUCT_RELEVANT==='1',isPullRequest:process.env.CODEX_EVENT_NAME==='pull_request',eventName:process.env.CODEX_EVENT_NAME||'',headSha:process.env.CODEX_PR_HEAD_SHA||'',baseSha:process.env.CODEX_PR_BASE_SHA||'',repository:process.env.CODEX_REPOSITORY||'',npmExecuted:process.env.NPM_EXECUTED==='1',npmExitCode:Number(process.env.NPM_EXIT_CODE||0),cwd,packageScope:process.env.PACKAGE_SCOPE||'',commandClass:process.env.COMMAND_CLASS||'',command:cwd ? 'cd '+cwd+' && npm test' : 'npm test'}; process.stdout.write(JSON.stringify(input));")"
           CODEX_REMOTE_PRODUCT_EVIDENCE_OUT_DIR="$RUNNER_TEMP" CODEX_REMOTE_PRODUCT_EVIDENCE_RUNNER_JSON="$runner_json" node scripts/codex-remote-product-evidence-runner.mjs --write-artifacts
           PRODUCT_RELEVANT="$product_relevant" NPM_EXECUTED="$npm_executed" NPM_EXIT_CODE="$npm_exit" COMMAND_CWD="$command_cwd" PACKAGE_SCOPE="$package_scope" COMMAND_CLASS="$command_class" node -e "const fs=require('fs'); const productRelevant=process.env.PRODUCT_RELEVANT==='1'; const npmExecuted=process.env.NPM_EXECUTED==='1'; const npmExitCode=Number(process.env.NPM_EXIT_CODE||0); const status=!productRelevant?'not_applicable':npmExecuted&&npmExitCode===0?'pass':'fail'; const cwd=process.env.COMMAND_CWD||'.'; const packageScope=process.env.PACKAGE_SCOPE||cwd; const commandClass=process.env.COMMAND_CLASS||'root_npm_test'; const version='1.1.5'; const artifact={schemaVersion:version,harnessVersion:version,sourceHarnessVersion:version,activeHarnessVersion:version,targetHarnessVersion:version,activeSelfTestSuite:'v115',activeSelfTestStatusKey:'v115SelfTestStatus',phase:'remote product checks',status,productRelevant,cwd,packageScope,commandClass,npmExecuted,npmExitCode,productVerificationStatus:{status,safeSummaryOnly:true},productVerificationEvidenceStatus:{status,safeSummaryOnly:true},remoteProductBaselineStatus:{status,safeSummaryOnly:true},safeSummaryOnly:true}; fs.writeFileSync(process.env.RUNNER_TEMP + '/codex-remote-product-checks.safe.json', JSON.stringify(artifact,null,2));"
+      - name: Generate backend Docker smoke evidence
+        if: always()
+        shell: bash
+        env:
+          CODEX_PR_HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          set -euo pipefail
+          report_path="$RUNNER_TEMP/codex-backend-docker-smoke.safe.json"
+          node scripts/codex-backend-docker-smoke.mjs --json > "$report_path" || true
+          echo "CODEX_BACKEND_DOCKER_SMOKE_PATH=$report_path" >> "$GITHUB_ENV"
       - name: Run Codex quality gate
         shell: bash
         env:
@@ -354,6 +364,7 @@ jobs:
             console.log(`- goalConditionStatus: ${summary.goalConditionStatus?.status || 'missing'}`);
             console.log(`- targetSkipNpmProductOverrideStatus: ${summary.targetSkipNpmProductOverrideStatus?.status || 'missing'}`);
             console.log(`- dockerSmokeCurrentHeadArtifactStatus: ${summary.dockerSmokeCurrentHeadArtifactStatus?.status || 'missing'}`);
+            console.log(`- backendDockerSmokeStatus: ${summary.backendDockerSmokeStatus?.status || 'missing'}`);
             console.log(`- sameHeadArtifactEvidenceStatus: ${summary.sameHeadArtifactEvidenceStatus?.status || 'missing'}`);
             console.log(`- targetScriptClassificationFixtureStatus: ${summary.targetScriptClassificationFixtureStatus?.status || 'missing'}`);
             console.log(`- remoteProductPrContextFixtureStatus: ${summary.remoteProductPrContextFixtureStatus?.status || 'missing'}`);
@@ -401,6 +412,7 @@ jobs:
             codex-evidence-auto-repair-hint.safe.json
             codex-same-head-artifact-evidence.safe.json
             codex-docker-smoke-artifact.safe.json
+            ${{ runner.temp }}/codex-backend-docker-smoke.safe.json
             codex-pr-evidence-compact.safe.json
             codex-product-context-safe-artifact.safe.json
             codex-product-baseline-continuity.safe.json
