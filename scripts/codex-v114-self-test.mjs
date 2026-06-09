@@ -317,6 +317,10 @@ const staleV105RendererFixture = renderPrEvidenceBlocks({
   CODEX_PR_HEAD_SHA: '8eb1a50b8566c1b21e112f894b9997c9d0a120f2',
   CODEX_PR_BASE_SHA: '6f72733bad79e06855425577aab86f97ff6c23df',
 });
+const currentHarnessMetadataIsV114OrV115 = (
+  (currentVersion === '1.1.4' && activeSelfTestSuite === 'v114' && activeSelfTestStatusKey === 'v114SelfTestStatus') ||
+  (currentVersion === '1.1.5' && activeSelfTestSuite === 'v115' && activeSelfTestStatusKey === 'v115SelfTestStatus')
+);
 const realRuntimeClaimRendererFixture = renderPrEvidenceBlocks({
   repository: 'hiro4649/disco-funky-repair',
   prNumber: '282',
@@ -396,15 +400,24 @@ const cases = [
   test('funky_target_active_v114_registry_required', () => funkyActiveRegistry.status === 'pass' && funkyActiveRegistryFailures.length === 0 && funkyActiveRegistryReport.activeSelfTestRegistryStatus.targetModeMapping === true),
   test('funky_target_manifest_active_key_mismatch_remains_hard', () => funkyMissingRegistry.status === 'fail' && funkyMissingRegistryReport.activeSelfTestRegistryStatus.status === 'fail'),
   test('product_runtime_package_workflow_blockers_remain_hard', () => classifyGuardrailOperation('workflow_scope_violation').status === 'fail' && classifyGuardrailOperation('package_lockfile_scope_violation').status === 'fail'),
-  test('remote_artifacts_emit_v114_harness_version', () => currentVersion === '1.1.4' && activeSelfTestSuite === 'v114' && activeSelfTestStatusKey === 'v114SelfTestStatus'),
-  test('harness_version_registry_uses_current_v114_metadata', () => harnessVersionRegistry.currentVersion === '1.1.4' && harnessVersionRegistry.previousVersion === '1.1.3' && harnessVersionRegistry.activeSelfTestSuite === 'v114' && harnessVersionRegistry.activeSelfTestStatusKey === 'v114SelfTestStatus'),
-  test('remote_product_evidence_uses_current_v114_version', () => remoteProductArtifacts.evidence.harnessVersion === '1.1.4' && remoteProductArtifacts.evidence.activeSelfTestSuite === 'v114' && remoteProductArtifacts.evidence.activeSelfTestStatusKey === 'v114SelfTestStatus'),
-  test('safe_artifact_index_uses_current_v114_version', () => safeArtifactIndex.harnessVersion === '1.1.4'),
-  test('workflow_remote_product_checks_uses_current_v114_version', () => workflowText.includes('"schemaVersion":"1.1.4"') && workflowText.includes('"harnessVersion":"1.1.4"') && workflowText.includes('"activeSelfTestSuite":"v114"') && workflowText.includes('"activeSelfTestStatusKey":"v114SelfTestStatus"')),
+  test('remote_artifacts_emit_v114_harness_version', () => currentHarnessMetadataIsV114OrV115),
+  test('harness_version_registry_uses_current_v114_metadata', () => (
+    (harnessVersionRegistry.currentVersion === '1.1.4' && harnessVersionRegistry.previousVersion === '1.1.3' && harnessVersionRegistry.activeSelfTestSuite === 'v114' && harnessVersionRegistry.activeSelfTestStatusKey === 'v114SelfTestStatus') ||
+    (harnessVersionRegistry.currentVersion === '1.1.5' && harnessVersionRegistry.previousVersion === '1.1.4' && harnessVersionRegistry.activeSelfTestSuite === 'v115' && harnessVersionRegistry.activeSelfTestStatusKey === 'v115SelfTestStatus')
+  )),
+  test('remote_product_evidence_uses_current_v114_version', () => (
+    (remoteProductArtifacts.evidence.harnessVersion === '1.1.4' && remoteProductArtifacts.evidence.activeSelfTestSuite === 'v114' && remoteProductArtifacts.evidence.activeSelfTestStatusKey === 'v114SelfTestStatus') ||
+    (remoteProductArtifacts.evidence.harnessVersion === '1.1.5' && remoteProductArtifacts.evidence.activeSelfTestSuite === 'v115' && remoteProductArtifacts.evidence.activeSelfTestStatusKey === 'v115SelfTestStatus')
+  )),
+  test('safe_artifact_index_uses_current_v114_version', () => ['1.1.4', '1.1.5'].includes(safeArtifactIndex.harnessVersion)),
+  test('workflow_remote_product_checks_uses_current_v114_version', () => (
+    (workflowText.includes('"schemaVersion":"1.1.4"') && workflowText.includes('"harnessVersion":"1.1.4"') && workflowText.includes('"activeSelfTestSuite":"v114"') && workflowText.includes('"activeSelfTestStatusKey":"v114SelfTestStatus"')) ||
+    (workflowText.includes('"schemaVersion":"1.1.5"') && workflowText.includes('"harnessVersion":"1.1.5"') && workflowText.includes('"activeSelfTestSuite":"v115"') && workflowText.includes('"activeSelfTestStatusKey":"v115SelfTestStatus"'))
+  )),
   test('workflow_quality_runner_receives_changed_files_for_v114_normalization', () => workflowText.includes('CODEX_CHANGED_FILES<<CODEX_CHANGED_FILES_EOF') && workflowText.includes('export CODEX_CHANGED_FILES="$changed_files"')),
   test('workflow_quality_runner_emits_harness_only_evidence_normalization_v114', () => workflowRunnerNormalizationFixture.safeSummary.v114HarnessOnlyEvidenceNormalizationStatus.status === 'pass' && workflowRunnerNormalizationFixture.safeSummary.bestOfNEvidenceStatus.status === 'pass' && workflowRunnerNormalizationFixture.safeSummary.testCoverageEvidenceStatus.status === 'pass'),
   test('legacy_v099_v085_not_current_blocker_when_v114_formal_product_evidence_passes', () => legacySelfTestV114DemotionFixture.v099.effectiveStatus === 'pass_advisory' && legacySelfTestV114DemotionFixture.v085.effectiveStatus === 'pass_advisory' && legacySelfTestV114DemotionFixture.scoringUsesV114Compatibility === true),
-  test('stale_v105_pr_evidence_renderer_not_current_blocker_v114', () => staleV105RendererFixture.prEvidenceRendererStatus.status === 'pass' && staleV105RendererFixture.prEvidenceRendererStatus.blocks.evidencePack.harnessVersion === '1.1.4'),
+  test('stale_v105_pr_evidence_renderer_not_current_blocker_v114', () => staleV105RendererFixture.prEvidenceRendererStatus.status === 'pass' && ['1.1.4', '1.1.5'].includes(staleV105RendererFixture.prEvidenceRendererStatus.blocks.evidencePack.harnessVersion)),
   test('runtime_claim_mismatch_uses_current_pr_body_v114', () => !staleV105RendererFixture.prEvidenceRendererStatus.reasonCodes.includes('pr_evidence_runtime_claim_mismatch')),
   test('runtime_claim_false_positive_from_stale_artifact_demoted_v114', () => staleV105RendererFixture.prEvidenceRendererStatus.blocks.evidencePack.productCodeChanged === true && staleV105RendererFixture.prEvidenceRendererStatus.blocks.evidencePack.runtimeReadinessClaimed === false),
   test('real_runtime_readiness_claim_still_blocks_v114', () => realRuntimeClaimRendererFixture.prEvidenceRendererStatus.status === 'fail' && realRuntimeClaimRendererFixture.prEvidenceRendererStatus.reasonCodes.includes('pr_evidence_runtime_claim_mismatch')),
