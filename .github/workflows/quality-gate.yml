@@ -381,6 +381,12 @@ jobs:
             codex-quality-gate-safe-summary.json
             codex-minimal-safe-failure.json
             ${{ runner.temp }}/codex-minimal-safe-failure.json
+            codex-decision-core.safe.json
+            ${{ runner.temp }}/codex-decision-core.safe.json
+            codex-minimal-blockers.safe.json
+            ${{ runner.temp }}/codex-minimal-blockers.safe.json
+            codex-safe-artifact-index.safe.json
+            ${{ runner.temp }}/codex-safe-artifact-index.safe.json
             codex-diagnostic-consolidated-summary.json
             codex-evidence-pack.normalized.json
             codex-self-test-cases.safe.json
