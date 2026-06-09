@@ -28,6 +28,7 @@ import {
   validateTraceKernel,
   V115_STATUS_KEYS,
 } from './codex-v115-trace-kernel.mjs';
+import { classifyTargetModeCompatibilityStatus } from './codex-v111-token-hard-cap.mjs';
 import {
   buildPolicyHookContractStatus,
   postToolPolicy,
@@ -103,7 +104,17 @@ const cases = [
   test('target_install_finalizer_removes_source_only_wording', () => buildTargetInstallFinalizer({ agentsText: 'This repository is the Codex Development Harness source.' }).status === 'fail'),
   test('legacy_compatibility_matrix_shadows_v085_in_target_mode', () => classifyLegacyCompatibility({ version: 'v085', mode: 'target' }).countOnly === true),
   test('legacy_compatibility_matrix_shadows_v101_v103_in_target_mode', () => ['v101', 'v102', 'v103'].every((version) => classifyLegacyCompatibility({ version, mode: 'target' }).status === 'pass')),
+  test('v115_legacy_v099_target_shadow_count_only_not_blocking', () => classifyTargetModeCompatibilityStatus('v099SelfTestStatus', { status: 'fail', reasonCodes: ['legacy_self_test_advisory_failed'] }, report).effectiveStatus === 'pass_advisory'),
+  test('v115_v080_v109_legacy_count_only_not_current_blocker', () => ['v080SelfTestStatus', 'v099SelfTestStatus', 'v109SelfTestStatus'].every((key) => classifyTargetModeCompatibilityStatus(key, { status: 'fail', reasonCodes: ['legacy_self_test_advisory_failed'] }, report).classification === 'advisory_legacy')),
+  test('v115_reason_summary_does_not_reinject_v099_legacy_blocker', () => classifyTargetModeCompatibilityStatus('v099SelfTestStatus', { status: 'fail', reasonCodes: ['legacy_self_test_advisory_failed'] }, report).effectiveStatus !== 'fail'),
+  test('v115_minimal_blockers_drop_v099_shadow_legacy', () => !['fail', 'missing', 'not_run'].includes(classifyTargetModeCompatibilityStatus('v099SelfTestStatus', { status: 'fail', reasonCodes: ['legacy_self_test_advisory_failed'] }, report).effectiveStatus)),
+  test('v115_target_quality_not_failed_by_v099_shadow_legacy', () => classifyTargetModeCompatibilityStatus('v099SelfTestStatus', { status: 'fail', reasonCodes: ['legacy_self_test_advisory_failed'] }, report).countOnly !== false),
   test('active_v115_required', () => classifyLegacyCompatibility({ version: 'v115', mode: 'target' }).classification === 'active_current'),
+  test('v115_active_v115_failure_still_blocks', () => classifyTargetModeCompatibilityStatus('v115SelfTestStatus', { status: 'fail', reasonCodes: ['active_v115_failed'] }, report).effectiveStatus === 'fail'),
+  test('v115_v114_blocking_compatibility_still_blocks', () => classifyTargetModeCompatibilityStatus('v114SelfTestStatus', { status: 'fail', reasonCodes: ['v114_compat_failed'] }, report).effectiveStatus === 'fail'),
+  test('v115_product_evidence_failure_still_blocks', () => classifyTargetModeCompatibilityStatus('productVerificationStatus', { status: 'fail', reasonCodes: ['product_verification_failed'] }, report).effectiveStatus === 'fail'),
+  test('v115_same_head_mismatch_still_blocks', () => classifyTargetModeCompatibilityStatus('sameHeadEvidenceStatus', { status: 'fail', reasonCodes: ['same_head_mismatch'] }, report).effectiveStatus === 'fail'),
+  test('v115_secret_safety_failure_still_blocks', () => classifyTargetModeCompatibilityStatus('secretScanStatus', { status: 'fail', reasonCodes: ['secret_leak_detected'] }, report).effectiveStatus === 'fail'),
   test('source_only_hard_stays_hard', () => classifyLegacyCompatibility({ version: 'v090', mode: 'source', sourceOnlyHard: true }).status === 'fail'),
   test('true_blockers_remain_hard', () => classifyLegacyCompatibility({ version: 'v085', reasonCode: 'secret_leak_detected' }).status === 'fail'),
   test('token_runtime_meter_compacts_long_output', () => buildTokenRuntimeMeter({ stdoutLines: 40 }).autoCompactOutput === true),
