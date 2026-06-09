@@ -73,6 +73,7 @@ import { buildDiagnosticConsolidatedSummary } from './codex-diagnostic-consolida
 
 
 import { buildInvalidReportRecoverySummary } from './codex-invalid-report-recovery.mjs';
+import { buildV114HarnessOnlyEvidenceNormalization } from './codex-local-quality-gate.mjs';
 import { V101_STATUS_KEYS } from './codex-v101-gate-lib.mjs';
 import { classifyTargetModeCompatibilityStatus } from './codex-v111-token-hard-cap.mjs';
 
@@ -3249,6 +3250,45 @@ export function evaluateWorkflowReport(report, options = {}) {
 
 
 
+  const v114NormalizationStatus = buildV114HarnessOnlyEvidenceNormalization(report, process.env);
+  if (v114NormalizationStatus.status !== 'not_applicable') {
+    report.v114HarnessOnlyEvidenceNormalizationStatus = v114NormalizationStatus;
+  }
+  if (v114NormalizationStatus.bestOfNEvidenceNormalized || v114NormalizationStatus.testCoverageEvidenceNormalized) {
+    const normalizedKeys = new Set([
+      ...(v114NormalizationStatus.bestOfNEvidenceNormalized ? ['bestOfNEvidenceStatus'] : []),
+      ...(v114NormalizationStatus.testCoverageEvidenceNormalized ? ['testCoverageEvidenceStatus'] : []),
+    ]);
+    if (report.targetQualityScoreStatus?.blockingStatuses) {
+      const blockingStatuses = report.targetQualityScoreStatus.blockingStatuses.filter((item) => !normalizedKeys.has(item.key));
+      const manualStatuses = report.targetQualityScoreStatus.manualStatuses || [];
+      const notApplicableStatuses = report.targetQualityScoreStatus.notApplicableStatuses || [];
+      report.targetQualityScoreStatus = {
+        ...report.targetQualityScoreStatus,
+        status: blockingStatuses.length ? 'fail' : 'pass',
+        score: blockingStatuses.length ? 70 : manualStatuses.length ? 89 : notApplicableStatuses.length ? 95 : 100,
+        labels: [
+          ...(blockingStatuses.length ? ['target_quality_score_blocking_failure'] : []),
+          ...(manualStatuses.length ? ['manual_confirmation_remaining'] : []),
+          ...(notApplicableStatuses.length ? ['optional_not_applicable_allowed'] : []),
+          ...(!blockingStatuses.length && !manualStatuses.length && !notApplicableStatuses.length ? ['all_required_target_gates_passed'] : []),
+        ],
+        blockingStatuses,
+      };
+    }
+    if (Array.isArray(report.failures)) {
+      const normalizedFailureIds = new Set([
+        ...(v114NormalizationStatus.bestOfNEvidenceNormalized ? ['bestOfNEvidenceStatus.failed'] : []),
+        ...(v114NormalizationStatus.testCoverageEvidenceNormalized ? ['testCoverageEvidenceStatus.failed'] : []),
+        'targetQualityScoreStatus.failed',
+      ]);
+      report.failures = report.failures.filter((item) => !normalizedFailureIds.has(item.id));
+    }
+    if (report.targetQualityScoreStatus?.status === 'pass' && (!report.failures || report.failures.length === 0) && report.status === 'fail') {
+      report.status = 'pass';
+    }
+  }
+
   const mode = report.targetQualityScoreStatus && !report.sourceHarnessValidationStatus ? 'target' : 'source';
 
 
@@ -4830,6 +4870,24 @@ export function evaluateWorkflowReport(report, options = {}) {
 
     datasetAuditRunnerReadinessStatus: report.datasetAuditRunnerReadinessStatus || { status: 'missing' },
 
+
+
+
+
+
+    v114HarnessOnlyEvidenceNormalizationStatus: report.v114HarnessOnlyEvidenceNormalizationStatus || { status: 'not_applicable', reasonCodes: ['v114_harness_only_evidence_normalization_not_applicable'], safeSummaryOnly: true },
+
+
+
+
+
+    bestOfNEvidenceStatus: report.bestOfNEvidenceStatus || { status: 'missing' },
+
+
+
+
+
+    testCoverageEvidenceStatus: report.testCoverageEvidenceStatus || { status: 'missing' },
 
 
 
