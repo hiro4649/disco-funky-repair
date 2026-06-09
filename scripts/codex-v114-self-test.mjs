@@ -38,6 +38,7 @@ import {
   validateOneSafeNextAction,
 } from './codex-v114-loop-kernel.mjs';
 import { classifyGuardrailOperation, validateHookGuardrailRegistry } from './codex-v114-guardrail-registry.mjs';
+import { evaluateWorkflowReport } from './codex-workflow-quality-runner.mjs';
 import {
   applyTargetActiveSelfTestRegistryMapping,
   applyTargetCompatibilityShadowStatuses,
@@ -53,6 +54,20 @@ function test(name, fn) {
     return { name, status: fn() ? 'pass' : 'fail', safeSummaryOnly: true };
   } catch {
     return { name, status: 'fail', reasonCodes: ['self_test_exception'], safeSummaryOnly: true };
+  }
+}
+
+function withTemporaryEnv(values, fn) {
+  const previous = {};
+  for (const key of Object.keys(values)) previous[key] = process.env[key];
+  try {
+    Object.assign(process.env, values);
+    return fn();
+  } finally {
+    for (const key of Object.keys(values)) {
+      if (previous[key] === undefined) delete process.env[key];
+      else process.env[key] = previous[key];
+    }
   }
 }
 
@@ -236,6 +251,30 @@ const jsonChangedFilesEvidenceNormalization = buildV114HarnessOnlyEvidenceNormal
   ]),
   CODEX_PR_BODY: harnessOnlyEvidenceBody,
 });
+const workflowRunnerNormalizationFixture = withTemporaryEnv({
+  CODEX_CHANGED_FILES: '.github/workflows/quality-gate.yml\nscripts/codex-local-quality-gate.mjs\nscripts/codex-workflow-quality-runner.mjs\nscripts/codex-v114-self-test.mjs',
+  CODEX_PR_BODY: harnessOnlyEvidenceBody,
+}, () => evaluateWorkflowReport({
+  status: 'fail',
+  targetQualityScoreStatus: {
+    status: 'fail',
+    score: 70,
+    blockingStatuses: [
+      { key: 'bestOfNEvidenceStatus', status: 'fail', effectiveStatus: 'fail' },
+      { key: 'testCoverageEvidenceStatus', status: 'fail', effectiveStatus: 'fail' },
+    ],
+    manualStatuses: [],
+    notApplicableStatuses: [],
+    safeSummaryOnly: true,
+  },
+  bestOfNEvidenceStatus: { status: 'fail', reasonCodes: ['best_of_n_required'] },
+  testCoverageEvidenceStatus: { status: 'fail', reasonCodes: ['test_coverage_evidence_missing'] },
+  failures: [
+    { id: 'bestOfNEvidenceStatus.failed' },
+    { id: 'testCoverageEvidenceStatus.failed' },
+    { id: 'targetQualityScoreStatus.failed' },
+  ],
+}, { gateExit: 1, eventName: 'pull_request' }));
 
 const cases = [
   test('all_v114_status_keys_default_pass', () => V114_STATUS_KEYS.every((key) => report[key]?.status === 'pass')),
@@ -304,6 +343,7 @@ const cases = [
   test('safe_artifact_index_uses_current_v114_version', () => safeArtifactIndex.harnessVersion === '1.1.4'),
   test('workflow_remote_product_checks_uses_current_v114_version', () => workflowText.includes('"schemaVersion":"1.1.4"') && workflowText.includes('"harnessVersion":"1.1.4"') && workflowText.includes('"activeSelfTestSuite":"v114"') && workflowText.includes('"activeSelfTestStatusKey":"v114SelfTestStatus"')),
   test('workflow_quality_runner_receives_changed_files_for_v114_normalization', () => workflowText.includes('CODEX_CHANGED_FILES<<CODEX_CHANGED_FILES_EOF') && workflowText.includes('export CODEX_CHANGED_FILES="$changed_files"')),
+  test('workflow_quality_runner_emits_harness_only_evidence_normalization_v114', () => workflowRunnerNormalizationFixture.safeSummary.v114HarnessOnlyEvidenceNormalizationStatus.status === 'pass' && workflowRunnerNormalizationFixture.safeSummary.bestOfNEvidenceStatus.status === 'pass' && workflowRunnerNormalizationFixture.safeSummary.testCoverageEvidenceStatus.status === 'pass'),
   test('harness_only_deterministic_bugfix_can_satisfy_best_of_n_v114', () => harnessOnlyEvidenceReport.bestOfNEvidenceStatus.status === 'pass' && harnessOnlyEvidenceNormalization.bestOfNEvidenceNormalized === true),
   test('harness_only_test_coverage_evidence_from_compact_safe_sections_v114', () => harnessOnlyEvidenceReport.testCoverageEvidenceStatus.status === 'pass' && harnessOnlyEvidenceNormalization.testCoverageEvidenceNormalized === true),
   test('harness_only_evidence_accepts_json_changed_files_v114', () => jsonChangedFilesEvidenceReport.bestOfNEvidenceStatus.status === 'pass' && jsonChangedFilesEvidenceReport.testCoverageEvidenceStatus.status === 'pass' && jsonChangedFilesEvidenceNormalization.harnessOnly === true),
