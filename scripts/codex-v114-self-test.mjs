@@ -224,6 +224,18 @@ const missingHarnessEvidenceNormalization = buildV114HarnessOnlyEvidenceNormaliz
   CODEX_CHANGED_FILES: 'scripts/codex-v114-self-test.mjs',
   CODEX_PR_BODY: 'deterministic harness metadata bugfix',
 });
+const jsonChangedFilesEvidenceReport = {
+  bestOfNEvidenceStatus: { status: 'fail', reasonCodes: ['best_of_n_required'] },
+  testCoverageEvidenceStatus: { status: 'fail', reasonCodes: ['test_coverage_evidence_missing'] },
+};
+const jsonChangedFilesEvidenceNormalization = buildV114HarnessOnlyEvidenceNormalization(jsonChangedFilesEvidenceReport, {
+  CODEX_CHANGED_FILES: JSON.stringify([
+    '.github/workflows/quality-gate.yml',
+    'scripts/codex-local-quality-gate.mjs',
+    'scripts/codex-v114-self-test.mjs',
+  ]),
+  CODEX_PR_BODY: harnessOnlyEvidenceBody,
+});
 
 const cases = [
   test('all_v114_status_keys_default_pass', () => V114_STATUS_KEYS.every((key) => report[key]?.status === 'pass')),
@@ -293,6 +305,7 @@ const cases = [
   test('workflow_remote_product_checks_uses_current_v114_version', () => workflowText.includes('"schemaVersion":"1.1.4"') && workflowText.includes('"harnessVersion":"1.1.4"') && workflowText.includes('"activeSelfTestSuite":"v114"') && workflowText.includes('"activeSelfTestStatusKey":"v114SelfTestStatus"')),
   test('harness_only_deterministic_bugfix_can_satisfy_best_of_n_v114', () => harnessOnlyEvidenceReport.bestOfNEvidenceStatus.status === 'pass' && harnessOnlyEvidenceNormalization.bestOfNEvidenceNormalized === true),
   test('harness_only_test_coverage_evidence_from_compact_safe_sections_v114', () => harnessOnlyEvidenceReport.testCoverageEvidenceStatus.status === 'pass' && harnessOnlyEvidenceNormalization.testCoverageEvidenceNormalized === true),
+  test('harness_only_evidence_accepts_json_changed_files_v114', () => jsonChangedFilesEvidenceReport.bestOfNEvidenceStatus.status === 'pass' && jsonChangedFilesEvidenceReport.testCoverageEvidenceStatus.status === 'pass' && jsonChangedFilesEvidenceNormalization.harnessOnly === true),
   test('product_pr_still_requires_product_test_coverage_v114', () => productScopeEvidenceReport.testCoverageEvidenceStatus.status === 'fail' && productScopeEvidenceNormalization.harnessOnly === false),
   test('manual_confirmation_does_not_override_missing_tests_v114', () => missingHarnessEvidenceReport.testCoverageEvidenceStatus.status === 'fail' && missingHarnessEvidenceNormalization.status === 'manual_confirmation_required'),
 ];

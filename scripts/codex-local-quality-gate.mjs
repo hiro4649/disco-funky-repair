@@ -1555,7 +1555,17 @@ export function filterSourceValidationChangedFiles(files) {
 }
 
 function changedFilesFromEnv(env = process.env) {
-  return lines(env.CODEX_CHANGED_FILES || '');
+  const value = env.CODEX_CHANGED_FILES || '';
+  if (Array.isArray(value)) return uniqueSorted(value);
+  const text = String(value || '').trim();
+  if (!text) return [];
+  try {
+    const parsed = JSON.parse(text);
+    if (Array.isArray(parsed)) return uniqueSorted(parsed);
+  } catch {
+    // Fall through to line/comma parsing.
+  }
+  return uniqueSorted(text.split(/[\r\n,]+/).map((item) => item.trim()).filter(Boolean));
 }
 
 function isHarnessOnlyChangedFile(file) {
