@@ -1,9 +1,28 @@
 #!/usr/bin/env node
 // CODEX_QUALITY_HARNESS_FILE v1.0.7
 import { fileURLToPath } from 'node:url';
+import fs from 'node:fs';
 import { normalizePath, prBodyText, simpleStatus, writeJsonReport, exitFor } from './codex-v080-lib.mjs';
+import { buildBackendDockerSmokeReport } from './codex-backend-docker-smoke.mjs';
 
 function parseInput(env = process.env) {
+  if (env.CODEX_BACKEND_DOCKER_SMOKE_JSON) {
+    try {
+      const parsed = JSON.parse(env.CODEX_BACKEND_DOCKER_SMOKE_JSON);
+      const backend = parsed.backendDockerSmokeStatus ? parsed : buildBackendDockerSmokeReport(parsed);
+      return { backendDockerSmokeReport: backend };
+    } catch {
+      return { invalidInput: true };
+    }
+  }
+  if (env.CODEX_BACKEND_DOCKER_SMOKE_PATH) {
+    try {
+      const backend = JSON.parse(awaitReadFile(env.CODEX_BACKEND_DOCKER_SMOKE_PATH));
+      return { backendDockerSmokeReport: backend };
+    } catch {
+      return { invalidInput: true };
+    }
+  }
   if (env.CODEX_DOCKER_SMOKE_JSON) {
     try { return JSON.parse(env.CODEX_DOCKER_SMOKE_JSON); }
     catch { return { invalidInput: true }; }
@@ -18,12 +37,35 @@ function parseInput(env = process.env) {
   };
 }
 
+function awaitReadFile(filePath) {
+  return fs.readFileSync(filePath, 'utf8');
+}
+
 export function dockerSmokeRequiredForFiles(files = [], manifest = {}) {
   if (manifest.dockerSmokeRequired) return true;
   return files.map(normalizePath).some((file) => /(^|\/)Dockerfile(\.dev)?$|docker-compose\.ya?ml$|compose.*\.ya?ml$|^scripts\/.*docker/i.test(file) || file === '.github/workflows/quality-gate.yml');
 }
 
 export function buildDockerSmokeArtifactReport(input = parseInput()) {
+  if (input.backendDockerSmokeReport) {
+    const backend = input.backendDockerSmokeReport;
+    const backendStatus = backend.backendDockerSmokeStatus?.status || backend.status || 'fail';
+    const required = Boolean(backend.dockerSmokeRequired ?? backend.backendDockerSmokeStatus?.dockerSmokeRequired);
+    if (!required || backendStatus === 'not_applicable') {
+      return simpleStatus('dockerSmokeCurrentHeadArtifactStatus', 'not_applicable', { reasonCodes: ['docker_smoke_not_required'], dockerSmokeRequired: false });
+    }
+    const headMatches = !backend.artifactHeadSha || !backend.prHeadSha || backend.artifactHeadSha === backend.prHeadSha;
+    const status = backendStatus === 'pass' && headMatches ? 'pass' : 'fail';
+    const reasonCodes = [];
+    if (backendStatus !== 'pass') reasonCodes.push(backend.dockerSmokeFailureClass || 'backend_docker_smoke_failed');
+    if (!headMatches) reasonCodes.push('docker_smoke_head_mismatch');
+    return simpleStatus('dockerSmokeCurrentHeadArtifactStatus', status, {
+      reasonCodes: [...new Set(reasonCodes.filter(Boolean))],
+      dockerSmokeRequired: true,
+      backendDockerSmokeStatus: backendStatus,
+      safeSummaryOnly: true,
+    });
+  }
   const required = Boolean(input.dockerSmokeRequired || dockerSmokeRequiredForFiles(input.changedFiles || [], input.manifest || {}));
   if (!required) return simpleStatus('dockerSmokeCurrentHeadArtifactStatus', 'not_applicable', { reasonCodes: ['docker_smoke_not_required'], dockerSmokeRequired: false });
   const reasonCodes = [];
