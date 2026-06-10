@@ -66,6 +66,9 @@ export function validateArtifactConsistency(input = {}) {
   if (indexed === 'pass' && uploaded !== 'pass') reasonCodes.push('artifact_index_consistency_failure');
   if (uploaded === 'pass' && generated !== 'pass') reasonCodes.push('artifact_uploaded_without_generated_source');
   if (uploaded === 'pass' && downloadObserved !== 'pass') reasonCodes.push('artifact_download_not_observed');
+  if ((input.head || input.headSha || 'unknown') === 'unknown' && generated === 'pass' && downloadObserved === 'pass') {
+    reasonCodes.push('artifact_head_not_observed');
+  }
   if (downloadObserved === 'pass' && headMatch !== 'pass') reasonCodes.push('artifact_head_mismatch');
   const base = {
     artifactName,
@@ -80,7 +83,7 @@ export function validateArtifactConsistency(input = {}) {
     safeSummaryOnly: true,
   };
   if (reasonCodes.length) {
-    const primaryClass = reasonCodes.includes('artifact_head_mismatch')
+    const primaryClass = reasonCodes.includes('artifact_head_mismatch') || reasonCodes.includes('artifact_head_not_observed')
       ? 'artifact_stale_head'
       : (reasonCodes.includes('artifact_index_consistency_failure') ? 'artifact_index_consistency_failure' : classifyArtifactConsistency({
         artifactName,
@@ -166,7 +169,7 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
       artifactIndexedStatus: 'pass',
       artifactUploadedStatus: artifact ? 'pass' : 'fail',
       artifactDownloadObservedStatus: artifact ? 'pass' : 'missing',
-      artifactHeadMatchStatus: artifact?.head && artifact.head !== head ? 'fail' : (artifact ? 'pass' : 'not_observed'),
+      artifactHeadMatchStatus: !artifact ? 'not_observed' : (head === 'unknown' ? 'not_observed' : (artifact?.head && artifact.head !== head ? 'fail' : 'pass')),
     };
   });
   const report = buildArtifactConsistencyReport({ head, artifacts });

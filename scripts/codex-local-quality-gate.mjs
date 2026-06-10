@@ -113,22 +113,55 @@ const PROFILE_TEMPLATE_VERSION = '0.7.0';
 
 const MARKER = `CODEX_QUALITY_HARNESS_FILE v${HARNESS_VERSION}`;
 
+function resolveCurrentHeadSha(input = {}) {
+  const envHead = input.headSha || process.env.CODEX_PR_HEAD_SHA || process.env.GITHUB_SHA || '';
+  if (/^[a-f0-9]{40}$/i.test(envHead)) return envHead;
+  try {
+    const result = spawnSync('git', ['rev-parse', 'HEAD'], { encoding: 'utf8' });
+    const head = String(result.stdout || '').trim();
+    if (result.status === 0 && /^[a-f0-9]{40}$/i.test(head)) return head;
+  } catch {
+    // Head remains unknown when git is unavailable.
+  }
+  return 'unknown';
+}
+
+function buildTargetModeArtifactContext(input = {}) {
+  const repo = input.repo || process.env.CODEX_REPOSITORY || process.env.GITHUB_REPOSITORY || 'unknown';
+  const headSha = resolveCurrentHeadSha(input);
+  const targetMode = process.env.CODEX_HARNESS_MODE === 'target' ||
+    (repo && repo !== 'hiro4649/codex-development-harness');
+  return {
+    repo,
+    headSha,
+    targetMode,
+    scopeProfile: targetMode ? 'target_harness' : 'source_harness',
+    permissionProfile: targetMode ? 'target_harness_rollout' : 'harness_implementation',
+    repairType: targetMode ? 'target_harness_compatibility_bridge' : 'source_harness_repair',
+    safeNextAction: targetMode ? 'target_harness_compatibility_bridge_repair_or_state_delta' : 'owner_decision_for_source_compatibility_repair',
+  };
+}
+
 export function buildPreExitDecisionArtifacts(input = {}) {
-  const primaryClass = input.primaryClass || 'safe_detail_unavailable';
+  const context = buildTargetModeArtifactContext(input);
+  const primaryClass = input.primaryClass ||
+    (context.targetMode && (context.repo === 'hiro4649/codex-development-harness' || context.headSha === 'unknown')
+      ? 'target_mode_decision_capsule_generation_gap'
+      : 'safe_detail_unavailable');
   const reasonCodes = [...new Set((input.reasonCodes || [primaryClass]).filter(Boolean).map(String))].slice(0, 3);
   const decisionCapsule = {
     harnessVersion: HARNESS_VERSION,
-    repo: 'hiro4649/codex-development-harness',
-    headSha: input.headSha || 'unknown',
+    repo: context.repo,
+    headSha: context.headSha,
     decision: 'blocked',
     mergeAllowed: false,
     primaryClass,
     primaryBlocker: reasonCodes[0] || primaryClass,
-    safeNextAction: input.safeNextAction || 'read_minimal_blockers',
-    sameHeadRequiredChecks: { required: true, sameHead: false, allPass: false, headSha: input.headSha || 'unknown' },
-    scopeProfile: 'source_harness',
-    permissionProfile: 'harness_implementation',
-    repairType: 'source_harness_repair',
+    safeNextAction: input.safeNextAction || context.safeNextAction,
+    sameHeadRequiredChecks: { required: true, sameHead: context.headSha !== 'unknown', allPass: false, headSha: context.headSha },
+    scopeProfile: context.scopeProfile,
+    permissionProfile: context.permissionProfile,
+    repairType: context.repairType,
     repairAllowedInCurrentScope: false,
     productRepairAllowed: false,
     harnessRepairAllowed: true,
@@ -146,8 +179,8 @@ export function buildPreExitDecisionArtifacts(input = {}) {
     productRepairAllowed: false,
     harnessRepairAllowed: true,
     ownerConfirmationRequired: true,
-    safeNextAction: input.safeNextAction || 'read_minimal_blockers',
-    evidenceSource: 'codex-decision-core.safe.json',
+    safeNextAction: input.safeNextAction || context.safeNextAction,
+    evidenceSource: 'codex-decision-capsule.safe.json',
     traceId: input.traceId || 'trace-pre-exit-decision',
     rawLogsRead: false,
     eightSessionUsed: false,
@@ -158,7 +191,7 @@ export function buildPreExitDecisionArtifacts(input = {}) {
     secondary_blocker: reasonCodes[1] || 'none',
     tertiary_blocker: reasonCodes[2] || 'none',
     safe_next_action: decisionCore.safeNextAction,
-    repair_scope_allowed: 'source_harness_repair',
+    repair_scope_allowed: context.repairType,
     merge_allowed: false,
     reasonCodes,
     passStatusPrintedCount: 0,
@@ -174,7 +207,7 @@ export function buildPreExitDecisionArtifacts(input = {}) {
       tertiary: minimalBlockers.tertiary_blocker,
     },
     traceId: decisionCore.traceId,
-    artifactPointer: decisionCore.evidenceSource,
+    artifactPointer: 'codex-decision-capsule.safe.json',
     passStatusesListed: false,
     legacyDetailSuppressed: true,
     longForbiddenTextSuppressed: true,
@@ -197,7 +230,7 @@ export function buildPreExitDecisionArtifacts(input = {}) {
     ],
   };
   const artifactConsistency = buildArtifactConsistencyReport({
-    head: input.headSha || 'unknown',
+    head: context.headSha,
     artifacts: [
       'codex-decision-capsule.safe.json',
       'codex-artifact-consistency.safe.json',
@@ -210,8 +243,8 @@ export function buildPreExitDecisionArtifacts(input = {}) {
       artifactIndexedStatus: 'pass',
       artifactUploadedStatus: 'pass',
       artifactDownloadObservedStatus: 'pass',
-      artifactHeadMatchStatus: 'pass',
-      head: input.headSha || 'unknown',
+      artifactHeadMatchStatus: context.headSha === 'unknown' ? 'fail' : 'pass',
+      head: context.headSha,
     })),
   });
   const lifeboat = {
@@ -272,7 +305,7 @@ function buildV117ArtifactEntries(head) {
     const artifact = readJsonArtifactIfPresent(file);
     const present = Boolean(artifact);
     const artifactHead = artifact?.head || artifact?.headSha || artifact?.decisionCapsule?.head || artifact?.decisionCapsule?.headSha || '';
-    const headMatch = present && artifactHead && head !== 'unknown' ? artifactHead === head : present;
+    const headMatch = present && artifactHead && head !== 'unknown' && artifactHead === head;
     return {
       artifactName,
       loadBearing: true,
@@ -287,11 +320,37 @@ function buildV117ArtifactEntries(head) {
 }
 
 function writeV117LoadBearingArtifacts(report = {}) {
-  const head = report.decisionCapsule?.head || report.decisionCapsule?.headSha || process.env.CODEX_PR_HEAD_SHA || process.env.GITHUB_SHA || 'unknown';
+  const context = buildTargetModeArtifactContext();
+  const head = context.headSha;
+  const originalCapsule = report.decisionCapsule || {};
+  const originalSafeNextAction = String(originalCapsule.safeNextAction || '');
+  const targetSafeNextAction = context.targetMode && (
+    !originalSafeNextAction ||
+    originalSafeNextAction.includes('source_harness') ||
+    originalSafeNextAction === 'owner_decision_for_source_compatibility_repair' ||
+    originalSafeNextAction === 'read_minimal_blockers'
+  )
+    ? context.safeNextAction
+    : (originalCapsule.safeNextAction || context.safeNextAction);
   const decisionCapsule = {
-    ...(report.decisionCapsule || {}),
+    ...originalCapsule,
+    repo: context.repo,
     head,
     headSha: head,
+    sameHeadRequiredChecks: {
+      ...(originalCapsule.sameHeadRequiredChecks || {}),
+      required: true,
+      sameHead: head !== 'unknown',
+      headSha: head,
+    },
+    scopeProfile: context.scopeProfile,
+    permissionProfile: context.permissionProfile,
+    repairType: context.repairType,
+    safeNextAction: targetSafeNextAction,
+    productRepairAllowed: false,
+    harnessRepairAllowed: true,
+    rawLogsRead: false,
+    eightSessionUsed: false,
     artifactName: 'codex-decision-capsule.safe.json',
     loadBearing: true,
     safeSummaryOnly: true,
