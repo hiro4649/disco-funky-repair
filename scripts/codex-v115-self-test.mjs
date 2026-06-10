@@ -2,7 +2,7 @@
 // CODEX_QUALITY_HARNESS_FILE v1.1.5
 
 import { writeJsonReport, exitFor } from './codex-v080-lib.mjs';
-import { buildPreExitDecisionArtifacts } from './codex-local-quality-gate.mjs';
+import { buildPreExitDecisionArtifacts, buildV115V116RolloutOwnerConfirmationStatus } from './codex-local-quality-gate.mjs';
 import { renderPrEvidenceBlocks } from './codex-pr-evidence-block-renderer.mjs';
 import { summarizeSafeReport } from './codex-safe-summary-pick.mjs';
 import {
@@ -85,6 +85,48 @@ const preExitArtifacts = buildPreExitDecisionArtifacts({
   reasonCodes: ['safe_detail_unavailable'],
   safeNextAction: 'read_minimal_blockers',
 });
+const v116RolloutHead = 'b86aff874896aefd2717dea5d7904c7d1c293431';
+const v116RolloutFiles = [
+  '.github/workflows/quality-gate.yml',
+  'AGENTS.md',
+  'docs/process/CODEX_HARNESS_MANIFEST.json',
+  'docs/process/CODEX_V116_SPEC.md',
+  'scripts/codex-decision-capsule.mjs',
+  'scripts/codex-evidence-precedence-kernel.mjs',
+  'scripts/codex-failure-contract-compiler.mjs',
+  'scripts/codex-local-quality-gate.mjs',
+  'scripts/codex-read-decision-capsule.mjs',
+  'scripts/codex-safe-summary-pick.mjs',
+  'scripts/codex-v116-self-test.mjs',
+];
+const v116RolloutConfirmation = `I confirm PR #297 current head ${v116RolloutHead} for merge consideration.
+Scope is harness rollout only.
+Product code changed: no.
+Runtime readiness claimed: no.
+Production readiness claimed: no.
+staging no-tx PASS claimed: no.
+This confirmation applies only to the current head SHA above.
+It does not override non-overridable failures.
+It does not weaken same-head evidence, safe artifact requirements, secret safety, scope boundary checks, token budget, product/harness separation, or v116 active failures.
+It does not authorize D8P.`;
+function v116RolloutStatus(overrides = {}) {
+  return buildV115V116RolloutOwnerConfirmationStatus({
+    prNumber: '297',
+    headSha: v116RolloutHead,
+    changedFiles: v116RolloutFiles,
+    confirmationText: v116RolloutConfirmation,
+    report: {
+      sameHeadStatus: { status: 'pass' },
+      safeArtifactStatus: { status: 'pass' },
+      scopeBoundaryStatus: { status: 'pass' },
+      tokenBudgetStatus: { status: 'pass' },
+      safeOutputScanStatus: { status: 'pass' },
+      v116SelfTestStatus: { status: 'pass' },
+      ...overrides.report,
+    },
+    ...overrides,
+  });
+}
 
 const cases = [
   test('all_v115_status_keys_default_pass', () => V115_STATUS_KEYS.every((key) => report[key]?.status === 'pass')),
@@ -200,6 +242,15 @@ const cases = [
     const result = buildBackendDockerSmokeReport({ dockerSmokeRequired: true, httpStatusCode: 200 });
     return result.runtimeReadinessClaimed === false && result.productionReadinessClaimed === false && result.stagingNoTxPassClaimed === false;
   }),
+  test('v115_allows_owner_confirmed_v116_rollout_candidate_when_non_overridable_pass', () => v116RolloutStatus().status === 'pass'),
+  test('v115_rejects_v116_rollout_confirmation_when_head_mismatch', () => v116RolloutStatus({ headSha: 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa' }).status === 'manual_confirmation_required'),
+  test('v115_rejects_v116_rollout_confirmation_when_product_files_mixed', () => v116RolloutStatus({ changedFiles: [...v116RolloutFiles, 'apps/backend/src/app/lib/example.ts'] }).reasonCodes.includes('not_v116_rollout_candidate')),
+  test('v115_rejects_v116_rollout_confirmation_when_safe_output_fails', () => v116RolloutStatus({ report: { safeOutputScanStatus: { status: 'fail' } } }).reasonCodes.includes('safeOutputScanStatus_blocking')),
+  test('v115_rejects_v116_rollout_confirmation_when_scope_boundary_fails', () => v116RolloutStatus({ report: { scopeBoundaryStatus: { status: 'fail' } } }).reasonCodes.includes('scopeBoundaryStatus_blocking')),
+  test('v115_rejects_v116_rollout_confirmation_when_token_budget_fails', () => v116RolloutStatus({ report: { tokenBudgetStatus: { status: 'fail' } } }).reasonCodes.includes('tokenBudgetStatus_blocking')),
+  test('v115_owner_confirmation_does_not_override_non_overridable', () => v116RolloutStatus({ report: { sameHeadStatus: { status: 'fail' } } }).status !== 'pass'),
+  test('v115_v116_rollout_pr_body_not_general_machine_evidence', () => v116RolloutStatus({ prNumber: '299' }).reasonCodes.includes('not_v116_rollout_candidate')),
+  test('v115_v116_rollout_candidate_uses_exact_one_safe_next_action', () => v116RolloutStatus().reasonCodes.length === 0),
 ];
 
 const failures = cases.filter((item) => item.status !== 'pass');

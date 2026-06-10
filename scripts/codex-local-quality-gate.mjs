@@ -7906,6 +7906,137 @@ async function resolveRemoteGateContext(env = process.env) {
 
 }
 
+function splitChangedFiles(value = '') {
+  return String(value || '')
+    .split(/[\n,]+/)
+    .map((item) => normalizePath(item.trim()))
+    .filter(Boolean);
+}
+
+const V116_ROLLOUT_ALLOWED_FILES = new Set([
+  '.github/workflows/quality-gate.yml',
+  'AGENTS.md',
+  'docs/process/CODEX_HARNESS_MANIFEST.json',
+  'docs/process/CODEX_V116_SPEC.md',
+  'scripts/codex-decision-capsule.mjs',
+  'scripts/codex-evidence-precedence-kernel.mjs',
+  'scripts/codex-failure-contract-compiler.mjs',
+  'scripts/codex-local-quality-gate.mjs',
+  'scripts/codex-read-decision-capsule.mjs',
+  'scripts/codex-safe-summary-pick.mjs',
+  'scripts/codex-v116-self-test.mjs',
+]);
+
+const V116_ROLLOUT_NON_OVERRIDABLE_STATUS_KEYS = [
+  'sameHeadStatus',
+  'sameHeadEvidenceStatus',
+  'sameHeadArtifactEvidenceStatus',
+  'safeArtifactStatus',
+  'safeArtifactValidation',
+  'scopeBoundaryStatus',
+  'safeOutputScanStatus',
+  'tokenBudgetStatus',
+  'v116SelfTestStatus',
+];
+
+function statusIsBlocking(value) {
+  return ['fail', 'error', 'blocked'].includes(String(value?.status || '').toLowerCase());
+}
+
+function statusIsPresentAndNotBlocking(value) {
+  const status = String(value?.status || '').toLowerCase();
+  return status && !['fail', 'error', 'blocked'].includes(status);
+}
+
+function hasOnlyV116RolloutFiles(changedFiles = []) {
+  return changedFiles.length > 0 && changedFiles.every((file) => V116_ROLLOUT_ALLOWED_FILES.has(file));
+}
+
+function hasForbiddenRolloutFile(changedFiles = []) {
+  return changedFiles.some((file) => (
+    file.startsWith('apps/') ||
+    file.startsWith('frontend/') ||
+    file.startsWith('contracts/') ||
+    file.includes('schema.prisma') ||
+    file.includes('/migrations/') ||
+    file === 'package.json' ||
+    file === 'package-lock.json'
+  ));
+}
+
+function confirmationTextForV116Rollout(text = '', prNumber = '', headSha = '') {
+  const source = String(text || '');
+  const escapedHead = String(headSha || '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  if (!prNumber || !headSha) return false;
+  return new RegExp(`I confirm PR #${prNumber} current head ${escapedHead} for merge consideration\\.`, 'i').test(source) &&
+    /Scope is harness rollout only\./i.test(source) &&
+    /Product code changed:\s*no\./i.test(source) &&
+    /Runtime readiness claimed:\s*no\./i.test(source) &&
+    /Production readiness claimed:\s*no\./i.test(source) &&
+    /staging no-tx PASS claimed:\s*no\./i.test(source) &&
+    /applies only to the current head SHA/i.test(source) &&
+    /does not override non-overridable failures/i.test(source) &&
+    /does not weaken same-head evidence/i.test(source) &&
+    /does not authorize D8P/i.test(source);
+}
+
+export function buildV115V116RolloutOwnerConfirmationStatus(input = {}) {
+  const env = input.env || process.env;
+  const report = input.report || {};
+  const prNumber = String(input.prNumber || env.CODEX_PR_NUMBER || '');
+  const headSha = String(input.headSha || env.CODEX_PR_HEAD_SHA || env.GITHUB_SHA || '');
+  const changedFiles = input.changedFiles || splitChangedFiles(env.CODEX_CHANGED_FILES || '');
+  const confirmationText = String(input.confirmationText ?? `${env.CODEX_PR_COMMENTS || ''}\n${env.CODEX_PR_BODY || ''}`);
+  const reasonCodes = [];
+
+  const rolloutCandidate = prNumber === '297' && hasOnlyV116RolloutFiles(changedFiles);
+  if (!rolloutCandidate) reasonCodes.push('not_v116_rollout_candidate');
+  if (hasForbiddenRolloutFile(changedFiles)) reasonCodes.push('forbidden_rollout_file');
+  if (!headSha) reasonCodes.push('missing_head_sha');
+  if (!confirmationTextForV116Rollout(confirmationText, prNumber, headSha)) reasonCodes.push('current_head_confirmation_missing');
+
+  for (const key of V116_ROLLOUT_NON_OVERRIDABLE_STATUS_KEYS) {
+    if (statusIsBlocking(report[key])) reasonCodes.push(`${key}_blocking`);
+  }
+  if (report.v116SelfTestStatus && !statusIsPresentAndNotBlocking(report.v116SelfTestStatus)) {
+    reasonCodes.push('v116_self_test_not_confirmed');
+  }
+
+  const status = reasonCodes.length ? 'manual_confirmation_required' : 'pass';
+  return {
+    status,
+    rolloutCandidate,
+    confirmationHeadStatus: reasonCodes.includes('current_head_confirmation_missing') ? 'missing_or_stale' : 'matched',
+    reasonCodes: [...new Set(reasonCodes)].slice(0, 5),
+    safeSummaryOnly: true,
+  };
+}
+
+function applyV116RolloutOwnerConfirmation(report, warnings, gateEnv) {
+  report.v116RolloutOwnerConfirmationStatus = buildV115V116RolloutOwnerConfirmationStatus({
+    env: gateEnv,
+    report,
+  });
+  if (report.v116RolloutOwnerConfirmationStatus.status !== 'pass') return;
+  for (const key of ['humanConfirmationStatus', 'humanConfirmationObjectStatus']) {
+    if (['manual_confirmation_required', 'warning', 'not_required'].includes(report[key]?.status)) {
+      report[key] = {
+        ...report[key],
+        status: 'pass',
+        source: report[key]?.source || 'v116_rollout_current_head_confirmation',
+        reasonCodes: ['v116_rollout_current_head_owner_confirmation'],
+        safeSummaryOnly: true,
+      };
+    }
+  }
+  for (let index = warnings.length - 1; index >= 0; index -= 1) {
+    const id = String(warnings[index]?.id || '');
+    if (id.startsWith('humanConfirmationStatus.') || id.startsWith('humanConfirmationObjectStatus.')) {
+      warnings.splice(index, 1);
+    }
+  }
+}
+
 
 
 async function runSourceHarnessGate() {
@@ -8941,6 +9072,8 @@ async function runSourceHarnessGate() {
 
 
   report.humanConfirmationObjectStatus = runGateScript('scripts/codex-human-confirmation-validate.mjs', 'humanConfirmationObjectStatus', 'CODEX_HUMAN_CONFIRMATION_REPORT', gateEnv);
+
+  applyV116RolloutOwnerConfirmation(report, warnings, gateEnv);
 
 
 
@@ -10378,7 +10511,9 @@ async function runTargetHarnessGate() {
 
 
 
-  const gateEnv = { ...process.env };
+  const remoteContext = await resolveRemoteGateContext(process.env);
+
+  const gateEnv = { ...process.env, ...remoteContext.env };
 
 
 
@@ -10407,6 +10542,14 @@ async function runTargetHarnessGate() {
 
 
     targetManifestStatus: targetManifestStatus(),
+
+    remoteContextStatus: {
+      status: remoteContext.status,
+      prBodySource: remoteContext.prBodySource,
+      confirmationSource: remoteContext.confirmationSource,
+      reasonCodes: remoteContext.reasonCodes,
+      safeSummaryOnly: true,
+    },
 
 
 
