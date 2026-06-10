@@ -188,6 +188,53 @@ function isDemotableSupportingDecision(value = '') {
   return value === 'safe_detail_unavailable';
 }
 
+export function buildAllowedCapsuleSupportingArtifacts(capsule = {}) {
+  if (!capsuleAllowsMerge(capsule)) return fail('decision_capsule_not_allowed');
+  const decisionCore = {
+    decision: capsule.decision,
+    primaryClass: capsule.primaryClass,
+    mergeAllowed: true,
+    repairAllowedInCurrentScope: false,
+    productRepairAllowed: false,
+    harnessRepairAllowed: false,
+    ownerConfirmationRequired: false,
+    safeNextAction: capsule.safeNextAction,
+    evidenceSource: 'codex-decision-capsule.safe.json',
+    traceId: capsule.headSha || 'trace-decision-capsule',
+    staleSupportingFailureDemoted: true,
+    rawLogsRead: false,
+    eightSessionUsed: false,
+    safeSummaryOnly: true,
+  };
+  const minimalBlockers = {
+    primary_blocker: 'none',
+    secondary_blocker: 'none',
+    tertiary_blocker: 'none',
+    safe_next_action: capsule.safeNextAction,
+    repair_scope_allowed: 'none',
+    merge_allowed: true,
+    reasonCodes: [],
+    staleSupportingFailureDemoted: true,
+    passStatusPrintedCount: 0,
+    safeSummaryOnly: true,
+  };
+  const minimalSafeFailure = {
+    status: 'pass',
+    classification: 'allowed_decision_capsule_precedence',
+    decisionCapsule: capsule,
+    decisionCore,
+    minimalBlockers,
+    top3Blockers: minimalBlockers,
+    productRepairAllowed: false,
+    harnessRepairAllowed: false,
+    mergeAllowed: true,
+    rawLogsRead: false,
+    eightSessionUsed: false,
+    safeSummaryOnly: true,
+  };
+  return pass({ decisionCore, minimalBlockers, minimalSafeFailure });
+}
+
 export function detectDecisionConflict({
   capsule = {},
   decisionCore = {},

@@ -4,6 +4,7 @@
 import { writeJsonReport, exitFor } from './codex-v080-lib.mjs';
 import {
   OPERATOR_STATUS_KEYS,
+  buildAllowedCapsuleSupportingArtifacts,
   buildDecisionCapsule,
   buildTokenHardBudgetStatus,
   buildV116OwnerConfirmationAcceptance,
@@ -183,11 +184,17 @@ const cases = [
     capsule: allowedRolloutCapsule(),
     minimalBlockers: { primary_blocker: 'safe_detail_unavailable' },
   }).demotedSupportingDecision === true),
+  test('v116_allowed_capsule_demotes_stale_decision_core_safe_detail_unavailable', () => buildAllowedCapsuleSupportingArtifacts(allowedRolloutCapsule()).decisionCore.primaryClass === 'owner_confirmed_harness_rollout'),
+  test('v116_allowed_capsule_demotes_stale_minimal_blockers_safe_detail_unavailable', () => buildAllowedCapsuleSupportingArtifacts(allowedRolloutCapsule()).minimalBlockers.primary_blocker === 'none'),
+  test('v116_allowed_capsule_demotes_minimal_safe_failure_when_non_overridable_pass', () => buildAllowedCapsuleSupportingArtifacts(allowedRolloutCapsule()).minimalSafeFailure.status === 'pass'),
   test('v116_reason_summary_does_not_reinject_demoted_supporting_core', () => allowedRolloutReport({
     supportingEvidence: { decisionCore: { primaryClass: 'safe_detail_unavailable', mergeAllowed: false } },
   }).decisionCapsuleStatus.status === 'pass'),
   test('v116_target_quality_not_failed_by_stale_supporting_core', () => allowedRolloutReport({
     supportingEvidence: { decisionCore: { primaryClass: 'safe_detail_unavailable', mergeAllowed: false } },
+  }).status === 'pass'),
+  test('v116_final_report_does_not_fail_on_demoted_supporting_failure', () => allowedRolloutReport({
+    supportingEvidence: { minimalBlockers: { primary_blocker: 'safe_detail_unavailable' } },
   }).status === 'pass'),
   test('v116_non_overridable_same_head_still_blocks_capsule_allowed', () => detectDecisionConflict({
     capsule: allowedRolloutCapsule(),
@@ -214,6 +221,7 @@ const cases = [
     decisionCore: { primaryClass: 'safe_detail_unavailable' },
     nonOverridableStatuses: { v116SelfTestStatus: { status: 'fail' } },
   }).status === 'fail'),
+  test('v116_product_files_mixed_still_blocks_allowed_capsule', () => ownerConfirmationFixture({ changedFiles: ['apps/backend/src/app.ts'] }).status === 'fail'),
   test('v116_capsule_precedence_keeps_exact_one_safe_next_action', () => allowedRolloutReport({
     supportingEvidence: { decisionCore: { primaryClass: 'safe_detail_unavailable', mergeAllowed: false } },
   }).decisionCapsule.safeNextAction === 'merge_after_same_head_checks'),
