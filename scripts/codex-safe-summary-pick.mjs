@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// CODEX_QUALITY_HARNESS_FILE v1.1.5
+// CODEX_QUALITY_HARNESS_FILE v1.1.7
 
 import fs from 'node:fs';
 import { fileURLToPath } from 'node:url';
@@ -50,7 +50,28 @@ function inferSafeDetailDecision(report = {}) {
 
 export function summarizeSafeReport(report = {}, safeArtifactPath = '') {
   const base = pickSafeSummary(report, { safeArtifactPath });
-  const decisionCore = report.decisionCore || report.decisionCoreV2Status?.decision || inferSafeDetailDecision(report);
+  const capsule = report.decisionCapsule || report.decisionCapsuleStatus?.capsule || (report.decision ? {
+    decision: report.decision,
+    mergeAllowed: String(report.mergeAllowed || '').toLowerCase() === 'yes' || report.mergeAllowed === true,
+    primaryClass: report.primaryClass,
+    primaryBlocker: report.primaryBlocker || report.primaryClass,
+    repairType: report.repairType,
+    safeNextAction: report.safeNextAction,
+    detailsRef: report.detailsRef,
+  } : {});
+  const artifactConsistency = report.artifactConsistency || report.artifactConsistencyStatus?.artifactConsistency || {};
+  const decisionCore = capsule.decision
+    ? {
+      decision: capsule.decision,
+      primaryClass: capsule.primaryClass,
+      mergeAllowed: capsule.mergeAllowed,
+      productRepairAllowed: capsule.productRepairAllowed,
+      harnessRepairAllowed: capsule.harnessRepairAllowed,
+      safeNextAction: capsule.safeNextAction,
+      evidenceSource: capsule.detailsRef,
+      traceId: capsule.headSha,
+    }
+    : (report.decisionCore || report.decisionCoreV2Status?.decision || inferSafeDetailDecision(report));
   const top3 = report.top3Blockers || report.minimalBlockers || {};
   return {
     status: report.status || base.status || 'unknown',
@@ -72,7 +93,17 @@ export function summarizeSafeReport(report = {}, safeArtifactPath = '') {
     skillProfile: report.skillProfile || '',
     permissionProfile: report.permissionProfile || '',
     tokenCostSummary: report.tokenCostSummary || report.tokenRuntimeMeterStatus?.meter || {},
-    artifactPointer: decisionCore.evidenceSource || report.safeArtifactIndexStatus?.artifactPointer || (safeArtifactPath ? 'safe-summary-input' : ''),
+    decisionCapsule: capsule,
+    outcomeContractStatus: report.outcomeContractStatus?.status || 'unknown',
+    verifierCapsuleStatus: report.verifierCapsuleStatus?.status || 'unknown',
+    artifactConsistencyStatus: report.artifactConsistencyStatus?.status || 'unknown',
+    safeFailureReaderStatus: report.safeFailureReaderStatus?.status || 'unknown',
+    primaryBlocker: capsule.primaryBlocker || top3.primary_blocker || decisionCore.primaryClass || 'none',
+    repairType: capsule.repairType || 'external_confirmation_required',
+    sameHeadStatus: report.sameHeadStatus?.status || 'unknown',
+    tokenBudgetStatus: report.tokenBudgetStatus?.status || 'unknown',
+    detailsRef: capsule.detailsRef || decisionCore.evidenceSource || 'codex-decision-capsule.safe.json',
+    artifactPointer: capsule.detailsRef || artifactConsistency.firstReadArtifact || decisionCore.evidenceSource || report.safeArtifactIndexStatus?.artifactPointer || (safeArtifactPath ? 'safe-summary-input' : ''),
     passStatusCount: base.passStatusCount || 0,
     passStatusesListed: false,
     legacyDetailSuppressed: true,
