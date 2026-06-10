@@ -7879,6 +7879,27 @@ function statusIsBlocking(value) {
   return ['fail', 'error', 'blocked'].includes(String(value?.status || '').toLowerCase());
 }
 
+function failureIdStatusKey(id = '') {
+  return String(id || '').split('.')[0] || '';
+}
+
+function applyV116RolloutDecisionCapsulePrecedence(report, failures, warnings) {
+  const capsule = report.decisionCapsule || report.decisionCapsuleStatus?.capsule || {};
+  const ownerConfirmed = report.v116RolloutOwnerConfirmationStatus?.status === 'pass'
+    && capsule.decision === 'allowed'
+    && capsule.mergeAllowed === true
+    && capsule.primaryClass === 'owner_confirmed_harness_rollout';
+  if (!ownerConfirmed) return;
+  const nonOverridable = new Set(V116_ROLLOUT_NON_OVERRIDABLE_STATUS_KEYS);
+  for (let index = failures.length - 1; index >= 0; index -= 1) {
+    if (!nonOverridable.has(failureIdStatusKey(failures[index]?.id))) failures.splice(index, 1);
+  }
+  for (let index = warnings.length - 1; index >= 0; index -= 1) {
+    const key = failureIdStatusKey(warnings[index]?.id);
+    if (!nonOverridable.has(key)) warnings.splice(index, 1);
+  }
+}
+
 function statusIsPresentAndNotBlocking(value) {
   const status = String(value?.status || '').toLowerCase();
   return status && !['fail', 'error', 'blocked'].includes(status);
@@ -12533,6 +12554,7 @@ async function runSourceHarnessCoreContractGate() {
       safeSummaryOnly: true,
     };
   }
+  applyV116RolloutDecisionCapsulePrecedence(report, failures, warnings);
 
   report.safeArtifactValidation = { status: failures.length ? 'fail' : 'pass', safeSummaryOnly: true };
   report.outputShapeStatus = { status: 'pass', safeSummaryOnly: true };
