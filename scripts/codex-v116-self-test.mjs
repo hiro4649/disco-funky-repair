@@ -78,6 +78,43 @@ function ownerConfirmationFixture(overrides = {}) {
     ...overrides,
   });
 }
+function allowedRolloutCapsule() {
+  return buildDecisionCapsule({
+    mergeAllowed: true,
+    ownerMergeScope: true,
+    sameHeadRequiredChecks: { sameHead: true, allPass: true, headSha: 'abc' },
+    ownerConfirmation: {
+      prNumber: '297',
+      headSha: 'abc',
+      changedFiles: ['AGENTS.md', 'scripts/codex-decision-capsule.mjs'],
+      confirmationText,
+      statuses: {
+        safeOutputScanStatus: { status: 'pass' },
+        scopeBoundaryStatus: { status: 'pass' },
+        tokenBudgetStatus: { status: 'pass' },
+        v116SelfTestStatus: { status: 'pass' },
+      },
+    },
+  });
+}
+function allowedRolloutReport(overrides = {}) {
+  return buildV116Report({
+    mergeAllowed: true,
+    ownerMergeScope: true,
+    sameHeadRequiredChecks: { sameHead: true, allPass: true, headSha: 'abc' },
+    ownerConfirmation: {
+      prNumber: '297',
+      headSha: 'abc',
+      changedFiles: ['AGENTS.md', 'scripts/codex-decision-capsule.mjs'],
+      confirmationText,
+    },
+    statuses: {
+      safeOutputScanStatus: { status: 'pass' },
+      v116SelfTestStatus: { status: 'pass' },
+    },
+    ...overrides,
+  });
+}
 
 const cases = [
   test('decision_capsule_exists_on_pass', () => validateDecisionCapsule(passCapsule).status === 'pass'),
@@ -138,6 +175,48 @@ const cases = [
       },
     },
   }).safeNextAction === 'merge_after_same_head_checks'),
+  test('v116_decision_capsule_allowed_wins_over_stale_supporting_core', () => detectDecisionConflict({
+    capsule: allowedRolloutCapsule(),
+    decisionCore: { primaryClass: 'safe_detail_unavailable', mergeAllowed: false },
+  }).status === 'pass'),
+  test('v116_stale_safe_detail_unavailable_demoted_when_capsule_allowed', () => detectDecisionConflict({
+    capsule: allowedRolloutCapsule(),
+    minimalBlockers: { primary_blocker: 'safe_detail_unavailable' },
+  }).demotedSupportingDecision === true),
+  test('v116_reason_summary_does_not_reinject_demoted_supporting_core', () => allowedRolloutReport({
+    supportingEvidence: { decisionCore: { primaryClass: 'safe_detail_unavailable', mergeAllowed: false } },
+  }).decisionCapsuleStatus.status === 'pass'),
+  test('v116_target_quality_not_failed_by_stale_supporting_core', () => allowedRolloutReport({
+    supportingEvidence: { decisionCore: { primaryClass: 'safe_detail_unavailable', mergeAllowed: false } },
+  }).status === 'pass'),
+  test('v116_non_overridable_same_head_still_blocks_capsule_allowed', () => detectDecisionConflict({
+    capsule: allowedRolloutCapsule(),
+    decisionCore: { primaryClass: 'safe_detail_unavailable' },
+    nonOverridableStatuses: { sameHeadStatus: { status: 'fail' } },
+  }).status === 'fail'),
+  test('v116_non_overridable_safe_output_still_blocks_capsule_allowed', () => detectDecisionConflict({
+    capsule: allowedRolloutCapsule(),
+    decisionCore: { primaryClass: 'safe_detail_unavailable' },
+    nonOverridableStatuses: { safeOutputScanStatus: { status: 'fail' } },
+  }).status === 'fail'),
+  test('v116_non_overridable_scope_still_blocks_capsule_allowed', () => detectDecisionConflict({
+    capsule: allowedRolloutCapsule(),
+    decisionCore: { primaryClass: 'safe_detail_unavailable' },
+    nonOverridableStatuses: { scopeBoundaryStatus: { status: 'fail' } },
+  }).status === 'fail'),
+  test('v116_non_overridable_token_budget_still_blocks_capsule_allowed', () => detectDecisionConflict({
+    capsule: allowedRolloutCapsule(),
+    decisionCore: { primaryClass: 'safe_detail_unavailable' },
+    nonOverridableStatuses: { tokenBudgetStatus: { status: 'fail' } },
+  }).status === 'fail'),
+  test('v116_v116_self_test_failure_still_blocks_capsule_allowed', () => detectDecisionConflict({
+    capsule: allowedRolloutCapsule(),
+    decisionCore: { primaryClass: 'safe_detail_unavailable' },
+    nonOverridableStatuses: { v116SelfTestStatus: { status: 'fail' } },
+  }).status === 'fail'),
+  test('v116_capsule_precedence_keeps_exact_one_safe_next_action', () => allowedRolloutReport({
+    supportingEvidence: { decisionCore: { primaryClass: 'safe_detail_unavailable', mergeAllowed: false } },
+  }).decisionCapsule.safeNextAction === 'merge_after_same_head_checks'),
   test('runtime_readiness_claim_hard_fail', () => validateHardSafetyClaims({ runtimeReadinessClaimed: true }).status === 'fail'),
   test('production_readiness_claim_hard_fail', () => validateHardSafetyClaims({ productionReadinessClaimed: true }).status === 'fail'),
   test('legal_compliance_claim_hard_fail', () => validateHardSafetyClaims({ legalComplianceClaimed: true }).status === 'fail'),

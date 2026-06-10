@@ -180,12 +180,44 @@ export function buildDecisionCapsuleArtifactIndex(capsule = buildDecisionCapsule
   };
 }
 
-export function detectDecisionConflict({ capsule = {}, decisionCore = {}, minimalBlockers = {}, safeArtifactIndex = {} } = {}) {
+function capsuleAllowsMerge(capsule = {}) {
+  return capsule.decision === 'allowed' && capsule.mergeAllowed === true;
+}
+
+function isDemotableSupportingDecision(value = '') {
+  return value === 'safe_detail_unavailable';
+}
+
+export function detectDecisionConflict({
+  capsule = {},
+  decisionCore = {},
+  minimalBlockers = {},
+  safeArtifactIndex = {},
+  nonOverridableStatuses = {},
+} = {}) {
   const reasonCodes = [];
-  if (decisionCore.primaryClass && decisionCore.primaryClass !== capsule.primaryClass) reasonCodes.push('decision_artifact_conflict');
-  if (minimalBlockers.primary_blocker && minimalBlockers.primary_blocker !== capsule.primaryBlocker) reasonCodes.push('decision_artifact_conflict');
+  const allowedCapsule = capsuleAllowsMerge(capsule);
+  for (const [key, value] of Object.entries(nonOverridableStatuses || {})) {
+    if (statusIsBlocking(value)) reasonCodes.push(`${key}_blocking`);
+  }
+  if (decisionCore.primaryClass && decisionCore.primaryClass !== capsule.primaryClass) {
+    if (!(allowedCapsule && isDemotableSupportingDecision(decisionCore.primaryClass))) {
+      reasonCodes.push('decision_artifact_conflict');
+    }
+  }
+  if (minimalBlockers.primary_blocker && minimalBlockers.primary_blocker !== capsule.primaryBlocker) {
+    if (!(allowedCapsule && isDemotableSupportingDecision(minimalBlockers.primary_blocker))) {
+      reasonCodes.push('decision_artifact_conflict');
+    }
+  }
   if (safeArtifactIndex.decision && safeArtifactIndex.decision !== capsule.decision) reasonCodes.push('decision_artifact_conflict');
-  return reasonCodes.length ? fail(reasonCodes, { capsule }) : pass({ capsule });
+  return reasonCodes.length ? fail(reasonCodes, { capsule }) : pass({
+    capsule,
+    demotedSupportingDecision: allowedCapsule && (
+      isDemotableSupportingDecision(decisionCore.primaryClass) ||
+      isDemotableSupportingDecision(minimalBlockers.primary_blocker)
+    ),
+  });
 }
 
 export function buildTokenHardBudgetStatus(input = {}) {
@@ -281,13 +313,24 @@ export function buildV116Report(input = {}) {
     ownerConfirmation: input.ownerConfirmation ? { ...input.ownerConfirmation, statuses: statusInputs } : undefined,
   });
   const decisionCapsuleStatus = validateDecisionCapsule(capsule);
-  const conflict = detectDecisionConflict({ capsule, ...(input.supportingEvidence || {}) });
   const sameHeadStatus = capsule.sameHeadRequiredChecks.sameHead ? pass({ state: capsule.sameHeadRequiredChecks.allPass ? 'pass' : 'source-local-not-remote-yet' }) : fail('same_head_required_checks_failed');
+  const conflict = detectDecisionConflict({
+    capsule,
+    ...(input.supportingEvidence || {}),
+    nonOverridableStatuses: {
+      sameHeadStatus,
+      safeArtifactStatus,
+      safeOutputScanStatus: statusInputs.safeOutputScanStatus,
+      scopeBoundaryStatus,
+      tokenBudgetStatus,
+      v116SelfTestStatus: statusInputs.v116SelfTestStatus,
+    },
+  });
   const decisionCapsuleArtifactIndex = buildDecisionCapsuleArtifactIndex(capsule);
   const validationTierStatus = pass({ maxTier: 'tier4', remoteRequiredBeforeMerge: true });
   const continuationStatus = input.sameFailureAfterOneRepair === true ? fail('same_failure_after_one_repair') : pass({ safeNextAction: capsule.safeNextAction });
   const statuses = {
-    decisionCapsuleStatus: [decisionCapsuleStatus, conflict].some((item) => item.status === 'fail') ? fail('decision_artifact_conflict', { capsule }) : decisionCapsuleStatus,
+    decisionCapsuleStatus: [decisionCapsuleStatus, conflict].some((item) => item.status === 'fail') ? fail(conflict.reasonCodes || 'decision_artifact_conflict', { capsule }) : decisionCapsuleStatus,
     sameHeadStatus,
     safeArtifactStatus,
     scopeBoundaryStatus,
