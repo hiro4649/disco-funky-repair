@@ -56,10 +56,69 @@ export function buildSameHeadRequiredChecks(input = {}) {
   };
 }
 
+function splitChangedFiles(value = '') {
+  if (Array.isArray(value)) return value.map(String).filter(Boolean);
+  return String(value || '').split(/[\n, ]+/).map((item) => item.trim()).filter(Boolean);
+}
+
+function statusIsBlocking(value) {
+  return ['fail', 'error', 'blocked'].includes(String(value?.status || '').toLowerCase());
+}
+
+function exactV116RolloutConfirmation(text = '', prNumber = '', headSha = '') {
+  const source = String(text || '');
+  const escapedHead = String(headSha || '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  if (!prNumber || !headSha) return false;
+  return new RegExp(`I confirm PR #${prNumber} current head ${escapedHead} for merge consideration\\.`, 'i').test(source) &&
+    /Scope is harness rollout only\./i.test(source) &&
+    /Product code changed:\s*no\./i.test(source) &&
+    /Runtime readiness claimed:\s*no\./i.test(source) &&
+    /Production readiness claimed:\s*no\./i.test(source) &&
+    /staging no-tx PASS claimed:\s*no\./i.test(source) &&
+    /applies only to the current head SHA/i.test(source) &&
+    /does not override non-overridable failures/i.test(source) &&
+    /does not weaken same-head evidence/i.test(source) &&
+    /does not authorize D8P/i.test(source);
+}
+
+export function buildV116OwnerConfirmationAcceptance(input = {}) {
+  const prNumber = String(input.prNumber || '');
+  const headSha = String(input.headSha || '');
+  const changedFiles = splitChangedFiles(input.changedFiles || '');
+  const statuses = input.statuses || {};
+  const sameHeadRequiredChecks = buildSameHeadRequiredChecks(input.sameHeadRequiredChecks || input);
+  const reasonCodes = [];
+  const forbiddenFile = changedFiles.some((file) => (
+    file.startsWith('apps/') ||
+    file.startsWith('frontend/') ||
+    file.startsWith('contracts/') ||
+    file.includes('schema.prisma') ||
+    file.includes('/migrations/') ||
+    file === 'package.json' ||
+    file === 'package-lock.json'
+  ));
+  if (prNumber !== '297') reasonCodes.push('not_v116_rollout_confirmation_target');
+  if (!headSha) reasonCodes.push('missing_confirmation_head');
+  if (!exactV116RolloutConfirmation(input.confirmationText || '', prNumber, headSha)) reasonCodes.push('current_head_confirmation_missing');
+  if (!changedFiles.length || forbiddenFile) reasonCodes.push('forbidden_or_missing_rollout_files');
+  if (input.productFilesMixed === true) reasonCodes.push('product_files_mixed');
+  if (sameHeadRequiredChecks.sameHead !== true || sameHeadRequiredChecks.allPass !== true) reasonCodes.push('same_head_required_checks_failed');
+  for (const key of ['safeOutputScanStatus', 'scopeBoundaryStatus', 'tokenBudgetStatus', 'v116SelfTestStatus']) {
+    if (String(statuses[key]?.status || '').toLowerCase() !== 'pass') reasonCodes.push(`${key}_not_pass`);
+    if (statusIsBlocking(statuses[key])) reasonCodes.push(`${key}_blocking`);
+  }
+  return reasonCodes.length ? fail(reasonCodes) : pass({ confirmationHeadStatus: 'matched' });
+}
+
 export function buildDecisionCapsule(input = {}) {
   const sameHeadRequiredChecks = buildSameHeadRequiredChecks(input.sameHeadRequiredChecks || input);
+  const ownerConfirmationAcceptance = buildV116OwnerConfirmationAcceptance({
+    ...(input.ownerConfirmation || {}),
+    sameHeadRequiredChecks,
+  });
   const repairType = REPAIR_TYPES.has(input.repairType) ? input.repairType : 'external_confirmation_required';
-  const mergeAllowed = input.mergeAllowed === true
+  const confirmedHarnessRollout = ownerConfirmationAcceptance.status === 'pass';
+  const mergeAllowed = (input.mergeAllowed === true || confirmedHarnessRollout)
     && sameHeadRequiredChecks.required === true
     && sameHeadRequiredChecks.sameHead === true
     && sameHeadRequiredChecks.allPass === true
@@ -70,10 +129,11 @@ export function buildDecisionCapsule(input = {}) {
     headSha: input.headSha || sameHeadRequiredChecks.headSha || 'unknown',
     decision: input.decision || (mergeAllowed ? 'allowed' : 'blocked'),
     mergeAllowed,
-    primaryClass: input.primaryClass || 'owner_decision_required',
-    primaryBlocker: input.primaryBlocker || input.primaryClass || 'owner_decision_required',
-    safeNextAction: one(input.safeNextAction, mergeAllowed ? 'owner_authorized_merge_after_same_head_checks' : 'owner_decision_or_state_delta'),
+    primaryClass: input.primaryClass || (mergeAllowed ? 'owner_confirmed_harness_rollout' : 'owner_decision_required'),
+    primaryBlocker: input.primaryBlocker || input.primaryClass || (mergeAllowed ? 'none' : 'owner_decision_required'),
+    safeNextAction: one(input.safeNextAction, mergeAllowed ? 'merge_after_same_head_checks' : 'owner_decision_or_state_delta'),
     sameHeadRequiredChecks,
+    ownerConfirmationAcceptance,
     scopeProfile: input.scopeProfile || 'source_harness',
     permissionProfile: input.permissionProfile || 'harness_implementation',
     repairType,
@@ -202,19 +262,28 @@ export function validateLegacyShadow(input = {}) {
 }
 
 export function buildV116Report(input = {}) {
-  const capsule = buildDecisionCapsule(input);
-  const decisionCapsuleStatus = validateDecisionCapsule(capsule);
   const tokenBudgetStatus = buildTokenHardBudgetStatus(input.tokenBudget || { operatorVisibleStatuses: OPERATOR_STATUS_KEYS.length });
   const canonical = validateCanonicalStatusRegistry(input.operatorVisibleStatuses || OPERATOR_STATUS_KEYS);
-  const conflict = detectDecisionConflict({ capsule, ...(input.supportingEvidence || {}) });
-  const sameHeadStatus = capsule.sameHeadRequiredChecks.sameHead ? pass({ state: capsule.sameHeadRequiredChecks.allPass ? 'pass' : 'source-local-not-remote-yet' }) : fail('same_head_required_checks_failed');
-  const decisionCapsuleArtifactIndex = buildDecisionCapsuleArtifactIndex(capsule);
   const safeArtifactStatus = input.safeArtifactMissing === true ? fail('missing_load_bearing_artifact') : pass({
     firstRead: 'codex-decision-capsule.safe.json',
     artifactName: 'codex-decision-capsule.safe.json',
     indexed: true,
   });
   const scopeBoundaryStatus = validateExecutionIntent({ taskMode: input.taskMode || 'harness_implementation', sourceBodyTask: true });
+  const statusInputs = {
+    safeOutputScanStatus: input.statuses?.safeOutputScanStatus || pass(),
+    scopeBoundaryStatus,
+    tokenBudgetStatus,
+    v116SelfTestStatus: input.statuses?.v116SelfTestStatus || pass(),
+  };
+  const capsule = buildDecisionCapsule({
+    ...input,
+    ownerConfirmation: input.ownerConfirmation ? { ...input.ownerConfirmation, statuses: statusInputs } : undefined,
+  });
+  const decisionCapsuleStatus = validateDecisionCapsule(capsule);
+  const conflict = detectDecisionConflict({ capsule, ...(input.supportingEvidence || {}) });
+  const sameHeadStatus = capsule.sameHeadRequiredChecks.sameHead ? pass({ state: capsule.sameHeadRequiredChecks.allPass ? 'pass' : 'source-local-not-remote-yet' }) : fail('same_head_required_checks_failed');
+  const decisionCapsuleArtifactIndex = buildDecisionCapsuleArtifactIndex(capsule);
   const validationTierStatus = pass({ maxTier: 'tier4', remoteRequiredBeforeMerge: true });
   const continuationStatus = input.sameFailureAfterOneRepair === true ? fail('same_failure_after_one_repair') : pass({ safeNextAction: capsule.safeNextAction });
   const statuses = {

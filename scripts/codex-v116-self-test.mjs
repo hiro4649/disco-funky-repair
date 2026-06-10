@@ -6,6 +6,7 @@ import {
   OPERATOR_STATUS_KEYS,
   buildDecisionCapsule,
   buildTokenHardBudgetStatus,
+  buildV116OwnerConfirmationAcceptance,
   buildV116Report,
   classifyRepoType,
   detectDecisionConflict,
@@ -50,6 +51,33 @@ const failCapsule = buildDecisionCapsule({
   repairType: 'safe_summary_refresh',
   harnessRepairAllowed: true,
 });
+const confirmationText = `I confirm PR #297 current head abc for merge consideration.
+Scope is harness rollout only.
+Product code changed: no.
+Runtime readiness claimed: no.
+Production readiness claimed: no.
+staging no-tx PASS claimed: no.
+This confirmation applies only to the current head SHA above.
+It does not override non-overridable failures.
+It does not weaken same-head evidence, safe artifact requirements, secret safety, scope boundary checks, token budget, product/harness separation, or v116 active failures.
+It does not authorize D8P.`;
+function ownerConfirmationFixture(overrides = {}) {
+  return buildV116OwnerConfirmationAcceptance({
+    prNumber: '297',
+    headSha: 'abc',
+    changedFiles: ['AGENTS.md', 'scripts/codex-decision-capsule.mjs'],
+    confirmationText,
+    sameHeadRequiredChecks: { sameHead: true, allPass: true, headSha: 'abc' },
+    statuses: {
+      safeOutputScanStatus: { status: 'pass' },
+      scopeBoundaryStatus: { status: 'pass' },
+      tokenBudgetStatus: { status: 'pass' },
+      v116SelfTestStatus: { status: 'pass' },
+      ...(overrides.statuses || {}),
+    },
+    ...overrides,
+  });
+}
 
 const cases = [
   test('decision_capsule_exists_on_pass', () => validateDecisionCapsule(passCapsule).status === 'pass'),
@@ -84,6 +112,32 @@ const cases = [
   test('quality_gate_pass_alone_not_merge_ready', () => buildDecisionCapsule({ mergeAllowed: true, ownerMergeScope: false, sameHeadRequiredChecks: { sameHead: true, allPass: true } }).mergeAllowed === false),
   test('same_head_required_checks_failure_is_negative_fixture', () => buildV116Report({ sameHeadRequiredChecks: { sameHead: false, allPass: true } }).sameHeadStatus.status === 'fail'),
   test('allowed_with_merge_false_must_fail', () => validateDecisionCapsule({ ...passCapsule, decision: 'allowed', mergeAllowed: false }).status === 'fail'),
+  test('v116_owner_confirmation_accepts_current_head_harness_rollout', () => ownerConfirmationFixture().status === 'pass'),
+  test('v116_owner_confirmation_rejects_head_mismatch', () => ownerConfirmationFixture({ headSha: 'def' }).status === 'fail'),
+  test('v116_owner_confirmation_rejects_product_files_mixed', () => ownerConfirmationFixture({ changedFiles: ['apps/backend/src/app.ts'] }).status === 'fail'),
+  test('v116_owner_confirmation_does_not_override_safe_output_failure', () => ownerConfirmationFixture({ statuses: { safeOutputScanStatus: { status: 'fail' } } }).status === 'fail'),
+  test('v116_owner_confirmation_does_not_override_scope_failure', () => ownerConfirmationFixture({ statuses: { scopeBoundaryStatus: { status: 'fail' } } }).status === 'fail'),
+  test('v116_owner_confirmation_does_not_override_token_budget_failure', () => ownerConfirmationFixture({ statuses: { tokenBudgetStatus: { status: 'fail' } } }).status === 'fail'),
+  test('v116_owner_confirmation_does_not_override_v116_self_test_failure', () => ownerConfirmationFixture({ statuses: { v116SelfTestStatus: { status: 'fail' } } }).status === 'fail'),
+  test('v116_pr_body_not_general_machine_evidence', () => ownerConfirmationFixture({ prNumber: '999' }).status === 'fail'),
+  test('v116_confirmation_requires_non_overridable_pass', () => ownerConfirmationFixture({ statuses: { tokenBudgetStatus: { status: 'not_run' } } }).status === 'fail'),
+  test('v116_confirmation_keeps_exact_one_safe_next_action', () => buildDecisionCapsule({
+    mergeAllowed: true,
+    ownerMergeScope: true,
+    sameHeadRequiredChecks: { sameHead: true, allPass: true, headSha: 'abc' },
+    ownerConfirmation: {
+      prNumber: '297',
+      headSha: 'abc',
+      changedFiles: ['AGENTS.md'],
+      confirmationText,
+      statuses: {
+        safeOutputScanStatus: { status: 'pass' },
+        scopeBoundaryStatus: { status: 'pass' },
+        tokenBudgetStatus: { status: 'pass' },
+        v116SelfTestStatus: { status: 'pass' },
+      },
+    },
+  }).safeNextAction === 'merge_after_same_head_checks'),
   test('runtime_readiness_claim_hard_fail', () => validateHardSafetyClaims({ runtimeReadinessClaimed: true }).status === 'fail'),
   test('production_readiness_claim_hard_fail', () => validateHardSafetyClaims({ productionReadinessClaimed: true }).status === 'fail'),
   test('legal_compliance_claim_hard_fail', () => validateHardSafetyClaims({ legalComplianceClaimed: true }).status === 'fail'),

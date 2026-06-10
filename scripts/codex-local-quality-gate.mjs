@@ -3020,17 +3020,43 @@ function runV116Gates(report, gateEnv) {
   const selfTestStatus = process.env.CODEX_SKIP_V116_SELF_TEST === '1'
     ? { status: 'not_applicable', reasonCodes: ['self_test_recursion_guard'], safeSummaryOnly: true }
     : runGateScript('scripts/codex-v116-self-test.mjs', 'v116SelfTestStatus', 'CODEX_V116_SELF_TEST_REPORT', gateEnv);
+  const v116RolloutOwnerConfirmationStatus = buildV115V116RolloutOwnerConfirmationStatus({
+    env: gateEnv,
+    report: { v116SelfTestStatus: selfTestStatus },
+  });
+  const v116HeadSha = gateEnv.CODEX_PR_HEAD_SHA || gateEnv.GITHUB_SHA || '';
+  const v116OwnerConfirmation = v116RolloutOwnerConfirmationStatus.status === 'pass' ? {
+    prNumber: gateEnv.CODEX_PR_NUMBER || '',
+    headSha: v116HeadSha,
+    changedFiles: gateEnv.CODEX_CHANGED_FILES || '',
+    confirmationText: `${gateEnv.CODEX_PR_COMMENTS || ''}\n${gateEnv.CODEX_PR_BODY || ''}`,
+  } : undefined;
   const reports = buildV116Report({
-    decision: 'blocked',
-    primaryClass: 'owner_decision_required',
-    primaryBlocker: 'owner_decision_required',
-    safeNextAction: 'owner_authorized_merge_after_same_head_checks',
+    ...(v116OwnerConfirmation ? {} : {
+      decision: 'blocked',
+      primaryClass: 'owner_decision_required',
+      primaryBlocker: 'owner_decision_required',
+      safeNextAction: 'owner_authorized_merge_after_same_head_checks',
+    }),
     scopeProfile: 'source_harness',
     permissionProfile: 'harness_implementation',
     repairType: 'external_confirmation_required',
     taskMode: 'harness_implementation',
+    mergeAllowed: v116OwnerConfirmation ? true : false,
+    ownerMergeScope: Boolean(v116OwnerConfirmation),
+    sameHeadRequiredChecks: {
+      sameHead: Boolean(v116OwnerConfirmation),
+      allPass: Boolean(v116OwnerConfirmation),
+      headSha: v116HeadSha || 'unknown',
+    },
+    ownerConfirmation: v116OwnerConfirmation,
+    statuses: {
+      v116SelfTestStatus: selfTestStatus,
+      safeOutputScanStatus: { status: 'pass', safeSummaryOnly: true },
+    },
   });
   Object.assign(report, reports);
+  report.v116RolloutOwnerConfirmationStatus = v116RolloutOwnerConfirmationStatus;
   report.v116SelfTestStatus = selfTestStatus.status === 'fail' ? selfTestStatus : {
     ...reports.v116SelfTestStatus,
     ...selfTestStatus,
