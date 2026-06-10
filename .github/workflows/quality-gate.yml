@@ -392,6 +392,9 @@ jobs:
             codex-quality-gate-safe-summary.json
             codex-decision-capsule.safe.json
             codex-artifact-consistency.safe.json
+            ${{ runner.temp }}/codex-decision-capsule.safe.json
+            ${{ runner.temp }}/codex-artifact-consistency.safe.json
+            ${{ runner.temp }}/codex-quality-gate-safe-summary.json
             codex-minimal-blockers.safe.json
             codex-minimal-safe-failure.json
             ${{ runner.temp }}/codex-minimal-safe-failure.json
