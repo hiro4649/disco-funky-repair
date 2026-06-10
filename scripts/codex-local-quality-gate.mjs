@@ -142,12 +142,27 @@ function buildTargetModeArtifactContext(input = {}) {
   };
 }
 
+function normalizeArtifactSafeNextAction(candidate, context) {
+  const value = String(candidate || '');
+  if (!context.targetMode) return value || context.safeNextAction;
+  if (
+    !value ||
+    value.includes('source_harness') ||
+    value.includes('source_compatibility') ||
+    value === 'read_minimal_blockers'
+  ) {
+    return context.safeNextAction;
+  }
+  return value;
+}
+
 export function buildPreExitDecisionArtifacts(input = {}) {
   const context = buildTargetModeArtifactContext(input);
   const primaryClass = input.primaryClass ||
     (context.targetMode && (context.repo === 'hiro4649/codex-development-harness' || context.headSha === 'unknown')
       ? 'target_mode_decision_capsule_generation_gap'
       : 'safe_detail_unavailable');
+  const safeNextAction = normalizeArtifactSafeNextAction(input.safeNextAction, context);
   const reasonCodes = [...new Set((input.reasonCodes || [primaryClass]).filter(Boolean).map(String))].slice(0, 3);
   const decisionCapsule = {
     harnessVersion: HARNESS_VERSION,
@@ -157,7 +172,7 @@ export function buildPreExitDecisionArtifacts(input = {}) {
     mergeAllowed: false,
     primaryClass,
     primaryBlocker: reasonCodes[0] || primaryClass,
-    safeNextAction: input.safeNextAction || context.safeNextAction,
+    safeNextAction,
     sameHeadRequiredChecks: { required: true, sameHead: context.headSha !== 'unknown', allPass: false, headSha: context.headSha },
     scopeProfile: context.scopeProfile,
     permissionProfile: context.permissionProfile,
@@ -179,7 +194,7 @@ export function buildPreExitDecisionArtifacts(input = {}) {
     productRepairAllowed: false,
     harnessRepairAllowed: true,
     ownerConfirmationRequired: true,
-    safeNextAction: input.safeNextAction || context.safeNextAction,
+    safeNextAction,
     evidenceSource: 'codex-decision-capsule.safe.json',
     traceId: input.traceId || 'trace-pre-exit-decision',
     rawLogsRead: false,
@@ -190,7 +205,7 @@ export function buildPreExitDecisionArtifacts(input = {}) {
     primary_blocker: reasonCodes[0] || primaryClass,
     secondary_blocker: reasonCodes[1] || 'none',
     tertiary_blocker: reasonCodes[2] || 'none',
-    safe_next_action: decisionCore.safeNextAction,
+    safe_next_action: safeNextAction,
     repair_scope_allowed: context.repairType,
     merge_allowed: false,
     reasonCodes,
@@ -323,15 +338,7 @@ function writeV117LoadBearingArtifacts(report = {}) {
   const context = buildTargetModeArtifactContext();
   const head = context.headSha;
   const originalCapsule = report.decisionCapsule || {};
-  const originalSafeNextAction = String(originalCapsule.safeNextAction || '');
-  const targetSafeNextAction = context.targetMode && (
-    !originalSafeNextAction ||
-    originalSafeNextAction.includes('source_harness') ||
-    originalSafeNextAction === 'owner_decision_for_source_compatibility_repair' ||
-    originalSafeNextAction === 'read_minimal_blockers'
-  )
-    ? context.safeNextAction
-    : (originalCapsule.safeNextAction || context.safeNextAction);
+  const targetSafeNextAction = normalizeArtifactSafeNextAction(originalCapsule.safeNextAction, context);
   const decisionCapsule = {
     ...originalCapsule,
     repo: context.repo,
@@ -431,8 +438,18 @@ function writeV117LoadBearingArtifacts(report = {}) {
   }
 }
 
+function hasExistingLoadBearingDecisionArtifact() {
+  try {
+    const artifact = readJsonArtifactIfPresent(loadBearingArtifactPath('codex-decision-capsule.safe.json'));
+    return Boolean(artifact?.artifactName === 'codex-decision-capsule.safe.json' || artifact?.headSha || artifact?.head);
+  } catch {
+    return false;
+  }
+}
+
 process.on('exit', (code) => {
   if (code === 0) return;
+  if (hasExistingLoadBearingDecisionArtifact()) return;
   writePreExitDecisionArtifacts({
     primaryClass: 'safe_detail_unavailable',
     reasonCodes: ['safe_detail_unavailable'],
