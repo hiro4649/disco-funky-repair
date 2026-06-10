@@ -54,7 +54,21 @@ export function pickSafeFailureEvidence(dir = '.', order = SAFE_FAILURE_READ_ORD
 export function renderSafeFailureLines(input = {}) {
   const decision = input.decisionArtifact || input.decisionCapsule || {};
   const consistency = input.artifactConsistency || {};
-  const primaryClass = decision.primaryClass || consistency.primaryClass || input.primaryClass || 'unknown';
+  const minimal = input.minimalBlockers || {};
+  const concretePrimaryClass = [
+    decision.primaryClass,
+    consistency.artifactConsistencyStatus?.primaryClass,
+    consistency.primaryClass,
+    minimal.primary_blocker,
+    input.primaryClass,
+  ].find((value) => value && value !== 'safe_detail_unavailable');
+  const primaryClass = concretePrimaryClass || decision.primaryClass || consistency.primaryClass || input.primaryClass || 'unknown';
+  const safeNextAction = [
+    primaryClass === decision.primaryClass ? decision.safeNextAction : '',
+    minimal.safe_next_action,
+    consistency.safeNextAction,
+    input.safeNextAction,
+  ].find(Boolean) || 'owner_decision_or_state_delta';
   const lines = [
     `decision: ${decision.decision || input.decision || 'blocked'}`,
     `head: ${decision.head || consistency.head || input.head || 'unknown'}`,
@@ -64,7 +78,7 @@ export function renderSafeFailureLines(input = {}) {
     `rejectedEvidence: ${(input.rejectedEvidence || []).slice(0, 5).join(',') || 'none'}`,
     `repairType: ${decision.repairType || consistency.repairType || input.repairType || 'unknown'}`,
     `repairTargetFile: ${input.repairTargetFile || consistency.repairTargetFile || 'unknown'}`,
-    `safeNextAction: ${decision.safeNextAction || consistency.safeNextAction || input.safeNextAction || 'owner_decision_or_state_delta'}`,
+    `safeNextAction: ${safeNextAction}`,
     `rawLogsRead: ${decision.rawLogsRead === true || input.rawLogsRead === true ? 'true' : 'false'}`,
   ];
   return lines.slice(0, 20);

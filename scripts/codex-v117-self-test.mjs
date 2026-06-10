@@ -25,6 +25,7 @@ import {
 } from './codex-artifact-consistency-contract.mjs';
 import {
   pickSafeFailureEvidence,
+  renderSafeFailureLines,
   validateSafeFailureReader,
 } from './codex-read-safe-failure.mjs';
 
@@ -93,6 +94,8 @@ const cases = [
   test('delta_only_finalizer_allows_changed_fields_only', () => validateDeltaOnlyFinalizer({ emittedFields: ['state', 'safeNextAction'], changedFields: ['state', 'safeNextAction'] }).status === 'pass'),
   test('delta_only_finalizer_blocks_unchanged_history', () => validateDeltaOnlyFinalizer({ emittedFields: ['oldHistory'], changedFields: ['state'] }).status === 'fail'),
   test('safe_failure_reader_prefers_decision_capsule', () => pickSafeFailureEvidence({ decisionCapsule: { decision: 'blocked' }, artifactConsistency: { primaryClass: 'other' } }).selected === 'codex-decision-capsule.safe.json'),
+  test('safe_failure_reader_promotes_concrete_minimal_blocker_over_generic_capsule', () => renderSafeFailureLines({ decisionArtifact: { decision: 'blocked', primaryClass: 'safe_detail_unavailable' }, minimalBlockers: { primary_blocker: 'target_mode_safe_detail_closure_gap', safe_next_action: 'target_harness_compatibility_bridge_repair_or_state_delta' } }).includes('primaryClass: target_mode_safe_detail_closure_gap')),
+  test('safe_failure_reader_returns_one_target_bridge_next_action', () => renderSafeFailureLines({ decisionArtifact: { decision: 'blocked', primaryClass: 'safe_detail_unavailable' }, minimalBlockers: { primary_blocker: 'target_mode_safe_detail_closure_gap', safe_next_action: 'target_harness_compatibility_bridge_repair_or_state_delta' } }).includes('safeNextAction: target_harness_compatibility_bridge_repair_or_state_delta')),
   test('safe_failure_reader_blocks_raw_log_fallback', () => validateSafeFailureReader({ rawLogFallbackAttempted: true }).status === 'fail'),
   test('safe_detail_unavailable_subclass_requires_real_safe_detail', () => classifySafeDetailUnavailable({ safeSummaryPresent: false }).status === 'fail'),
   test('safe_detail_unavailable_not_used_when_fallback_allowed', () => classifySafeDetailUnavailable({ safeSummaryPresent: false, fallbackSafeDetailReason: 'remote_artifact_expired' }).status === 'pass'),
