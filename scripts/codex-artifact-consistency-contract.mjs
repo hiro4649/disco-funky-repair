@@ -8,6 +8,7 @@ import { writeJsonReport, exitFor } from './codex-v080-lib.mjs';
 import { pass, fail } from './codex-outcome-contract.mjs';
 
 export const LOAD_BEARING_ARTIFACTS = [
+  'codex-owner-decision-receipt.safe.json',
   'codex-decision-capsule.safe.json',
   'codex-artifact-consistency.safe.json',
   'codex-minimal-blockers.safe.json',

@@ -11,6 +11,7 @@ export const SAFE_FAILURE_READ_ORDER = [
   'codex-decision-capsule.safe.json',
   'codex-artifact-consistency.safe.json',
   'codex-minimal-blockers.safe.json',
+  'codex-owner-decision-receipt.safe.json',
   'codex-quality-gate-safe-summary.json',
   'codex-decision-core.safe.json',
   'codex-safe-artifact-index.safe.json',
