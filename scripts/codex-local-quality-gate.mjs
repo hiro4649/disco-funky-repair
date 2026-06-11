@@ -6245,6 +6245,13 @@ function computeTargetOutputShapeStatus(report) {
 
 
 
+function isV117TargetShadowLegacyStatus(key = '') {
+  const match = /^v(\d{3})SelfTestStatus$/.exec(key);
+  if (!match) return false;
+  const version = Number(match[1]);
+  return version >= 80 && version <= 112;
+}
+
 function computeTargetQualityScoreStatus(report) {
 
 
@@ -6783,7 +6790,15 @@ function computeTargetQualityScoreStatus(report) {
 
 
 
-    if (HARNESS_VERSION === '1.1.1' || HARNESS_VERSION === '1.1.2' || HARNESS_VERSION === '1.1.3') {
+    if (HARNESS_VERSION === '1.1.7' && isV117TargetShadowLegacyStatus(key)) {
+      compatibility = {
+        classification: 'advisory_legacy',
+        effectiveStatus: 'pass_advisory',
+        reasonCodes: ['v080_v112_target_shadow_legacy_count_only'],
+        safeSummaryOnly: true,
+      };
+      effectiveStatus = compatibility.effectiveStatus;
+    } else if (HARNESS_VERSION === '1.1.1' || HARNESS_VERSION === '1.1.2' || HARNESS_VERSION === '1.1.3' || HARNESS_VERSION === '1.1.7') {
 
 
 
