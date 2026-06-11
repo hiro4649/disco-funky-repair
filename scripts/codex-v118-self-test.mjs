@@ -18,6 +18,7 @@ import {
   rehydrateSafeSummaryArtifactConsistency,
   resolveLoadBearingArtifacts,
 } from './codex-artifact-consistency-contract.mjs';
+import { summarizeSafeReport } from './codex-safe-summary-pick.mjs';
 
 function test(name, fn) {
   try {
@@ -192,6 +193,7 @@ const cases = [
   test('v118_final_allowed_exit_zero_clears_run_same_head_remote_quality_gate_next_action', () => reconcileV118MergeSurface(v118MergeSurfaceReport()).safeNextAction !== 'run_same_head_remote_quality_gate'),
   test('v118_target_merge_ready_true_when_final_allowed_and_non_overridable_pass', () => reconcileV118MergeSurface(v118MergeSurfaceReport()).targetMergeReady === true),
   test('v118_final_allowed_exports_safe_output_scan_pass_surface', () => reconcileV118MergeSurface(v118MergeSurfaceReport()).safeOutputScanStatus.status === 'pass'),
+  test('v118_safe_summary_exports_safe_output_scan_pass_surface', () => summarizeSafeReport({ ...v118MergeSurfaceReport(), ...reconcileV118MergeSurface(v118MergeSurfaceReport()) }).safeOutputScanStatus === 'pass'),
   test('v118_safe_output_surface_missing_blocks_merge', () => reconcileV118MergeSurface(v118MergeSurfaceReport({ safeOutputScanStatus: { status: 'fail', reasonCodes: ['safe_output_surface_missing'], safeSummaryOnly: true } })).mergeAllowed === false),
   test('v118_safe_output_failure_still_blocks_final_allowed', () => reconcileV118MergeSurface(v118MergeSurfaceReport({ safeOutputScanStatus: { status: 'fail', reasonCodes: ['raw_log_leak_detected'], safeSummaryOnly: true } })).targetQualityScoreStatus.status === 'fail'),
   test('v118_final_allowed_does_not_override_same_head_failure', () => reconcileV118MergeSurface(v118MergeSurfaceReport({ evidenceCapsuleStatus: { status: 'fail', reasonCodes: ['same_head_mismatch'], safeSummaryOnly: true } })).mergeAllowed === false),
