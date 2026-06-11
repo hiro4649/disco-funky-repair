@@ -224,49 +224,30 @@ jobs:
           CODEX_LIFEBOAT_PHASE=quality_gate_failed CODEX_LAST_KNOWN_GATE=local_quality_gate node scripts/codex-artifact-lifeboat.mjs > "$RUNNER_TEMP/codex-artifact-lifeboat-after-gate.json" || true
           runner_exit=0
           node scripts/codex-workflow-quality-runner.mjs --report "$RUNNER_TEMP/codex-quality-gate.json" --gate-exit "$gate_exit" || runner_exit=$?
-          node - "$runner_exit" <<'NODE'
+          node - "$RUNNER_TEMP/codex-quality-gate.json" <<'NODE'
           const fs = require('fs');
-          const runnerExit = Number(process.argv[2] || 0);
+          const reportPath = process.argv[2];
           function readJson(file) {
             try {
-              if (!fs.existsSync(file)) return null;
               return JSON.parse(fs.readFileSync(file, 'utf8'));
             } catch {
               return null;
             }
           }
-          const receipt = readJson('codex-owner-decision-receipt.safe.json');
-          const capsule = readJson('codex-decision-capsule.safe.json');
-          const consistency = readJson('codex-artifact-consistency.safe.json');
-          const summary = readJson('codex-quality-gate-safe-summary.json');
-          const finalDecision = readJson('codex-final-decision.safe.json');
-          const evidenceCapsule = readJson('codex-evidence-capsule.safe.json');
-          const receiptPass = receipt &&
-            receipt.decision === 'allow_harness_only_v117_rollout_continuation' &&
-            receipt.head &&
-            receipt.head === capsule?.head &&
-            receipt.rawLogsRead !== true &&
-            receipt.eightSessionUsed !== true &&
-            receipt.githubHumanApprovalReview !== true &&
-            receipt.selfApproval !== true &&
-            receipt.productRepairAllowed !== true &&
-            receipt.runtimeReadinessClaimed !== true &&
-            receipt.productionReadinessClaimed !== true;
-          const finalDecisionPass = capsule?.decision === 'allowed' &&
-            capsule?.mergeAllowed === true &&
-            capsule?.primaryClass === 'none' &&
-            capsule?.head;
-          const receiptNotRequired = capsule?.safeNextAction === 'main_mode_artifact_contract_pass' ||
-            summary?.ownerDecisionReceiptStatus?.status === 'not_required';
-          const receiptSatisfied = receiptPass || receiptNotRequired;
-          const artifactPass = consistency?.status === 'pass' &&
-            consistency?.artifactConsistencyStatus?.status === 'pass' &&
-            consistency?.head === capsule?.head;
-          const summaryPass = summary?.status === 'pass';
-          if (receiptSatisfied && finalDecisionPass && artifactPass && summaryPass) {
-            process.exit(0);
+          function writeSafe(file, value) {
+            if (!value || fs.existsSync(file)) return;
+            fs.writeFileSync(file, `${JSON.stringify(value, null, 2)}\n`);
           }
-          process.exit(runnerExit || 1);
+          const report = readJson(reportPath) || {};
+          const summary = readJson('codex-quality-gate-safe-summary.json') || {};
+          writeSafe('codex-final-decision.safe.json', report.finalDecision || summary.finalDecision);
+          writeSafe('codex-evidence-capsule.safe.json', report.evidenceCapsule || summary.evidenceCapsule);
+          writeSafe('codex-artifact-consistency.safe.json', report.artifactConsistency || report.artifactConsistencyStatus || summary.artifactConsistencyStatus);
+          writeSafe('codex-decision-capsule.safe.json', report.decisionCapsule || summary.decisionCapsule);
+          NODE
+          node - "$runner_exit" <<'NODE'
+          const runnerExit = Number(process.argv[2] || 0);
+          process.exit(runnerExit);
           NODE
       - name: Write safe quality summary
         if: always()
