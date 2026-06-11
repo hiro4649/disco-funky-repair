@@ -14,6 +14,7 @@ import {
 import {
   MACHINE_READ_ORDER_V118,
   buildArtifactConsistencyReport,
+  rehydrateSafeSummaryArtifactConsistency,
   resolveLoadBearingArtifacts,
 } from './codex-artifact-consistency-contract.mjs';
 
@@ -148,6 +149,15 @@ const cases = [
   test('artifact_loop_stop_after_same_head_pass', () => true),
   test('convergence_gate_stops_same_primary_class_twice', () => reconcileFinalSafeDecision({ ...allowedCreateInput(), convergenceState: { continueAllowed: false, currentPrimaryClass: 'same_primary_class_after_one_repair' } }).primaryClass === 'same_primary_class_after_one_repair'),
   test('safe_artifact_read_budget_excludes_internal_artifact_consistency', () => MACHINE_READ_ORDER_V118.length === 3),
+  test('v118_exports_v117_rehydrate_safe_summary_artifact_consistency', () => typeof rehydrateSafeSummaryArtifactConsistency === 'function'),
+  test('v118_v117_compatibility_self_test_imports_artifact_contract_exports', () => fs.readFileSync('scripts/codex-v117-self-test.mjs', 'utf8').includes('rehydrateSafeSummaryArtifactConsistency')),
+  test('v118_rehydrate_safe_summary_artifact_consistency_passes_coherent_final_summary', () => rehydrateSafeSummaryArtifactConsistency({ artifactConsistencyStatus: { status: 'fail', primaryClass: 'artifact_stale_head' } }, buildArtifactConsistencyReport({ head: 'abc' }), { head: 'abc' }).artifactConsistencyStatus.status === 'pass'),
+  test('v118_rehydrate_safe_summary_artifact_consistency_fails_missing_load_bearing_summary', () => rehydrateSafeSummaryArtifactConsistency({ safeSummaryPresent: false }, buildArtifactConsistencyReport({ head: 'abc' }), { head: 'abc' }).artifactConsistencyStatus.status === 'fail'),
+  test('v118_rehydrate_preserves_same_head_failure', () => rehydrateSafeSummaryArtifactConsistency({ artifactConsistencyStatus: { status: 'fail', reasonCodes: ['same_head_mismatch'] } }, buildArtifactConsistencyReport({ head: 'abc' }), { head: 'abc' }).artifactConsistencyStatus.status === 'fail'),
+  test('v118_rehydrate_preserves_safe_output_failure', () => rehydrateSafeSummaryArtifactConsistency({ artifactConsistencyStatus: { status: 'fail', reasonCodes: ['safe_output_scan_failed'] } }, buildArtifactConsistencyReport({ head: 'abc' }), { head: 'abc' }).artifactConsistencyStatus.status === 'fail'),
+  test('v118_rehydrate_preserves_scope_boundary_failure', () => rehydrateSafeSummaryArtifactConsistency({ artifactConsistencyStatus: { status: 'fail', reasonCodes: ['scope_boundary_failed'] } }, buildArtifactConsistencyReport({ head: 'abc' }), { head: 'abc' }).artifactConsistencyStatus.status === 'fail'),
+  test('v118_rehydrate_preserves_token_budget_failure', () => rehydrateSafeSummaryArtifactConsistency({ artifactConsistencyStatus: { status: 'fail', reasonCodes: ['token_budget_failed'] } }, buildArtifactConsistencyReport({ head: 'abc' }), { head: 'abc' }).artifactConsistencyStatus.status === 'fail'),
+  test('v118_rehydrate_safe_summary_only', () => rehydrateSafeSummaryArtifactConsistency({}, buildArtifactConsistencyReport({ head: 'abc' }), { head: 'abc' }).safeSummaryOnly === true),
   test('typed_status_registry_blocks_not_applicable', () => validateTypedStatus({ statusCode: 'not_applicable', statusRole: 'merge', reason: 'x', mergeConditionEligible: false }) === false),
   test('forbidden_profile_id_required', () => true),
   test('verification_profile_required', () => true),

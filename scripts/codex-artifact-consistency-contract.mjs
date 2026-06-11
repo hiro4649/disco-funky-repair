@@ -107,6 +107,7 @@ export function validateArtifactConsistency(input = {}) {
   if (uploaded === 'pass' && generated !== 'pass') reasonCodes.push('artifact_uploaded_without_generated_source');
   if (uploaded === 'pass' && isRequiredFailure(downloadObserved)) reasonCodes.push('artifact_download_not_observed');
   if (headMatch === 'fail' || (downloadObserved === 'pass' && headMatch !== 'pass')) reasonCodes.push('artifact_head_mismatch');
+  if ((input.head || input.headSha || 'unknown') === 'unknown' && downloadObserved === 'pass') reasonCodes.push('artifact_head_mismatch');
   const base = {
     artifactName,
     artifactGeneratedStatus: generated,
@@ -120,9 +121,9 @@ export function validateArtifactConsistency(input = {}) {
     safeSummaryOnly: true,
   };
   if (reasonCodes.length) {
-    const primaryClass = reasonCodes.includes('artifact_head_mismatch')
-      ? 'artifact_stale_head'
-      : (reasonCodes.includes('artifact_index_consistency_failure') ? 'artifact_index_consistency_failure' : classifyArtifactConsistency({
+    const primaryClass = reasonCodes.includes('artifact_index_consistency_failure')
+      ? 'artifact_index_consistency_failure'
+      : (reasonCodes.includes('artifact_head_mismatch') ? 'artifact_stale_head' : classifyArtifactConsistency({
         artifactName,
         artifactGeneratedStatus: generated,
         artifactIndexedStatus: indexed,
@@ -150,18 +151,95 @@ export function buildArtifactConsistencyReport(input = {}) {
   const loadBearingArtifacts = input.loadBearingArtifacts || (artifactDefinedLoadBearing.length ? artifactDefinedLoadBearing : (v118ModeExplicit
     ? resolveLoadBearingArtifacts(executionMode, terminalAction, input.blockerClass || 'none')
     : V117_LOAD_BEARING_ARTIFACTS));
-  const artifacts = input.artifacts || loadBearingArtifacts.map((artifactName) => ({
+  const effectiveLoadBearingArtifacts = input.ownerDecisionReceiptRequired === true && !loadBearingArtifacts.includes('codex-owner-decision-receipt.safe.json')
+    ? [...loadBearingArtifacts, 'codex-owner-decision-receipt.safe.json']
+    : loadBearingArtifacts;
+  const artifacts = input.artifacts || effectiveLoadBearingArtifacts.map((artifactName) => ({
     artifactName,
     artifactHeadMatchStatus: input.remoteHeadMatches === false ? 'fail' : undefined,
     safeSummaryPresent: input.safeSummaryPresent,
   }));
-  const entries = artifacts.map((artifact) => validateArtifactConsistency({ head: input.head, executionMode, terminalAction, loadBearingArtifacts, remote: input.remote, ...artifact }));
+  const entries = artifacts.map((artifact) => validateArtifactConsistency({ head: input.head, executionMode, terminalAction, loadBearingArtifacts: effectiveLoadBearingArtifacts, remote: input.remote, ...artifact }));
   const failures = entries.filter((entry) => entry.status === 'fail');
   return {
     status: failures.length ? 'fail' : 'pass',
     artifactConsistencyStatus: failures.length ? failures[0] : pass({ checkedArtifacts: entries.length }),
     entries,
     checkedArtifacts: entries.length,
+    safeSummaryOnly: true,
+  };
+}
+
+const NON_OVERRIDABLE_REHYDRATE_REASON_CODES = new Set([
+  'same_head_mismatch',
+  'safe_output_scan_failed',
+  'raw_log_leak_detected',
+  'secret_leak_detected',
+  'scope_boundary_failed',
+  'token_budget_failed',
+  'v118_self_test_failed',
+  'v117_self_test_failed',
+  'product_files_mixed',
+  'package_lockfile_mixed',
+  'schema_migration_mixed',
+  'runtime_readiness_claimed',
+  'staging_no_tx_pass_claimed',
+  'production_readiness_claimed',
+]);
+
+function collectReasonCodes(value = {}) {
+  const codes = new Set();
+  for (const code of value.reasonCodes || []) codes.add(code);
+  if (value.primaryClass) codes.add(value.primaryClass);
+  if (value.reasonCode) codes.add(value.reasonCode);
+  return [...codes];
+}
+
+export function rehydrateSafeSummaryArtifactConsistency(safeSummary = {}, finalArtifactConsistency = {}, options = {}) {
+  const finalReport = finalArtifactConsistency?.artifactConsistencyStatus
+    ? finalArtifactConsistency
+    : buildArtifactConsistencyReport({
+      head: options.head || safeSummary.head || finalArtifactConsistency.head,
+      ...finalArtifactConsistency,
+    });
+  const finalStatus = finalReport.artifactConsistencyStatus || finalReport;
+  const summaryStatus = safeSummary.artifactConsistencyStatus || safeSummary.artifactConsistency || {};
+  const summaryCodes = collectReasonCodes(summaryStatus);
+  const nonOverridableCode = summaryCodes.find((code) => NON_OVERRIDABLE_REHYDRATE_REASON_CODES.has(code));
+  if (safeSummary.safeSummaryPresent === false || safeSummary.loadBearingSafeSummaryMissing === true) {
+    return {
+      status: 'fail',
+      artifactConsistencyStatus: fail('safe_summary_missing', {
+        primaryClass: 'safe_summary_missing',
+        safeSummaryOnly: true,
+      }),
+      rejectedEvidence: [],
+      safeSummaryOnly: true,
+    };
+  }
+  if (nonOverridableCode) {
+    return {
+      status: 'fail',
+      artifactConsistencyStatus: fail(nonOverridableCode, {
+        primaryClass: nonOverridableCode,
+        safeSummaryOnly: true,
+      }),
+      rejectedEvidence: [],
+      safeSummaryOnly: true,
+    };
+  }
+  const rejectedEvidence = [];
+  if (summaryStatus.status === 'fail' && finalStatus.status === 'pass') {
+    rejectedEvidence.push({
+      primaryClass: 'stale_intermediate_artifact_consistency_rejected',
+      rejectedPrimaryClass: summaryStatus.primaryClass || 'unknown',
+      safeSummaryOnly: true,
+    });
+  }
+  return {
+    status: finalStatus.status || finalReport.status || 'pass',
+    artifactConsistencyStatus: finalStatus,
+    rejectedEvidence,
     safeSummaryOnly: true,
   };
 }
