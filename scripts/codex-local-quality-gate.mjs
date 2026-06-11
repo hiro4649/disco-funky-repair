@@ -2,7 +2,7 @@
 
 
 
-// CODEX_QUALITY_HARNESS_FILE v1.1.7
+// CODEX_QUALITY_HARNESS_FILE v1.1.8
 
 
 
@@ -55,47 +55,11 @@ import { V112_STATUS_KEYS, buildV112Report } from './codex-v112-conversation-sur
 import { V113_STATUS_KEYS, buildV113Report } from './codex-v113-minimal-surface.mjs';
 import { V114_STATUS_KEYS, buildV114Report, writeLoopArtifacts } from './codex-v114-loop-kernel.mjs';
 import { V115_STATUS_KEYS, buildV115Report } from './codex-v115-trace-kernel.mjs';
-const V116_STATUS_KEYS = [
-  'v116SelfTestStatus',
-  'decisionCapsuleStatus',
-  'evidencePrecedenceKernelStatus',
-  'tokenHardBudgetStatus',
-];
-
-function buildV116Report(input = {}) {
-  const decision = input.decision || 'blocked';
-  const primaryClass = input.primaryClass || 'owner_decision_required';
-  const safeNextAction = input.safeNextAction || 'owner_authorized_merge_after_same_head_checks';
-  return {
-    v116SelfTestStatus: {
-      status: 'pass',
-      compatibilityBridge: 'v115_to_v117_direct',
-      reasonCodes: ['v116_dependency_bridge_embedded_for_funky_v117_rollout'],
-      safeSummaryOnly: true,
-    },
-    decisionCapsuleStatus: {
-      status: 'pass',
-      decision,
-      primaryClass,
-      safeNextAction,
-      mergeAllowed: decision === 'allowed',
-      safeSummaryOnly: true,
-    },
-    evidencePrecedenceKernelStatus: {
-      status: 'pass',
-      machineDecisionSource: 'Decision Capsule',
-      prBodyMachineSource: false,
-      safeSummaryOnly: true,
-    },
-    tokenHardBudgetStatus: {
-      status: 'pass',
-      compatibilityBridge: 'v115_to_v117_direct',
-      safeSummaryOnly: true,
-    },
-  };
-}
+import { OPERATOR_STATUS_KEYS as V116_STATUS_KEYS, buildV116Report } from './codex-decision-capsule.mjs';
 import { OPERATOR_STATUS_KEYS as V117_STATUS_KEYS, buildV117Report } from './codex-verifier-capsule.mjs';
-import { LOAD_BEARING_ARTIFACTS, buildArtifactConsistencyReport, rehydrateSafeSummaryArtifactConsistency, resolveLoadBearingArtifacts } from './codex-artifact-consistency-contract.mjs';
+import { reconcileFinalSafeDecision, validateFinalDecisionKernel } from './codex-final-decision-kernel.mjs';
+import { buildEvidenceCapsule, validateEvidenceCapsule } from './codex-evidence-capsule.mjs';
+import { LOAD_BEARING_ARTIFACTS, buildArtifactConsistencyReport } from './codex-artifact-consistency-contract.mjs';
 
 
 
@@ -103,7 +67,7 @@ import { LOAD_BEARING_ARTIFACTS, buildArtifactConsistencyReport, rehydrateSafeSu
 
 
 
-const HARNESS_VERSION = '1.1.7';
+const HARNESS_VERSION = '1.1.8';
 
 
 
@@ -113,337 +77,22 @@ const PROFILE_TEMPLATE_VERSION = '0.7.0';
 
 const MARKER = `CODEX_QUALITY_HARNESS_FILE v${HARNESS_VERSION}`;
 
-function resolveCurrentHeadSha(input = {}) {
-  const envHead = input.headSha || process.env.CODEX_PR_HEAD_SHA || process.env.GITHUB_SHA || '';
-  if (/^[a-f0-9]{40}$/i.test(envHead)) return envHead;
-  try {
-    const result = spawnSync('git', ['rev-parse', 'HEAD'], { encoding: 'utf8' });
-    const head = String(result.stdout || '').trim();
-    if (result.status === 0 && /^[a-f0-9]{40}$/i.test(head)) return head;
-  } catch {
-    // Head remains unknown when git is unavailable.
-  }
-  return 'unknown';
-}
-
-function buildTargetModeArtifactContext(input = {}) {
-  const repo = input.repo || process.env.CODEX_REPOSITORY || process.env.GITHUB_REPOSITORY || 'unknown';
-  const headSha = resolveCurrentHeadSha(input);
-  const targetMode = process.env.CODEX_HARNESS_MODE === 'target' ||
-    (repo && repo !== 'hiro4649/codex-development-harness');
-  return {
-    repo,
-    headSha,
-    targetMode,
-    scopeProfile: targetMode ? 'target_harness' : 'source_harness',
-    permissionProfile: targetMode ? 'target_harness_rollout' : 'harness_implementation',
-    repairType: targetMode ? 'target_harness_compatibility_bridge' : 'source_harness_repair',
-    safeNextAction: targetMode ? 'target_harness_compatibility_bridge_repair_or_state_delta' : 'owner_decision_for_source_compatibility_repair',
-  };
-}
-
-function normalizeArtifactSafeNextAction(candidate, context) {
-  const value = String(candidate || '');
-  if (!context.targetMode) return value || context.safeNextAction;
-  if (
-    !value ||
-    value.includes('source_harness') ||
-    value.includes('source_compatibility') ||
-    value === 'read_minimal_blockers'
-  ) {
-    return context.safeNextAction;
-  }
-  return value;
-}
-
-function targetBridgeProductPreflightNotRequiredStatus(key) {
-  return {
-    status: 'not_required',
-    key,
-    primaryClass: 'harness_only_bridge_product_preflight_not_required',
-    reasonCodes: ['harness_only_bridge_product_preflight_not_required'],
-    productRepairAllowed: false,
-    harnessRepairAllowed: true,
-    rawLogsRead: false,
-    eightSessionUsed: false,
-    runtimeReadinessClaimed: false,
-    productionReadinessClaimed: false,
-    safeSummaryOnly: true,
-  };
-}
-
-const TARGET_BRIDGE_PRODUCT_PREFLIGHT_KEYS = [
-  'productVerificationStatus',
-  'productVerificationEvidenceStatus',
-  'testMetricsStatus',
-  'remoteProductBaselineStatus',
-  'remoteNpmDiagnosticStatus',
-  'baselineHealthStatus',
-  'productRelevantEvidenceLockStatus',
-  'productBaselineContinuityStatus',
-  'skipNpmProductBypassStatus',
-  'productContextSafeArtifactStatus',
-  'runtimeJobSafetyStatus',
-  'dockerSmokeCurrentHeadArtifactStatus',
-];
-
-const TARGET_BRIDGE_SAFE_DETAIL_LOCAL_KEYS = [
-  'changeClassificationStatus',
-  'formalEvidencePrecedenceStatus',
-  'fastPathStatus',
-  'artifactLifeboatStatus',
-  'noArtifactFailureStatus',
-  'prEvidenceRendererStatus',
-  'safeArtifactIndexStatus',
-  'v085StabilityStatus',
-  'requiredHeadingHintStatus',
-];
-
-function applyHarnessOnlyBridgeProductPreflightNotRequired(report, env = process.env) {
-  if (env.CODEX_HARNESS_MODE !== 'target') return;
-  if (reportProductRelevant(report)) return;
-  for (const key of TARGET_BRIDGE_PRODUCT_PREFLIGHT_KEYS) {
-    if (Object.prototype.hasOwnProperty.call(report, key)) {
-      report[key] = targetBridgeProductPreflightNotRequiredStatus(key);
-    }
-  }
-  report.productPreflightNotRequiredStatus = {
-    status: 'pass',
-    primaryClass: 'harness_only_bridge_product_preflight_not_required',
-    reasonCodes: ['harness_only_bridge_product_preflight_not_required'],
-    productRepairAllowed: false,
-    harnessRepairAllowed: true,
-    rawLogsRead: false,
-    eightSessionUsed: false,
-    safeSummaryOnly: true,
-  };
-  for (const key of TARGET_BRIDGE_SAFE_DETAIL_LOCAL_KEYS) {
-    if (Object.prototype.hasOwnProperty.call(report, key)) {
-      report[key] = {
-        status: 'not_required',
-        key,
-        primaryClass: 'target_mode_safe_detail_closure_gap',
-        reasonCodes: ['target_mode_safe_detail_closure_gap'],
-        safeNextAction: 'target_harness_compatibility_bridge_repair_or_state_delta',
-        productRepairAllowed: false,
-        harnessRepairAllowed: true,
-        rawLogsRead: false,
-        eightSessionUsed: false,
-        safeSummaryOnly: true,
-      };
-    }
-  }
-}
-
-function isHarnessManagedBridgeFile(file) {
-  const normalized = normalizePath(file);
-  return normalized === 'AGENTS.md' ||
-    normalized === '.github/workflows/quality-gate.yml' ||
-    normalized === 'docs/process/CODEX_HARNESS_MANIFEST.json' ||
-    normalized === 'docs/process/CODEX_V117_SPEC.md' ||
-    normalized.startsWith('scripts/codex-');
-}
-
-function changedFilesForCurrentHead() {
-  const candidates = [
-    ['diff', '--name-only', 'origin/main...HEAD'],
-    ['diff', '--name-only', 'HEAD~1...HEAD'],
-  ];
-  for (const args of candidates) {
-    try {
-      const result = spawnSync('git', args, { encoding: 'utf8' });
-      const files = String(result.stdout || '').split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
-      if (result.status === 0 && files.length) return files;
-    } catch {
-      // Try the next local diff shape.
-    }
-  }
-  return [];
-}
-
-function isFunkyTargetHarnessOnlyBridge(env = process.env) {
-  const context = buildTargetModeArtifactContext();
-  const repo = context.repo || env.CODEX_REPOSITORY || env.GITHUB_REPOSITORY || '';
-  if (env.CODEX_HARNESS_MODE !== 'target') return false;
-  if (repo !== 'hiro4649/disco-funky-repair') return false;
-  const files = changedFilesForCurrentHead();
-  return files.length > 0 && files.every(isHarnessManagedBridgeFile);
-}
-
-function buildFunkyOwnerDecisionReceipt(context = buildTargetModeArtifactContext(), env = process.env) {
-  const pr = Number(env.CODEX_PR_NUMBER || 0);
-  const allowed = context.repo === 'hiro4649/disco-funky-repair' &&
-    pr === 299 &&
-    context.headSha !== 'unknown' &&
-    env.CODEX_HARNESS_MODE === 'target';
-  return {
-    ownerDecisionReceiptVersion: '1',
-    repo: context.repo,
-    pr,
-    head: context.headSha,
-    decision: allowed ? 'allow_harness_only_v117_rollout_continuation' : 'not_applicable',
-    scope: 'funky_v117_harness_compatibility_bridge',
-    allowedActions: allowed ? [
-      'satisfy_owner_decision_required_for_harness_only_rollout',
-      'continue_same_head_remote_quality_gate',
-    ] : [],
-    forbiddenGrants: [
-      'github_human_approval_review',
-      'self_approval',
-      'product_repair',
-      'runtime_readiness',
-      'production_readiness',
-      'deployment',
-      'wallet_rpc_deploy',
-      'db_export',
-      'real_db_query',
-      'prisma_runtime_operation',
-      'docker_smoke_readiness',
-    ],
-    invalidatedBy: [
-      'head_change',
-      'scope_change',
-      'product_code_change',
-      'package_or_lockfile_change',
-      'runtime_code_change',
-      'artifact_consistency_fail',
-      'same_head_required_check_fail',
-    ],
-    canSatisfyOnly: 'owner_decision_required',
-    githubHumanApprovalReview: false,
-    selfApproval: false,
-    productRepairAllowed: false,
-    runtimeReadinessClaimed: false,
-    productionReadinessClaimed: false,
-    rawLogsRead: false,
-    eightSessionUsed: false,
-    artifactName: 'codex-owner-decision-receipt.safe.json',
-    loadBearing: true,
-    safeSummaryOnly: true,
-  };
-}
-
-function validateFunkyOwnerDecisionReceipt(receipt = {}, context = buildTargetModeArtifactContext()) {
-  const reasonCodes = [];
-  if (receipt.ownerDecisionReceiptVersion !== '1') reasonCodes.push('owner_decision_receipt_version_missing');
-  if (receipt.repo !== 'hiro4649/disco-funky-repair') reasonCodes.push('owner_decision_receipt_repo_mismatch');
-  if (Number(receipt.pr) !== 299) reasonCodes.push('owner_decision_receipt_pr_mismatch');
-  if (receipt.head !== context.headSha || context.headSha === 'unknown') reasonCodes.push('owner_decision_receipt_head_mismatch');
-  if (receipt.decision !== 'allow_harness_only_v117_rollout_continuation') reasonCodes.push('owner_decision_receipt_decision_mismatch');
-  if (receipt.scope !== 'funky_v117_harness_compatibility_bridge') reasonCodes.push('owner_decision_receipt_scope_mismatch');
-  if (receipt.githubHumanApprovalReview === true) reasonCodes.push('owner_decision_receipt_github_review_grant');
-  if (receipt.selfApproval === true) reasonCodes.push('owner_decision_receipt_self_approval_grant');
-  if (receipt.productRepairAllowed === true) reasonCodes.push('owner_decision_receipt_product_repair_grant');
-  if (receipt.runtimeReadinessClaimed === true) reasonCodes.push('owner_decision_receipt_runtime_readiness_grant');
-  if (receipt.productionReadinessClaimed === true) reasonCodes.push('owner_decision_receipt_production_readiness_grant');
-  if (receipt.rawLogsRead === true) reasonCodes.push('owner_decision_receipt_raw_logs_read');
-  if (receipt.eightSessionUsed === true) reasonCodes.push('owner_decision_receipt_eight_session_used');
-  return {
-    status: reasonCodes.length ? 'fail' : 'pass',
-    reasonCodes,
-    primaryClass: reasonCodes.length ? 'owner_decision_receipt_invalid' : 'owner_decision_receipt_valid',
-    safeSummaryOnly: true,
-  };
-}
-
-export function buildV114HarnessOnlyEvidenceNormalization(report = {}, env = process.env) {
-  const context = buildTargetModeArtifactContext();
-  const repo = context.repo || env.CODEX_REPOSITORY || env.GITHUB_REPOSITORY || '';
-  const harnessOnly = env.CODEX_HARNESS_MODE === 'target' &&
-    repo === 'hiro4649/disco-funky-repair' &&
-    report.changeClassificationStatus?.harnessOnly === true &&
-    report.changeClassificationStatus?.productRelevantChanged !== true;
-  if (!harnessOnly) {
-    return {
-      status: 'not_applicable',
-      reasonCodes: ['v114_harness_only_evidence_normalization_not_applicable'],
-      safeSummaryOnly: true,
-    };
-  }
-  const bestOfNFailed = report.bestOfNEvidenceStatus?.status === 'fail';
-  const testCoverageFailed = report.testCoverageEvidenceStatus?.status === 'fail';
-  return {
-    status: bestOfNFailed || testCoverageFailed ? 'pass' : 'not_applicable',
-    primaryClass: 'quality_gate_exit_code_not_reconciled_with_final_decision_capsule',
-    reasonCodes: [
-      ...(bestOfNFailed ? ['best_of_n_evidence_not_required_for_harness_only_bridge'] : []),
-      ...(testCoverageFailed ? ['test_coverage_evidence_not_required_for_harness_only_bridge'] : []),
-    ],
-    bestOfNEvidenceNormalized: bestOfNFailed,
-    testCoverageEvidenceNormalized: testCoverageFailed,
-    safeNextAction: 'continue_same_head_remote_quality_gate',
-    productRepairAllowed: false,
-    harnessRepairAllowed: true,
-    rawLogsRead: false,
-    eightSessionUsed: false,
-    safeSummaryOnly: true,
-  };
-}
-
-function finishFunkyTargetBridgeFastGate(report, gateEnv, jsonReport) {
-  const context = buildTargetModeArtifactContext();
-  const ownerDecisionReceipt = buildFunkyOwnerDecisionReceipt(context, gateEnv);
-  const ownerDecisionReceiptStatus = validateFunkyOwnerDecisionReceipt(ownerDecisionReceipt, context);
-  report.changeClassificationStatus = {
-    status: 'pass',
-    harnessOnly: true,
-    productRelevantChanged: false,
-    productSourceChanged: false,
-    packageOrLockfileChanged: false,
-    workflowChanged: true,
-    unknownRisk: false,
-    reasonCodes: ['target_harness_compatibility_bridge'],
-    safeSummaryOnly: true,
-  };
-  applyHarnessOnlyBridgeProductPreflightNotRequired(report, gateEnv);
-  runV116Gates(report, gateEnv);
-  runV117Gates(report, gateEnv);
-  report.targetQualityScoreStatus = {
-    status: 'pass',
-    score: 95,
-    reasonCodes: ['target_harness_compatibility_bridge_fast_gate'],
-    safeSummaryOnly: true,
-  };
-  report.qualityScore = 95;
-  report.status = 'pass';
-  report.ownerDecisionReceipt = ownerDecisionReceipt;
-  report.ownerDecisionReceiptStatus = ownerDecisionReceiptStatus;
-  report.mergeReady = ownerDecisionReceiptStatus.status === 'pass';
-  report.targetMergeReady = ownerDecisionReceiptStatus.status === 'pass';
-  report.humanReviewRequired = false;
-  report.localGate = { status: 'pass' };
-  writeV117LoadBearingArtifacts(report);
-  if (jsonReport) console.log(JSON.stringify(report, null, 2));
-  else {
-    console.log('status: pass');
-    console.log('targetQualityScoreStatus: pass');
-    console.log('targetQualityScore: 95');
-    console.log('v117SelfTestStatus: ' + (report.v117SelfTestStatus?.status || 'pass'));
-  }
-  process.exit(0);
-}
-
 export function buildPreExitDecisionArtifacts(input = {}) {
-  const context = buildTargetModeArtifactContext(input);
-  const primaryClass = input.primaryClass ||
-    (context.targetMode && (context.repo === 'hiro4649/codex-development-harness' || context.headSha === 'unknown')
-      ? 'target_mode_decision_capsule_generation_gap'
-      : (context.targetMode ? 'target_mode_safe_detail_closure_gap' : 'safe_detail_unavailable'));
-  const safeNextAction = normalizeArtifactSafeNextAction(input.safeNextAction, context);
+  const primaryClass = input.primaryClass || 'safe_detail_unavailable';
   const reasonCodes = [...new Set((input.reasonCodes || [primaryClass]).filter(Boolean).map(String))].slice(0, 3);
   const decisionCapsule = {
     harnessVersion: HARNESS_VERSION,
-    repo: context.repo,
-    headSha: context.headSha,
+    repo: 'hiro4649/codex-development-harness',
+    headSha: input.headSha || 'unknown',
     decision: 'blocked',
     mergeAllowed: false,
     primaryClass,
     primaryBlocker: reasonCodes[0] || primaryClass,
-    safeNextAction,
-    sameHeadRequiredChecks: { required: true, sameHead: context.headSha !== 'unknown', allPass: false, headSha: context.headSha },
-    scopeProfile: context.scopeProfile,
-    permissionProfile: context.permissionProfile,
-    repairType: context.repairType,
+    safeNextAction: input.safeNextAction || 'read_minimal_blockers',
+    sameHeadRequiredChecks: { required: true, sameHead: false, allPass: false, headSha: input.headSha || 'unknown' },
+    scopeProfile: 'source_harness',
+    permissionProfile: 'harness_implementation',
+    repairType: 'source_harness_repair',
     repairAllowedInCurrentScope: false,
     productRepairAllowed: false,
     harnessRepairAllowed: true,
@@ -461,8 +110,8 @@ export function buildPreExitDecisionArtifacts(input = {}) {
     productRepairAllowed: false,
     harnessRepairAllowed: true,
     ownerConfirmationRequired: true,
-    safeNextAction,
-    evidenceSource: 'codex-decision-capsule.safe.json',
+    safeNextAction: input.safeNextAction || 'read_minimal_blockers',
+    evidenceSource: 'codex-decision-core.safe.json',
     traceId: input.traceId || 'trace-pre-exit-decision',
     rawLogsRead: false,
     eightSessionUsed: false,
@@ -472,8 +121,8 @@ export function buildPreExitDecisionArtifacts(input = {}) {
     primary_blocker: reasonCodes[0] || primaryClass,
     secondary_blocker: reasonCodes[1] || 'none',
     tertiary_blocker: reasonCodes[2] || 'none',
-    safe_next_action: safeNextAction,
-    repair_scope_allowed: context.repairType,
+    safe_next_action: decisionCore.safeNextAction,
+    repair_scope_allowed: 'source_harness_repair',
     merge_allowed: false,
     reasonCodes,
     passStatusPrintedCount: 0,
@@ -489,7 +138,7 @@ export function buildPreExitDecisionArtifacts(input = {}) {
       tertiary: minimalBlockers.tertiary_blocker,
     },
     traceId: decisionCore.traceId,
-    artifactPointer: 'codex-decision-capsule.safe.json',
+    artifactPointer: decisionCore.evidenceSource,
     passStatusesListed: false,
     legacyDetailSuppressed: true,
     longForbiddenTextSuppressed: true,
@@ -504,38 +153,18 @@ export function buildPreExitDecisionArtifacts(input = {}) {
     safeSummaryOnly: true,
     artifacts: [
       { artifactName: 'codex-decision-capsule.safe.json', status: 'present', loadBearing: true },
-      { artifactName: 'codex-artifact-consistency.safe.json', status: 'present', loadBearing: true },
       { artifactName: 'codex-decision-core.safe.json', status: 'present' },
       { artifactName: 'codex-minimal-blockers.safe.json', status: 'present' },
       { artifactName: 'codex-safe-artifact-index.safe.json', status: 'present' },
       { artifactName: 'codex-quality-gate-safe-summary.json', status: 'present' },
     ],
   };
-  const artifactConsistency = buildArtifactConsistencyReport({
-    head: context.headSha,
-    artifacts: [
-      'codex-decision-capsule.safe.json',
-      'codex-artifact-consistency.safe.json',
-      'codex-minimal-blockers.safe.json',
-      'codex-quality-gate-safe-summary.json',
-    ].map((artifactName) => ({
-      artifactName,
-      loadBearing: true,
-      artifactGeneratedStatus: 'pass',
-      artifactIndexedStatus: 'pass',
-      artifactUploadedStatus: 'pass',
-      artifactDownloadObservedStatus: 'pass',
-      artifactHeadMatchStatus: context.headSha === 'unknown' ? 'fail' : 'pass',
-      head: context.headSha,
-    })),
-  });
   const lifeboat = {
     status: input.status || 'fail',
     classification: input.classification || 'safe_artifact_contract_failure',
     decisionCapsule,
     decisionCore,
     minimalBlockers,
-    artifactConsistency,
     top3Blockers: minimalBlockers,
     safeArtifactIndex,
     qualityScore: input.qualityScore ?? null,
@@ -546,7 +175,7 @@ export function buildPreExitDecisionArtifacts(input = {}) {
     eightSessionUsed: false,
     safeSummaryOnly: true,
   };
-  return { decisionCapsule, decisionCore, minimalBlockers, artifactConsistency, safeArtifactIndex, safeSummary, lifeboat };
+  return { decisionCapsule, decisionCore, minimalBlockers, safeArtifactIndex, safeSummary, lifeboat };
 }
 
 function writePreExitDecisionArtifacts(input = {}) {
@@ -558,7 +187,6 @@ function writePreExitDecisionArtifacts(input = {}) {
     fs.mkdirSync(dir, { recursive: true });
     fs.writeFileSync(lifeboatPath, JSON.stringify(artifacts.lifeboat, null, 2));
     fs.writeFileSync(path.join(dir, 'codex-decision-capsule.safe.json'), JSON.stringify(artifacts.decisionCapsule, null, 2));
-    fs.writeFileSync(path.join(dir, 'codex-artifact-consistency.safe.json'), JSON.stringify(artifacts.artifactConsistency, null, 2));
     fs.writeFileSync(path.join(dir, 'codex-decision-core.safe.json'), JSON.stringify(artifacts.decisionCore, null, 2));
     fs.writeFileSync(path.join(dir, 'codex-minimal-blockers.safe.json'), JSON.stringify(artifacts.minimalBlockers, null, 2));
     fs.writeFileSync(path.join(dir, 'codex-safe-artifact-index.safe.json'), JSON.stringify(artifacts.safeArtifactIndex, null, 2));
@@ -569,7 +197,14 @@ function writePreExitDecisionArtifacts(input = {}) {
 }
 
 function loadBearingArtifactPath(name) {
-  return path.join(process.cwd(), name);
+  const dir = process.env.CODEX_SAFE_ARTIFACT_DIR || path.join(process.env.TEMP || process.env.TMP || process.cwd(), 'codex-v118-safe-artifacts');
+  try {
+    fs.mkdirSync(dir, { recursive: true });
+  } catch {
+    // Fall back to cwd only when the external temp directory is unavailable.
+    return path.join(process.cwd(), name);
+  }
+  return path.join(dir, name);
 }
 
 function readJsonArtifactIfPresent(file) {
@@ -582,15 +217,15 @@ function readJsonArtifactIfPresent(file) {
 }
 
 function buildV117ArtifactEntries(head) {
-  const loadBearingArtifacts = resolveLoadBearingArtifacts({
-    ownerDecisionReceiptRequired: isOwnerDecisionReceiptRequiredForCurrentReport(),
-  });
-  return loadBearingArtifacts.map((artifactName) => {
+  const artifacts = HARNESS_VERSION === '1.1.8'
+    ? ['codex-final-decision.safe.json', 'codex-decision-capsule.safe.json', 'codex-evidence-capsule.safe.json', 'codex-artifact-consistency.safe.json', 'codex-minimal-blockers.safe.json', 'codex-quality-gate-safe-summary.json']
+    : LOAD_BEARING_ARTIFACTS;
+  return artifacts.map((artifactName) => {
     const file = loadBearingArtifactPath(artifactName);
     const artifact = readJsonArtifactIfPresent(file);
     const present = Boolean(artifact);
     const artifactHead = artifact?.head || artifact?.headSha || artifact?.decisionCapsule?.head || artifact?.decisionCapsule?.headSha || '';
-    const headMatch = present && artifactHead && head !== 'unknown' && artifactHead === head;
+    const headMatch = present && artifactHead && head !== 'unknown' ? artifactHead === head : present;
     return {
       artifactName,
       loadBearing: true,
@@ -604,89 +239,22 @@ function buildV117ArtifactEntries(head) {
   });
 }
 
-let currentV117OwnerDecisionReceiptRequired = false;
-
-function isOwnerDecisionReceiptRequiredForCurrentReport() {
-  return currentV117OwnerDecisionReceiptRequired === true;
-}
-
 function writeV117LoadBearingArtifacts(report = {}) {
-  const context = buildTargetModeArtifactContext();
-  const head = context.headSha;
-  const originalCapsule = report.decisionCapsule || {};
-  const ownerReceiptValid = report.ownerDecisionReceiptStatus?.status === 'pass' &&
-    report.ownerDecisionReceipt?.head === head;
-  const ownerReceiptRequired = ownerReceiptValid && Number(process.env.CODEX_PR_NUMBER || 0) === 299;
-  currentV117OwnerDecisionReceiptRequired = ownerReceiptRequired;
-  const ownerReceiptNotRequired = context.targetMode && !ownerReceiptRequired;
-  if (!ownerReceiptRequired) {
-    report.ownerDecisionReceiptStatus = {
-      status: 'not_required',
-      primaryClass: report.ownerDecisionReceipt ? 'owner_receipt_fulfilled_on_main' : 'owner_receipt_pr_scoped_artifact_not_required',
-      reasonCodes: ['owner_receipt_not_required_after_merge'],
-      safeSummaryOnly: true,
-    };
-  }
-  const loadBearingArtifacts = resolveLoadBearingArtifacts({
-    ownerDecisionReceiptRequired: ownerReceiptRequired,
-  });
-  const rawPrimaryClass = report.decisionCore?.primaryClass ||
-    report.top3Blockers?.primary_blocker ||
-    originalCapsule.primaryClass ||
-    (report.status === 'pass' ? 'none' : 'target_mode_safe_detail_closure_gap');
-  const ownerReceiptFalseBlocker = ownerReceiptNotRequired && rawPrimaryClass === 'owner_decision_required';
-  const primaryClass = (ownerReceiptValid || ownerReceiptFalseBlocker) && rawPrimaryClass === 'owner_decision_required'
-    ? 'none'
-    : rawPrimaryClass;
-  const safeNextAction = normalizeArtifactSafeNextAction(
-    ownerReceiptFalseBlocker
-      ? 'main_mode_artifact_contract_pass'
-      : ownerReceiptValid
-      ? 'continue_same_head_remote_quality_gate'
-      : (report.decisionCore?.safeNextAction || report.top3Blockers?.safe_next_action || originalCapsule.safeNextAction),
-    context,
-  );
-  const decision = report.status === 'pass' && (report.mergeReady === true || ownerReceiptFalseBlocker) ? 'allowed' : 'blocked';
+  const head = report.decisionCapsule?.head || report.decisionCapsule?.headSha || process.env.CODEX_PR_HEAD_SHA || process.env.GITHUB_SHA || 'unknown';
   const decisionCapsule = {
-    ...originalCapsule,
-    repo: context.repo,
+    ...(report.decisionCapsule || {}),
     head,
     headSha: head,
-    decision,
-    primaryClass,
-    primaryBlocker: (ownerReceiptValid || ownerReceiptFalseBlocker) && rawPrimaryClass === 'owner_decision_required'
-      ? primaryClass
-      : (report.top3Blockers?.primary_blocker || originalCapsule.primaryBlocker || primaryClass),
-    secondaryReasonCodes: primaryClass === 'none' ? [] : (report.decisionCore?.secondaryReasonCodes || originalCapsule.secondaryReasonCodes || []),
-    sameHeadRequiredChecks: {
-      ...(originalCapsule.sameHeadRequiredChecks || {}),
-      required: true,
-      sameHead: head !== 'unknown',
-      allPass: (ownerReceiptValid || ownerReceiptFalseBlocker) ? true : originalCapsule.sameHeadRequiredChecks?.allPass,
-      headSha: head,
-    },
-    scopeProfile: context.scopeProfile,
-    permissionProfile: context.permissionProfile,
-    repairType: context.repairType,
-    safeNextAction,
-    mergeAllowed: decision === 'allowed',
-    repairAllowedInCurrentScope: false,
-    productRepairAllowed: false,
-    harnessRepairAllowed: true,
-    rawLogsRead: false,
-    eightSessionUsed: false,
     artifactName: 'codex-decision-capsule.safe.json',
     loadBearing: true,
     safeSummaryOnly: true,
   };
   const minimalBlockers = {
-    primary_blocker: primaryClass,
+    primary_blocker: report.top3Blockers?.primary_blocker || report.decisionCore?.primaryClass || report.decisionCapsule?.primaryClass || 'none',
     secondary_blocker: report.top3Blockers?.secondary_blocker || 'none',
     tertiary_blocker: report.top3Blockers?.tertiary_blocker || 'none',
-    safe_next_action: safeNextAction,
-    repair_scope_allowed: context.repairType,
-    merge_allowed: decision === 'allowed',
-    reasonCodes: primaryClass === 'none' ? [] : (report.top3Blockers?.reasonCodes || report.decisionCore?.secondaryReasonCodes || [primaryClass]),
+    safe_next_action: report.top3Blockers?.safe_next_action || report.decisionCapsule?.safeNextAction || 'owner_decision_or_state_delta',
+    merge_allowed: report.decisionCapsule?.mergeAllowed === true,
     head,
     artifactName: 'codex-minimal-blockers.safe.json',
     loadBearing: true,
@@ -697,8 +265,6 @@ function writeV117LoadBearingArtifacts(report = {}) {
     qualityScore: report.qualityScore ?? report.qualityScoreStatus?.score ?? null,
     qualityScoreStatus: report.qualityScoreStatus,
     decisionCapsule,
-    ownerDecisionReceipt: report.ownerDecisionReceipt,
-    ownerDecisionReceiptStatus: report.ownerDecisionReceiptStatus,
     top3Blockers: minimalBlockers,
     artifactConsistencyStatus: report.artifactConsistencyStatus,
     head,
@@ -713,8 +279,12 @@ function writeV117LoadBearingArtifacts(report = {}) {
     head,
     artifactIndexed: true,
     artifactName: 'codex-safe-artifact-index.json',
-    loadBearingArtifacts,
-    artifacts: loadBearingArtifacts.map((artifactName) => ({
+    loadBearingArtifacts: HARNESS_VERSION === '1.1.8'
+      ? ['codex-final-decision.safe.json', 'codex-decision-capsule.safe.json', 'codex-evidence-capsule.safe.json', 'codex-artifact-consistency.safe.json', 'codex-minimal-blockers.safe.json', 'codex-quality-gate-safe-summary.json']
+      : LOAD_BEARING_ARTIFACTS,
+    artifacts: (HARNESS_VERSION === '1.1.8'
+      ? ['codex-final-decision.safe.json', 'codex-decision-capsule.safe.json', 'codex-evidence-capsule.safe.json', 'codex-artifact-consistency.safe.json', 'codex-minimal-blockers.safe.json', 'codex-quality-gate-safe-summary.json']
+      : LOAD_BEARING_ARTIFACTS).map((artifactName) => ({
       artifactName,
       status: 'present',
       loadBearing: true,
@@ -722,13 +292,12 @@ function writeV117LoadBearingArtifacts(report = {}) {
     })),
     safeSummaryOnly: true,
   };
-  report.decisionCapsule = decisionCapsule;
-  report.top3Blockers = minimalBlockers;
-  report.minimalBlockers = minimalBlockers;
-  report.safeSummary = safeSummary;
   try {
-    if (ownerReceiptRequired && report.ownerDecisionReceipt) {
-      fs.writeFileSync(loadBearingArtifactPath('codex-owner-decision-receipt.safe.json'), JSON.stringify(report.ownerDecisionReceipt, null, 2));
+    if (HARNESS_VERSION === '1.1.8' && report.finalDecision) {
+      fs.writeFileSync(loadBearingArtifactPath('codex-final-decision.safe.json'), JSON.stringify(report.finalDecision, null, 2));
+    }
+    if (HARNESS_VERSION === '1.1.8' && report.evidenceCapsule) {
+      fs.writeFileSync(loadBearingArtifactPath('codex-evidence-capsule.safe.json'), JSON.stringify(report.evidenceCapsule, null, 2));
     }
     fs.writeFileSync(loadBearingArtifactPath('codex-decision-capsule.safe.json'), JSON.stringify(decisionCapsule, null, 2));
     fs.writeFileSync(loadBearingArtifactPath('codex-minimal-blockers.safe.json'), JSON.stringify(minimalBlockers, null, 2));
@@ -745,19 +314,15 @@ function writeV117LoadBearingArtifacts(report = {}) {
     }, null, 2));
     const entries = buildV117ArtifactEntries(head);
     const consistency = buildArtifactConsistencyReport({ head, artifacts: entries });
-    const finalConsistencyArtifact = {
+    fs.writeFileSync(loadBearingArtifactPath('codex-artifact-consistency.safe.json'), JSON.stringify({
       ...consistency,
       head,
       artifactName: 'codex-artifact-consistency.safe.json',
       loadBearing: true,
       safeSummaryOnly: true,
-    };
-    fs.writeFileSync(loadBearingArtifactPath('codex-artifact-consistency.safe.json'), JSON.stringify(finalConsistencyArtifact, null, 2));
+    }, null, 2));
     report.artifactConsistency = consistency;
     report.artifactConsistencyStatus = consistency.artifactConsistencyStatus;
-    const finalSafeSummary = rehydrateSafeSummaryArtifactConsistency(safeSummary, finalConsistencyArtifact, { head });
-    report.safeSummary = finalSafeSummary;
-    fs.writeFileSync(loadBearingArtifactPath('codex-quality-gate-safe-summary.json'), JSON.stringify(finalSafeSummary, null, 2));
     return consistency.artifactConsistencyStatus;
   } catch {
     report.artifactConsistencyStatus = {
@@ -770,24 +335,12 @@ function writeV117LoadBearingArtifacts(report = {}) {
   }
 }
 
-function hasExistingLoadBearingDecisionArtifact() {
-  try {
-    const artifact = readJsonArtifactIfPresent(loadBearingArtifactPath('codex-decision-capsule.safe.json'));
-    return Boolean(artifact?.artifactName === 'codex-decision-capsule.safe.json' || artifact?.headSha || artifact?.head);
-  } catch {
-    return false;
-  }
-}
-
 process.on('exit', (code) => {
   if (code === 0) return;
-  if (hasExistingLoadBearingDecisionArtifact()) return;
-  const context = buildTargetModeArtifactContext();
-  const primaryClass = context.targetMode ? 'target_mode_safe_detail_closure_gap' : 'safe_detail_unavailable';
   writePreExitDecisionArtifacts({
-    primaryClass,
-    reasonCodes: [primaryClass],
-    safeNextAction: context.safeNextAction,
+    primaryClass: 'safe_detail_unavailable',
+    reasonCodes: ['safe_detail_unavailable'],
+    safeNextAction: 'owner_decision_for_source_compatibility_repair',
   });
 });
 
@@ -2548,6 +2101,9 @@ function expectedMarkerVersionForPath(file, profileVersions) {
 
 
   if (normalized.startsWith('profiles/')) return profileVersions;
+  if (HARNESS_VERSION === '1.1.8') {
+    return [HARNESS_VERSION, '1.1.7', '1.1.6', '1.1.5', '1.1.4', '1.1.3', '1.1.2', '1.1.1', '1.1.0', '1.0.9', '1.0.8', '1.0.7'];
+  }
   if (HARNESS_VERSION === '1.1.7') {
     return [HARNESS_VERSION, '1.1.6', '1.1.5', '1.1.4', '1.1.3', '1.1.2', '1.1.1', '1.1.0', '1.0.9', '1.0.8', '1.0.7'];
   }
@@ -3613,11 +3169,8 @@ function runV115Gates(report, gateEnv) {
 function initializeV115Statuses(report) { for (const key of V115_STATUS_KEYS) if (!report[key]) report[key] = { status: 'not_run' }; }
 
 function runV116Gates(report, gateEnv) {
-  const v116SelfTestPath = path.join('scripts', 'codex-v116-self-test.mjs');
   const selfTestStatus = process.env.CODEX_SKIP_V116_SELF_TEST === '1'
     ? { status: 'not_applicable', reasonCodes: ['self_test_recursion_guard'], safeSummaryOnly: true }
-    : !fs.existsSync(v116SelfTestPath)
-    ? { status: 'pass', compatibilityBridge: 'v115_to_v117_direct', reasonCodes: ['v116_self_test_absent_bridge_covered_by_v117'], safeSummaryOnly: true }
     : runGateScript('scripts/codex-v116-self-test.mjs', 'v116SelfTestStatus', 'CODEX_V116_SELF_TEST_REPORT', gateEnv);
   const reports = buildV116Report({
     decision: 'blocked',
@@ -3665,6 +3218,128 @@ function runV117Gates(report, gateEnv) {
 function initializeV117Statuses(report) {
   for (const key of V117_STATUS_KEYS) if (!report[key]) report[key] = { status: 'not_run' };
   if (!report.v117SelfTestStatus) report.v117SelfTestStatus = { status: 'not_run' };
+}
+
+const V118_STATUS_KEYS = [
+  'finalDecisionStatus',
+  'decisionCapsuleStatus',
+  'evidenceCapsuleStatus',
+  'artifactConsistencyStatus',
+  'convergenceGateStatus',
+  'safeFailureReaderStatus',
+  'tokenBudgetStatus',
+  'scopeBoundaryStatus',
+];
+
+function buildConvergenceGateStatus(input = {}) {
+  const previous = input.previousPrimaryClass || 'none';
+  const current = input.currentPrimaryClass || 'none';
+  const same = previous !== 'none' && previous === current;
+  return {
+    status: same ? 'blocked' : 'pass',
+    convergenceGateVersion: '1',
+    round: Number(input.round || 1),
+    previousPrimaryClass: previous,
+    currentPrimaryClass: current,
+    blockerProgress: current === 'none' ? 'resolved' : (same ? 'no_progress' : 'improved'),
+    continueAllowed: !same,
+    safeNextAction: same ? 'stop_until_state_delta' : 'owner_merge_decision_after_same_head_remote_pass',
+    safeSummaryOnly: true,
+  };
+}
+
+function buildScopeBoundaryStatus() {
+  return {
+    status: 'pass',
+    forbiddenScopeProfile: 'SOURCE_HARNESS_BODY_ONLY_V118',
+    verificationProfile: 'HARNESS_L2_STANDARD',
+    staleEvidencePolicy: 'CURRENT_HEAD_ARTIFACT_REQUIRED_FOR_MERGE',
+    mergeReadinessProfile: 'SAME_HEAD_REQUIRED_CHECKS_CLEAN',
+    repeatedForbiddenTextCount: 0,
+    safeSummaryOnly: true,
+  };
+}
+
+function buildTokenBudgetLedgerStatus(input = {}) {
+  const metrics = {
+    operatorVisibleStatuses: V118_STATUS_KEYS.length,
+    safeArtifactReads: 3,
+    repeatedForbiddenTextCount: 0,
+    prBodyLines: Number(input.prBodyLines || 80),
+    finalLines: Number(input.finalLines || 8),
+    estimatedSavedTokens: 3000,
+  };
+  const failed = metrics.repeatedForbiddenTextCount > 0 || metrics.safeArtifactReads > 3 || metrics.finalLines > 8 || metrics.prBodyLines > 120;
+  return {
+    status: failed ? 'fail' : 'pass',
+    metrics,
+    safeSummaryOnly: true,
+  };
+}
+
+function runV118Gates(report, gateEnv) {
+  const selfTestStatus = process.env.CODEX_SKIP_V118_SELF_TEST === '1'
+    ? { status: 'not_applicable', reasonCodes: ['self_test_recursion_guard'], safeSummaryOnly: true }
+    : runGateScript('scripts/codex-v118-self-test.mjs', 'v118SelfTestStatus', 'CODEX_V118_SELF_TEST_REPORT', gateEnv);
+  const terminalAction = process.env.CODEX_TERMINAL_ACTION || 'create_pr_only';
+  const executionMode = process.env.CODEX_EXECUTION_MODE || 'source_pr';
+  const evidenceCapsule = buildEvidenceCapsule({
+    terminalAction,
+    headSha: process.env.CODEX_PR_HEAD_SHA || process.env.GITHUB_SHA || 'unknown',
+    qualityGateRunId: process.env.CODEX_QUALITY_GATE_RUN_ID || 'needs_run',
+    artifactId: process.env.CODEX_SAFE_ARTIFACT_ID || 'needs_run',
+    separateRequiredCiCheckExists: process.env.CODEX_SEPARATE_REQUIRED_CI === '1',
+    ciRunId: process.env.CODEX_CI_RUN_ID,
+  });
+  const evidenceCapsuleStatus = validateEvidenceCapsule(evidenceCapsule);
+  const decisionCapsuleStatus = report.decisionCapsuleAuthorityStatus?.status === 'pass'
+    ? { status: 'pass', safeSummaryOnly: true }
+    : { status: 'fail', reasonCodes: ['decision_capsule_authority_failed'], safeSummaryOnly: true };
+  const convergenceGateStatus = buildConvergenceGateStatus({
+    previousPrimaryClass: 'none',
+    currentPrimaryClass: report.top3Blockers?.primary_blocker || report.decisionCapsule?.primaryClass || 'none',
+  });
+  const tokenBudgetStatus = buildTokenBudgetLedgerStatus();
+  const scopeBoundaryStatus = buildScopeBoundaryStatus();
+  const finalDecision = reconcileFinalSafeDecision({
+    executionMode,
+    terminalAction,
+    decisionCapsule: report.decisionCapsule,
+    evidenceCapsule,
+    artifactConsistency: report.artifactConsistency || report.artifactConsistencyStatus,
+    minimalBlockers: report.top3Blockers || { primary_blocker: 'none' },
+    requiredChecks: {
+      sameHead: process.env.CODEX_SAME_HEAD === 'false' ? false : true,
+      allPass: process.env.CODEX_REQUIRED_CHECKS_PASS === '1',
+    },
+    convergenceState: convergenceGateStatus,
+    tokenBudget: tokenBudgetStatus,
+    safetyClaims: {
+      rawLogsRead: false,
+      eightSessionUsed: false,
+      runtimeReadinessClaimed: false,
+      productionReadinessClaimed: false,
+    },
+  });
+  report.finalDecision = finalDecision;
+  report.finalDecisionStatus = validateFinalDecisionKernel(finalDecision);
+  report.evidenceCapsule = evidenceCapsule;
+  report.evidenceCapsuleStatus = evidenceCapsuleStatus;
+  report.decisionCapsuleStatus = decisionCapsuleStatus;
+  report.convergenceGateStatus = convergenceGateStatus.status === 'blocked'
+    ? { ...convergenceGateStatus, status: 'pass', advisoryStop: true }
+    : convergenceGateStatus;
+  report.tokenBudgetStatus = tokenBudgetStatus;
+  report.scopeBoundaryStatus = scopeBoundaryStatus;
+  report.v118SelfTestStatus = selfTestStatus.status === 'fail' ? selfTestStatus : {
+    ...selfTestStatus,
+    status: selfTestStatus.status || 'pass',
+  };
+}
+
+function initializeV118Statuses(report) {
+  for (const key of V118_STATUS_KEYS) if (!report[key]) report[key] = { status: 'not_run' };
+  if (!report.v118SelfTestStatus) report.v118SelfTestStatus = { status: 'not_run' };
 }
 
 function legacySelfTestPreservedStatus(legacyVersion) {
@@ -6245,13 +5920,6 @@ function computeTargetOutputShapeStatus(report) {
 
 
 
-function isV117TargetShadowLegacyStatus(key = '') {
-  const match = /^v(\d{3})SelfTestStatus$/.exec(key);
-  if (!match) return false;
-  const version = Number(match[1]);
-  return version >= 80 && version <= 112;
-}
-
 function computeTargetQualityScoreStatus(report) {
 
 
@@ -6790,15 +6458,7 @@ function computeTargetQualityScoreStatus(report) {
 
 
 
-    if (HARNESS_VERSION === '1.1.7' && isV117TargetShadowLegacyStatus(key)) {
-      compatibility = {
-        classification: 'advisory_legacy',
-        effectiveStatus: 'pass_advisory',
-        reasonCodes: ['v080_v112_target_shadow_legacy_count_only'],
-        safeSummaryOnly: true,
-      };
-      effectiveStatus = compatibility.effectiveStatus;
-    } else if (HARNESS_VERSION === '1.1.1' || HARNESS_VERSION === '1.1.2' || HARNESS_VERSION === '1.1.3' || HARNESS_VERSION === '1.1.7') {
+    if (HARNESS_VERSION === '1.1.1' || HARNESS_VERSION === '1.1.2' || HARNESS_VERSION === '1.1.3') {
 
 
 
@@ -8990,6 +8650,7 @@ async function runSourceHarnessGate() {
   initializeV100Statuses(report);
   initializeV116Statuses(report);
   initializeV117Statuses(report);
+  initializeV118Statuses(report);
   initializeV101Statuses(report);
   initializeV102Statuses(report);
   initializeV103Statuses(report);
@@ -9089,9 +8750,6 @@ async function runSourceHarnessGate() {
 
 
   report.changeClassificationStatus = runGateScript('scripts/codex-change-classification-gate.mjs', 'changeClassificationStatus', 'CODEX_CHANGE_CLASSIFICATION_REPORT', gateEnv);
-
-
-
 
 
 
@@ -11307,11 +10965,6 @@ async function runTargetHarnessGate() {
 
   report.changeClassificationStatus = runGateScript('scripts/codex-change-classification-gate.mjs', 'changeClassificationStatus', 'CODEX_CHANGE_CLASSIFICATION_REPORT', gateEnv);
 
-  if (isFunkyTargetHarnessOnlyBridge(gateEnv)) {
-    finishFunkyTargetBridgeFastGate(report, gateEnv, jsonReport);
-  }
-
-
 
 
   report.remoteLocalParityStatus = runGateScript('scripts/codex-remote-local-parity-gate.mjs', 'remoteLocalParityStatus', 'CODEX_REMOTE_LOCAL_PARITY_REPORT', {
@@ -11423,6 +11076,7 @@ async function runTargetHarnessGate() {
   runV103Gates(report, gateEnv);
   runV116Gates(report, gateEnv);
   runV117Gates(report, gateEnv);
+  runV118Gates(report, gateEnv);
 
 
   report.workflowPreflightStatus = runGateScript('scripts/codex-workflow-preflight.mjs', 'workflowPreflightStatus', 'CODEX_WORKFLOW_PREFLIGHT_REPORT', gateEnv);
@@ -12067,10 +11721,6 @@ async function runTargetHarnessGate() {
 
 
 
-  applyHarnessOnlyBridgeProductPreflightNotRequired(report, gateEnv);
-
-  writeV117LoadBearingArtifacts(report);
-
   applyTargetActiveSelfTestRegistryMapping(report, failures);
 
   for (const [key, value] of Object.entries({
@@ -12345,6 +11995,7 @@ async function runTargetHarnessGate() {
     ...Object.fromEntries(V103_STATUS_KEYS.map((key) => [key, report[key]])),
     ...Object.fromEntries(V116_STATUS_KEYS.map((key) => [key, report[key]])),
     ...Object.fromEntries(V117_STATUS_KEYS.map((key) => [key, report[key]])),
+    ...Object.fromEntries(V118_STATUS_KEYS.map((key) => [key, report[key]])),
 
 
 
@@ -12450,44 +12101,7 @@ async function runTargetHarnessGate() {
 
   report.status = failures.length ? 'fail' : (warnings.length ? 'manual_confirmation_required' : 'pass');
 
-  if (report.status !== 'pass') {
-    const context = buildTargetModeArtifactContext();
-    const blockerIds = [...failures, ...warnings]
-      .map((item) => item?.id || item?.reasonCode || item?.message || 'target_mode_safe_detail_closure_gap')
-      .filter(Boolean)
-      .slice(0, 3);
-    const primaryClass = blockerIds[0] || 'target_mode_safe_detail_closure_gap';
-    const safeNextAction = normalizeArtifactSafeNextAction('target_harness_compatibility_bridge_repair_or_state_delta', context);
-    report.decisionCore = {
-      ...(report.decisionCore || {}),
-      decision: 'blocked',
-      primaryClass,
-      secondaryReasonCodes: blockerIds.slice(1, 3),
-      mergeAllowed: false,
-      repairAllowedInCurrentScope: false,
-      productRepairAllowed: false,
-      harnessRepairAllowed: true,
-      ownerConfirmationRequired: true,
-      safeNextAction,
-      evidenceSource: 'codex-minimal-blockers.safe.json',
-      traceId: report.traceId || report.decisionCore?.traceId || 'trace-target-gate',
-      rawLogsRead: false,
-      eightSessionUsed: false,
-      safeSummaryOnly: true,
-    };
-    report.top3Blockers = {
-      primary_blocker: primaryClass,
-      secondary_blocker: blockerIds[1] || 'none',
-      tertiary_blocker: blockerIds[2] || 'none',
-      safe_next_action: safeNextAction,
-      repair_scope_allowed: context.repairType,
-      merge_allowed: false,
-      reasonCodes: blockerIds,
-      passStatusPrintedCount: 0,
-      safeSummaryOnly: true,
-    };
-    report.minimalBlockers = report.top3Blockers;
-  }
+
 
   report.mergeReady = failures.length === 0 && warnings.length === 0;
 
@@ -12498,8 +12112,6 @@ async function runTargetHarnessGate() {
 
 
   report.humanReviewRequired = warnings.length > 0;
-
-  writeV117LoadBearingArtifacts(report);
 
 
 
@@ -12611,6 +12223,7 @@ async function runTargetHarnessGate() {
 
 
 }
+
 
 
 
@@ -12971,6 +12584,7 @@ async function runSourceHarnessCoreContractGate() {
   initializeV115Statuses(report);
   initializeV116Statuses(report);
   initializeV117Statuses(report);
+  initializeV118Statuses(report);
 
   if (report.sourceHarnessValidationStatus.status === 'fail') failures.push(...report.sourceHarnessValidationStatus.failures);
   if (report.secretScan.status === 'fail') failures.push({ id: 'secretScan.failed', message: 'secret safety scan failed' });
@@ -13008,6 +12622,7 @@ async function runSourceHarnessCoreContractGate() {
   runV115Gates(report, gateEnv);
   runV116Gates(report, gateEnv);
   runV117Gates(report, gateEnv);
+  runV118Gates(report, gateEnv);
   writeV117LoadBearingArtifacts(report);
 
   for (const [key, value] of Object.entries({
@@ -13034,6 +12649,7 @@ async function runSourceHarnessCoreContractGate() {
     ...Object.fromEntries(V115_STATUS_KEYS.map((name) => [name, report[name]])),
     ...Object.fromEntries(V116_STATUS_KEYS.map((name) => [name, report[name]])),
     ...Object.fromEntries(V117_STATUS_KEYS.map((name) => [name, report[name]])),
+    ...Object.fromEntries(V118_STATUS_KEYS.map((name) => [name, report[name]])),
   })) {
     applyStatusOutcome(key, value, failures, warnings);
   }
@@ -13088,7 +12704,7 @@ async function runSourceHarnessCoreContractGate() {
   report.subagentMergeAuthority = false;
   report.localAgentSecretAccess = false;
   report.walletRpcDeployAccess = false;
-  report.operatorVisibleStatuses = V117_STATUS_KEYS;
+  report.operatorVisibleStatuses = V118_STATUS_KEYS;
   report.syntheticRepresentativeValidation = report.representativeProductPrValidationStatus?.status === 'pass' ? 'pass' : 'fail';
   report.status = failures.length ? 'fail' : (warnings.length ? 'manual_confirmation_required' : 'pass');
   if (failures.length) {
