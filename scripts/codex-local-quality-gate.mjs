@@ -346,6 +346,40 @@ function validateFunkyOwnerDecisionReceipt(receipt = {}, context = buildTargetMo
   };
 }
 
+export function buildV114HarnessOnlyEvidenceNormalization(report = {}, env = process.env) {
+  const context = buildTargetModeArtifactContext();
+  const repo = context.repo || env.CODEX_REPOSITORY || env.GITHUB_REPOSITORY || '';
+  const harnessOnly = env.CODEX_HARNESS_MODE === 'target' &&
+    repo === 'hiro4649/disco-funky-repair' &&
+    report.changeClassificationStatus?.harnessOnly === true &&
+    report.changeClassificationStatus?.productRelevantChanged !== true;
+  if (!harnessOnly) {
+    return {
+      status: 'not_applicable',
+      reasonCodes: ['v114_harness_only_evidence_normalization_not_applicable'],
+      safeSummaryOnly: true,
+    };
+  }
+  const bestOfNFailed = report.bestOfNEvidenceStatus?.status === 'fail';
+  const testCoverageFailed = report.testCoverageEvidenceStatus?.status === 'fail';
+  return {
+    status: bestOfNFailed || testCoverageFailed ? 'pass' : 'not_applicable',
+    primaryClass: 'quality_gate_exit_code_not_reconciled_with_final_decision_capsule',
+    reasonCodes: [
+      ...(bestOfNFailed ? ['best_of_n_evidence_not_required_for_harness_only_bridge'] : []),
+      ...(testCoverageFailed ? ['test_coverage_evidence_not_required_for_harness_only_bridge'] : []),
+    ],
+    bestOfNEvidenceNormalized: bestOfNFailed,
+    testCoverageEvidenceNormalized: testCoverageFailed,
+    safeNextAction: 'continue_same_head_remote_quality_gate',
+    productRepairAllowed: false,
+    harnessRepairAllowed: true,
+    rawLogsRead: false,
+    eightSessionUsed: false,
+    safeSummaryOnly: true,
+  };
+}
+
 function finishFunkyTargetBridgeFastGate(report, gateEnv, jsonReport) {
   const context = buildTargetModeArtifactContext();
   const ownerDecisionReceipt = buildFunkyOwnerDecisionReceipt(context, gateEnv);
