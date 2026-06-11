@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 // CODEX_QUALITY_HARNESS_FILE v1.1.7
 
+import fs from 'node:fs';
 import { writeJsonReport, exitFor } from './codex-v080-lib.mjs';
 import {
   OPERATOR_STATUS_KEYS,
@@ -29,6 +30,7 @@ import {
   renderSafeFailureLines,
   validateSafeFailureReader,
 } from './codex-read-safe-failure.mjs';
+import { classifyTargetModeCompatibilityStatus } from './codex-v111-token-hard-cap.mjs';
 
 function test(name, fn) {
   try {
@@ -47,6 +49,43 @@ function validateDecisionCapsule(capsule = {}) {
     status: reasonCodes.length ? 'fail' : 'pass',
     reasonCodes,
     safeSummaryOnly: true,
+  };
+}
+
+function targetQualityWouldBlock(statuses = {}) {
+  return Object.entries(statuses).some(([key, value]) => {
+    const compatibility = classifyV117TargetModeCompatibilityStatus(key, value, statuses);
+    return ['fail', 'missing', 'not_run'].includes(compatibility.effectiveStatus);
+  });
+}
+
+function isV117TargetShadowLegacyStatus(key = '') {
+  const match = /^v(\d{3})SelfTestStatus$/.exec(key);
+  if (!match) return false;
+  const version = Number(match[1]);
+  return version >= 80 && version <= 112;
+}
+
+function classifyV117TargetModeCompatibilityStatus(key, entry = {}, report = {}) {
+  if (isV117TargetShadowLegacyStatus(key)) {
+    return {
+      classification: 'advisory_legacy',
+      effectiveStatus: 'pass_advisory',
+      reasonCodes: ['v080_v112_target_shadow_legacy_count_only'],
+      safeSummaryOnly: true,
+    };
+  }
+  return classifyTargetModeCompatibilityStatus(key, entry, report);
+}
+
+function legacyV099ShadowFixture() {
+  return {
+    v117SelfTestStatus: { status: 'pass', safeSummaryOnly: true },
+    v116SelfTestStatus: { status: 'pass', safeSummaryOnly: true },
+    productVerificationStatus: { status: 'pass', safeSummaryOnly: true },
+    productVerificationEvidenceStatus: { status: 'pass', safeSummaryOnly: true },
+    safeOutputScanStatus: { status: 'pass', safeSummaryOnly: true },
+    v099SelfTestStatus: { status: 'fail', reasonCodes: ['legacy_self_test_advisory_failed'], safeSummaryOnly: true },
   };
 }
 
@@ -126,6 +165,19 @@ const cases = [
   test('validation_fast_path_source_fixture', () => buildV117Report({ fastPathEligible: true }).validationFastPathStatus?.status === 'pass'),
   test('verified_memory_rules_spec_fixture', () => buildV117Report({ memoryConsulted: false }).verifiedMemoryRulesStatus?.status === 'pass'),
   test('repair_experiment_ledger_spec_fixture', () => buildV117Report({ repairExperimentCount: 0 }).repairExperimentLedgerStatus?.status === 'pass'),
+  test('v117_v099_legacy_shadow_not_blocking_current', () => classifyV117TargetModeCompatibilityStatus('v099SelfTestStatus', legacyV099ShadowFixture().v099SelfTestStatus, legacyV099ShadowFixture()).classification === 'advisory_legacy'),
+  test('v117_v080_v112_target_shadow_legacy_count_only_not_blocking', () => ['v080SelfTestStatus', 'v099SelfTestStatus', 'v112SelfTestStatus'].every((key) => classifyV117TargetModeCompatibilityStatus(key, { status: 'fail', reasonCodes: ['legacy_self_test_advisory_failed'] }, legacyV099ShadowFixture()).effectiveStatus === 'pass_advisory')),
+  test('v117_reason_summary_does_not_reinject_v099_legacy_blocker', () => !['fail', 'missing', 'not_run'].includes(classifyV117TargetModeCompatibilityStatus('v099SelfTestStatus', legacyV099ShadowFixture().v099SelfTestStatus, legacyV099ShadowFixture()).effectiveStatus)),
+  test('v117_target_quality_not_failed_by_v099_shadow_legacy', () => targetQualityWouldBlock(legacyV099ShadowFixture()) === false),
+  test('v117_minimal_blockers_exclude_v099_shadow_current_blocker', () => classifyV117TargetModeCompatibilityStatus('v099SelfTestStatus', legacyV099ShadowFixture().v099SelfTestStatus, legacyV099ShadowFixture()).classification !== 'blocking_current'),
+  test('v117_local_quality_score_uses_compatibility_bridge', () => fs.readFileSync('scripts/codex-local-quality-gate.mjs', 'utf8').includes("HARNESS_VERSION === '1.1.7'")),
+  test('v117_active_v117_failure_still_blocks', () => classifyV117TargetModeCompatibilityStatus('v117SelfTestStatus', { status: 'fail', reasonCodes: ['active_v117_failure'] }, legacyV099ShadowFixture()).effectiveStatus === 'fail'),
+  test('v117_v116_blocking_compatibility_failure_still_blocks', () => classifyV117TargetModeCompatibilityStatus('v116SelfTestStatus', { status: 'fail', reasonCodes: ['v116_compatibility_failure'] }, legacyV099ShadowFixture()).effectiveStatus === 'fail'),
+  test('v117_v115_blocking_compatibility_failure_still_blocks', () => classifyV117TargetModeCompatibilityStatus('v115SelfTestStatus', { status: 'fail', reasonCodes: ['v115_compatibility_failure'] }, legacyV099ShadowFixture()).effectiveStatus === 'fail'),
+  test('v117_product_evidence_failure_still_blocks', () => classifyV117TargetModeCompatibilityStatus('productVerificationStatus', { status: 'fail', reasonCodes: ['product_evidence_failed'] }, legacyV099ShadowFixture()).effectiveStatus === 'fail'),
+  test('v117_same_head_mismatch_still_blocks', () => classifyV117TargetModeCompatibilityStatus('sameHeadStatus', { status: 'fail', reasonCodes: ['same_head_mismatch'] }, legacyV099ShadowFixture()).effectiveStatus === 'fail'),
+  test('v117_safe_output_failure_still_blocks', () => classifyV117TargetModeCompatibilityStatus('safeOutputScanStatus', { status: 'fail', reasonCodes: ['raw_log_leak_detected'] }, legacyV099ShadowFixture()).effectiveStatus === 'fail'),
+  test('v117_secret_safety_failure_still_blocks', () => classifyV117TargetModeCompatibilityStatus('secretSafetyStatus', { status: 'fail', reasonCodes: ['secret_leak_detected'] }, legacyV099ShadowFixture()).effectiveStatus === 'fail'),
 ];
 
 const failures = cases.filter((item) => item.status !== 'pass');
