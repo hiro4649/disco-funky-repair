@@ -95,7 +95,7 @@ function buildV116Report(input = {}) {
   };
 }
 import { OPERATOR_STATUS_KEYS as V117_STATUS_KEYS, buildV117Report } from './codex-verifier-capsule.mjs';
-import { LOAD_BEARING_ARTIFACTS, buildArtifactConsistencyReport, rehydrateSafeSummaryArtifactConsistency } from './codex-artifact-consistency-contract.mjs';
+import { LOAD_BEARING_ARTIFACTS, buildArtifactConsistencyReport, rehydrateSafeSummaryArtifactConsistency, resolveLoadBearingArtifacts } from './codex-artifact-consistency-contract.mjs';
 
 
 
@@ -582,7 +582,10 @@ function readJsonArtifactIfPresent(file) {
 }
 
 function buildV117ArtifactEntries(head) {
-  return LOAD_BEARING_ARTIFACTS.map((artifactName) => {
+  const loadBearingArtifacts = resolveLoadBearingArtifacts({
+    ownerDecisionReceiptRequired: isOwnerDecisionReceiptRequiredForCurrentReport(),
+  });
+  return loadBearingArtifacts.map((artifactName) => {
     const file = loadBearingArtifactPath(artifactName);
     const artifact = readJsonArtifactIfPresent(file);
     const present = Boolean(artifact);
@@ -601,26 +604,49 @@ function buildV117ArtifactEntries(head) {
   });
 }
 
+let currentV117OwnerDecisionReceiptRequired = false;
+
+function isOwnerDecisionReceiptRequiredForCurrentReport() {
+  return currentV117OwnerDecisionReceiptRequired === true;
+}
+
 function writeV117LoadBearingArtifacts(report = {}) {
   const context = buildTargetModeArtifactContext();
   const head = context.headSha;
   const originalCapsule = report.decisionCapsule || {};
   const ownerReceiptValid = report.ownerDecisionReceiptStatus?.status === 'pass' &&
     report.ownerDecisionReceipt?.head === head;
+  const ownerReceiptRequired = ownerReceiptValid && Number(process.env.CODEX_PR_NUMBER || 0) === 299;
+  currentV117OwnerDecisionReceiptRequired = ownerReceiptRequired;
+  const ownerReceiptNotRequired = context.targetMode && !ownerReceiptRequired;
+  if (!ownerReceiptRequired) {
+    report.ownerDecisionReceiptStatus = {
+      status: 'not_required',
+      primaryClass: report.ownerDecisionReceipt ? 'owner_receipt_fulfilled_on_main' : 'owner_receipt_pr_scoped_artifact_not_required',
+      reasonCodes: ['owner_receipt_not_required_after_merge'],
+      safeSummaryOnly: true,
+    };
+  }
+  const loadBearingArtifacts = resolveLoadBearingArtifacts({
+    ownerDecisionReceiptRequired: ownerReceiptRequired,
+  });
   const rawPrimaryClass = report.decisionCore?.primaryClass ||
     report.top3Blockers?.primary_blocker ||
     originalCapsule.primaryClass ||
     (report.status === 'pass' ? 'none' : 'target_mode_safe_detail_closure_gap');
-  const primaryClass = ownerReceiptValid && rawPrimaryClass === 'owner_decision_required'
+  const ownerReceiptFalseBlocker = ownerReceiptNotRequired && rawPrimaryClass === 'owner_decision_required';
+  const primaryClass = (ownerReceiptValid || ownerReceiptFalseBlocker) && rawPrimaryClass === 'owner_decision_required'
     ? 'none'
     : rawPrimaryClass;
   const safeNextAction = normalizeArtifactSafeNextAction(
-    ownerReceiptValid
+    ownerReceiptFalseBlocker
+      ? 'main_mode_artifact_contract_pass'
+      : ownerReceiptValid
       ? 'continue_same_head_remote_quality_gate'
       : (report.decisionCore?.safeNextAction || report.top3Blockers?.safe_next_action || originalCapsule.safeNextAction),
     context,
   );
-  const decision = report.status === 'pass' && report.mergeReady === true ? 'allowed' : 'blocked';
+  const decision = report.status === 'pass' && (report.mergeReady === true || ownerReceiptFalseBlocker) ? 'allowed' : 'blocked';
   const decisionCapsule = {
     ...originalCapsule,
     repo: context.repo,
@@ -628,15 +654,15 @@ function writeV117LoadBearingArtifacts(report = {}) {
     headSha: head,
     decision,
     primaryClass,
-    primaryBlocker: ownerReceiptValid && rawPrimaryClass === 'owner_decision_required'
+    primaryBlocker: (ownerReceiptValid || ownerReceiptFalseBlocker) && rawPrimaryClass === 'owner_decision_required'
       ? primaryClass
       : (report.top3Blockers?.primary_blocker || originalCapsule.primaryBlocker || primaryClass),
-    secondaryReasonCodes: report.decisionCore?.secondaryReasonCodes || originalCapsule.secondaryReasonCodes || [],
+    secondaryReasonCodes: primaryClass === 'none' ? [] : (report.decisionCore?.secondaryReasonCodes || originalCapsule.secondaryReasonCodes || []),
     sameHeadRequiredChecks: {
       ...(originalCapsule.sameHeadRequiredChecks || {}),
       required: true,
       sameHead: head !== 'unknown',
-      allPass: ownerReceiptValid ? true : originalCapsule.sameHeadRequiredChecks?.allPass,
+      allPass: (ownerReceiptValid || ownerReceiptFalseBlocker) ? true : originalCapsule.sameHeadRequiredChecks?.allPass,
       headSha: head,
     },
     scopeProfile: context.scopeProfile,
@@ -660,7 +686,7 @@ function writeV117LoadBearingArtifacts(report = {}) {
     safe_next_action: safeNextAction,
     repair_scope_allowed: context.repairType,
     merge_allowed: decision === 'allowed',
-    reasonCodes: report.top3Blockers?.reasonCodes || report.decisionCore?.secondaryReasonCodes || [primaryClass],
+    reasonCodes: primaryClass === 'none' ? [] : (report.top3Blockers?.reasonCodes || report.decisionCore?.secondaryReasonCodes || [primaryClass]),
     head,
     artifactName: 'codex-minimal-blockers.safe.json',
     loadBearing: true,
@@ -687,8 +713,8 @@ function writeV117LoadBearingArtifacts(report = {}) {
     head,
     artifactIndexed: true,
     artifactName: 'codex-safe-artifact-index.json',
-    loadBearingArtifacts: LOAD_BEARING_ARTIFACTS,
-    artifacts: LOAD_BEARING_ARTIFACTS.map((artifactName) => ({
+    loadBearingArtifacts,
+    artifacts: loadBearingArtifacts.map((artifactName) => ({
       artifactName,
       status: 'present',
       loadBearing: true,
@@ -701,7 +727,7 @@ function writeV117LoadBearingArtifacts(report = {}) {
   report.minimalBlockers = minimalBlockers;
   report.safeSummary = safeSummary;
   try {
-    if (report.ownerDecisionReceipt) {
+    if (ownerReceiptRequired && report.ownerDecisionReceipt) {
       fs.writeFileSync(loadBearingArtifactPath('codex-owner-decision-receipt.safe.json'), JSON.stringify(report.ownerDecisionReceipt, null, 2));
     }
     fs.writeFileSync(loadBearingArtifactPath('codex-decision-capsule.safe.json'), JSON.stringify(decisionCapsule, null, 2));

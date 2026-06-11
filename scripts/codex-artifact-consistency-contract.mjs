@@ -7,13 +7,28 @@ import { fileURLToPath } from 'node:url';
 import { writeJsonReport, exitFor } from './codex-v080-lib.mjs';
 import { pass, fail } from './codex-outcome-contract.mjs';
 
-export const LOAD_BEARING_ARTIFACTS = [
-  'codex-owner-decision-receipt.safe.json',
+export const OWNER_DECISION_RECEIPT_ARTIFACT = 'codex-owner-decision-receipt.safe.json';
+
+export const CORE_LOAD_BEARING_ARTIFACTS = [
   'codex-decision-capsule.safe.json',
   'codex-artifact-consistency.safe.json',
   'codex-minimal-blockers.safe.json',
   'codex-quality-gate-safe-summary.json',
 ];
+
+export const LOAD_BEARING_ARTIFACTS = [
+  OWNER_DECISION_RECEIPT_ARTIFACT,
+  ...CORE_LOAD_BEARING_ARTIFACTS,
+];
+
+export function resolveLoadBearingArtifacts(input = {}) {
+  if (Array.isArray(input.loadBearingArtifacts) && input.loadBearingArtifacts.length) {
+    return input.loadBearingArtifacts;
+  }
+  return input.ownerDecisionReceiptRequired
+    ? LOAD_BEARING_ARTIFACTS
+    : CORE_LOAD_BEARING_ARTIFACTS;
+}
 
 export const FALLBACK_SAFE_DETAIL_ALLOWED_REASONS = new Set([
   'no_safe_artifact_available',
@@ -54,6 +69,7 @@ export function classifySafeDetailUnavailable(input = {}) {
 
 export function validateArtifactConsistency(input = {}) {
   const artifactName = input.artifactName || 'codex-decision-capsule.safe.json';
+  const loadBearingArtifacts = resolveLoadBearingArtifacts(input);
   const generated = normalizeArtifactStatus(input.artifactGeneratedStatus ?? input.generated, 'pass');
   const indexed = normalizeArtifactStatus(input.artifactIndexedStatus ?? input.indexed, 'pass');
   const uploaded = normalizeArtifactStatus(input.artifactUploadedStatus ?? input.uploaded, 'pass');
@@ -61,7 +77,7 @@ export function validateArtifactConsistency(input = {}) {
   const headMatch = normalizeArtifactStatus(input.artifactHeadMatchStatus ?? input.headMatch, 'pass');
   const reasonCodes = [];
   if (input.safeSummaryPresent === false) reasonCodes.push('safe_summary_missing');
-  if (!LOAD_BEARING_ARTIFACTS.includes(artifactName)) reasonCodes.push('artifact_not_load_bearing');
+  if (!loadBearingArtifacts.includes(artifactName)) reasonCodes.push('artifact_not_load_bearing');
   if (indexed === 'pass' && generated !== 'pass') reasonCodes.push('artifact_index_consistency_failure');
   if (generated === 'pass' && indexed !== 'pass') reasonCodes.push('artifact_generated_not_indexed');
   if (indexed === 'pass' && uploaded !== 'pass') reasonCodes.push('artifact_index_consistency_failure');
@@ -105,12 +121,13 @@ export function validateArtifactConsistency(input = {}) {
 }
 
 export function buildArtifactConsistencyReport(input = {}) {
-  const artifacts = input.artifacts || LOAD_BEARING_ARTIFACTS.map((artifactName) => ({
+  const loadBearingArtifacts = resolveLoadBearingArtifacts(input);
+  const artifacts = input.artifacts || loadBearingArtifacts.map((artifactName) => ({
     artifactName,
     artifactHeadMatchStatus: input.remoteHeadMatches === false ? 'fail' : undefined,
     safeSummaryPresent: input.safeSummaryPresent,
   }));
-  const entries = artifacts.map((artifact) => validateArtifactConsistency({ head: input.head, ...artifact }));
+  const entries = artifacts.map((artifact) => validateArtifactConsistency({ head: input.head, loadBearingArtifacts, ...artifact }));
   const failures = entries.filter((entry) => entry.status === 'fail');
   return {
     status: failures.length ? 'fail' : 'pass',
@@ -203,7 +220,9 @@ function readJsonIfPresent(file) {
 if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
   const dir = process.argv[2] || '.';
   const head = process.env.CODEX_PR_HEAD_SHA || process.env.GITHUB_SHA || 'unknown';
-  const artifacts = LOAD_BEARING_ARTIFACTS.map((artifactName) => {
+  const artifacts = resolveLoadBearingArtifacts({
+    ownerDecisionReceiptRequired: process.env.CODEX_OWNER_DECISION_RECEIPT_REQUIRED === 'true',
+  }).map((artifactName) => {
     const file = path.join(dir, artifactName);
     const artifact = readJsonIfPresent(file);
     return {

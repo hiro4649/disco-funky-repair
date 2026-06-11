@@ -80,6 +80,11 @@ Source v1.1.7 is acceptable only when:
   `codex-artifact-consistency.safe.json`,
   `codex-minimal-blockers.safe.json`, and
   `codex-quality-gate-safe-summary.json`.
+- `codex-owner-decision-receipt.safe.json` is load-bearing only while a
+  same-head PR owner-decision receipt is required. After merge, main-mode
+  verification treats that PR-scoped receipt as `not_required` or
+  `fulfilled_archived`; its absence must not fail artifact consistency unless a
+  new owner-decision condition exists.
 - The source quality gate must emit these artifacts as real safe files and the
   workflow upload contract must include them. If the safe index says a
   load-bearing artifact is present but the artifact is missing, the primary
