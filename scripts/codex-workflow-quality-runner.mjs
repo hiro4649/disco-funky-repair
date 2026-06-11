@@ -4184,6 +4184,9 @@ export function evaluateWorkflowReport(report, options = {}) {
 
 
     qualityScoreStatus: report.qualityScoreStatus || report.targetQualityScoreStatus || { status: 'missing' },
+    targetQualityScoreStatus: report.targetQualityScoreStatus || report.qualityScoreStatus || { status: 'missing' },
+    safeOutputScanStatus: report.safeOutputScanStatus || { status: 'missing', safeSummaryOnly: true },
+    safeOutputStatus: report.safeOutputStatus || report.safeOutputScanStatus || { status: 'missing', safeSummaryOnly: true },
 
 
 

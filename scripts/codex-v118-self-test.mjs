@@ -5,6 +5,7 @@ import fs from 'node:fs';
 import { writeJsonReport, exitFor } from './codex-v080-lib.mjs';
 import {
   reconcileFinalSafeDecision,
+  reconcileV118MergeSurface,
   validateFinalDecisionKernel,
 } from './codex-final-decision-kernel.mjs';
 import {
@@ -14,8 +15,10 @@ import {
 import {
   MACHINE_READ_ORDER_V118,
   buildArtifactConsistencyReport,
+  rehydrateSafeSummaryArtifactConsistency,
   resolveLoadBearingArtifacts,
 } from './codex-artifact-consistency-contract.mjs';
+import { summarizeSafeReport } from './codex-safe-summary-pick.mjs';
 
 function test(name, fn) {
   try {
@@ -100,6 +103,33 @@ function preserveCapsule(input = {}) {
   };
 }
 
+function v118MergeSurfaceReport(extra = {}) {
+  const finalDecision = {
+    decision: 'allowed',
+    exitCode: 0,
+    mergeAllowed: false,
+    primaryClass: 'none',
+    safeNextAction: 'run_same_head_remote_quality_gate',
+    safeSummaryOnly: true,
+    ...(extra.finalDecision || {}),
+  };
+  return {
+    finalDecision,
+    finalDecisionStatus: { status: 'pass', finalDecision, safeSummaryOnly: true },
+    decisionCapsuleStatus: { status: 'pass', safeSummaryOnly: true },
+    evidenceCapsuleStatus: { status: 'pass', safeSummaryOnly: true },
+    artifactConsistencyStatus: { status: 'pass', safeSummaryOnly: true },
+    convergenceGateStatus: { status: 'pass', safeSummaryOnly: true },
+    safeFailureReaderStatus: { status: 'pass', safeSummaryOnly: true },
+    tokenBudgetStatus: { status: 'pass', safeSummaryOnly: true },
+    scopeBoundaryStatus: { status: 'pass', safeSummaryOnly: true },
+    v118SelfTestStatus: { status: 'pass', safeSummaryOnly: true },
+    v117SelfTestStatus: { status: 'pass', safeSummaryOnly: true },
+    v116SelfTestStatus: { status: 'pass', safeSummaryOnly: true },
+    ...extra,
+  };
+}
+
 const cases = [
   test('v118_self_test_must_pass', () => true),
   test('final_decision_artifact_exists', () => reconcileFinalSafeDecision(allowedCreateInput()).artifactName === 'codex-final-decision.safe.json'),
@@ -148,6 +178,32 @@ const cases = [
   test('artifact_loop_stop_after_same_head_pass', () => true),
   test('convergence_gate_stops_same_primary_class_twice', () => reconcileFinalSafeDecision({ ...allowedCreateInput(), convergenceState: { continueAllowed: false, currentPrimaryClass: 'same_primary_class_after_one_repair' } }).primaryClass === 'same_primary_class_after_one_repair'),
   test('safe_artifact_read_budget_excludes_internal_artifact_consistency', () => MACHINE_READ_ORDER_V118.length === 3),
+  test('v118_exports_v117_rehydrate_safe_summary_artifact_consistency', () => typeof rehydrateSafeSummaryArtifactConsistency === 'function'),
+  test('v118_v117_compatibility_self_test_imports_artifact_contract_exports', () => fs.readFileSync('scripts/codex-v117-self-test.mjs', 'utf8').includes('rehydrateSafeSummaryArtifactConsistency')),
+  test('v118_rehydrate_safe_summary_artifact_consistency_passes_coherent_final_summary', () => rehydrateSafeSummaryArtifactConsistency({ artifactConsistencyStatus: { status: 'fail', primaryClass: 'artifact_stale_head' } }, buildArtifactConsistencyReport({ head: 'abc' }), { head: 'abc' }).artifactConsistencyStatus.status === 'pass'),
+  test('v118_rehydrate_safe_summary_artifact_consistency_fails_missing_load_bearing_summary', () => rehydrateSafeSummaryArtifactConsistency({ safeSummaryPresent: false }, buildArtifactConsistencyReport({ head: 'abc' }), { head: 'abc' }).artifactConsistencyStatus.status === 'fail'),
+  test('v118_rehydrate_preserves_same_head_failure', () => rehydrateSafeSummaryArtifactConsistency({ artifactConsistencyStatus: { status: 'fail', reasonCodes: ['same_head_mismatch'] } }, buildArtifactConsistencyReport({ head: 'abc' }), { head: 'abc' }).artifactConsistencyStatus.status === 'fail'),
+  test('v118_rehydrate_preserves_safe_output_failure', () => rehydrateSafeSummaryArtifactConsistency({ artifactConsistencyStatus: { status: 'fail', reasonCodes: ['safe_output_scan_failed'] } }, buildArtifactConsistencyReport({ head: 'abc' }), { head: 'abc' }).artifactConsistencyStatus.status === 'fail'),
+  test('v118_rehydrate_preserves_scope_boundary_failure', () => rehydrateSafeSummaryArtifactConsistency({ artifactConsistencyStatus: { status: 'fail', reasonCodes: ['scope_boundary_failed'] } }, buildArtifactConsistencyReport({ head: 'abc' }), { head: 'abc' }).artifactConsistencyStatus.status === 'fail'),
+  test('v118_rehydrate_preserves_token_budget_failure', () => rehydrateSafeSummaryArtifactConsistency({ artifactConsistencyStatus: { status: 'fail', reasonCodes: ['token_budget_failed'] } }, buildArtifactConsistencyReport({ head: 'abc' }), { head: 'abc' }).artifactConsistencyStatus.status === 'fail'),
+  test('v118_rehydrate_safe_summary_only', () => rehydrateSafeSummaryArtifactConsistency({}, buildArtifactConsistencyReport({ head: 'abc' }), { head: 'abc' }).safeSummaryOnly === true),
+  test('v118_final_allowed_exit_zero_sets_merge_surface_ready', () => reconcileV118MergeSurface(v118MergeSurfaceReport()).mergeAllowed === true),
+  test('v118_final_allowed_exit_zero_sets_target_quality_pass', () => reconcileV118MergeSurface(v118MergeSurfaceReport()).targetQualityScoreStatus.status === 'pass'),
+  test('v118_final_allowed_exit_zero_sets_reason_summary_pass', () => reconcileV118MergeSurface(v118MergeSurfaceReport()).reasonSummaryStatus.status === 'pass'),
+  test('v118_final_allowed_exit_zero_clears_run_same_head_remote_quality_gate_next_action', () => reconcileV118MergeSurface(v118MergeSurfaceReport()).safeNextAction !== 'run_same_head_remote_quality_gate'),
+  test('v118_target_merge_ready_true_when_final_allowed_and_non_overridable_pass', () => reconcileV118MergeSurface(v118MergeSurfaceReport()).targetMergeReady === true),
+  test('v118_final_allowed_exports_safe_output_scan_pass_surface', () => reconcileV118MergeSurface(v118MergeSurfaceReport()).safeOutputScanStatus.status === 'pass'),
+  test('v118_safe_summary_exports_safe_output_scan_pass_surface', () => summarizeSafeReport({ ...v118MergeSurfaceReport(), ...reconcileV118MergeSurface(v118MergeSurfaceReport()) }).safeOutputScanStatus === 'pass'),
+  test('v118_safe_output_surface_missing_blocks_merge', () => reconcileV118MergeSurface(v118MergeSurfaceReport({ safeOutputScanStatus: { status: 'fail', reasonCodes: ['safe_output_surface_missing'], safeSummaryOnly: true } })).mergeAllowed === false),
+  test('v118_safe_output_failure_still_blocks_final_allowed', () => reconcileV118MergeSurface(v118MergeSurfaceReport({ safeOutputScanStatus: { status: 'fail', reasonCodes: ['raw_log_leak_detected'], safeSummaryOnly: true } })).targetQualityScoreStatus.status === 'fail'),
+  test('v118_final_allowed_does_not_override_same_head_failure', () => reconcileV118MergeSurface(v118MergeSurfaceReport({ evidenceCapsuleStatus: { status: 'fail', reasonCodes: ['same_head_mismatch'], safeSummaryOnly: true } })).mergeAllowed === false),
+  test('v118_final_allowed_does_not_override_safe_output_failure', () => reconcileV118MergeSurface(v118MergeSurfaceReport({ safeOutputScanStatus: { status: 'fail', reasonCodes: ['raw_log_leak_detected'], safeSummaryOnly: true } })).mergeAllowed === false),
+  test('v118_final_allowed_does_not_override_scope_failure', () => reconcileV118MergeSurface(v118MergeSurfaceReport({ scopeBoundaryStatus: { status: 'fail', reasonCodes: ['scope_boundary_failed'], safeSummaryOnly: true } })).mergeAllowed === false),
+  test('v118_final_allowed_does_not_override_token_budget_failure', () => reconcileV118MergeSurface(v118MergeSurfaceReport({ tokenBudgetStatus: { status: 'fail', reasonCodes: ['token_budget_failed'], safeSummaryOnly: true } })).mergeAllowed === false),
+  test('v118_final_allowed_does_not_override_v118_failure', () => reconcileV118MergeSurface(v118MergeSurfaceReport({ v118SelfTestStatus: { status: 'fail', reasonCodes: ['v118_self_test_failed'], safeSummaryOnly: true } })).mergeAllowed === false),
+  test('v118_final_allowed_does_not_override_artifact_consistency_failure', () => reconcileV118MergeSurface(v118MergeSurfaceReport({ artifactConsistencyStatus: { status: 'fail', reasonCodes: ['artifact_consistency_failed'], safeSummaryOnly: true } })).mergeAllowed === false),
+  test('v118_final_allowed_does_not_override_product_file_mix', () => reconcileV118MergeSurface(v118MergeSurfaceReport({ changeClassificationStatus: { status: 'pass', classification: { productSourceChanged: true }, safeSummaryOnly: true } })).mergeAllowed === false),
+  test('v118_final_allowed_does_not_override_runtime_readiness_claim', () => reconcileV118MergeSurface(v118MergeSurfaceReport({ changeClassificationStatus: { status: 'pass', classification: { runtimeReadinessClaimed: true }, safeSummaryOnly: true } })).mergeAllowed === false),
   test('typed_status_registry_blocks_not_applicable', () => validateTypedStatus({ statusCode: 'not_applicable', statusRole: 'merge', reason: 'x', mergeConditionEligible: false }) === false),
   test('forbidden_profile_id_required', () => true),
   test('verification_profile_required', () => true),

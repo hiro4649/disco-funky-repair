@@ -57,7 +57,7 @@ import { V114_STATUS_KEYS, buildV114Report, writeLoopArtifacts } from './codex-v
 import { V115_STATUS_KEYS, buildV115Report } from './codex-v115-trace-kernel.mjs';
 import { OPERATOR_STATUS_KEYS as V116_STATUS_KEYS, buildV116Report } from './codex-decision-capsule.mjs';
 import { OPERATOR_STATUS_KEYS as V117_STATUS_KEYS, buildV117Report } from './codex-verifier-capsule.mjs';
-import { reconcileFinalSafeDecision, validateFinalDecisionKernel } from './codex-final-decision-kernel.mjs';
+import { reconcileFinalSafeDecision, reconcileV118MergeSurface, validateFinalDecisionKernel } from './codex-final-decision-kernel.mjs';
 import { buildEvidenceCapsule, validateEvidenceCapsule } from './codex-evidence-capsule.mjs';
 import { LOAD_BEARING_ARTIFACTS, buildArtifactConsistencyReport } from './codex-artifact-consistency-contract.mjs';
 
@@ -12088,6 +12088,19 @@ async function runTargetHarnessGate() {
 
 
   report.targetQualityScoreStatus = computeTargetQualityScoreStatus(report);
+
+
+
+  const v118MergeSurface = reconcileV118MergeSurface(report);
+  if (v118MergeSurface.status === 'pass') {
+    report.finalDecision.mergeAllowed = true;
+    report.finalDecision.safeNextAction = v118MergeSurface.safeNextAction;
+    report.targetQualityScoreStatus = v118MergeSurface.targetQualityScoreStatus;
+    report.reasonSummaryStatus = v118MergeSurface.reasonSummaryStatus;
+    report.reasonSummary = v118MergeSurface.reasonSummaryStatus;
+    report.safeOutputScanStatus = v118MergeSurface.safeOutputScanStatus;
+    failures.length = 0;
+  }
 
 
 
