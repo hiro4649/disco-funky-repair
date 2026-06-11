@@ -27,12 +27,73 @@ function hasPrimaryClass(value) {
   return Boolean(value && value !== 'none' && value !== 'none_or_one_code');
 }
 
+function statusOfPass(value) {
+  const status = statusOf(value);
+  return status === 'pass' || status === 'not_required_with_reason' || status === 'non_load_bearing';
+}
+
+const V118_REQUIRED_MERGE_SURFACE_KEYS = [
+  'finalDecisionStatus',
+  'decisionCapsuleStatus',
+  'evidenceCapsuleStatus',
+  'artifactConsistencyStatus',
+  'convergenceGateStatus',
+  'safeFailureReaderStatus',
+  'tokenBudgetStatus',
+  'scopeBoundaryStatus',
+  'v118SelfTestStatus',
+  'v117SelfTestStatus',
+  'v116SelfTestStatus',
+];
+
+const V118_OPTIONAL_BLOCKING_KEYS = [
+  'safeOutputScanStatus',
+  'secretSafetyStatus',
+  'changeClassificationStatus',
+];
+
 function safetyViolation(safetyClaims = {}) {
   if (safetyClaims.rawLogsRead === true) return 'raw_logs_read';
   if (safetyClaims.eightSessionUsed === true) return 'eight_session_used';
   if (safetyClaims.runtimeReadinessClaimed === true) return 'runtime_readiness_claimed';
   if (safetyClaims.productionReadinessClaimed === true) return 'production_readiness_claimed';
   return '';
+}
+
+export function reconcileV118MergeSurface(report = {}) {
+  const finalDecision = report.finalDecision || report.finalDecisionStatus?.finalDecision || {};
+  const requiredFailures = V118_REQUIRED_MERGE_SURFACE_KEYS
+    .filter((key) => !statusOfPass(report[key]))
+    .map((key) => `${key}.failed`);
+  const optionalFailures = V118_OPTIONAL_BLOCKING_KEYS
+    .filter((key) => report[key] && !statusOfPass(report[key]))
+    .map((key) => `${key}.failed`);
+  const safetyFailures = [];
+  const classification = report.changeClassificationStatus?.classification || {};
+  if (classification.productSourceChanged === true) safetyFailures.push('product_files_mixed');
+  if (classification.packageChanged === true || classification.lockfileChanged === true) safetyFailures.push('package_lockfile_mixed');
+  if (classification.runtimeReadinessClaimed === true) safetyFailures.push('runtime_readiness_claimed');
+  if (report.safetyClaims?.stagingNoTxPassClaimed === true) safetyFailures.push('staging_no_tx_pass_claimed');
+  if (report.safetyClaims?.productionReadinessClaimed === true || finalDecision.productionReadinessClaimed === true) safetyFailures.push('production_readiness_claimed');
+  const blocking = [...requiredFailures, ...optionalFailures, ...safetyFailures];
+  const ready = finalDecision.decision === 'allowed' &&
+    finalDecision.exitCode === 0 &&
+    !hasPrimaryClass(finalDecision.primaryClass) &&
+    blocking.length === 0;
+  return {
+    status: ready ? 'pass' : 'fail',
+    mergeAllowed: ready,
+    targetMergeReady: ready,
+    targetQualityScoreStatus: ready
+      ? { status: 'pass', score: 100, labels: ['v118_final_decision_merge_surface_ready'], safeSummaryOnly: true }
+      : { status: 'fail', score: 70, labels: ['v118_final_decision_merge_surface_blocked'], blockingStatuses: blocking.slice(0, 8), safeSummaryOnly: true },
+    reasonSummaryStatus: ready
+      ? { status: 'pass', reasonCodes: [], summary: { blockingReasons: [], topNextActions: ['merge_after_same_head_checks'] }, safeSummaryOnly: true }
+      : { status: 'fail', reasonCodes: blocking.slice(0, 3), summary: { blockingReasons: blocking.slice(0, 3), topNextActions: ['repair_v118_merge_surface_blocker'] }, safeSummaryOnly: true },
+    safeNextAction: ready ? 'merge_after_same_head_checks' : 'repair_v118_merge_surface_blocker',
+    blocking,
+    safeSummaryOnly: true,
+  };
 }
 
 function evidenceReadyForMerge(evidenceCapsule = {}, requiredChecks = {}) {
