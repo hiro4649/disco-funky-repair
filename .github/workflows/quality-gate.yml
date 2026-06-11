@@ -194,6 +194,8 @@ jobs:
           CODEX_PR_BASE_SHA: ${{ github.event.pull_request.base.sha || '' }}
           CODEX_REPOSITORY: ${{ github.repository }}
           CODEX_LIFEBOAT_PATH: ${{ runner.temp }}/codex-minimal-safe-failure.json
+          CODEX_EXECUTION_MODE: target_pr
+          CODEX_TERMINAL_ACTION: create_pr_only
           GITHUB_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
@@ -237,8 +239,8 @@ jobs:
           const capsule = readJson('codex-decision-capsule.safe.json');
           const consistency = readJson('codex-artifact-consistency.safe.json');
           const summary = readJson('codex-quality-gate-safe-summary.json');
-          const summary = readJson('codex-final-decision.safe.json
-          const summary = readJson('codex-evidence-capsule.safe.json
+          const finalDecision = readJson('codex-final-decision.safe.json');
+          const evidenceCapsule = readJson('codex-evidence-capsule.safe.json');
           const receiptPass = receipt &&
             receipt.decision === 'allow_harness_only_v117_rollout_continuation' &&
             receipt.head &&
@@ -436,6 +438,8 @@ jobs:
           name: codex-quality-gate-safe-artifacts
           path: |
             codex-quality-gate-safe-summary.json
+            codex-final-decision.safe.json
+            codex-evidence-capsule.safe.json
             codex-owner-decision-receipt.safe.json
             codex-decision-capsule.safe.json
             codex-artifact-consistency.safe.json
