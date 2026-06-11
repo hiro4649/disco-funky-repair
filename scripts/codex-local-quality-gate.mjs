@@ -12489,8 +12489,6 @@ async function runTargetHarnessGate() {
     report.minimalBlockers = report.top3Blockers;
   }
 
-  writeV117LoadBearingArtifacts(report);
-
   report.mergeReady = failures.length === 0 && warnings.length === 0;
 
 
@@ -12500,6 +12498,8 @@ async function runTargetHarnessGate() {
 
 
   report.humanReviewRequired = warnings.length > 0;
+
+  writeV117LoadBearingArtifacts(report);
 
 
 
