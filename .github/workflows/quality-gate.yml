@@ -1,4 +1,4 @@
-# CODEX_QUALITY_HARNESS_FILE v1.0.7
+# CODEX_QUALITY_HARNESS_FILE v1.1.8
 name: quality-gate
 
 on:
@@ -186,6 +186,7 @@ jobs:
         shell: bash
         env:
           CODEX_QUALITY_REPORT: "json"
+          CODEX_SAFE_ARTIFACT_DIR: ${{ github.workspace }}
           CODEX_OPENAI_METHOD_REPORT: "json"
           CODEX_EVENT_NAME: ${{ github.event_name }}
           CODEX_PR_NUMBER: ${{ github.event.pull_request.number || '' }}
@@ -236,6 +237,8 @@ jobs:
           const capsule = readJson('codex-decision-capsule.safe.json');
           const consistency = readJson('codex-artifact-consistency.safe.json');
           const summary = readJson('codex-quality-gate-safe-summary.json');
+          const summary = readJson('codex-final-decision.safe.json
+          const summary = readJson('codex-evidence-capsule.safe.json
           const receiptPass = receipt &&
             receipt.decision === 'allow_harness_only_v117_rollout_continuation' &&
             receipt.head &&

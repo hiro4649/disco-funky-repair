@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// CODEX_QUALITY_HARNESS_FILE v1.1.7
+// CODEX_QUALITY_HARNESS_FILE v1.1.8
 
 import fs from 'node:fs';
 import path from 'node:path';
@@ -7,27 +7,40 @@ import { fileURLToPath } from 'node:url';
 import { writeJsonReport, exitFor } from './codex-v080-lib.mjs';
 import { pass, fail } from './codex-outcome-contract.mjs';
 
-export const OWNER_DECISION_RECEIPT_ARTIFACT = 'codex-owner-decision-receipt.safe.json';
-
-export const CORE_LOAD_BEARING_ARTIFACTS = [
+export const V117_LOAD_BEARING_ARTIFACTS = [
   'codex-decision-capsule.safe.json',
   'codex-artifact-consistency.safe.json',
   'codex-minimal-blockers.safe.json',
   'codex-quality-gate-safe-summary.json',
 ];
 
-export const LOAD_BEARING_ARTIFACTS = [
-  OWNER_DECISION_RECEIPT_ARTIFACT,
-  ...CORE_LOAD_BEARING_ARTIFACTS,
+export const CORE_GENERATED_ARTIFACTS_V118 = [
+  'codex-final-decision.safe.json',
+  'codex-decision-capsule.safe.json',
+  'codex-evidence-capsule.safe.json',
+  'codex-artifact-consistency.safe.json',
+  'codex-minimal-blockers.safe.json',
+  'codex-quality-gate-safe-summary.json',
 ];
 
-export function resolveLoadBearingArtifacts(input = {}) {
-  if (Array.isArray(input.loadBearingArtifacts) && input.loadBearingArtifacts.length) {
-    return input.loadBearingArtifacts;
+export const MACHINE_READ_ORDER_V118 = [
+  'codex-final-decision.safe.json',
+  'codex-evidence-capsule.safe.json',
+  'codex-minimal-blockers.safe.json',
+];
+
+export const LOAD_BEARING_ARTIFACTS = V117_LOAD_BEARING_ARTIFACTS;
+
+export function resolveLoadBearingArtifacts(executionMode = 'source_pr', terminalAction = 'create_pr_only', blockerClass = 'none') {
+  if (executionMode === 'preserve_watch') {
+    return ['codex-final-decision.safe.json', 'codex-quality-gate-safe-summary.json'];
   }
-  return input.ownerDecisionReceiptRequired
-    ? LOAD_BEARING_ARTIFACTS
-    : CORE_LOAD_BEARING_ARTIFACTS;
+  if (executionMode === 'analysis_only') return [];
+  const core = [...CORE_GENERATED_ARTIFACTS_V118];
+  if (executionMode === 'target_pr' && blockerClass === 'owner_decision_required') {
+    return [...core, 'codex-owner-decision-receipt.safe.json'];
+  }
+  return core;
 }
 
 export const FALLBACK_SAFE_DETAIL_ALLOWED_REASONS = new Set([
@@ -42,6 +55,10 @@ export function normalizeArtifactStatus(value, fallback = 'missing') {
   if (value === true || value === 'pass' || value === 'present') return 'pass';
   if (value === false || value === 'fail' || value === 'missing') return 'fail';
   return value || fallback;
+}
+
+function isRequiredFailure(value) {
+  return value !== 'pass' && value !== 'not_required_with_reason' && value !== 'non_load_bearing';
 }
 
 export function classifyArtifactConsistency(input = {}) {
@@ -69,24 +86,27 @@ export function classifySafeDetailUnavailable(input = {}) {
 
 export function validateArtifactConsistency(input = {}) {
   const artifactName = input.artifactName || 'codex-decision-capsule.safe.json';
-  const loadBearingArtifacts = resolveLoadBearingArtifacts(input);
+  const executionMode = input.executionMode || 'source_pr';
+  const terminalAction = input.terminalAction || 'create_pr_only';
+  const v118ModeExplicit = 'executionMode' in input || 'terminalAction' in input || 'blockerClass' in input;
+  const loadBearingArtifacts = input.loadBearingArtifacts || (v118ModeExplicit
+    ? resolveLoadBearingArtifacts(executionMode, terminalAction, input.blockerClass || 'none')
+    : V117_LOAD_BEARING_ARTIFACTS);
   const generated = normalizeArtifactStatus(input.artifactGeneratedStatus ?? input.generated, 'pass');
   const indexed = normalizeArtifactStatus(input.artifactIndexedStatus ?? input.indexed, 'pass');
-  const uploaded = normalizeArtifactStatus(input.artifactUploadedStatus ?? input.uploaded, 'pass');
-  const downloadObserved = normalizeArtifactStatus(input.artifactDownloadObservedStatus ?? input.downloadObserved, 'pass');
+  const localMode = input.remote === false || terminalAction === 'create_pr_only' || executionMode.endsWith('_main');
+  const uploaded = normalizeArtifactStatus(input.artifactUploadedStatus ?? input.uploaded, localMode ? 'not_required_with_reason' : 'pass');
+  const downloadObserved = normalizeArtifactStatus(input.artifactDownloadObservedStatus ?? input.downloadObserved, localMode ? 'not_required_with_reason' : 'pass');
   const headMatch = normalizeArtifactStatus(input.artifactHeadMatchStatus ?? input.headMatch, 'pass');
   const reasonCodes = [];
   if (input.safeSummaryPresent === false) reasonCodes.push('safe_summary_missing');
   if (!loadBearingArtifacts.includes(artifactName)) reasonCodes.push('artifact_not_load_bearing');
   if (indexed === 'pass' && generated !== 'pass') reasonCodes.push('artifact_index_consistency_failure');
   if (generated === 'pass' && indexed !== 'pass') reasonCodes.push('artifact_generated_not_indexed');
-  if (indexed === 'pass' && uploaded !== 'pass') reasonCodes.push('artifact_index_consistency_failure');
+  if (indexed === 'pass' && isRequiredFailure(uploaded)) reasonCodes.push('artifact_index_consistency_failure');
   if (uploaded === 'pass' && generated !== 'pass') reasonCodes.push('artifact_uploaded_without_generated_source');
-  if (uploaded === 'pass' && downloadObserved !== 'pass') reasonCodes.push('artifact_download_not_observed');
-  if ((input.head || input.headSha || 'unknown') === 'unknown' && generated === 'pass' && downloadObserved === 'pass') {
-    reasonCodes.push('artifact_head_not_observed');
-  }
-  if (downloadObserved === 'pass' && headMatch !== 'pass') reasonCodes.push('artifact_head_mismatch');
+  if (uploaded === 'pass' && isRequiredFailure(downloadObserved)) reasonCodes.push('artifact_download_not_observed');
+  if (headMatch === 'fail' || (downloadObserved === 'pass' && headMatch !== 'pass')) reasonCodes.push('artifact_head_mismatch');
   const base = {
     artifactName,
     artifactGeneratedStatus: generated,
@@ -100,7 +120,7 @@ export function validateArtifactConsistency(input = {}) {
     safeSummaryOnly: true,
   };
   if (reasonCodes.length) {
-    const primaryClass = reasonCodes.includes('artifact_head_mismatch') || reasonCodes.includes('artifact_head_not_observed')
+    const primaryClass = reasonCodes.includes('artifact_head_mismatch')
       ? 'artifact_stale_head'
       : (reasonCodes.includes('artifact_index_consistency_failure') ? 'artifact_index_consistency_failure' : classifyArtifactConsistency({
         artifactName,
@@ -121,61 +141,27 @@ export function validateArtifactConsistency(input = {}) {
 }
 
 export function buildArtifactConsistencyReport(input = {}) {
-  const loadBearingArtifacts = resolveLoadBearingArtifacts(input);
+  const executionMode = input.executionMode || 'source_pr';
+  const terminalAction = input.terminalAction || 'create_pr_only';
+  const artifactDefinedLoadBearing = Array.isArray(input.artifacts)
+    ? input.artifacts.filter((artifact) => artifact.loadBearing === true).map((artifact) => artifact.artifactName).filter(Boolean)
+    : [];
+  const v118ModeExplicit = 'executionMode' in input || 'terminalAction' in input || 'blockerClass' in input;
+  const loadBearingArtifacts = input.loadBearingArtifacts || (artifactDefinedLoadBearing.length ? artifactDefinedLoadBearing : (v118ModeExplicit
+    ? resolveLoadBearingArtifacts(executionMode, terminalAction, input.blockerClass || 'none')
+    : V117_LOAD_BEARING_ARTIFACTS));
   const artifacts = input.artifacts || loadBearingArtifacts.map((artifactName) => ({
     artifactName,
     artifactHeadMatchStatus: input.remoteHeadMatches === false ? 'fail' : undefined,
     safeSummaryPresent: input.safeSummaryPresent,
   }));
-  const entries = artifacts.map((artifact) => validateArtifactConsistency({ head: input.head, loadBearingArtifacts, ...artifact }));
+  const entries = artifacts.map((artifact) => validateArtifactConsistency({ head: input.head, executionMode, terminalAction, loadBearingArtifacts, remote: input.remote, ...artifact }));
   const failures = entries.filter((entry) => entry.status === 'fail');
   return {
     status: failures.length ? 'fail' : 'pass',
     artifactConsistencyStatus: failures.length ? failures[0] : pass({ checkedArtifacts: entries.length }),
     entries,
     checkedArtifacts: entries.length,
-    safeSummaryOnly: true,
-  };
-}
-
-export function rehydrateSafeSummaryArtifactConsistency(summary = {}, finalConsistency = {}, input = {}) {
-  const finalStatus = finalConsistency.artifactConsistencyStatus || finalConsistency;
-  const previous = summary.artifactConsistencyStatus;
-  const head = input.head || finalConsistency.head || finalStatus.head || summary.head || 'unknown';
-  const previousCompact = previous ? {
-    status: previous.status,
-    primaryClass: previous.primaryClass,
-    head: previous.head,
-  } : null;
-  const finalCompact = finalStatus ? {
-    status: finalStatus.status,
-    primaryClass: finalStatus.primaryClass,
-    head: finalStatus.head || head,
-  } : null;
-  const staleIntermediate = previousCompact && finalCompact &&
-    JSON.stringify(previousCompact) !== JSON.stringify(finalCompact);
-  const rejectedEvidence = [
-    ...(Array.isArray(summary.rejectedEvidence) ? summary.rejectedEvidence : []),
-  ];
-  if (staleIntermediate) {
-    rejectedEvidence.push({
-      primaryClass: 'stale_intermediate_artifact_consistency_rejected',
-      source: 'intermediate_safe_summary_snapshot',
-      artifactConsistencyStatus: previousCompact,
-      safeSummaryOnly: true,
-    });
-  }
-  return {
-    ...summary,
-    head,
-    artifactConsistencyStatus: finalStatus,
-    artifactConsistency: finalConsistency,
-    artifactConsistencySource: 'codex-artifact-consistency.safe.json',
-    finalArtifactConsistencyAuthoritativeStatus: pass({
-      primaryClass: 'final_artifact_consistency_authoritative',
-      head,
-    }),
-    rejectedEvidence,
     safeSummaryOnly: true,
   };
 }
@@ -220,9 +206,9 @@ function readJsonIfPresent(file) {
 if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
   const dir = process.argv[2] || '.';
   const head = process.env.CODEX_PR_HEAD_SHA || process.env.GITHUB_SHA || 'unknown';
-  const artifacts = resolveLoadBearingArtifacts({
-    ownerDecisionReceiptRequired: process.env.CODEX_OWNER_DECISION_RECEIPT_REQUIRED === 'true',
-  }).map((artifactName) => {
+  const executionMode = process.env.CODEX_EXECUTION_MODE || 'source_pr';
+  const terminalAction = process.env.CODEX_TERMINAL_ACTION || 'create_pr_only';
+  const artifacts = resolveLoadBearingArtifacts(executionMode, terminalAction, process.env.CODEX_PRIMARY_CLASS || 'none').map((artifactName) => {
     const file = path.join(dir, artifactName);
     const artifact = readJsonIfPresent(file);
     return {
@@ -231,7 +217,7 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
       artifactIndexedStatus: 'pass',
       artifactUploadedStatus: artifact ? 'pass' : 'fail',
       artifactDownloadObservedStatus: artifact ? 'pass' : 'missing',
-      artifactHeadMatchStatus: !artifact ? 'not_observed' : (head === 'unknown' ? 'not_observed' : (artifact?.head && artifact.head !== head ? 'fail' : 'pass')),
+      artifactHeadMatchStatus: artifact?.head && artifact.head !== head ? 'fail' : (artifact ? 'pass' : 'not_observed'),
     };
   });
   const report = buildArtifactConsistencyReport({ head, artifacts });

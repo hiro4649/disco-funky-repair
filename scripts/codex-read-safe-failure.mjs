@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// CODEX_QUALITY_HARNESS_FILE v1.1.7
+// CODEX_QUALITY_HARNESS_FILE v1.1.8
 
 import fs from 'node:fs';
 import path from 'node:path';
@@ -8,11 +8,11 @@ import { writeJsonReport, exitFor } from './codex-v080-lib.mjs';
 import { pass, fail } from './codex-outcome-contract.mjs';
 
 export const SAFE_FAILURE_READ_ORDER = [
+  'codex-final-decision.safe.json',
+  'codex-evidence-capsule.safe.json',
+  'codex-minimal-blockers.safe.json',
   'codex-decision-capsule.safe.json',
   'codex-artifact-consistency.safe.json',
-  'codex-minimal-blockers.safe.json',
-  'codex-owner-decision-receipt.safe.json',
-  'codex-quality-gate-safe-summary.json',
   'codex-decision-core.safe.json',
   'codex-safe-artifact-index.safe.json',
 ];
@@ -26,26 +26,10 @@ function readJson(file) {
   }
 }
 
-function findArtifactPath(root, artifactName) {
-  try {
-    if (!root || !fs.existsSync(root)) return '';
-    const stat = fs.statSync(root);
-    if (stat.isFile()) return path.basename(root) === artifactName ? root : '';
-    const direct = path.join(root, artifactName);
-    if (fs.existsSync(direct)) return direct;
-    for (const entry of fs.readdirSync(root, { withFileTypes: true })) {
-      if (!entry.isDirectory()) continue;
-      const found = findArtifactPath(path.join(root, entry.name), artifactName);
-      if (found) return found;
-    }
-  } catch {
-    return '';
-  }
-  return '';
-}
-
 export function pickSafeFailureEvidence(dir = '.', order = SAFE_FAILURE_READ_ORDER) {
   if (dir && typeof dir === 'object' && !Array.isArray(dir)) {
+    if (dir.finalDecision) return { selected: 'codex-final-decision.safe.json', finalDecision: dir.finalDecision };
+    if (dir.evidenceCapsule) return { selected: 'codex-evidence-capsule.safe.json', evidenceCapsule: dir.evidenceCapsule };
     if (dir.decisionCapsule || dir.decisionArtifact) return { selected: 'codex-decision-capsule.safe.json', decisionArtifact: dir.decisionCapsule || dir.decisionArtifact };
     if (dir.artifactConsistency) return { selected: 'codex-artifact-consistency.safe.json', artifactConsistency: dir.artifactConsistency };
     if (dir.minimalBlockers) return { selected: 'codex-minimal-blockers.safe.json', minimalBlockers: dir.minimalBlockers };
@@ -54,85 +38,43 @@ export function pickSafeFailureEvidence(dir = '.', order = SAFE_FAILURE_READ_ORD
   const accepted = [];
   const rejected = [];
   for (const artifact of order) {
-    const value = readJson(findArtifactPath(dir, artifact));
+    const value = readJson(path.join(dir, artifact));
     if (value) accepted.push({ artifact, value });
     else rejected.push(artifact);
   }
+  const finalDecision = accepted.find((item) => item.artifact === 'codex-final-decision.safe.json')?.value;
+  const evidenceCapsule = accepted.find((item) => item.artifact === 'codex-evidence-capsule.safe.json')?.value;
   const decision = accepted.find((item) => item.artifact === 'codex-decision-capsule.safe.json')?.value;
   const consistency = accepted.find((item) => item.artifact === 'codex-artifact-consistency.safe.json')?.value;
   const minimal = accepted.find((item) => item.artifact === 'codex-minimal-blockers.safe.json')?.value;
-  const summary = accepted.find((item) => item.artifact === 'codex-quality-gate-safe-summary.json')?.value;
   return {
     selected: accepted[0]?.artifact || 'none',
+    finalDecision: finalDecision || null,
+    evidenceCapsule: evidenceCapsule || null,
     decisionArtifact: decision || null,
     artifactConsistency: consistency || null,
     minimalBlockers: minimal || null,
-    safeSummary: summary || null,
     acceptedEvidence: accepted.map((item) => item.artifact),
     rejectedEvidence: rejected,
   };
 }
 
-function classifyStaleSummaryConsistency(summary = {}, consistency = {}) {
-  const embedded = summary.artifactConsistencyStatus;
-  const finalStatus = consistency.artifactConsistencyStatus;
-  if (!embedded || !finalStatus) return null;
-  const embeddedCompact = {
-    status: embedded.status,
-    primaryClass: embedded.primaryClass,
-    head: embedded.head,
-  };
-  const finalCompact = {
-    status: finalStatus.status,
-    primaryClass: finalStatus.primaryClass,
-    head: finalStatus.head || consistency.head,
-  };
-  if (JSON.stringify(embeddedCompact) === JSON.stringify(finalCompact)) return null;
-  if (finalStatus.status === 'pass' && embedded.status === 'fail') {
-    return {
-      primaryClass: 'safe_summary_uses_stale_artifact_consistency_snapshot',
-      safeNextAction: 'safe_summary_rehydration_required',
-    };
-  }
-  return {
-    primaryClass: finalStatus.primaryClass || 'final_artifact_consistency_authoritative',
-    safeNextAction: finalStatus.safeNextAction || 'owner_decision_or_state_delta',
-  };
-}
-
 export function renderSafeFailureLines(input = {}) {
+  const finalDecision = input.finalDecision || {};
   const decision = input.decisionArtifact || input.decisionCapsule || {};
   const consistency = input.artifactConsistency || {};
-  const minimal = input.minimalBlockers || {};
-  const summary = input.safeSummary || {};
-  const staleSummary = classifyStaleSummaryConsistency(summary, consistency);
-  const concretePrimaryClass = [
-    staleSummary?.primaryClass,
-    decision.primaryClass,
-    consistency.artifactConsistencyStatus?.primaryClass,
-    consistency.primaryClass,
-    minimal.primary_blocker,
-    input.primaryClass,
-  ].find((value) => value && value !== 'safe_detail_unavailable');
-  const primaryClass = concretePrimaryClass || decision.primaryClass || consistency.primaryClass || input.primaryClass || 'unknown';
-  const safeNextAction = [
-    primaryClass === staleSummary?.primaryClass ? staleSummary.safeNextAction : '',
-    primaryClass === decision.primaryClass ? decision.safeNextAction : '',
-    minimal.safe_next_action,
-    consistency.safeNextAction,
-    input.safeNextAction,
-  ].find(Boolean) || 'owner_decision_or_state_delta';
+  const primaryClass = finalDecision.primaryClass || decision.primaryClass || consistency.primaryClass || input.primaryClass || 'unknown';
   const lines = [
-    `decision: ${decision.decision || input.decision || 'blocked'}`,
-    `head: ${decision.head || consistency.head || input.head || 'unknown'}`,
+    `decision: ${finalDecision.decision || decision.decision || input.decision || 'blocked'}`,
+    `head: ${decision.head || finalDecision.head || consistency.head || input.head || 'unknown'}`,
     `primaryClass: ${primaryClass}`,
     `blockingArtifact: ${consistency.artifactName || decision.detailsRef || input.blockingArtifact || 'unknown'}`,
     `acceptedEvidence: ${(input.acceptedEvidence || []).slice(0, 5).join(',') || 'none'}`,
     `rejectedEvidence: ${(input.rejectedEvidence || []).slice(0, 5).join(',') || 'none'}`,
     `repairType: ${decision.repairType || consistency.repairType || input.repairType || 'unknown'}`,
     `repairTargetFile: ${input.repairTargetFile || consistency.repairTargetFile || 'unknown'}`,
-    `safeNextAction: ${safeNextAction}`,
-    `rawLogsRead: ${decision.rawLogsRead === true || input.rawLogsRead === true ? 'true' : 'false'}`,
+    `safeNextAction: ${finalDecision.safeNextAction || decision.safeNextAction || consistency.safeNextAction || input.safeNextAction || 'owner_decision_or_state_delta'}`,
+    `rawLogsRead: ${finalDecision.rawLogsRead === true || decision.rawLogsRead === true || input.rawLogsRead === true ? 'true' : 'false'}`,
   ];
   return lines.slice(0, 20);
 }
