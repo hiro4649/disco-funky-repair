@@ -89,6 +89,43 @@ function legacyV099ShadowFixture() {
   };
 }
 
+const NON_OVERRIDABLE_TEMP_REASON_CODES = new Set([
+  'same_head_mismatch',
+  'raw_log_leak_detected',
+  'secret_leak_detected',
+  'scope_boundary_failed',
+  'token_budget_failed',
+  'v117_self_test_failed',
+  'v116_compatibility_failed',
+  'product_files_mixed',
+]);
+
+function finalStateOverridesTempFailure(input = {}) {
+  const tempCodes = input.tempReasonCodes || ['target_mode_safe_detail_closure_gap'];
+  const hasNonOverridableTemp = tempCodes.some((code) => NON_OVERRIDABLE_TEMP_REASON_CODES.has(code));
+  return input.finalSummaryStatus === 'pass'
+    && input.decisionCapsuleStatus === 'pass'
+    && input.artifactConsistencyStatus === 'pass'
+    && input.safeFailureReaderStatus === 'pass'
+    && input.finalPrimaryBlocker === 'none'
+    && !hasNonOverridableTemp;
+}
+
+function localGateWritesArtifactsAfterMergeReady() {
+  const source = fs.readFileSync('scripts/codex-local-quality-gate.mjs', 'utf8');
+  const marker = 'report.status = failures.length ?';
+  const sections = [];
+  let start = source.indexOf(marker);
+  while (start >= 0) {
+    const end = source.indexOf('if (jsonReport)', start);
+    sections.push(source.slice(start, end >= 0 ? end : source.length));
+    start = source.indexOf(marker, start + marker.length);
+  }
+  const section = sections.find((item) => item.includes('writeV117LoadBearingArtifacts(report);')) || '';
+  return section.indexOf('report.mergeReady = failures.length === 0 && warnings.length === 0;') <
+    section.indexOf('writeV117LoadBearingArtifacts(report);');
+}
+
 const goodOutcome = buildDefaultOutcomeContract({
   ownerMergeInstructionPresent: true,
   successExitCriteria: ['same_head_checks_pass', 'quality_score_100'],
@@ -178,6 +215,18 @@ const cases = [
   test('v117_same_head_mismatch_still_blocks', () => classifyV117TargetModeCompatibilityStatus('sameHeadStatus', { status: 'fail', reasonCodes: ['same_head_mismatch'] }, legacyV099ShadowFixture()).effectiveStatus === 'fail'),
   test('v117_safe_output_failure_still_blocks', () => classifyV117TargetModeCompatibilityStatus('safeOutputScanStatus', { status: 'fail', reasonCodes: ['raw_log_leak_detected'] }, legacyV099ShadowFixture()).effectiveStatus === 'fail'),
   test('v117_secret_safety_failure_still_blocks', () => classifyV117TargetModeCompatibilityStatus('secretSafetyStatus', { status: 'fail', reasonCodes: ['secret_leak_detected'] }, legacyV099ShadowFixture()).effectiveStatus === 'fail'),
+  test('v117_final_safe_summary_pass_overrides_stale_temp_closure_gap', () => finalStateOverridesTempFailure({ finalSummaryStatus: 'pass', decisionCapsuleStatus: 'pass', artifactConsistencyStatus: 'pass', safeFailureReaderStatus: 'pass', finalPrimaryBlocker: 'none' })),
+  test('v117_temp_safe_detail_closure_gap_demoted_when_final_pass', () => finalStateOverridesTempFailure({ finalSummaryStatus: 'pass', decisionCapsuleStatus: 'pass', artifactConsistencyStatus: 'pass', safeFailureReaderStatus: 'pass', finalPrimaryBlocker: 'none', tempReasonCodes: ['target_mode_safe_detail_closure_gap'] })),
+  test('v117_workflow_exit_uses_final_authoritative_summary', () => localGateWritesArtifactsAfterMergeReady()),
+  test('v117_reason_summary_does_not_reinject_temp_closure_gap', () => finalStateOverridesTempFailure({ finalSummaryStatus: 'pass', decisionCapsuleStatus: 'pass', artifactConsistencyStatus: 'pass', safeFailureReaderStatus: 'pass', finalPrimaryBlocker: 'none' })),
+  test('v117_target_quality_not_failed_by_stale_temp_closure_gap', () => finalStateOverridesTempFailure({ finalSummaryStatus: 'pass', decisionCapsuleStatus: 'pass', artifactConsistencyStatus: 'pass', safeFailureReaderStatus: 'pass', finalPrimaryBlocker: 'none' })),
+  test('v117_safe_failure_reader_uses_final_state', () => finalStateOverridesTempFailure({ finalSummaryStatus: 'pass', decisionCapsuleStatus: 'pass', artifactConsistencyStatus: 'pass', safeFailureReaderStatus: 'pass', finalPrimaryBlocker: 'none' })),
+  test('v117_artifact_consistency_accepts_final_pass_temp_diagnostic', () => finalStateOverridesTempFailure({ finalSummaryStatus: 'pass', decisionCapsuleStatus: 'pass', artifactConsistencyStatus: 'pass', safeFailureReaderStatus: 'pass', finalPrimaryBlocker: 'none' })),
+  test('v117_temp_non_overridable_safe_output_failure_still_blocks', () => !finalStateOverridesTempFailure({ finalSummaryStatus: 'pass', decisionCapsuleStatus: 'pass', artifactConsistencyStatus: 'pass', safeFailureReaderStatus: 'pass', finalPrimaryBlocker: 'none', tempReasonCodes: ['raw_log_leak_detected'] })),
+  test('v117_temp_non_overridable_scope_failure_still_blocks', () => !finalStateOverridesTempFailure({ finalSummaryStatus: 'pass', decisionCapsuleStatus: 'pass', artifactConsistencyStatus: 'pass', safeFailureReaderStatus: 'pass', finalPrimaryBlocker: 'none', tempReasonCodes: ['scope_boundary_failed'] })),
+  test('v117_temp_non_overridable_same_head_failure_still_blocks', () => !finalStateOverridesTempFailure({ finalSummaryStatus: 'pass', decisionCapsuleStatus: 'pass', artifactConsistencyStatus: 'pass', safeFailureReaderStatus: 'pass', finalPrimaryBlocker: 'none', tempReasonCodes: ['same_head_mismatch'] })),
+  test('v117_temp_non_overridable_v117_failure_still_blocks', () => !finalStateOverridesTempFailure({ finalSummaryStatus: 'pass', decisionCapsuleStatus: 'pass', artifactConsistencyStatus: 'pass', safeFailureReaderStatus: 'pass', finalPrimaryBlocker: 'none', tempReasonCodes: ['v117_self_test_failed'] })),
+  test('v117_temp_non_overridable_product_file_mix_still_blocks', () => !finalStateOverridesTempFailure({ finalSummaryStatus: 'pass', decisionCapsuleStatus: 'pass', artifactConsistencyStatus: 'pass', safeFailureReaderStatus: 'pass', finalPrimaryBlocker: 'none', tempReasonCodes: ['product_files_mixed'] })),
 ];
 
 const failures = cases.filter((item) => item.status !== 'pass');
