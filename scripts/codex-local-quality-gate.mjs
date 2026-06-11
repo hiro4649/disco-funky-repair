@@ -12098,6 +12098,7 @@ async function runTargetHarnessGate() {
     report.targetQualityScoreStatus = v118MergeSurface.targetQualityScoreStatus;
     report.reasonSummaryStatus = v118MergeSurface.reasonSummaryStatus;
     report.reasonSummary = v118MergeSurface.reasonSummaryStatus;
+    report.safeOutputScanStatus = v118MergeSurface.safeOutputScanStatus;
     failures.length = 0;
   }
 

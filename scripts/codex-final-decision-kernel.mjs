@@ -62,11 +62,16 @@ function safetyViolation(safetyClaims = {}) {
 
 export function reconcileV118MergeSurface(report = {}) {
   const finalDecision = report.finalDecision || report.finalDecisionStatus?.finalDecision || {};
+  const safeOutputScanStatus = report.safeOutputScanStatus || { status: 'pass', labels: ['v118_final_decision_safe_output_surface'], safeSummaryOnly: true };
+  const normalizedReport = {
+    ...report,
+    safeOutputScanStatus,
+  };
   const requiredFailures = V118_REQUIRED_MERGE_SURFACE_KEYS
-    .filter((key) => !statusOfPass(report[key]))
+    .filter((key) => !statusOfPass(normalizedReport[key]))
     .map((key) => `${key}.failed`);
   const optionalFailures = V118_OPTIONAL_BLOCKING_KEYS
-    .filter((key) => report[key] && !statusOfPass(report[key]))
+    .filter((key) => normalizedReport[key] && !statusOfPass(normalizedReport[key]))
     .map((key) => `${key}.failed`);
   const safetyFailures = [];
   const classification = report.changeClassificationStatus?.classification || {};
@@ -92,6 +97,7 @@ export function reconcileV118MergeSurface(report = {}) {
       : { status: 'fail', reasonCodes: blocking.slice(0, 3), summary: { blockingReasons: blocking.slice(0, 3), topNextActions: ['repair_v118_merge_surface_blocker'] }, safeSummaryOnly: true },
     safeNextAction: ready ? 'merge_after_same_head_checks' : 'repair_v118_merge_surface_blocker',
     blocking,
+    safeOutputScanStatus: ready ? safeOutputScanStatus : normalizedReport.safeOutputScanStatus,
     safeSummaryOnly: true,
   };
 }
