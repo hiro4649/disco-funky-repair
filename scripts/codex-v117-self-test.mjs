@@ -20,6 +20,7 @@ import {
 import {
   buildArtifactConsistencyReport,
   classifySafeDetailUnavailable,
+  rehydrateSafeSummaryArtifactConsistency,
   validateArtifactConsistency,
   validateDeltaOnlyFinalizer,
 } from './codex-artifact-consistency-contract.mjs';
@@ -91,9 +92,12 @@ const cases = [
   test('artifact_uploaded_status_is_checked', () => buildArtifactConsistencyReport({ artifacts: [{ artifactName: 'codex-decision-capsule.safe.json', artifactGeneratedStatus: 'pass', artifactIndexedStatus: 'pass', artifactUploadedStatus: 'fail', artifactDownloadObservedStatus: 'pass', artifactHeadMatchStatus: 'pass' }] }).artifactConsistencyStatus.reasonCodes.includes('artifact_index_consistency_failure')),
   test('artifact_download_observed_status_is_checked', () => buildArtifactConsistencyReport({ artifacts: [{ artifactName: 'codex-decision-capsule.safe.json', artifactGeneratedStatus: 'pass', artifactIndexedStatus: 'pass', artifactUploadedStatus: 'pass', artifactDownloadObservedStatus: 'fail', artifactHeadMatchStatus: 'pass' }] }).artifactConsistencyStatus.reasonCodes.includes('artifact_download_not_observed')),
   test('all_load_bearing_artifacts_are_checked', () => buildArtifactConsistencyReport({ head: 'abc' }).checkedArtifacts === 4),
+  test('safe_summary_rehydrates_final_artifact_consistency', () => rehydrateSafeSummaryArtifactConsistency({ artifactConsistencyStatus: { status: 'fail', primaryClass: 'artifact_stale_head', head: 'unknown' } }, buildArtifactConsistencyReport({ head: 'abc' }), { head: 'abc' }).artifactConsistencyStatus.status === 'pass'),
+  test('safe_summary_rejects_stale_intermediate_artifact_consistency', () => rehydrateSafeSummaryArtifactConsistency({ artifactConsistencyStatus: { status: 'fail', primaryClass: 'artifact_stale_head', head: 'unknown' } }, buildArtifactConsistencyReport({ head: 'abc' }), { head: 'abc' }).rejectedEvidence.some((item) => item.primaryClass === 'stale_intermediate_artifact_consistency_rejected')),
   test('delta_only_finalizer_allows_changed_fields_only', () => validateDeltaOnlyFinalizer({ emittedFields: ['state', 'safeNextAction'], changedFields: ['state', 'safeNextAction'] }).status === 'pass'),
   test('delta_only_finalizer_blocks_unchanged_history', () => validateDeltaOnlyFinalizer({ emittedFields: ['oldHistory'], changedFields: ['state'] }).status === 'fail'),
   test('safe_failure_reader_prefers_decision_capsule', () => pickSafeFailureEvidence({ decisionCapsule: { decision: 'blocked' }, artifactConsistency: { primaryClass: 'other' } }).selected === 'codex-decision-capsule.safe.json'),
+  test('safe_failure_reader_detects_stale_embedded_safe_summary', () => renderSafeFailureLines({ decisionArtifact: { decision: 'blocked', primaryClass: 'safe_detail_unavailable' }, artifactConsistency: buildArtifactConsistencyReport({ head: 'abc' }), safeSummary: { artifactConsistencyStatus: { status: 'fail', primaryClass: 'artifact_stale_head', head: 'unknown' } } }).includes('primaryClass: safe_summary_uses_stale_artifact_consistency_snapshot')),
   test('safe_failure_reader_promotes_concrete_minimal_blocker_over_generic_capsule', () => renderSafeFailureLines({ decisionArtifact: { decision: 'blocked', primaryClass: 'safe_detail_unavailable' }, minimalBlockers: { primary_blocker: 'target_mode_safe_detail_closure_gap', safe_next_action: 'target_harness_compatibility_bridge_repair_or_state_delta' } }).includes('primaryClass: target_mode_safe_detail_closure_gap')),
   test('safe_failure_reader_returns_one_target_bridge_next_action', () => renderSafeFailureLines({ decisionArtifact: { decision: 'blocked', primaryClass: 'safe_detail_unavailable' }, minimalBlockers: { primary_blocker: 'target_mode_safe_detail_closure_gap', safe_next_action: 'target_harness_compatibility_bridge_repair_or_state_delta' } }).includes('safeNextAction: target_harness_compatibility_bridge_repair_or_state_delta')),
   test('safe_failure_reader_blocks_raw_log_fallback', () => validateSafeFailureReader({ rawLogFallbackAttempted: true }).status === 'fail'),

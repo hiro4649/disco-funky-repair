@@ -11,6 +11,7 @@ export const SAFE_FAILURE_READ_ORDER = [
   'codex-decision-capsule.safe.json',
   'codex-artifact-consistency.safe.json',
   'codex-minimal-blockers.safe.json',
+  'codex-quality-gate-safe-summary.json',
   'codex-decision-core.safe.json',
   'codex-safe-artifact-index.safe.json',
 ];
@@ -24,6 +25,24 @@ function readJson(file) {
   }
 }
 
+function findArtifactPath(root, artifactName) {
+  try {
+    if (!root || !fs.existsSync(root)) return '';
+    const stat = fs.statSync(root);
+    if (stat.isFile()) return path.basename(root) === artifactName ? root : '';
+    const direct = path.join(root, artifactName);
+    if (fs.existsSync(direct)) return direct;
+    for (const entry of fs.readdirSync(root, { withFileTypes: true })) {
+      if (!entry.isDirectory()) continue;
+      const found = findArtifactPath(path.join(root, entry.name), artifactName);
+      if (found) return found;
+    }
+  } catch {
+    return '';
+  }
+  return '';
+}
+
 export function pickSafeFailureEvidence(dir = '.', order = SAFE_FAILURE_READ_ORDER) {
   if (dir && typeof dir === 'object' && !Array.isArray(dir)) {
     if (dir.decisionCapsule || dir.decisionArtifact) return { selected: 'codex-decision-capsule.safe.json', decisionArtifact: dir.decisionCapsule || dir.decisionArtifact };
@@ -34,20 +53,49 @@ export function pickSafeFailureEvidence(dir = '.', order = SAFE_FAILURE_READ_ORD
   const accepted = [];
   const rejected = [];
   for (const artifact of order) {
-    const value = readJson(path.join(dir, artifact));
+    const value = readJson(findArtifactPath(dir, artifact));
     if (value) accepted.push({ artifact, value });
     else rejected.push(artifact);
   }
   const decision = accepted.find((item) => item.artifact === 'codex-decision-capsule.safe.json')?.value;
   const consistency = accepted.find((item) => item.artifact === 'codex-artifact-consistency.safe.json')?.value;
   const minimal = accepted.find((item) => item.artifact === 'codex-minimal-blockers.safe.json')?.value;
+  const summary = accepted.find((item) => item.artifact === 'codex-quality-gate-safe-summary.json')?.value;
   return {
     selected: accepted[0]?.artifact || 'none',
     decisionArtifact: decision || null,
     artifactConsistency: consistency || null,
     minimalBlockers: minimal || null,
+    safeSummary: summary || null,
     acceptedEvidence: accepted.map((item) => item.artifact),
     rejectedEvidence: rejected,
+  };
+}
+
+function classifyStaleSummaryConsistency(summary = {}, consistency = {}) {
+  const embedded = summary.artifactConsistencyStatus;
+  const finalStatus = consistency.artifactConsistencyStatus;
+  if (!embedded || !finalStatus) return null;
+  const embeddedCompact = {
+    status: embedded.status,
+    primaryClass: embedded.primaryClass,
+    head: embedded.head,
+  };
+  const finalCompact = {
+    status: finalStatus.status,
+    primaryClass: finalStatus.primaryClass,
+    head: finalStatus.head || consistency.head,
+  };
+  if (JSON.stringify(embeddedCompact) === JSON.stringify(finalCompact)) return null;
+  if (finalStatus.status === 'pass' && embedded.status === 'fail') {
+    return {
+      primaryClass: 'safe_summary_uses_stale_artifact_consistency_snapshot',
+      safeNextAction: 'safe_summary_rehydration_required',
+    };
+  }
+  return {
+    primaryClass: finalStatus.primaryClass || 'final_artifact_consistency_authoritative',
+    safeNextAction: finalStatus.safeNextAction || 'owner_decision_or_state_delta',
   };
 }
 
@@ -55,7 +103,10 @@ export function renderSafeFailureLines(input = {}) {
   const decision = input.decisionArtifact || input.decisionCapsule || {};
   const consistency = input.artifactConsistency || {};
   const minimal = input.minimalBlockers || {};
+  const summary = input.safeSummary || {};
+  const staleSummary = classifyStaleSummaryConsistency(summary, consistency);
   const concretePrimaryClass = [
+    staleSummary?.primaryClass,
     decision.primaryClass,
     consistency.artifactConsistencyStatus?.primaryClass,
     consistency.primaryClass,
@@ -64,6 +115,7 @@ export function renderSafeFailureLines(input = {}) {
   ].find((value) => value && value !== 'safe_detail_unavailable');
   const primaryClass = concretePrimaryClass || decision.primaryClass || consistency.primaryClass || input.primaryClass || 'unknown';
   const safeNextAction = [
+    primaryClass === staleSummary?.primaryClass ? staleSummary.safeNextAction : '',
     primaryClass === decision.primaryClass ? decision.safeNextAction : '',
     minimal.safe_next_action,
     consistency.safeNextAction,

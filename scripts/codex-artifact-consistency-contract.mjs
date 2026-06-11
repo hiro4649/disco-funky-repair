@@ -120,6 +120,48 @@ export function buildArtifactConsistencyReport(input = {}) {
   };
 }
 
+export function rehydrateSafeSummaryArtifactConsistency(summary = {}, finalConsistency = {}, input = {}) {
+  const finalStatus = finalConsistency.artifactConsistencyStatus || finalConsistency;
+  const previous = summary.artifactConsistencyStatus;
+  const head = input.head || finalConsistency.head || finalStatus.head || summary.head || 'unknown';
+  const previousCompact = previous ? {
+    status: previous.status,
+    primaryClass: previous.primaryClass,
+    head: previous.head,
+  } : null;
+  const finalCompact = finalStatus ? {
+    status: finalStatus.status,
+    primaryClass: finalStatus.primaryClass,
+    head: finalStatus.head || head,
+  } : null;
+  const staleIntermediate = previousCompact && finalCompact &&
+    JSON.stringify(previousCompact) !== JSON.stringify(finalCompact);
+  const rejectedEvidence = [
+    ...(Array.isArray(summary.rejectedEvidence) ? summary.rejectedEvidence : []),
+  ];
+  if (staleIntermediate) {
+    rejectedEvidence.push({
+      primaryClass: 'stale_intermediate_artifact_consistency_rejected',
+      source: 'intermediate_safe_summary_snapshot',
+      artifactConsistencyStatus: previousCompact,
+      safeSummaryOnly: true,
+    });
+  }
+  return {
+    ...summary,
+    head,
+    artifactConsistencyStatus: finalStatus,
+    artifactConsistency: finalConsistency,
+    artifactConsistencySource: 'codex-artifact-consistency.safe.json',
+    finalArtifactConsistencyAuthoritativeStatus: pass({
+      primaryClass: 'final_artifact_consistency_authoritative',
+      head,
+    }),
+    rejectedEvidence,
+    safeSummaryOnly: true,
+  };
+}
+
 export function validateDeltaOnlyFinalizer(input = {}) {
   if (Array.isArray(input.emittedFields) && Array.isArray(input.changedFields)) {
     const changed = new Set(input.changedFields);

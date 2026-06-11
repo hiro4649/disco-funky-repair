@@ -95,7 +95,7 @@ function buildV116Report(input = {}) {
   };
 }
 import { OPERATOR_STATUS_KEYS as V117_STATUS_KEYS, buildV117Report } from './codex-verifier-capsule.mjs';
-import { LOAD_BEARING_ARTIFACTS, buildArtifactConsistencyReport } from './codex-artifact-consistency-contract.mjs';
+import { LOAD_BEARING_ARTIFACTS, buildArtifactConsistencyReport, rehydrateSafeSummaryArtifactConsistency } from './codex-artifact-consistency-contract.mjs';
 
 
 
@@ -589,15 +589,19 @@ function writeV117LoadBearingArtifacts(report = {}) {
     }, null, 2));
     const entries = buildV117ArtifactEntries(head);
     const consistency = buildArtifactConsistencyReport({ head, artifacts: entries });
-    fs.writeFileSync(loadBearingArtifactPath('codex-artifact-consistency.safe.json'), JSON.stringify({
+    const finalConsistencyArtifact = {
       ...consistency,
       head,
       artifactName: 'codex-artifact-consistency.safe.json',
       loadBearing: true,
       safeSummaryOnly: true,
-    }, null, 2));
+    };
+    fs.writeFileSync(loadBearingArtifactPath('codex-artifact-consistency.safe.json'), JSON.stringify(finalConsistencyArtifact, null, 2));
     report.artifactConsistency = consistency;
     report.artifactConsistencyStatus = consistency.artifactConsistencyStatus;
+    const finalSafeSummary = rehydrateSafeSummaryArtifactConsistency(safeSummary, finalConsistencyArtifact, { head });
+    report.safeSummary = finalSafeSummary;
+    fs.writeFileSync(loadBearingArtifactPath('codex-quality-gate-safe-summary.json'), JSON.stringify(finalSafeSummary, null, 2));
     return consistency.artifactConsistencyStatus;
   } catch {
     report.artifactConsistencyStatus = {
