@@ -242,6 +242,9 @@ jobs:
           const summary = readJson('codex-quality-gate-safe-summary.json') || {};
           writeSafe('codex-final-decision.safe.json', report.finalDecision || summary.finalDecision);
           writeSafe('codex-evidence-capsule.safe.json', report.evidenceCapsule || summary.evidenceCapsule);
+          writeSafe('codex-orchestration-capsule.safe.json', report.orchestrationCapsule || summary.orchestrationCapsule);
+          writeSafe('codex-worker-proof.safe.json', report.workerProofCapsule || summary.workerProofCapsule);
+          writeSafe('codex-owner-decision-brief.safe.json', report.ownerDecisionBrief || summary.ownerDecisionBrief);
           writeSafe('codex-artifact-consistency.safe.json', report.artifactConsistency || report.artifactConsistencyStatus || summary.artifactConsistencyStatus);
           writeSafe('codex-decision-capsule.safe.json', report.decisionCapsule || summary.decisionCapsule);
           NODE
@@ -420,6 +423,9 @@ jobs:
           path: |
             codex-quality-gate-safe-summary.json
             codex-final-decision.safe.json
+            codex-orchestration-capsule.safe.json
+            codex-worker-proof.safe.json
+            codex-owner-decision-brief.safe.json
             codex-evidence-capsule.safe.json
             codex-owner-decision-receipt.safe.json
             codex-decision-capsule.safe.json
