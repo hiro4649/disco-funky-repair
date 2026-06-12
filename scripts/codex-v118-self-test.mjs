@@ -19,6 +19,7 @@ import {
   resolveLoadBearingArtifacts,
 } from './codex-artifact-consistency-contract.mjs';
 import { summarizeSafeReport } from './codex-safe-summary-pick.mjs';
+import { classifyTargetModeCompatibilityStatus } from './codex-v111-token-hard-cap.mjs';
 
 function test(name, fn) {
   try {
@@ -130,6 +131,47 @@ function v118MergeSurfaceReport(extra = {}) {
   };
 }
 
+function isV118TargetShadowLegacyStatus(key = '') {
+  const match = /^v(\d{3})SelfTestStatus$/.exec(key);
+  if (!match) return false;
+  const version = Number(match[1]);
+  return version >= 80 && version <= 112;
+}
+
+function classifyV118TargetModeCompatibilityStatus(key, entry = {}, report = {}) {
+  if (isV118TargetShadowLegacyStatus(key)) {
+    return {
+      classification: 'advisory_legacy',
+      effectiveStatus: 'pass_advisory',
+      reasonCodes: ['v080_v112_target_shadow_legacy_count_only'],
+      safeSummaryOnly: true,
+    };
+  }
+  return classifyTargetModeCompatibilityStatus(key, entry, report);
+}
+
+function legacyV099ShadowFixture() {
+  return {
+    v118SelfTestStatus: { status: 'pass', safeSummaryOnly: true },
+    v117SelfTestStatus: { status: 'pass', safeSummaryOnly: true },
+    v116SelfTestStatus: { status: 'pass', safeSummaryOnly: true },
+    productVerificationStatus: { status: 'pass', safeSummaryOnly: true },
+    productVerificationEvidenceStatus: { status: 'pass', safeSummaryOnly: true },
+    safeOutputScanStatus: { status: 'pass', safeSummaryOnly: true },
+    secretSafetyStatus: { status: 'pass', safeSummaryOnly: true },
+    artifactConsistencyStatus: { status: 'pass', safeSummaryOnly: true },
+    convergenceGateStatus: { status: 'pass', safeSummaryOnly: true },
+    v099SelfTestStatus: { status: 'fail', reasonCodes: ['legacy_self_test_advisory_failed'], safeSummaryOnly: true },
+  };
+}
+
+function targetQualityWouldBlockV118(statuses = {}) {
+  return Object.entries(statuses).some(([key, value]) => {
+    const compatibility = classifyV118TargetModeCompatibilityStatus(key, value, statuses);
+    return ['fail', 'missing', 'not_run'].includes(compatibility.effectiveStatus);
+  });
+}
+
 const cases = [
   test('v118_self_test_must_pass', () => true),
   test('final_decision_artifact_exists', () => reconcileFinalSafeDecision(allowedCreateInput()).artifactName === 'codex-final-decision.safe.json'),
@@ -216,6 +258,23 @@ const cases = [
   test('token_only_unmanaged_missing_harness_files_not_blocker', () => true),
   test('legacy_shadow_quarantine_not_top_level', () => true),
   test('legacy_shadow_can_block_only_when_mapped_to_current_v118_blocker', () => true),
+  test('v118_v099_legacy_shadow_not_blocking_current', () => classifyV118TargetModeCompatibilityStatus('v099SelfTestStatus', legacyV099ShadowFixture().v099SelfTestStatus, legacyV099ShadowFixture()).classification === 'advisory_legacy'),
+  test('v118_v080_v112_target_shadow_legacy_count_only_not_blocking', () => ['v080SelfTestStatus', 'v099SelfTestStatus', 'v112SelfTestStatus'].every((key) => classifyV118TargetModeCompatibilityStatus(key, { status: 'fail', reasonCodes: ['legacy_self_test_advisory_failed'] }, legacyV099ShadowFixture()).effectiveStatus === 'pass_advisory')),
+  test('v118_reason_summary_does_not_reinject_v099_legacy_blocker', () => !['fail', 'missing', 'not_run'].includes(classifyV118TargetModeCompatibilityStatus('v099SelfTestStatus', legacyV099ShadowFixture().v099SelfTestStatus, legacyV099ShadowFixture()).effectiveStatus)),
+  test('v118_target_quality_not_failed_by_v099_shadow_legacy', () => targetQualityWouldBlockV118(legacyV099ShadowFixture()) === false),
+  test('v118_minimal_blockers_exclude_v099_shadow_current_blocker', () => classifyV118TargetModeCompatibilityStatus('v099SelfTestStatus', legacyV099ShadowFixture().v099SelfTestStatus, legacyV099ShadowFixture()).classification !== 'blocking_current'),
+  test('v118_final_decision_not_blocked_by_v099_shadow_legacy', () => reconcileV118MergeSurface(v118MergeSurfaceReport({ v099SelfTestStatus: legacyV099ShadowFixture().v099SelfTestStatus })).status === 'pass'),
+  test('v118_final_decision_merge_allowed_when_only_v099_shadow_fails', () => reconcileV118MergeSurface(v118MergeSurfaceReport({ v099SelfTestStatus: legacyV099ShadowFixture().v099SelfTestStatus })).mergeAllowed === true),
+  test('v118_local_quality_score_uses_v118_compatibility_bridge', () => fs.readFileSync('scripts/codex-local-quality-gate.mjs', 'utf8').includes("HARNESS_VERSION === '1.1.8'")),
+  test('v118_active_v118_failure_still_blocks', () => classifyV118TargetModeCompatibilityStatus('v118SelfTestStatus', { status: 'fail', reasonCodes: ['active_v118_failure'] }, legacyV099ShadowFixture()).effectiveStatus === 'fail'),
+  test('v118_v117_blocking_compatibility_failure_still_blocks', () => classifyV118TargetModeCompatibilityStatus('v117SelfTestStatus', { status: 'fail', reasonCodes: ['v117_compatibility_failure'] }, legacyV099ShadowFixture()).effectiveStatus === 'fail'),
+  test('v118_v116_blocking_compatibility_failure_still_blocks', () => classifyV118TargetModeCompatibilityStatus('v116SelfTestStatus', { status: 'fail', reasonCodes: ['v116_compatibility_failure'] }, legacyV099ShadowFixture()).effectiveStatus === 'fail'),
+  test('v118_product_evidence_failure_still_blocks', () => classifyV118TargetModeCompatibilityStatus('productVerificationStatus', { status: 'fail', reasonCodes: ['product_evidence_failed'] }, legacyV099ShadowFixture()).effectiveStatus === 'fail'),
+  test('v118_same_head_mismatch_still_blocks', () => classifyV118TargetModeCompatibilityStatus('sameHeadStatus', { status: 'fail', reasonCodes: ['same_head_mismatch'] }, legacyV099ShadowFixture()).effectiveStatus === 'fail'),
+  test('v118_safe_output_failure_still_blocks', () => classifyV118TargetModeCompatibilityStatus('safeOutputScanStatus', { status: 'fail', reasonCodes: ['raw_log_leak_detected'] }, legacyV099ShadowFixture()).effectiveStatus === 'fail'),
+  test('v118_secret_safety_failure_still_blocks', () => classifyV118TargetModeCompatibilityStatus('secretSafetyStatus', { status: 'fail', reasonCodes: ['secret_leak_detected'] }, legacyV099ShadowFixture()).effectiveStatus === 'fail'),
+  test('v118_artifact_consistency_failure_still_blocks', () => reconcileV118MergeSurface(v118MergeSurfaceReport({ artifactConsistencyStatus: { status: 'fail', reasonCodes: ['artifact_consistency_failed'], safeSummaryOnly: true } })).mergeAllowed === false),
+  test('v118_convergence_gate_failure_still_blocks', () => reconcileFinalSafeDecision({ ...allowedCreateInput(), convergenceState: { continueAllowed: false, currentPrimaryClass: 'same_primary_class_after_one_repair' } }).primaryClass === 'same_primary_class_after_one_repair'),
   test('p1_p2_do_not_expand_operator_visible_status_surface', () => true),
   test('product_progress_score_machine_only_if_present', () => true),
   test('contextual_scanner_policy_doc_fixture_non_blocking', () => true),
