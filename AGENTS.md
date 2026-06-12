@@ -1,5 +1,23 @@
 # AGENTS.md
 
+## disco-funky-repair Working Guide
+
+This repository is the FUNKY repair workspace. Normal work must stay inside the
+owner-approved scope and should preserve backend/D8, staging, and runtime
+boundaries unless explicitly authorized.
+
+Package metadata and verification entrypoints may vary by subproject. Before
+choosing commands, inspect the relevant package or tool metadata for the touched
+area and run the smallest meaningful check that already exists. Do not invent
+commands, install dependencies, or claim verification passed when dependencies
+or scripts are unavailable.
+
+Do not claim staging no-tx PASS, runtime readiness, production readiness,
+deployment readiness, backend/D8 readiness, or product repair completion unless
+the owner explicitly scopes that evidence. Done means changed files are scoped,
+verification is evidence-based or honestly unavailable, and no raw logs or
+secret-like output are exposed.
+
 <!-- CODEX_QUALITY_HARNESS_BEGIN -->
 CODEX_QUALITY_HARNESS_FILE v1.1.8
 
