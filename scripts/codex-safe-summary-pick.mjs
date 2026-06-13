@@ -107,6 +107,7 @@ export function summarizeSafeReport(report = {}, safeArtifactPath = '') {
     finalDecisionStatus: report.finalDecisionStatus?.status || 'unknown',
     evidenceCapsuleStatus: report.evidenceCapsuleStatus?.status || 'unknown',
     convergenceGateStatus: report.convergenceGateStatus?.status || 'unknown',
+    safeOutputScanStatus: report.safeOutputScanStatus?.status || 'unknown',
     scopeBoundaryStatus: report.scopeBoundaryStatus?.status || 'unknown',
     outcomeContractStatus: report.outcomeContractStatus?.status || 'unknown',
     verifierCapsuleStatus: report.verifierCapsuleStatus?.status || 'unknown',
