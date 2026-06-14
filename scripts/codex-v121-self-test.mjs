@@ -17,9 +17,13 @@ import {
   validateWorkerProofCapsule,
 } from './codex-worker-proof-capsule.mjs';
 import {
+  classifyTargetModeCompatibilityStatus,
+} from './codex-v111-token-hard-cap.mjs';
+import {
   buildOwnerDecisionBrief,
   validateOwnerDecisionBrief,
 } from './codex-owner-decision-brief.mjs';
+import { computeTargetQualityScoreStatus } from './codex-local-quality-gate.mjs';
 
 function test(name, fn) {
   try {
@@ -85,11 +89,53 @@ const ownerDecisionCases = [
   ['safe_summary_count_only_in_owner_brief', () => buildOwnerDecisionBrief().decisionCompressionMetrics.passStatusDetail === 'count_only'],
 ];
 
+function targetQualityFixture(overrides = {}) {
+  const defaults = {
+    secretScan: { status: 'pass', safeSummaryOnly: true },
+    safeArtifactValidation: { status: 'pass', safeSummaryOnly: true },
+    outputShapeStatus: { status: 'pass', safeSummaryOnly: true },
+    ...overrides,
+  };
+  return new Proxy(defaults, {
+    get(target, prop) {
+      if (prop in target) return target[prop];
+      if (typeof prop === 'string' && prop.endsWith('Status')) return { status: 'pass', safeSummaryOnly: true };
+      return undefined;
+    },
+  });
+}
+
+const legacyShadowCases = [
+  ['v121_v099_legacy_shadow_not_blocking_current', () => computeTargetQualityScoreStatus(targetQualityFixture({
+    v099SelfTestStatus: { status: 'fail', reasonCodes: ['legacy_self_test_advisory_failed'], safeSummaryOnly: true },
+  })).blockingStatuses.every((item) => item.key !== 'v099SelfTestStatus')],
+  ['v121_v080_v112_target_shadow_legacy_count_only_not_blocking', () => computeTargetQualityScoreStatus(targetQualityFixture({
+    v080SelfTestStatus: { status: 'fail', reasonCodes: ['legacy_self_test_advisory_failed'], safeSummaryOnly: true },
+    v099SelfTestStatus: { status: 'fail', reasonCodes: ['legacy_self_test_advisory_failed'], safeSummaryOnly: true },
+  })).status === 'pass'],
+  ['v121_target_quality_not_failed_by_v099_shadow_legacy', () => computeTargetQualityScoreStatus(targetQualityFixture({
+    v099SelfTestStatus: { status: 'fail', reasonCodes: ['legacy_self_test_advisory_failed'], safeSummaryOnly: true },
+  })).status === 'pass'],
+  ['v121_compact_blockers_exclude_v099_shadow_current_blocker', () => !computeTargetQualityScoreStatus(targetQualityFixture({
+    v099SelfTestStatus: { status: 'fail', reasonCodes: ['legacy_self_test_advisory_failed'], safeSummaryOnly: true },
+  })).blockingStatuses.some((item) => item.key === 'v099SelfTestStatus' && item.compatibilityClass === 'blocking_current')],
+  ['v121_active_v121_failure_still_blocks', () => classifyTargetModeCompatibilityStatus('v121SelfTestStatus', { status: 'fail', reasonCodes: ['v121_self_test_failed'], safeSummaryOnly: true }, {}).effectiveStatus === 'fail'],
+  ['v121_product_evidence_failure_still_blocks', () => computeTargetQualityScoreStatus(targetQualityFixture({
+    productVerificationEvidenceStatus: { status: 'fail', reasonCodes: ['product_evidence_failed'], safeSummaryOnly: true },
+  })).status === 'fail'],
+  ['v121_same_head_mismatch_still_blocks', () => classifyTargetModeCompatibilityStatus('v099SelfTestStatus', { status: 'fail', reasonCodes: ['same_head_mismatch'], safeSummaryOnly: true }, {}).classification === 'blocking_current'],
+  ['v121_safe_output_failure_still_blocks', () => computeTargetQualityScoreStatus(targetQualityFixture({
+    safeOutputScanStatus: { status: 'fail', reasonCodes: ['raw_log_leak_detected'], safeSummaryOnly: true },
+  })).status === 'fail'],
+  ['v121_unsafe_boundary_failure_still_blocks', () => classifyTargetModeCompatibilityStatus('v099SelfTestStatus', { status: 'fail', reasonCodes: ['unsafe_value_detected'], safeSummaryOnly: true }, {}).classification === 'blocking_current'],
+];
+
 const cases = [
   ...compatibilityCases,
   ...calibrationCases,
   ...proofIntegrityCases,
   ...ownerDecisionCases,
+  ...legacyShadowCases,
 ].map(([name, fn]) => test(name, fn));
 
 const fixtureGroups = [
@@ -101,6 +147,7 @@ const fixtureGroups = [
   'root_cause_loop_guard_matrix',
   'boundary_diff_claim_lint_matrix',
   'owner_burden_decision_integrity_matrix',
+  'legacy_shadow_classification_matrix',
 ];
 
 const failures = cases.filter((item) => item.status !== 'pass');
