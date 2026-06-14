@@ -10,6 +10,7 @@ import {
   validateSkillContextRouting,
 } from './codex-orchestration-capsule.mjs';
 import { classifyTargetQualityScoredStatus } from './codex-local-quality-gate.mjs';
+import { buildCompactReasonSummary } from './codex-reason-summary.mjs';
 
 function test(name, fn) {
   try {
@@ -124,6 +125,30 @@ const v099Classification = () => classifyTargetQualityScoredStatus('v099SelfTest
   v099SelfTestStatus: legacyV099ShadowEntry,
 });
 
+const legacyV099ReasonSummary = () => buildCompactReasonSummary({
+  status: 'pass',
+  targetQualityScoreStatus: { status: 'pass', score: 95, safeSummaryOnly: true },
+  v122SelfTestStatus: { status: 'pass', safeSummaryOnly: true },
+  v121SelfTestStatus: { status: 'pass', safeSummaryOnly: true },
+  v120SelfTestStatus: { status: 'pass', safeSummaryOnly: true },
+  v119SelfTestStatus: { status: 'pass', safeSummaryOnly: true },
+  v118SelfTestStatus: { status: 'pass', safeSummaryOnly: true },
+  v117SelfTestStatus: { status: 'pass', safeSummaryOnly: true },
+  v116SelfTestStatus: { status: 'pass', safeSummaryOnly: true },
+  v099SelfTestStatus: legacyV099ShadowEntry,
+}).summary;
+
+const activeV122FailureReasonSummary = () => buildCompactReasonSummary({
+  status: 'fail',
+  targetQualityScoreStatus: { status: 'fail', score: 80, safeSummaryOnly: true },
+  v122SelfTestStatus: {
+    status: 'fail',
+    reasonCodes: ['v122_self_test_failed'],
+    safeSummaryOnly: true,
+  },
+  v099SelfTestStatus: legacyV099ShadowEntry,
+}).summary;
+
 const activeV122FailureClassification = () => classifyTargetQualityScoredStatus('v122SelfTestStatus', {
   status: 'fail',
   reasonCodes: ['v122_self_test_failed'],
@@ -165,6 +190,9 @@ const legacyCases = [
   ['v122_compact_blockers_exclude_v099_shadow_current_blocker', () => v099Classification().effectiveStatus !== 'fail'],
   ['v122_final_decision_not_blocked_by_v099_shadow_legacy', () => v099Classification().compatibilityClass === 'advisory_legacy'],
   ['v122_owner_decision_not_overridden_by_v099_shadow_legacy', () => v099Classification().compatibilityClass === 'advisory_legacy'],
+  ['v122_reason_summary_excludes_v099_shadow_legacy_from_blocking_reasons', () => !legacyV099ReasonSummary().blockingReasons.some((item) => item.gate === 'v099SelfTestStatus' || item.reasonCode === 'v099SelfTestStatus')],
+  ['v122_reason_summary_counts_v099_shadow_legacy_as_optional_not_applicable', () => legacyV099ReasonSummary().optionalNotApplicable.includes('v099SelfTestStatus')],
+  ['v122_active_v122_failure_still_blocks_final_reason', () => activeV122FailureReasonSummary().blockingReasons.some((item) => item.gate === 'v122SelfTestStatus' || item.reasonCode === 'v122_self_test_failed')],
   ['v122_active_v122_failure_still_blocks', () => activeV122FailureClassification().effectiveStatus === 'fail'],
   ['v122_v121_blocking_compatibility_failure_still_blocks', () => v121FailureClassification().effectiveStatus === 'fail'],
   ['v122_v120_blocking_compatibility_failure_still_blocks', () => compatibilityFailureClassification('v120SelfTestStatus', 'v120_self_test_failed').effectiveStatus === 'fail'],
