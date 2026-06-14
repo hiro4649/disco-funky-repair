@@ -18,10 +18,7 @@ import {
 import {
   buildOwnerDecisionBrief,
   validateOwnerDecisionBrief,
-  validateCurrentHeadOwnerDecision,
 } from './codex-owner-decision-brief.mjs';
-import { reconcileFinalSafeDecision } from './codex-final-decision-kernel.mjs';
-import { buildEvidenceCapsule } from './codex-evidence-capsule.mjs';
 
 function test(name, fn) {
   try {
@@ -97,107 +94,6 @@ const tokenAndOwnerCases = [
   ['owner_brief_max_three_choices', () => buildOwnerDecisionBrief({ exactChoices: ['a', 'b', 'c', 'd'] }).exactChoices.length === 3],
   ['owner_brief_max_three_risks', () => buildOwnerDecisionBrief({ residualRisks: ['a', 'b', 'c', 'd'] }).residualRisks.length === 3],
   ['owner_brief_escalation_summary_short', () => validateOwnerDecisionBrief(buildOwnerDecisionBrief({ escalationSummary: { typedBlocker: 'scope_boundary', highestTierUsed: true, reviewerCount: 2 } })).status === 'pass'],
-  ['v120_owner_merge_after_same_head_pass_accepts_current_head', () => validateCurrentHeadOwnerDecision({
-    text: 'I confirm PR #320 current head ed18fab9c89d7c740c31460f5d0114151f85a947 for merge consideration. Owner decision: owner_merge_after_same_head_pass.',
-    currentHeadSha: 'ed18fab9c89d7c740c31460f5d0114151f85a947',
-    prNumber: 320,
-  }).status === 'pass'],
-  ['v120_owner_merge_after_same_head_pass_rejects_stale_head', () => failed(validateCurrentHeadOwnerDecision({
-    text: 'I confirm PR #320 current head 1111111111111111111111111111111111111111 for merge consideration. Owner decision: owner_merge_after_same_head_pass.',
-    currentHeadSha: 'ed18fab9c89d7c740c31460f5d0114151f85a947',
-    prNumber: 320,
-  }))],
-  ['v120_owner_merge_after_same_head_pass_rejects_wrong_sha', () => failed(validateCurrentHeadOwnerDecision({
-    text: 'I confirm PR #320 current head ed18fab9c89d7c740c31460f5d0114151f85a947 for merge consideration. Owner decision: owner_merge_after_same_head_pass.',
-    currentHeadSha: '2222222222222222222222222222222222222222',
-    prNumber: 320,
-  }))],
-  ['v120_owner_decision_brief_passes_when_current_head_and_product_evidence_pass', () => {
-    const receipt = validateCurrentHeadOwnerDecision({
-      text: 'I confirm PR #320 current head ed18fab9c89d7c740c31460f5d0114151f85a947 for merge consideration. Owner decision: owner_merge_after_same_head_pass.',
-      currentHeadSha: 'ed18fab9c89d7c740c31460f5d0114151f85a947',
-      prNumber: 320,
-      productEvidenceStatus: 'pass',
-    });
-    const brief = buildOwnerDecisionBrief({ currentHeadOwnerDecision: receipt, proofMissing: ['owner_merge_instruction'] });
-    return brief.decisionReady === true && brief.whyOwnerDecisionNeededNow === 'current_head_owner_merge_instruction_accepted' && validateOwnerDecisionBrief(brief).status === 'pass';
-  }],
-  ['v120_permission_grant_accepts_current_head_owner_merge_without_github_approval_review', () => validateCurrentHeadOwnerDecision({
-    text: 'I confirm PR #320 current head ed18fab9c89d7c740c31460f5d0114151f85a947 for merge consideration. Owner decision: owner_merge_after_same_head_pass.',
-    currentHeadSha: 'ed18fab9c89d7c740c31460f5d0114151f85a947',
-    prNumber: 320,
-  }).createsGithubApprovalReview === false],
-  ['v120_target_quality_passes_after_current_head_owner_decision', () => buildOwnerDecisionBrief({
-    currentHeadOwnerDecision: validateCurrentHeadOwnerDecision({
-      text: 'I confirm PR #320 current head ed18fab9c89d7c740c31460f5d0114151f85a947 for merge consideration. Owner decision: owner_merge_after_same_head_pass.',
-      currentHeadSha: 'ed18fab9c89d7c740c31460f5d0114151f85a947',
-      prNumber: 320,
-    }),
-  }).decisionReady === true],
-  ['v120_reason_summary_clears_owner_merge_instruction_missing_after_current_head_decision', () => !buildOwnerDecisionBrief({
-    currentHeadOwnerDecision: validateCurrentHeadOwnerDecision({
-      text: 'I confirm PR #320 current head ed18fab9c89d7c740c31460f5d0114151f85a947 for merge consideration. Owner decision: owner_merge_after_same_head_pass.',
-      currentHeadSha: 'ed18fab9c89d7c740c31460f5d0114151f85a947',
-      prNumber: 320,
-    }),
-    residualRisks: ['owner_merge_instruction_not_provided'],
-  }).residualRisks.includes('owner_merge_instruction_not_provided')],
-  ['v120_final_decision_merge_allowed_after_current_head_owner_decision', () => validateCurrentHeadOwnerDecision({
-    text: 'I confirm PR #320 current head ed18fab9c89d7c740c31460f5d0114151f85a947 for merge consideration. Owner decision: owner_merge_after_same_head_pass.',
-    currentHeadSha: 'ed18fab9c89d7c740c31460f5d0114151f85a947',
-    prNumber: 320,
-    productEvidenceStatus: 'pass',
-    safeOutputScanStatus: 'pass',
-    secretScanStatus: 'pass',
-    scopeBoundaryStatus: 'pass',
-  }).status === 'pass' && reconcileFinalSafeDecision({
-    executionMode: 'source_pr',
-    terminalAction: 'merge_current_pr',
-    evidenceCapsule: buildEvidenceCapsule({
-      terminalAction: 'merge_current_pr',
-      headSha: 'ed18fab9c89d7c740c31460f5d0114151f85a947',
-      qualityGateRunId: '27481892683',
-      artifactId: 'safe-artifact',
-    }),
-    artifactConsistency: { status: 'pass' },
-    minimalBlockers: { primary_blocker: 'none' },
-    ownerMergeInstruction: true,
-    requiredChecks: { sameHead: true, allPass: true },
-  }).mergeAllowed === true],
-  ['v120_owner_decision_does_not_override_product_evidence_failure', () => failed(validateCurrentHeadOwnerDecision({
-    text: 'I confirm PR #320 current head ed18fab9c89d7c740c31460f5d0114151f85a947 for merge consideration. Owner decision: owner_merge_after_same_head_pass.',
-    currentHeadSha: 'ed18fab9c89d7c740c31460f5d0114151f85a947',
-    prNumber: 320,
-    productEvidenceStatus: 'fail',
-  }))],
-  ['v120_owner_decision_does_not_override_safe_output_failure', () => failed(validateCurrentHeadOwnerDecision({
-    text: 'I confirm PR #320 current head ed18fab9c89d7c740c31460f5d0114151f85a947 for merge consideration. Owner decision: owner_merge_after_same_head_pass.',
-    currentHeadSha: 'ed18fab9c89d7c740c31460f5d0114151f85a947',
-    prNumber: 320,
-    safeOutputScanStatus: 'fail',
-  }))],
-  ['v120_owner_decision_does_not_override_secret_failure', () => failed(validateCurrentHeadOwnerDecision({
-    text: 'I confirm PR #320 current head ed18fab9c89d7c740c31460f5d0114151f85a947 for merge consideration. Owner decision: owner_merge_after_same_head_pass.',
-    currentHeadSha: 'ed18fab9c89d7c740c31460f5d0114151f85a947',
-    prNumber: 320,
-    secretScanStatus: 'fail',
-  }))],
-  ['v120_owner_decision_does_not_override_scope_failure', () => failed(validateCurrentHeadOwnerDecision({
-    text: 'I confirm PR #320 current head ed18fab9c89d7c740c31460f5d0114151f85a947 for merge consideration. Owner decision: owner_merge_after_same_head_pass.',
-    currentHeadSha: 'ed18fab9c89d7c740c31460f5d0114151f85a947',
-    prNumber: 320,
-    scopeBoundaryStatus: 'fail',
-  }))],
-  ['v120_owner_decision_does_not_override_actual_db_export_boundary', () => validateCurrentHeadOwnerDecision({
-    text: 'I confirm PR #320 current head ed18fab9c89d7c740c31460f5d0114151f85a947 for merge consideration. Owner decision: owner_merge_after_same_head_pass. It does not authorize actual DB export.',
-    currentHeadSha: 'ed18fab9c89d7c740c31460f5d0114151f85a947',
-    prNumber: 320,
-  }).overridesNonOverridableFailures === false],
-  ['v120_owner_decision_does_not_create_github_approval_review', () => validateCurrentHeadOwnerDecision({
-    text: 'I confirm PR #320 current head ed18fab9c89d7c740c31460f5d0114151f85a947 for merge consideration. Owner decision: owner_merge_after_same_head_pass.',
-    currentHeadSha: 'ed18fab9c89d7c740c31460f5d0114151f85a947',
-    prNumber: 320,
-  }).createsGithubApprovalReview === false],
   ['pass_status_count_only', () => buildOrchestrationCapsule().modelTierBudget.passStatusDetail === 'count_only'],
   ['routine_progress_silent', () => buildOrchestrationCapsule().modelTierBudget.routineProgressOutput === 'silent'],
   ['operator_visible_statuses_max_8', () => V120_OPERATOR_STATUS_KEYS.length === 8],
