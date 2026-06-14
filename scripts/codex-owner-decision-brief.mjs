@@ -13,6 +13,14 @@ function bounded(values = [], limit = 8) {
 const DELEGATED_CONTINUATION_ACTIONS = new Set(['commit', 'push', 'createPr', 'rerunCi', 'fixCi', 'merge']);
 const NON_DELEGABLE_ACTIONS = new Set(['release', 'publish', 'secretAccess', 'walletRpcDeployAccess', 'deploy', 'fundedTransaction', 'governanceTransaction', 'bscScanVerification']);
 const RECOMMENDATIONS = new Set(['merge', 'repair', 'preserve', 'stop', 'owner_merge_decision_only_after_same_head_remote_pass']);
+const OWNER_MERGE_AFTER_SAME_HEAD_PASS = 'owner_merge_after_same_head_pass';
+const NON_OVERRIDABLE_STATUS_KEYS = [
+  'productEvidenceStatus',
+  'finalDecisionStatus',
+  'safeOutputScanStatus',
+  'secretScanStatus',
+  'scopeBoundaryStatus',
+];
 
 function escalationSummary(input = {}) {
   return {
@@ -25,16 +33,35 @@ function escalationSummary(input = {}) {
 }
 
 export function buildOwnerDecisionBrief(input = {}) {
+  const ownerDecisionReceipt = input.currentHeadOwnerDecision || validateCurrentHeadOwnerDecision(input.ownerDecisionInput || {});
+  const currentHeadDecisionAccepted = ownerDecisionReceipt.status === 'pass';
   return {
     ownerDecisionBriefVersion: '1',
-    decisionReady: input.decisionReady === true,
+    decisionReady: currentHeadDecisionAccepted || input.decisionReady === true,
     itemUrl: input.itemUrl || null,
     whatChanges: input.whatChanges || 'source_harness_v120_body_only',
     whoBenefits: input.whoBenefits || 'maintainer_and_worker_context_reduction',
-    whyOwnerDecisionNeededNow: input.whyOwnerDecisionNeededNow || 'owner_merge_instruction_not_provided',
-    proofCompleted: bounded(input.proofCompleted, 8),
-    proofMissing: bounded(input.proofMissing || ['same_head_remote_quality_gate'], 8),
-    residualRisks: bounded(input.residualRisks || ['owner_merge_instruction_required'], 3),
+    whyOwnerDecisionNeededNow: currentHeadDecisionAccepted
+      ? 'current_head_owner_merge_instruction_accepted'
+      : input.whyOwnerDecisionNeededNow || 'owner_merge_instruction_not_provided',
+    proofCompleted: bounded(
+      currentHeadDecisionAccepted
+        ? [...(input.proofCompleted || []), 'current_head_owner_merge_instruction']
+        : input.proofCompleted,
+      8
+    ),
+    proofMissing: bounded(
+      currentHeadDecisionAccepted
+        ? (input.proofMissing || []).filter((item) => item !== 'owner_merge_instruction')
+        : input.proofMissing || ['same_head_remote_quality_gate'],
+      8
+    ),
+    residualRisks: bounded(
+      currentHeadDecisionAccepted
+        ? (input.residualRisks || []).filter((item) => item !== 'owner_merge_instruction_not_provided' && item !== 'owner_merge_instruction_required')
+        : input.residualRisks || ['owner_merge_instruction_required'],
+      3
+    ),
     recommendation: input.recommendation || 'owner_merge_decision_only_after_same_head_remote_pass',
     exactChoices: bounded(input.exactChoices || ['approve_merge_after_same_head_pass', 'request_narrow_repair', 'leave_pr_open'], 3),
     escalationSummary: escalationSummary(input.escalationSummary || input),
@@ -56,8 +83,54 @@ export function buildOwnerDecisionBrief(input = {}) {
       safeNextAction: input.delegatedSafeNextAction || 'owner_delegation_or_owner_decision_required',
     },
     safeNextAction: input.safeNextAction || 'owner_merge_decision_only',
+    ownerDecisionReceipt,
     rawLogsRead: false,
     eightSessionUsed: false,
+    safeSummaryOnly: true,
+  };
+}
+
+function compactReasonCodes(values = []) {
+  return Array.from(new Set(values.filter(Boolean).map(String))).sort().slice(0, 12);
+}
+
+function statusPassOrUnknown(value) {
+  const status = value && typeof value === 'object' ? value.status : value;
+  return status === undefined || status === null || status === 'pass' || status === 'not_applicable' || status === 'not_required' || status === 'not_required_with_reason';
+}
+
+export function validateCurrentHeadOwnerDecision(input = {}) {
+  const text = String(input.text || '');
+  const currentHeadSha = String(input.currentHeadSha || '').trim();
+  const prNumber = input.prNumber === undefined || input.prNumber === null ? '' : String(input.prNumber).trim();
+  const reasonCodes = [];
+  const normalized = text.replace(/\s+/g, ' ').trim();
+  const lower = normalized.toLowerCase();
+  const currentHeadPattern = new RegExp(`current head\\s+${currentHeadSha.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}`, 'i');
+  const prPattern = prNumber ? new RegExp(`pr\\s*#?${prNumber}\\b`, 'i') : null;
+
+  if (!currentHeadSha || !/^[a-f0-9]{40}$/i.test(currentHeadSha)) reasonCodes.push('owner_decision_current_head_sha_missing');
+  if (!normalized) reasonCodes.push('owner_decision_text_missing');
+  if (!lower.includes(`owner decision: ${OWNER_MERGE_AFTER_SAME_HEAD_PASS}`)) reasonCodes.push('owner_decision_choice_missing');
+  if (currentHeadSha && !currentHeadPattern.test(normalized)) reasonCodes.push('owner_decision_current_head_mismatch');
+  if (prPattern && !prPattern.test(normalized)) reasonCodes.push('owner_decision_pr_scope_missing');
+
+  const mentionedHeads = Array.from(normalized.matchAll(/current head\s+([a-f0-9]{40})/gi)).map((match) => match[1].toLowerCase());
+  if (mentionedHeads.some((sha) => sha !== currentHeadSha.toLowerCase())) reasonCodes.push('owner_decision_stale_head_detected');
+
+  for (const key of NON_OVERRIDABLE_STATUS_KEYS) {
+    if (!statusPassOrUnknown(input[key])) reasonCodes.push(`owner_decision_non_overridable_${key}_not_pass`);
+  }
+
+  return {
+    status: reasonCodes.length ? 'fail' : 'pass',
+    ownerDecision: reasonCodes.length ? 'not_accepted' : OWNER_MERGE_AFTER_SAME_HEAD_PASS,
+    currentHeadSha: currentHeadSha || null,
+    prNumber: prNumber || null,
+    reasonCodes: compactReasonCodes(reasonCodes),
+    createsGithubApprovalReview: false,
+    createsReadinessAuthority: false,
+    overridesNonOverridableFailures: false,
     safeSummaryOnly: true,
   };
 }
