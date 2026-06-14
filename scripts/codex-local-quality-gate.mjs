@@ -80,6 +80,25 @@ const PROFILE_TEMPLATE_VERSION = '0.7.0';
 
 const MARKER = `CODEX_QUALITY_HARNESS_FILE v${HARNESS_VERSION}`;
 
+export function compareHarnessVersions(left, right) {
+  const parse = (value) => String(value || '0').split('.').map((part) => Number(part) || 0);
+  const leftParts = parse(left);
+  const rightParts = parse(right);
+  const length = Math.max(leftParts.length, rightParts.length);
+  for (let index = 0; index < length; index += 1) {
+    const delta = (leftParts[index] || 0) - (rightParts[index] || 0);
+    if (delta !== 0) return delta > 0 ? 1 : -1;
+  }
+  return 0;
+}
+
+export function isTargetShadowLegacySelfTestStatus(key) {
+  const match = String(key || '').match(/^v(\d{3})SelfTestStatus$/);
+  if (!match) return false;
+  const version = Number(match[1]);
+  return version >= 80 && version <= 112;
+}
+
 export function buildPreExitDecisionArtifacts(input = {}) {
   const primaryClass = input.primaryClass || 'safe_detail_unavailable';
   const reasonCodes = [...new Set((input.reasonCodes || [primaryClass]).filter(Boolean).map(String))].slice(0, 3);
@@ -6109,6 +6128,23 @@ function computeTargetOutputShapeStatus(report) {
 
 
 
+export function classifyTargetQualityScoredStatus(key, entry = {}, report = {}, allowedNotApplicableKeys = new Set()) {
+  const status = entry?.status || 'missing';
+  let effectiveStatus = status;
+  let compatibility = null;
+  if (allowedNotApplicableKeys.has(key) && status === 'not_applicable') effectiveStatus = 'pass_optional';
+  if (isTargetShadowLegacySelfTestStatus(key)) {
+    return { key, status, effectiveStatus: 'pass_advisory', compatibilityClass: 'advisory_legacy' };
+  }
+  if (compareHarnessVersions(HARNESS_VERSION, '1.1.1') >= 0) {
+    compatibility = classifyTargetModeCompatibilityStatus(key, entry, report);
+    if (['absorbed_by_v111', 'advisory_legacy', 'not_applicable_for_lane', 'not_required_for_target_mode', 'missing_nonblocking'].includes(compatibility.classification)) {
+      effectiveStatus = compatibility.effectiveStatus;
+    }
+  }
+  return { key, status, effectiveStatus, compatibilityClass: compatibility?.classification || 'blocking_current' };
+}
+
 function computeTargetQualityScoreStatus(report) {
 
 
@@ -6627,55 +6663,7 @@ function computeTargetQualityScoreStatus(report) {
 
 
 
-  const statuses = scored.map((key) => {
-
-
-
-    const status = report[key]?.status || 'missing';
-
-
-
-    let effectiveStatus = status;
-
-
-
-    let compatibility = null;
-
-
-
-    if (allowedNotApplicable.has(key) && status === 'not_applicable') effectiveStatus = 'pass_optional';
-
-
-
-    if (HARNESS_VERSION === '1.1.1' || HARNESS_VERSION === '1.1.2' || HARNESS_VERSION === '1.1.3') {
-
-
-
-      compatibility = classifyTargetModeCompatibilityStatus(key, report[key], report);
-
-
-
-      if (['absorbed_by_v111', 'advisory_legacy', 'not_applicable_for_lane', 'not_required_for_target_mode', 'missing_nonblocking'].includes(compatibility.classification)) {
-
-
-
-        effectiveStatus = compatibility.effectiveStatus;
-
-
-
-      }
-
-
-
-    }
-
-
-
-    return { key, status, effectiveStatus, compatibilityClass: compatibility?.classification || 'blocking_current' };
-
-
-
-  });
+  const statuses = scored.map((key) => classifyTargetQualityScoredStatus(key, report[key], report, allowedNotApplicable));
 
 
 
