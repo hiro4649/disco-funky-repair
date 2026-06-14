@@ -14,6 +14,13 @@ function safeCode(value) {
   return String(value || 'unknown_reason').replace(/[^A-Za-z0-9_.:-]/g, '_').slice(0, 120);
 }
 
+export function isReasonSummaryShadowLegacySelfTestStatus(gate) {
+  const match = String(gate || '').match(/^v(\d{3})SelfTestStatus$/);
+  if (!match) return false;
+  const version = Number(match[1]);
+  return version >= 80 && version <= 112;
+}
+
 export function buildCompactReasonSummary(report = {}, options = {}) {
   const catalog = loadCatalog();
   const mode = report.targetQualityScoreStatus ? 'target' : 'source';
@@ -23,6 +30,10 @@ export function buildCompactReasonSummary(report = {}, options = {}) {
   const manualReasons = [];
   const optionalNotApplicable = [];
   for (const [gate, value] of statusEntries) {
+    if (isReasonSummaryShadowLegacySelfTestStatus(gate)) {
+      optionalNotApplicable.push(gate);
+      continue;
+    }
     const reasonCodes = value.reasonCodes?.length ? value.reasonCodes : [gate];
     if (value.status === 'fail' || value.status === 'missing') {
       for (const code of reasonCodes) blockingReasons.push({ reasonCode: safeCode(code), gate });
@@ -33,6 +44,7 @@ export function buildCompactReasonSummary(report = {}, options = {}) {
     }
   }
   for (const failure of report.failures || []) {
+    if (isReasonSummaryShadowLegacySelfTestStatus(failure?.id || failure?.reasonCode)) continue;
     blockingReasons.push({ reasonCode: safeCode(failure.id || failure.reasonCode), gate: 'localQualityGate' });
   }
   const nextActions = [...blockingReasons, ...manualReasons].slice(0, 5).map((item) => {
