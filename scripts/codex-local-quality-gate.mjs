@@ -62,7 +62,7 @@ import { buildEvidenceCapsule, validateEvidenceCapsule } from './codex-evidence-
 import { LOAD_BEARING_ARTIFACTS, buildArtifactConsistencyReport } from './codex-artifact-consistency-contract.mjs';
 import { V119_OPERATOR_STATUS_KEYS as V119_STATUS_KEYS, buildOrchestrationReport } from './codex-orchestration-capsule.mjs';
 import { buildWorkerProofReport } from './codex-worker-proof-capsule.mjs';
-import { buildOwnerDecisionBriefReport } from './codex-owner-decision-brief.mjs';
+import { buildOwnerDecisionBriefReport, validateCurrentHeadOwnerDecision } from './codex-owner-decision-brief.mjs';
 
 
 
@@ -3352,8 +3352,18 @@ function runV118Gates(report, gateEnv) {
     : runGateScript('scripts/codex-v118-self-test.mjs', 'v118SelfTestStatus', 'CODEX_V118_SELF_TEST_REPORT', gateEnv);
   const terminalAction = process.env.CODEX_TERMINAL_ACTION || 'create_pr_only';
   const executionMode = process.env.CODEX_EXECUTION_MODE || 'source_pr';
+  const tokenBudgetStatus = buildTokenBudgetLedgerStatus();
+  const scopeBoundaryStatus = buildScopeBoundaryStatus();
+  const currentHeadOwnerDecision = buildCurrentHeadOwnerDecisionFromGithubEvent({
+    productEvidenceStatus: report.productVerificationEvidenceStatus?.status || report.productVerificationStatus?.status,
+    safeOutputScanStatus: report.safeOutputScanStatus?.status,
+    secretScanStatus: report.secretScan?.status,
+    scopeBoundaryStatus: scopeBoundaryStatus.status,
+  });
+  const ownerMergeInstruction = currentHeadOwnerDecision.status === 'pass';
+  const effectiveTerminalAction = ownerMergeInstruction ? 'merge_current_pr' : terminalAction;
   const evidenceCapsule = buildEvidenceCapsule({
-    terminalAction,
+    terminalAction: effectiveTerminalAction,
     headSha: process.env.CODEX_PR_HEAD_SHA || process.env.GITHUB_SHA || 'unknown',
     qualityGateRunId: process.env.CODEX_QUALITY_GATE_RUN_ID || 'needs_run',
     artifactId: process.env.CODEX_SAFE_ARTIFACT_ID || 'needs_run',
@@ -3368,15 +3378,18 @@ function runV118Gates(report, gateEnv) {
     previousPrimaryClass: 'none',
     currentPrimaryClass: report.top3Blockers?.primary_blocker || report.decisionCapsule?.primaryClass || 'none',
   });
-  const tokenBudgetStatus = buildTokenBudgetLedgerStatus();
-  const scopeBoundaryStatus = buildScopeBoundaryStatus();
   const finalDecision = reconcileFinalSafeDecision({
     executionMode,
-    terminalAction,
+    terminalAction: effectiveTerminalAction,
     decisionCapsule: report.decisionCapsule,
     evidenceCapsule,
     artifactConsistency: report.artifactConsistency || report.artifactConsistencyStatus,
     minimalBlockers: report.top3Blockers || { primary_blocker: 'none' },
+    ownerMergeInstruction,
+    ownerReceipt: {
+      ownerMergeInstruction,
+      currentHeadOwnerDecision,
+    },
     requiredChecks: {
       sameHead: process.env.CODEX_SAME_HEAD === 'false' ? false : true,
       allPass: process.env.CODEX_REQUIRED_CHECKS_PASS === '1',
@@ -3392,6 +3405,7 @@ function runV118Gates(report, gateEnv) {
   });
   report.finalDecision = finalDecision;
   report.finalDecisionStatus = validateFinalDecisionKernel(finalDecision);
+  report.currentHeadOwnerDecisionStatus = currentHeadOwnerDecision;
   report.evidenceCapsule = evidenceCapsule;
   report.evidenceCapsuleStatus = evidenceCapsuleStatus;
   report.decisionCapsuleStatus = decisionCapsuleStatus;
@@ -3422,6 +3436,40 @@ function buildFinalDecisionPointerStatus(report = {}) {
   };
 }
 
+function readGithubEventJson() {
+  const eventPath = process.env.GITHUB_EVENT_PATH;
+  if (!eventPath) return null;
+  try {
+    return JSON.parse(fs.readFileSync(eventPath, 'utf8').replace(/^\uFEFF/, ''));
+  } catch {
+    return null;
+  }
+}
+
+function buildCurrentHeadOwnerDecisionFromGithubEvent(input = {}) {
+  const event = readGithubEventJson();
+  const pullRequest = event?.pull_request || {};
+  const text = [
+    pullRequest.body,
+    process.env.CODEX_OWNER_DECISION_TEXT,
+    process.env.CODEX_CURRENT_HEAD_OWNER_DECISION,
+  ].filter(Boolean).join('\n');
+  return validateCurrentHeadOwnerDecision({
+    text,
+    currentHeadSha: pullRequest.head?.sha || process.env.GITHUB_SHA || process.env.CODEX_PR_HEAD_SHA,
+    prNumber: pullRequest.number || event?.number || process.env.CODEX_PR_NUMBER,
+    productEvidenceStatus: ownerDecisionStatusInput(input.productEvidenceStatus),
+    finalDecisionStatus: ownerDecisionStatusInput(input.finalDecisionStatus),
+    safeOutputScanStatus: ownerDecisionStatusInput(input.safeOutputScanStatus),
+    secretScanStatus: ownerDecisionStatusInput(input.secretScanStatus),
+    scopeBoundaryStatus: ownerDecisionStatusInput(input.scopeBoundaryStatus),
+  });
+}
+
+function ownerDecisionStatusInput(status) {
+  return status === 'not_run' ? undefined : status;
+}
+
 function runV119Gates(report, gateEnv) {
   const selfTestStatus = process.env.CODEX_SKIP_V119_SELF_TEST === '1'
     ? { status: 'not_applicable', reasonCodes: ['self_test_recursion_guard'], safeSummaryOnly: true }
@@ -3450,7 +3498,15 @@ function runV119Gates(report, gateEnv) {
     finalReviewStatus: 'pass',
     safeNextAction: 'owner_merge_decision_only_after_same_head_pass',
   });
+  const currentHeadOwnerDecision = buildCurrentHeadOwnerDecisionFromGithubEvent({
+    productEvidenceStatus: report.productVerificationEvidenceStatus?.status || report.productVerificationStatus?.status,
+    finalDecisionStatus: report.finalDecisionStatus?.status,
+    safeOutputScanStatus: report.safeOutputScanStatus?.status,
+    secretScanStatus: report.secretScan?.status,
+    scopeBoundaryStatus: report.scopeBoundaryStatus?.status,
+  });
   const ownerBrief = buildOwnerDecisionBriefReport({
+    currentHeadOwnerDecision,
     decisionReady: false,
     proofCompleted: ['local_quality_gate_safe_summary', 'v119_self_test', 'v120_self_test'],
     proofMissing: ['same_head_remote_quality_gate', 'owner_merge_instruction'],
