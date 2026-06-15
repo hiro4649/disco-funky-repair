@@ -45,7 +45,46 @@ export function gitHeadSha() {
   }
 }
 
+function readLivePrBody(env = process.env) {
+  const prNumber = String(env.CODEX_PR_NUMBER || '').replace(/[^0-9]/g, '');
+  const repository = String(env.GITHUB_REPOSITORY || env.CODEX_REPOSITORY || '').replace(/[^A-Za-z0-9_.-\/]/g, '');
+  if (!prNumber || !repository) return null;
+  const token = env.GH_TOKEN || env.GITHUB_TOKEN || process.env.GH_TOKEN || process.env.GITHUB_TOKEN || '';
+  try {
+    const body = execFileSync('gh', ['pr', 'view', prNumber, '--repo', repository, '--json', 'body', '-q', '.body'], {
+      encoding: 'utf8',
+      env: {
+        ...process.env,
+        GH_TOKEN: token,
+      },
+      stdio: ['ignore', 'pipe', 'ignore'],
+      timeout: 10000,
+    });
+    return body.trim() ? body : null;
+  } catch {
+    if (!token) return null;
+  }
+  try {
+    const response = execFileSync('curl', [
+      '-fsSL',
+      '-H', `Authorization: Bearer ${token}`,
+      '-H', 'Accept: application/vnd.github+json',
+      `https://api.github.com/repos/${repository}/pulls/${prNumber}`,
+    ], {
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'ignore'],
+      timeout: 10000,
+    });
+    const parsed = JSON.parse(response);
+    return parsed && typeof parsed.body === 'string' && parsed.body.trim() ? parsed.body : null;
+  } catch {
+    return null;
+  }
+}
+
 export function readPrBody(env = process.env) {
+  const liveBody = readLivePrBody(env);
+  if (liveBody !== null) return { body: liveBody, prContext: true, source: 'GITHUB_CURRENT_PR_BODY' };
   if (env.CODEX_PR_BODY && env.CODEX_PR_BODY.trim()) {
     return { body: env.CODEX_PR_BODY, prContext: true, source: 'CODEX_PR_BODY' };
   }
