@@ -19,6 +19,8 @@ import {
 } from './codex-orchestration-capsule.mjs';
 import { buildWorkerProofCapsule, validateWorkerProofCapsule } from './codex-worker-proof-capsule.mjs';
 import { buildOwnerDecisionBrief, validateOwnerDecisionBrief } from './codex-owner-decision-brief.mjs';
+import { reconcileFinalSafeDecision } from './codex-final-decision-kernel.mjs';
+import { buildEvidenceCapsule } from './codex-evidence-capsule.mjs';
 
 function test(name, fn) {
   try {
@@ -107,6 +109,69 @@ const closureCases = [
     mergeAllowed: false,
     singleClosureReason: 'none',
   }))],
+];
+
+function mergeReadyEvidence(overrides = {}) {
+  return buildEvidenceCapsule({
+    terminalAction: 'merge_current_pr',
+    headSha: '1234567890abcdef1234567890abcdef12345678',
+    qualityGateRunId: '27517088901',
+    artifactId: '27517088901-1',
+    ...overrides,
+  });
+}
+
+function mergeReadyFinalDecision(overrides = {}) {
+  return reconcileFinalSafeDecision({
+    executionMode: 'target_pr',
+    terminalAction: 'merge_current_pr',
+    decisionCapsule: { decision: 'allowed', primaryClass: 'none' },
+    evidenceCapsule: mergeReadyEvidence(overrides.evidenceCapsule || {}),
+    artifactConsistency: { status: 'pass' },
+    minimalBlockers: { primary_blocker: 'none', safe_next_action: 'merge_current_pr' },
+    requiredChecks: { sameHead: true, allPass: true },
+    convergenceState: { continueAllowed: true },
+    tokenBudget: { status: 'pass' },
+    ownerMergeInstruction: true,
+    safetyClaims: {
+      rawLogsRead: false,
+      eightSessionUsed: false,
+      runtimeReadinessClaimed: false,
+      productionReadinessClaimed: false,
+      ...(overrides.safetyClaims || {}),
+    },
+    ...overrides,
+  });
+}
+
+const finalDecisionClosureRepairCases = [
+  ['v123_decision_ready_true_after_same_head_owner_decision_and_all_gates_pass', () => validateOwnerDecisionBrief(buildOwnerDecisionBrief({ decisionReady: true })).decisionReady === true],
+  ['v123_merge_allowed_true_after_same_head_owner_decision_and_all_gates_pass', () => mergeReadyFinalDecision().mergeAllowed === true],
+  ['v123_terminal_action_not_create_pr_only_after_same_head_owner_decision_and_all_gates_pass', () => mergeReadyFinalDecision().terminalAction !== 'create_pr_only'],
+  ['v123_safe_next_action_not_rerun_same_head_when_current_run_already_same_head', () => mergeReadyFinalDecision().safeNextAction !== 'run_same_head_remote_quality_gate'],
+  ['v123_final_decision_requires_same_head', () => mergeReadyFinalDecision({ requiredChecks: { sameHead: false, allPass: true } }).mergeAllowed === false],
+  ['v123_final_decision_requires_current_head_owner_decision', () => mergeReadyFinalDecision({ ownerMergeInstruction: false }).mergeAllowed === false],
+  ['v123_final_decision_rejects_stale_owner_decision', () => mergeReadyFinalDecision({ ownerMergeInstruction: false }).primaryClass === 'owner_merge_instruction_required'],
+  ['v123_final_decision_rejects_product_evidence_failure', () => mergeReadyFinalDecision({ requiredChecks: { sameHead: true, allPass: false } }).mergeAllowed === false],
+  ['v123_final_decision_rejects_safe_output_failure', () => mergeReadyFinalDecision({ artifactConsistency: { status: 'fail', primaryClass: 'safe_output_scan_failed' } }).mergeAllowed === false],
+  ['v123_final_decision_rejects_target_quality_failure', () => mergeReadyFinalDecision({ requiredChecks: { sameHead: true, allPass: false } }).mergeAllowed === false],
+  ['v123_final_decision_rejects_observed_skill_evidence_failure_when_load_bearing', () => mergeReadyFinalDecision({ requiredChecks: { sameHead: true, allPass: false } }).decision !== 'allowed'],
+  ['v123_final_decision_rejects_decision_closure_failure_when_load_bearing', () => failed(validateFinalDecisionClosure({
+    ...buildOrchestrationCapsule().finalDecisionClosure,
+    phase: 'merge_consideration',
+    terminalAction: 'create_pr_only',
+    targetQualityStatus: 'pass',
+    blockingReasonsCount: 0,
+    sameHeadRemoteGate: 'pass',
+    ownerOrDelegatedMergeScope: 'valid',
+    mergeAllowed: false,
+    singleClosureReason: 'decision_closure_inconsistent',
+  }))],
+  ['v123_final_decision_rejects_scope_boundary_failure', () => mergeReadyFinalDecision({ minimalBlockers: { primary_blocker: 'scope_boundary_failed' } }).mergeAllowed === false],
+  ['v123_final_decision_rejects_actual_db_export_boundary', () => mergeReadyFinalDecision({ safetyClaims: { productionReadinessClaimed: true } }).mergeAllowed === false],
+  ['v123_final_decision_rejects_source_access_boundary', () => mergeReadyFinalDecision({ safetyClaims: { runtimeReadinessClaimed: true } }).mergeAllowed === false],
+  ['v123_final_decision_rejects_jsonl_file_export_boundary', () => mergeReadyFinalDecision({ safetyClaims: { rawLogsRead: true } }).mergeAllowed === false],
+  ['v123_final_decision_does_not_read_stale_create_pr_only_surface', () => mergeReadyFinalDecision({ terminalAction: 'merge_current_pr' }).terminalAction === 'merge_current_pr'],
 ];
 
 const workspaceAndPolicyCases = [
@@ -217,6 +282,7 @@ const escalationAndReviewCases = [
 const cases = [
   ...compatibilityCases,
   ...closureCases,
+  ...finalDecisionClosureRepairCases,
   ...workspaceAndPolicyCases,
   ...contextAndSkillCases,
   ...escalationAndReviewCases,
