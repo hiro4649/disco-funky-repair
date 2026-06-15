@@ -3493,17 +3493,17 @@ export function v123TargetDecisionClosureNeedsLateReconcile(report = {}) {
     && v123OptionalStatusPass(report.decisionClosureStatus);
 }
 
-function reconcileV123DecisionClosure(report = {}) {
+export function reconcileV123DecisionClosure(report = {}) {
   if (!['1.2.3', '1.2.4'].includes(HARNESS_VERSION)) return;
   if (process.env.CODEX_EVENT_NAME && process.env.CODEX_EVENT_NAME !== 'pull_request') return;
   if (report.status !== 'pass') return;
   if (!v123CurrentHeadEvidenceReady(report)) return;
   if (!v123CurrentHeadOwnerDecisionReady(report)) return;
   const requiredStatuses = [
-    report.targetQualityScoreStatus,
-    report.safeOutputScanStatus,
-    report.testCoverageEvidenceStatus,
-    report.productVerificationEvidenceStatus,
+    v123TargetQualityStatus(report),
+    v123SafeOutputStatus(report),
+    v123TestCoverageStatus(report),
+    v123ProductEvidenceStatus(report),
     report.finalDecisionPointerStatus,
     report.permissionGrantStatus,
     report.ownerDecisionBriefStatus,
