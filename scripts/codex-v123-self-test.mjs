@@ -21,6 +21,7 @@ import { buildWorkerProofCapsule, validateWorkerProofCapsule } from './codex-wor
 import { buildOwnerDecisionBrief, validateOwnerDecisionBrief } from './codex-owner-decision-brief.mjs';
 import { reconcileFinalSafeDecision } from './codex-final-decision-kernel.mjs';
 import { buildEvidenceCapsule } from './codex-evidence-capsule.mjs';
+import { parseV123CurrentHeadOwnerDecisionConfirmation } from './codex-local-quality-gate.mjs';
 
 function test(name, fn) {
   try {
@@ -145,10 +146,24 @@ function mergeReadyFinalDecision(overrides = {}) {
 }
 
 const finalDecisionClosureRepairCases = [
-  ['v123_decision_ready_true_after_same_head_owner_decision_and_all_gates_pass', () => validateOwnerDecisionBrief(buildOwnerDecisionBrief({ decisionReady: true })).decisionReady === true],
+  ['v123_owner_decision_brief_sets_decision_ready_after_current_head_confirmation', () => validateOwnerDecisionBrief(buildOwnerDecisionBrief({ decisionReady: true })).decisionReady === true],
+  ['v123_owner_decision_brief_rejects_stale_head_confirmation', () => parseV123CurrentHeadOwnerDecisionConfirmation({
+    prNumber: '324',
+    headSha: 'ef731e2143ce7026ad99c2e964cfa2a178115984',
+    text: 'I confirm PR #324 current head e9a868af7008c3fbeb8e2cac9038ba7f8214b411 for merge consideration.\nOwner decision: owner_merge_after_same_head_pass.',
+  }).status === 'fail'],
+  ['v123_owner_decision_brief_accepts_current_head_confirmation', () => parseV123CurrentHeadOwnerDecisionConfirmation({
+    prNumber: '324',
+    headSha: 'ef731e2143ce7026ad99c2e964cfa2a178115984',
+    text: 'I confirm PR #324 current head ef731e2143ce7026ad99c2e964cfa2a178115984 for merge consideration.\nOwner decision: owner_merge_after_same_head_pass.',
+  }).status === 'pass'],
   ['v123_merge_allowed_true_after_same_head_owner_decision_and_all_gates_pass', () => mergeReadyFinalDecision().mergeAllowed === true],
+  ['v123_final_decision_merge_allowed_after_current_head_owner_decision_and_all_gates_pass', () => mergeReadyFinalDecision().mergeAllowed === true],
+  ['v123_final_decision_terminal_action_merge_current_pr_after_current_head_owner_decision', () => mergeReadyFinalDecision().terminalAction === 'merge_current_pr'],
   ['v123_terminal_action_not_create_pr_only_after_same_head_owner_decision_and_all_gates_pass', () => mergeReadyFinalDecision().terminalAction !== 'create_pr_only'],
+  ['v123_safe_next_action_not_owner_decision_after_current_head_owner_decision_consumed', () => mergeReadyFinalDecision().safeNextAction !== 'owner_merge_decision_after_same_head_remote_pass'],
   ['v123_safe_next_action_not_rerun_same_head_when_current_run_already_same_head', () => mergeReadyFinalDecision().safeNextAction !== 'run_same_head_remote_quality_gate'],
+  ['v123_final_decision_ignores_stale_create_pr_only_surface_when_current_tuple_passes', () => mergeReadyFinalDecision({ terminalAction: 'merge_current_pr' }).mergeAllowed === true],
   ['v123_final_decision_requires_same_head', () => mergeReadyFinalDecision({ requiredChecks: { sameHead: false, allPass: true } }).mergeAllowed === false],
   ['v123_final_decision_requires_current_head_owner_decision', () => mergeReadyFinalDecision({ ownerMergeInstruction: false }).mergeAllowed === false],
   ['v123_final_decision_rejects_stale_owner_decision', () => mergeReadyFinalDecision({ ownerMergeInstruction: false }).primaryClass === 'owner_merge_instruction_required'],
