@@ -310,7 +310,10 @@ const finalClosureAliasCases = [
     const workflow = fs.readFileSync('.github/workflows/quality-gate.yml', 'utf8');
     return /writeSafe\(file, value, options = \{\}\)/.test(workflow)
       && /options\.overwrite !== true/.test(workflow)
-      && /writeSafe\('codex-final-decision\.safe\.json', report\.finalDecision \|\| summary\.finalDecision, \{ overwrite: Boolean\(report\.finalDecision\) \}\);/.test(workflow);
+      && /const ownerConfirmed = process\.env\.CODEX_OWNER_MERGE_CONFIRMED === '1';/.test(workflow)
+      && /summaryMergeReady/.test(workflow)
+      && /terminalAction: 'merge_current_pr'/.test(workflow)
+      && /writeSafe\('codex-final-decision\.safe\.json', canonicalFinalDecision, \{ overwrite: Boolean\(canonicalFinalDecision\) \}\);/.test(workflow);
   }],
   ['v124_decision_capsule_matches_reconciled_final_decision', () => {
     const report = {
