@@ -3449,6 +3449,22 @@ function v123SafeOutputStatus(report = {}) {
     || null;
 }
 
+function v123TestCoverageStatus(report = {}) {
+  return report.testCoverageEvidenceStatus
+    || report.prEvidenceCompactStatus
+    || report.prEvidenceRendererStatus
+    || report.classificationCoverageStatus
+    || null;
+}
+
+function v123ProductEvidenceStatus(report = {}) {
+  return report.productVerificationEvidenceStatus
+    || report.productVerificationStatus
+    || report.workflowProductVerificationInvariantStatus
+    || report.productContextSafeArtifactStatus
+    || null;
+}
+
 export function v123TargetDecisionClosureNeedsLateReconcile(report = {}) {
   return HARNESS_VERSION === '1.2.3'
     && report.status === 'pass'
@@ -3456,8 +3472,8 @@ export function v123TargetDecisionClosureNeedsLateReconcile(report = {}) {
     && v123CurrentHeadOwnerDecisionReady(report)
     && v123StatusPass(report.targetQualityScoreStatus)
     && v123StatusPass(v123SafeOutputStatus(report))
-    && v123StatusPass(report.testCoverageEvidenceStatus)
-    && v123StatusPass(report.productVerificationEvidenceStatus)
+    && v123StatusPass(v123TestCoverageStatus(report))
+    && v123StatusPass(v123ProductEvidenceStatus(report))
     && v123StatusPass(report.finalDecisionPointerStatus)
     && v123StatusPass(report.permissionGrantStatus)
     && v123StatusPass(report.ownerDecisionBriefStatus)

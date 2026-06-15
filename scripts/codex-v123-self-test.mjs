@@ -227,6 +227,28 @@ const finalDecisionClosureRepairCases = [
     permissionGrantStatus: { status: 'pass' },
     ownerDecisionBriefStatus: { status: 'pass' },
   }) === true)],
+  ['v123_target_mode_late_reconcile_accepts_evidence_equivalent_statuses', () => withEnv({
+    CODEX_EVENT_NAME: 'pull_request',
+    CODEX_PR_NUMBER: '324',
+    CODEX_PR_HEAD_SHA: '5113035fb1e42a721165502b660dc764eb031231',
+    CODEX_PR_BODY: 'I confirm PR #324 current head 5113035fb1e42a721165502b660dc764eb031231 for merge consideration.\nOwner decision: owner_merge_after_same_head_pass.',
+  }, () => v123TargetDecisionClosureNeedsLateReconcile({
+    status: 'pass',
+    evidenceCapsule: {
+      currentHeadEvidence: {
+        headSha: '5113035fb1e42a721165502b660dc764eb031231',
+        qualityGateRunId: '27525563434',
+        artifactId: '27525563434-1',
+      },
+    },
+    targetQualityScoreStatus: { status: 'pass' },
+    targetSafeSummaryRequiredClosureStatus: { status: 'pass' },
+    prEvidenceCompactStatus: { status: 'pass' },
+    productVerificationStatus: { status: 'pass' },
+    finalDecisionPointerStatus: { status: 'pass' },
+    permissionGrantStatus: { status: 'pass' },
+    ownerDecisionBriefStatus: { status: 'pass' },
+  }) === true)],
   ['v123_final_decision_ignores_stale_create_pr_only_surface_when_current_tuple_passes', () => mergeReadyFinalDecision({ terminalAction: 'merge_current_pr' }).mergeAllowed === true],
   ['v123_final_decision_requires_same_head', () => mergeReadyFinalDecision({ requiredChecks: { sameHead: false, allPass: true } }).mergeAllowed === false],
   ['v123_final_decision_requires_current_head_owner_decision', () => mergeReadyFinalDecision({ ownerMergeInstruction: false }).mergeAllowed === false],
