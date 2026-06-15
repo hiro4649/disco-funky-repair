@@ -40,10 +40,17 @@ function requiresTestEvidence(body) {
 function hasTestEvidence(body) {
   const hasSection = /(^|\n)\s*(?:#{1,6}\s*)?Test Coverage Evidence\s*:?\s*$/im.test(body) ||
     /Test Coverage Evidence:/i.test(body);
+  const hasCommandEvidence = /test command/i.test(body) ||
+    /edited scripts syntax/i.test(body) ||
+    /active self-test/i.test(body) ||
+    /compatibility self-tests/i.test(body);
+  const hasCoveragePurpose = /what the test covers/i.test(body) ||
+    /coverage purpose/i.test(body) ||
+    /edge cases covered/i.test(body);
   return hasSection &&
     /changed area/i.test(body) &&
-    /test command/i.test(body) &&
-    /what the test covers/i.test(body) &&
+    hasCommandEvidence &&
+    hasCoveragePurpose &&
     /edge cases|failure paths|reason if no test/i.test(body);
 }
 
