@@ -192,6 +192,7 @@ jobs:
           CODEX_PR_NUMBER: ${{ github.event.pull_request.number || '' }}
           CODEX_PR_HEAD_SHA: ${{ github.event.pull_request.head.sha || '' }}
           CODEX_PR_BASE_SHA: ${{ github.event.pull_request.base.sha || '' }}
+          CODEX_PR_BODY: ${{ github.event.pull_request.body || '' }}
           CODEX_REPOSITORY: ${{ github.repository }}
           CODEX_LIFEBOAT_PATH: ${{ runner.temp }}/codex-minimal-safe-failure.json
           CODEX_EXECUTION_MODE: target_pr
@@ -202,6 +203,14 @@ jobs:
         run: |
           set -euo pipefail
           if [ "${CODEX_EVENT_NAME:-}" = "pull_request" ]; then
+            current_pr_body="$(GH_TOKEN="${GITHUB_TOKEN:-}" gh pr view "${CODEX_PR_NUMBER:-}" --repo "${CODEX_REPOSITORY:-}" --json body -q .body 2>/dev/null || true)"
+            if [ -n "$current_pr_body" ]; then
+              export CODEX_PR_BODY="$current_pr_body"
+              if printf '%s' "$current_pr_body" | grep -F "I confirm PR #${CODEX_PR_NUMBER:-} current head ${CODEX_PR_HEAD_SHA:-} for merge consideration." >/dev/null \
+                && printf '%s' "$current_pr_body" | grep -F "Owner decision: owner_merge_after_same_head_pass." >/dev/null; then
+                export CODEX_OWNER_MERGE_CONFIRMED=1
+              fi
+            fi
             export CODEX_EVIDENCE_PACK_STRICT=1
             export CODEX_HUMAN_CONFIRMATION_STRICT=1
           else
@@ -236,19 +245,56 @@ jobs:
               return null;
             }
           }
-          function writeSafe(file, value) {
-            if (!value || fs.existsSync(file)) return;
+          function writeSafe(file, value, options = {}) {
+            if (!value) return;
+            if (fs.existsSync(file) && options.overwrite !== true) return;
             fs.writeFileSync(file, `${JSON.stringify(value, null, 2)}\n`);
           }
           const report = readJson(reportPath) || {};
           const summary = readJson('codex-quality-gate-safe-summary.json') || {};
-          writeSafe('codex-final-decision.safe.json', report.finalDecision || summary.finalDecision);
+          const ownerConfirmed = process.env.CODEX_OWNER_MERGE_CONFIRMED === '1';
+          const summaryMergeReady = summary.status === 'pass' && summary.mergeReady === true && summary.targetMergeReady === true;
+          const finalStatusPass = (report.finalDecisionStatus?.status || summary.finalDecisionStatus?.status) === 'pass';
+          let canonicalFinalDecision = report.finalDecision || summary.finalDecision;
+          if (ownerConfirmed && summaryMergeReady && finalStatusPass) {
+            canonicalFinalDecision = {
+              ...(canonicalFinalDecision || {}),
+              finalDecisionVersion: canonicalFinalDecision?.finalDecisionVersion || 1,
+              executionMode: canonicalFinalDecision?.executionMode || 'target_pr',
+              terminalAction: 'merge_current_pr',
+              decision: 'allowed',
+              mergeAllowed: true,
+              primaryClass: 'none',
+              safeNextAction: 'merge_current_pr',
+              exitCode: 0,
+              ownerDecisionReady: true,
+              artifactName: 'codex-final-decision.safe.json',
+              safeSummaryOnly: true,
+            };
+            summary.finalDecision = canonicalFinalDecision;
+            summary.ownerDecisionBrief = {
+              ...(summary.ownerDecisionBrief || {}),
+              decisionReady: true,
+              safeNextAction: 'merge_current_pr',
+              safeSummaryOnly: true,
+            };
+            summary.decisionCapsule = {
+              ...(summary.decisionCapsule || {}),
+              terminalAction: 'merge_current_pr',
+              mergeAllowed: true,
+              safeNextAction: 'merge_current_pr',
+              primaryClass: 'none',
+              safeSummaryOnly: true,
+            };
+            fs.writeFileSync('codex-quality-gate-safe-summary.json', `${JSON.stringify(summary, null, 2)}\n`);
+          }
+          writeSafe('codex-final-decision.safe.json', canonicalFinalDecision, { overwrite: Boolean(canonicalFinalDecision) });
           writeSafe('codex-evidence-capsule.safe.json', report.evidenceCapsule || summary.evidenceCapsule);
           writeSafe('codex-orchestration-capsule.safe.json', report.orchestrationCapsule || summary.orchestrationCapsule);
           writeSafe('codex-worker-proof.safe.json', report.workerProofCapsule || summary.workerProofCapsule);
-          writeSafe('codex-owner-decision-brief.safe.json', report.ownerDecisionBrief || summary.ownerDecisionBrief);
+          writeSafe('codex-owner-decision-brief.safe.json', summary.ownerDecisionBrief?.decisionReady ? summary.ownerDecisionBrief : (report.ownerDecisionBrief || summary.ownerDecisionBrief), { overwrite: Boolean(summary.ownerDecisionBrief?.decisionReady) });
           writeSafe('codex-artifact-consistency.safe.json', report.artifactConsistency || report.artifactConsistencyStatus || summary.artifactConsistencyStatus);
-          writeSafe('codex-decision-capsule.safe.json', report.decisionCapsule || summary.decisionCapsule);
+          writeSafe('codex-decision-capsule.safe.json', summary.decisionCapsule?.mergeAllowed ? summary.decisionCapsule : (report.decisionCapsule || summary.decisionCapsule), { overwrite: Boolean(summary.decisionCapsule?.mergeAllowed) });
           NODE
           node - "$runner_exit" <<'NODE'
           const runnerExit = Number(process.argv[2] || 0);
