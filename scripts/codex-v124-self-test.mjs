@@ -15,6 +15,7 @@ import {
 } from './codex-orchestration-capsule.mjs';
 import { buildWorkerProofCapsule, validateWorkerProofCapsule } from './codex-worker-proof-capsule.mjs';
 import { buildOwnerDecisionBrief, validateOwnerDecisionBrief } from './codex-owner-decision-brief.mjs';
+import { reconcileV123DecisionClosure } from './codex-local-quality-gate.mjs';
 
 function test(name, fn) {
   try {
@@ -161,12 +162,65 @@ const ownerBriefCases = [
   }],
 ];
 
+const previousEnv = {
+  CODEX_EVENT_NAME: process.env.CODEX_EVENT_NAME,
+  CODEX_PR_HEAD_SHA: process.env.CODEX_PR_HEAD_SHA,
+  CODEX_PR_NUMBER: process.env.CODEX_PR_NUMBER,
+  CODEX_PR_BODY: process.env.CODEX_PR_BODY,
+  CODEX_QUALITY_GATE_RUN_ID: process.env.CODEX_QUALITY_GATE_RUN_ID,
+  CODEX_SAFE_ARTIFACT_ID: process.env.CODEX_SAFE_ARTIFACT_ID,
+};
+
+function withEnv(overrides, fn) {
+  for (const [key, value] of Object.entries(overrides)) process.env[key] = value;
+  try {
+    return fn();
+  } finally {
+    for (const [key, value] of Object.entries(previousEnv)) {
+      if (value === undefined) delete process.env[key];
+      else process.env[key] = value;
+    }
+  }
+}
+
+const finalClosureAliasCases = [
+  ['v124_final_closure_uses_alias_resolvers_for_required_statuses', () => withEnv({
+    CODEX_EVENT_NAME: 'pull_request',
+    CODEX_PR_HEAD_SHA: 'a06d9bc690fe953de74b069d94efdead3d964c48',
+    CODEX_PR_NUMBER: '324',
+    CODEX_QUALITY_GATE_RUN_ID: '27546509528',
+    CODEX_SAFE_ARTIFACT_ID: '27546509528-1',
+    CODEX_PR_BODY: [
+      'I confirm PR #324 current head a06d9bc690fe953de74b069d94efdead3d964c48 for merge consideration.',
+      'Owner decision: owner_merge_after_same_head_pass.',
+    ].join('\n'),
+  }, () => {
+    const report = {
+      status: 'pass',
+      evidenceCapsuleStatus: { status: 'pass' },
+      qualityScoreStatus: { status: 'pass' },
+      targetSafeSummaryRequiredClosureStatus: { status: 'pass' },
+      prEvidenceRendererStatus: { status: 'pass' },
+      workflowProductVerificationInvariantStatus: { status: 'pass' },
+      finalDecisionPointerStatus: { status: 'pass' },
+      permissionGrantStatus: { status: 'pass' },
+      ownerDecisionBriefStatus: { status: 'pass' },
+    };
+    reconcileV123DecisionClosure(report);
+    return report.finalDecision?.terminalAction === 'merge_current_pr'
+      && report.finalDecision?.mergeAllowed === true
+      && report.ownerDecisionBrief?.decisionReady === true
+      && report.ownerDecisionBrief?.safeNextAction === 'merge_current_pr';
+  })],
+];
+
 const cases = [
   ...compatibilityCases,
   ...goalAndDelegationCases,
   ...evidenceAndFootprintCases,
   ...expertLoopCases,
   ...ownerBriefCases,
+  ...finalClosureAliasCases,
 ].map(([name, fn]) => test(name, fn));
 
 const fixtureGroups = [
