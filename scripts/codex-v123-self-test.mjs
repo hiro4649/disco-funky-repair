@@ -22,6 +22,7 @@ import { buildOwnerDecisionBrief, validateOwnerDecisionBrief } from './codex-own
 import { reconcileFinalSafeDecision } from './codex-final-decision-kernel.mjs';
 import { buildEvidenceCapsule } from './codex-evidence-capsule.mjs';
 import { parseV123CurrentHeadOwnerDecisionConfirmation } from './codex-local-quality-gate.mjs';
+import { buildReport as buildTestCoverageEvidenceReport } from './codex-test-coverage-evidence-gate.mjs';
 
 function test(name, fn) {
   try {
@@ -187,6 +188,27 @@ const finalDecisionClosureRepairCases = [
   ['v123_final_decision_rejects_source_access_boundary', () => mergeReadyFinalDecision({ safetyClaims: { runtimeReadinessClaimed: true } }).mergeAllowed === false],
   ['v123_final_decision_rejects_jsonl_file_export_boundary', () => mergeReadyFinalDecision({ safetyClaims: { rawLogsRead: true } }).mergeAllowed === false],
   ['v123_final_decision_does_not_read_stale_create_pr_only_surface', () => mergeReadyFinalDecision({ terminalAction: 'merge_current_pr' }).terminalAction === 'merge_current_pr'],
+  ['v123_test_coverage_accepts_compact_harness_evidence_wording', () => buildTestCoverageEvidenceReport({
+    CODEX_PR_BODY: `Repair: implementation change
+
+Test Coverage Evidence:
+- changed area: v1.2.3 harness owner-decision/final-closure scripts only.
+- edited scripts syntax: node --check scripts/codex-local-quality-gate.mjs pass; node --check scripts/codex-v123-self-test.mjs pass.
+- active self-test: v123 self-test pass, 68 cases / 0 failed.
+- compatibility self-tests: v122, v121, v120, v119, v118, v117, v116 pass.
+- coverage purpose: proves current-head owner confirmation parsing and non-overridable failures remain blocking.
+- edge cases covered: stale owner confirmation, same-head mismatch, product evidence failure, safe output failure.`,
+    CODEX_EVENT_NAME: 'pull_request',
+  }).testCoverageEvidenceStatus.status === 'pass'],
+  ['v123_test_coverage_still_rejects_missing_command_evidence', () => buildTestCoverageEvidenceReport({
+    CODEX_PR_BODY: `Repair: implementation change
+
+Test Coverage Evidence:
+- changed area: v1.2.3 harness scripts only.
+- coverage purpose: proves current-head owner confirmation parsing remains guarded.
+- edge cases covered: stale owner confirmation.`,
+    CODEX_EVENT_NAME: 'pull_request',
+  }).testCoverageEvidenceStatus.status === 'fail'],
 ];
 
 const workspaceAndPolicyCases = [
