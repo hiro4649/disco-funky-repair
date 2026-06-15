@@ -26,7 +26,7 @@ import { fileURLToPath } from 'node:url';
 
 
 
-import { buildHumanConfirmationStatus } from './codex-production-readiness-gate.mjs';
+import { buildHumanConfirmationStatus, readPrBody } from './codex-production-readiness-gate.mjs';
 
 
 
@@ -3386,6 +3386,10 @@ function v123StatusPass(value) {
   return ['pass', 'not_required', 'not_required_with_reason', 'non_load_bearing'].includes(v123StatusOf(value));
 }
 
+function v123OptionalStatusPass(value) {
+  return value == null || v123StatusPass(value);
+}
+
 function v123CurrentHeadEvidenceReady(report = {}) {
   const head = process.env.CODEX_PR_HEAD_SHA || process.env.GITHUB_SHA || '';
   const evidence = report.evidenceCapsule?.currentHeadEvidence || {};
@@ -3397,10 +3401,44 @@ function v123CurrentHeadEvidenceReady(report = {}) {
     && evidence.artifactId !== 'needs_run';
 }
 
+export function parseV123CurrentHeadOwnerDecisionConfirmation(input = {}) {
+  const head = input.headSha || process.env.CODEX_PR_HEAD_SHA || process.env.GITHUB_SHA || '';
+  const prNumber = input.prNumber || process.env.CODEX_PR_NUMBER || '';
+  const text = String(input.text || '');
+  const escapedHead = String(head).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const escapedPr = String(prNumber).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const headPattern = new RegExp(`\\bI confirm PR #${escapedPr} current head ${escapedHead} for merge consideration\\.`, 'i');
+  const ownerDecisionPattern = /\bOwner decision:\s*owner_merge_after_same_head_pass\./i;
+  const staleHeadPattern = /\bI confirm PR #[0-9]+ current head ([a-f0-9]{40}) for merge consideration\./ig;
+  const heads = [];
+  let match;
+  while ((match = staleHeadPattern.exec(text)) !== null) heads.push(match[1].toLowerCase());
+  const currentHead = String(head).toLowerCase();
+  const hasCurrentHead = Boolean(head && prNumber && headPattern.test(text));
+  const hasOwnerDecision = ownerDecisionPattern.test(text);
+  const hasStaleHead = heads.some((candidate) => candidate !== currentHead);
+  return {
+    status: hasCurrentHead && hasOwnerDecision && !hasStaleHead ? 'pass' : 'fail',
+    headSha: head || 'unknown',
+    prNumber: prNumber || 'unknown',
+    hasCurrentHead,
+    hasOwnerDecision,
+    staleHeadCount: heads.filter((candidate) => candidate !== currentHead).length,
+    ownerDecision: hasOwnerDecision ? 'owner_merge_after_same_head_pass' : 'missing',
+    safeSummaryOnly: true,
+  };
+}
+
 function v123CurrentHeadOwnerDecisionReady(report = {}) {
-  return v123StatusPass(report.humanConfirmationObjectStatus)
+  const bodyConfirmation = parseV123CurrentHeadOwnerDecisionConfirmation({
+    text: readPrBody(process.env).body || '',
+    headSha: process.env.CODEX_PR_HEAD_SHA || process.env.GITHUB_SHA || '',
+    prNumber: process.env.CODEX_PR_NUMBER || '',
+  });
+  const structuredReady = v123StatusPass(report.humanConfirmationObjectStatus)
     && report.humanConfirmationObjectStatus?.manualConfirmation?.headSha !== 'stale'
     && (report.humanConfirmationObjectStatus?.headSha || process.env.CODEX_PR_HEAD_SHA || process.env.GITHUB_SHA || '') !== 'stale';
+  return structuredReady || bodyConfirmation.status === 'pass';
 }
 
 function reconcileV123DecisionClosure(report = {}) {
@@ -3419,6 +3457,10 @@ function reconcileV123DecisionClosure(report = {}) {
     report.ownerDecisionBriefStatus,
   ];
   if (!requiredStatuses.every(v123StatusPass)) return;
+  if (![
+    report.observedSkillEvidenceStatus,
+    report.decisionClosureStatus,
+  ].every(v123OptionalStatusPass)) return;
 
   const evidenceCapsule = buildEvidenceCapsule({
     terminalAction: 'merge_current_pr',
