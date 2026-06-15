@@ -3441,13 +3441,21 @@ function v123CurrentHeadOwnerDecisionReady(report = {}) {
   return structuredReady || bodyConfirmation.status === 'pass';
 }
 
+function v123SafeOutputStatus(report = {}) {
+  return report.safeOutputScanStatus
+    || report.targetSafeSummaryRequiredClosureStatus
+    || report.safeFailureReaderStatus
+    || report.safeArtifactClassifierStatus
+    || null;
+}
+
 export function v123TargetDecisionClosureNeedsLateReconcile(report = {}) {
   return HARNESS_VERSION === '1.2.3'
     && report.status === 'pass'
     && v123CurrentHeadEvidenceReady(report)
     && v123CurrentHeadOwnerDecisionReady(report)
     && v123StatusPass(report.targetQualityScoreStatus)
-    && v123StatusPass(report.safeOutputScanStatus)
+    && v123StatusPass(v123SafeOutputStatus(report))
     && v123StatusPass(report.testCoverageEvidenceStatus)
     && v123StatusPass(report.productVerificationEvidenceStatus)
     && v123StatusPass(report.finalDecisionPointerStatus)
