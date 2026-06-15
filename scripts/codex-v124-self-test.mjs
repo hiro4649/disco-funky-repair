@@ -15,7 +15,11 @@ import {
 } from './codex-orchestration-capsule.mjs';
 import { buildWorkerProofCapsule, validateWorkerProofCapsule } from './codex-worker-proof-capsule.mjs';
 import { buildOwnerDecisionBrief, validateOwnerDecisionBrief } from './codex-owner-decision-brief.mjs';
-import { parseV123CurrentHeadOwnerDecisionConfirmation, reconcileV123DecisionClosure } from './codex-local-quality-gate.mjs';
+import {
+  parseV123CurrentHeadOwnerDecisionConfirmation,
+  reconcileV123DecisionClosure,
+  synchronizeV124CanonicalFinalDecisionSurfaces,
+} from './codex-local-quality-gate.mjs';
 
 function test(name, fn) {
   try {
@@ -246,6 +250,59 @@ const finalClosureAliasCases = [
     const source = fs.readFileSync('scripts/codex-local-quality-gate.mjs', 'utf8');
     return /CODEX_OWNER_MERGE_CONFIRMED === '1'/.test(source)
       && /return envConfirmed \|\| structuredReady \|\| bodyConfirmation\.status === 'pass';/.test(source);
+  }],
+  ['v124_final_decision_artifact_uses_reconciled_final_decision', () => {
+    const report = {
+      finalDecision: {
+        finalDecisionVersion: 1,
+        executionMode: 'target_pr',
+        terminalAction: 'merge_current_pr',
+        decision: 'allowed',
+        mergeAllowed: true,
+        primaryClass: 'none',
+        safeNextAction: 'merge_current_pr',
+        exitCode: 0,
+        artifactName: 'codex-final-decision.safe.json',
+        safeSummaryOnly: true,
+      },
+      ownerDecisionBrief: { decisionReady: true },
+      decisionCapsule: { terminalAction: 'create_pr_only', mergeAllowed: false, safeNextAction: 'owner_merge_decision_after_same_head_remote_pass' },
+      top3Blockers: { primary_blocker: 'owner_decision_required', safe_next_action: 'owner_merge_decision_after_same_head_remote_pass', merge_allowed: false },
+    };
+    synchronizeV124CanonicalFinalDecisionSurfaces(report);
+    return report.finalDecision.terminalAction === 'merge_current_pr'
+      && report.finalDecision.mergeAllowed === true
+      && report.finalDecision.ownerDecisionReady === true
+      && report.decisionCapsule.terminalAction === 'merge_current_pr'
+      && report.top3Blockers.safe_next_action === 'merge_current_pr';
+  }],
+  ['v124_final_decision_artifact_matches_safe_summary_merge_allowed', () => {
+    const source = fs.readFileSync('scripts/codex-local-quality-gate.mjs', 'utf8');
+    return /finalDecision:\s*report\.finalDecision/.test(source)
+      && /synchronizeV124CanonicalFinalDecisionSurfaces\(report\);/.test(source);
+  }],
+  ['v124_final_decision_artifact_not_stale_create_pr_only_after_reconcile', () => {
+    const workflow = fs.readFileSync('.github/workflows/quality-gate.yml', 'utf8');
+    return /writeSafe\(file, value, options = \{\}\)/.test(workflow)
+      && /options\.overwrite !== true/.test(workflow)
+      && /writeSafe\('codex-final-decision\.safe\.json', report\.finalDecision \|\| summary\.finalDecision, \{ overwrite: Boolean\(report\.finalDecision\) \}\);/.test(workflow);
+  }],
+  ['v124_decision_capsule_matches_reconciled_final_decision', () => {
+    const report = {
+      finalDecision: {
+        terminalAction: 'merge_current_pr',
+        decision: 'allowed',
+        mergeAllowed: true,
+        primaryClass: 'none',
+        safeNextAction: 'merge_current_pr',
+        safeSummaryOnly: true,
+      },
+      decisionCapsule: { terminalAction: 'create_pr_only', mergeAllowed: false },
+    };
+    synchronizeV124CanonicalFinalDecisionSurfaces(report);
+    return report.decisionCapsule.terminalAction === report.finalDecision.terminalAction
+      && report.decisionCapsule.mergeAllowed === report.finalDecision.mergeAllowed
+      && report.decisionCapsule.safeNextAction === report.finalDecision.safeNextAction;
   }],
 ];
 

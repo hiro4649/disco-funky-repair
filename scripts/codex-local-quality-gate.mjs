@@ -281,7 +281,42 @@ function buildV117ArtifactEntries(head) {
   });
 }
 
+export function synchronizeV124CanonicalFinalDecisionSurfaces(report = {}) {
+  if (!['1.2.4'].includes(HARNESS_VERSION)) return report;
+  const finalDecision = report.finalDecision;
+  if (!finalDecision || finalDecision.safeSummaryOnly !== true) return report;
+
+  const terminalAction = finalDecision.terminalAction || 'create_pr_only';
+  const safeNextAction = finalDecision.safeNextAction || 'owner_decision_or_state_delta';
+  const mergeAllowed = finalDecision.mergeAllowed === true;
+  const primaryClass = finalDecision.primaryClass || 'none';
+
+  report.finalDecision = {
+    ...finalDecision,
+    ownerDecisionReady: report.ownerDecisionBrief?.decisionReady === true || mergeAllowed,
+    safeSummaryOnly: true,
+  };
+  report.decisionCapsule = {
+    ...(report.decisionCapsule || {}),
+    decision: finalDecision.decision || report.decisionCapsule?.decision || (mergeAllowed ? 'allowed' : 'blocked'),
+    primaryClass,
+    terminalAction,
+    safeNextAction,
+    mergeAllowed,
+    safeSummaryOnly: true,
+  };
+  report.top3Blockers = {
+    ...(report.top3Blockers || {}),
+    primary_blocker: mergeAllowed ? 'none' : (report.top3Blockers?.primary_blocker || primaryClass || 'none'),
+    safe_next_action: safeNextAction,
+    merge_allowed: mergeAllowed,
+    safeSummaryOnly: true,
+  };
+  return report;
+}
+
 function writeV117LoadBearingArtifacts(report = {}) {
+  synchronizeV124CanonicalFinalDecisionSurfaces(report);
   const head = report.decisionCapsule?.head || report.decisionCapsule?.headSha || process.env.CODEX_PR_HEAD_SHA || process.env.GITHUB_SHA || 'unknown';
   const decisionCapsule = {
     ...(report.decisionCapsule || {}),
@@ -319,6 +354,7 @@ function writeV117LoadBearingArtifacts(report = {}) {
     v122SelfTestStatus: report.v122SelfTestStatus,
     v123SelfTestStatus: report.v123SelfTestStatus,
     v124SelfTestStatus: report.v124SelfTestStatus,
+    finalDecision: report.finalDecision,
     finalDecisionStatus: report.finalDecisionStatus,
     decisionCapsuleStatus: report.decisionCapsuleStatus,
     evidenceCapsuleStatus: report.evidenceCapsuleStatus,

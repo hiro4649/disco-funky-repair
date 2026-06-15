@@ -245,13 +245,14 @@ jobs:
               return null;
             }
           }
-          function writeSafe(file, value) {
-            if (!value || fs.existsSync(file)) return;
+          function writeSafe(file, value, options = {}) {
+            if (!value) return;
+            if (fs.existsSync(file) && options.overwrite !== true) return;
             fs.writeFileSync(file, `${JSON.stringify(value, null, 2)}\n`);
           }
           const report = readJson(reportPath) || {};
           const summary = readJson('codex-quality-gate-safe-summary.json') || {};
-          writeSafe('codex-final-decision.safe.json', report.finalDecision || summary.finalDecision);
+          writeSafe('codex-final-decision.safe.json', report.finalDecision || summary.finalDecision, { overwrite: Boolean(report.finalDecision) });
           writeSafe('codex-evidence-capsule.safe.json', report.evidenceCapsule || summary.evidenceCapsule);
           writeSafe('codex-orchestration-capsule.safe.json', report.orchestrationCapsule || summary.orchestrationCapsule);
           writeSafe('codex-worker-proof.safe.json', report.workerProofCapsule || summary.workerProofCapsule);
