@@ -3441,6 +3441,22 @@ function v123CurrentHeadOwnerDecisionReady(report = {}) {
   return structuredReady || bodyConfirmation.status === 'pass';
 }
 
+export function v123TargetDecisionClosureNeedsLateReconcile(report = {}) {
+  return HARNESS_VERSION === '1.2.3'
+    && report.status === 'pass'
+    && v123CurrentHeadEvidenceReady(report)
+    && v123CurrentHeadOwnerDecisionReady(report)
+    && v123StatusPass(report.targetQualityScoreStatus)
+    && v123StatusPass(report.safeOutputScanStatus)
+    && v123StatusPass(report.testCoverageEvidenceStatus)
+    && v123StatusPass(report.productVerificationEvidenceStatus)
+    && v123StatusPass(report.finalDecisionPointerStatus)
+    && v123StatusPass(report.permissionGrantStatus)
+    && v123StatusPass(report.ownerDecisionBriefStatus)
+    && v123OptionalStatusPass(report.observedSkillEvidenceStatus)
+    && v123OptionalStatusPass(report.decisionClosureStatus);
+}
+
 function reconcileV123DecisionClosure(report = {}) {
   if (HARNESS_VERSION !== '1.2.3') return;
   if (process.env.CODEX_EVENT_NAME && process.env.CODEX_EVENT_NAME !== 'pull_request') return;
@@ -3534,6 +3550,12 @@ function reconcileV123DecisionClosure(report = {}) {
   report.localRepoReadinessStatus = orchestration.localRepoReadinessStatus;
   report.workerContractStatus = orchestration.workerContractStatus;
   report.finalDecisionPointerStatus = buildFinalDecisionPointerStatus(report);
+}
+
+function reconcileV123TargetDecisionClosure(report = {}) {
+  if (process.env.CODEX_EVENT_NAME && process.env.CODEX_EVENT_NAME !== 'pull_request') return;
+  if (!v123TargetDecisionClosureNeedsLateReconcile(report)) return;
+  reconcileV123DecisionClosure(report);
 }
 
 function runV118Gates(report, gateEnv) {
@@ -12472,6 +12494,8 @@ async function runTargetHarnessGate() {
 
 
   report.status = failures.length ? 'fail' : (warnings.length ? 'manual_confirmation_required' : 'pass');
+
+  reconcileV123TargetDecisionClosure(report);
 
 
 

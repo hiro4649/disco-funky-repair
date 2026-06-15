@@ -21,7 +21,10 @@ import { buildWorkerProofCapsule, validateWorkerProofCapsule } from './codex-wor
 import { buildOwnerDecisionBrief, validateOwnerDecisionBrief } from './codex-owner-decision-brief.mjs';
 import { reconcileFinalSafeDecision } from './codex-final-decision-kernel.mjs';
 import { buildEvidenceCapsule } from './codex-evidence-capsule.mjs';
-import { parseV123CurrentHeadOwnerDecisionConfirmation } from './codex-local-quality-gate.mjs';
+import {
+  parseV123CurrentHeadOwnerDecisionConfirmation,
+  v123TargetDecisionClosureNeedsLateReconcile,
+} from './codex-local-quality-gate.mjs';
 import { buildReport as buildTestCoverageEvidenceReport } from './codex-test-coverage-evidence-gate.mjs';
 
 function test(name, fn) {
@@ -146,6 +149,22 @@ function mergeReadyFinalDecision(overrides = {}) {
   });
 }
 
+function withEnv(overrides, fn) {
+  const previous = {};
+  for (const key of Object.keys(overrides)) {
+    previous[key] = process.env[key];
+    process.env[key] = overrides[key];
+  }
+  try {
+    return fn();
+  } finally {
+    for (const key of Object.keys(overrides)) {
+      if (previous[key] === undefined) delete process.env[key];
+      else process.env[key] = previous[key];
+    }
+  }
+}
+
 const finalDecisionClosureRepairCases = [
   ['v123_owner_decision_brief_sets_decision_ready_after_current_head_confirmation', () => validateOwnerDecisionBrief(buildOwnerDecisionBrief({ decisionReady: true })).decisionReady === true],
   ['v123_owner_decision_brief_rejects_stale_head_confirmation', () => parseV123CurrentHeadOwnerDecisionConfirmation({
@@ -164,6 +183,28 @@ const finalDecisionClosureRepairCases = [
   ['v123_terminal_action_not_create_pr_only_after_same_head_owner_decision_and_all_gates_pass', () => mergeReadyFinalDecision().terminalAction !== 'create_pr_only'],
   ['v123_safe_next_action_not_owner_decision_after_current_head_owner_decision_consumed', () => mergeReadyFinalDecision().safeNextAction !== 'owner_merge_decision_after_same_head_remote_pass'],
   ['v123_safe_next_action_not_rerun_same_head_when_current_run_already_same_head', () => mergeReadyFinalDecision().safeNextAction !== 'run_same_head_remote_quality_gate'],
+  ['v123_target_mode_late_reconcile_accepts_current_head_owner_confirmation', () => withEnv({
+    CODEX_EVENT_NAME: 'pull_request',
+    CODEX_PR_NUMBER: '324',
+    CODEX_PR_HEAD_SHA: 'deb12dc4cfa0a16dfe4894caad8c273015f13d8a',
+    CODEX_PR_BODY: 'I confirm PR #324 current head deb12dc4cfa0a16dfe4894caad8c273015f13d8a for merge consideration.\nOwner decision: owner_merge_after_same_head_pass.',
+  }, () => v123TargetDecisionClosureNeedsLateReconcile({
+    status: 'pass',
+    evidenceCapsule: {
+      currentHeadEvidence: {
+        headSha: 'deb12dc4cfa0a16dfe4894caad8c273015f13d8a',
+        qualityGateRunId: '27523091297',
+        artifactId: '27523091297-1',
+      },
+    },
+    targetQualityScoreStatus: { status: 'pass' },
+    safeOutputScanStatus: { status: 'pass' },
+    testCoverageEvidenceStatus: { status: 'pass' },
+    productVerificationEvidenceStatus: { status: 'pass' },
+    finalDecisionPointerStatus: { status: 'pass' },
+    permissionGrantStatus: { status: 'pass' },
+    ownerDecisionBriefStatus: { status: 'pass' },
+  }) === true)],
   ['v123_final_decision_ignores_stale_create_pr_only_surface_when_current_tuple_passes', () => mergeReadyFinalDecision({ terminalAction: 'merge_current_pr' }).mergeAllowed === true],
   ['v123_final_decision_requires_same_head', () => mergeReadyFinalDecision({ requiredChecks: { sameHead: false, allPass: true } }).mergeAllowed === false],
   ['v123_final_decision_requires_current_head_owner_decision', () => mergeReadyFinalDecision({ ownerMergeInstruction: false }).mergeAllowed === false],
