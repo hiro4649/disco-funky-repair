@@ -3393,12 +3393,17 @@ function v123OptionalStatusPass(value) {
 function v123CurrentHeadEvidenceReady(report = {}) {
   const head = process.env.CODEX_PR_HEAD_SHA || process.env.GITHUB_SHA || '';
   const evidence = report.evidenceCapsule?.currentHeadEvidence || {};
-  return Boolean(head)
+  const directEvidenceReady = Boolean(head)
     && evidence.headSha === head
     && evidence.qualityGateRunId
     && evidence.qualityGateRunId !== 'needs_run'
     && evidence.artifactId
     && evidence.artifactId !== 'needs_run';
+  if (directEvidenceReady) return true;
+  return Boolean(head)
+    && v123StatusPass(report.evidenceCapsuleStatus)
+    && (process.env.CODEX_QUALITY_GATE_RUN_ID || process.env.GITHUB_RUN_ID)
+    && (process.env.CODEX_SAFE_ARTIFACT_ID || process.env.GITHUB_RUN_ID);
 }
 
 export function parseV123CurrentHeadOwnerDecisionConfirmation(input = {}) {
