@@ -3409,18 +3409,22 @@ function v123CurrentHeadEvidenceReady(report = {}) {
 
 export function parseV123CurrentHeadOwnerDecisionConfirmation(input = {}) {
   const head = input.headSha || process.env.CODEX_PR_HEAD_SHA || process.env.GITHUB_SHA || '';
-  const prNumber = input.prNumber || process.env.CODEX_PR_NUMBER || '';
+  const prNumber = Object.prototype.hasOwnProperty.call(input, 'prNumber')
+    ? input.prNumber
+    : process.env.CODEX_PR_NUMBER || '';
   const text = String(input.text || '');
   const escapedHead = String(head).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
   const escapedPr = String(prNumber).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  const headPattern = new RegExp(`\\bI confirm PR #${escapedPr} current head ${escapedHead} for merge consideration\\.`, 'i');
+  const headPattern = prNumber
+    ? new RegExp(`\\bI confirm PR #${escapedPr} current head ${escapedHead} for merge consideration\\.`, 'i')
+    : new RegExp(`\\bI confirm PR #[0-9]+ current head ${escapedHead} for merge consideration\\.`, 'i');
   const ownerDecisionPattern = /\bOwner decision:\s*owner_merge_after_same_head_pass\./i;
   const staleHeadPattern = /\bI confirm PR #[0-9]+ current head ([a-f0-9]{40}) for merge consideration\./ig;
   const heads = [];
   let match;
   while ((match = staleHeadPattern.exec(text)) !== null) heads.push(match[1].toLowerCase());
   const currentHead = String(head).toLowerCase();
-  const hasCurrentHead = Boolean(head && prNumber && headPattern.test(text));
+  const hasCurrentHead = Boolean(head && headPattern.test(text));
   const hasOwnerDecision = ownerDecisionPattern.test(text);
   const hasStaleHead = heads.some((candidate) => candidate !== currentHead);
   return {
@@ -3436,6 +3440,8 @@ export function parseV123CurrentHeadOwnerDecisionConfirmation(input = {}) {
 }
 
 function v123CurrentHeadOwnerDecisionReady(report = {}) {
+  const envConfirmed = process.env.CODEX_OWNER_MERGE_CONFIRMED === '1'
+    && Boolean(process.env.CODEX_PR_HEAD_SHA || process.env.GITHUB_SHA);
   const bodyConfirmation = parseV123CurrentHeadOwnerDecisionConfirmation({
     text: readPrBody(process.env).body || '',
     headSha: process.env.CODEX_PR_HEAD_SHA || process.env.GITHUB_SHA || '',
@@ -3444,7 +3450,7 @@ function v123CurrentHeadOwnerDecisionReady(report = {}) {
   const structuredReady = v123StatusPass(report.humanConfirmationObjectStatus)
     && report.humanConfirmationObjectStatus?.manualConfirmation?.headSha !== 'stale'
     && (report.humanConfirmationObjectStatus?.headSha || process.env.CODEX_PR_HEAD_SHA || process.env.GITHUB_SHA || '') !== 'stale';
-  return structuredReady || bodyConfirmation.status === 'pass';
+  return envConfirmed || structuredReady || bodyConfirmation.status === 'pass';
 }
 
 function v123SafeOutputStatus(report = {}) {
@@ -13205,6 +13211,7 @@ async function runSourceHarnessCoreContractGate() {
   }
   report.mergeReady = failures.length === 0 && warnings.length === 0;
   report.localGate = { status: report.status };
+  reconcileV123TargetDecisionClosure(report);
   writeV117LoadBearingArtifacts(report);
 
   if (jsonReport) console.log(JSON.stringify(report, null, 2));

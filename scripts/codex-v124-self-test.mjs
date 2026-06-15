@@ -15,7 +15,7 @@ import {
 } from './codex-orchestration-capsule.mjs';
 import { buildWorkerProofCapsule, validateWorkerProofCapsule } from './codex-worker-proof-capsule.mjs';
 import { buildOwnerDecisionBrief, validateOwnerDecisionBrief } from './codex-owner-decision-brief.mjs';
-import { reconcileV123DecisionClosure } from './codex-local-quality-gate.mjs';
+import { parseV123CurrentHeadOwnerDecisionConfirmation, reconcileV123DecisionClosure } from './codex-local-quality-gate.mjs';
 
 function test(name, fn) {
   try {
@@ -212,6 +212,41 @@ const finalClosureAliasCases = [
       && report.ownerDecisionBrief?.decisionReady === true
       && report.ownerDecisionBrief?.safeNextAction === 'merge_current_pr';
   })],
+  ['v124_final_closure_reconciles_before_final_artifact_write', () => {
+    const source = fs.readFileSync('scripts/codex-local-quality-gate.mjs', 'utf8');
+    return /report\.localGate\s*=\s*\{\s*status:\s*report\.status\s*\};\s*reconcileV123TargetDecisionClosure\(report\);\s*writeV117LoadBearingArtifacts\(report\);/m.test(source);
+  }],
+  ['v124_quality_gate_passes_pr_body_to_final_closure', () => {
+    const workflow = fs.readFileSync('.github/workflows/quality-gate.yml', 'utf8');
+    return /CODEX_PR_BODY:\s*\$\{\{\s*github\.event\.pull_request\.body\s*\|\|\s*''\s*\}\}/.test(workflow)
+      && /current_pr_body="\$\(GH_TOKEN="\$\{GITHUB_TOKEN:-\}" gh pr view "\$\{CODEX_PR_NUMBER:-\}" --repo "\$\{CODEX_REPOSITORY:-\}" --json body -q \.body 2>\/dev\/null \|\| true\)"/.test(workflow)
+      && /export CODEX_PR_BODY="\$current_pr_body"/.test(workflow)
+      && /export CODEX_OWNER_MERGE_CONFIRMED=1/.test(workflow);
+  }],
+  ['v124_pr_body_reader_prefers_live_current_body_before_event_payload', () => {
+    const source = fs.readFileSync('scripts/codex-production-readiness-gate.mjs', 'utf8');
+    return /function readLivePrBody\(env = process\.env\)/.test(source)
+      && /source: 'GITHUB_CURRENT_PR_BODY'/.test(source)
+      && /const token = env\.GH_TOKEN \|\| env\.GITHUB_TOKEN/.test(source)
+      && /GH_TOKEN:\s*token/.test(source)
+      && /https:\/\/api\.github\.com\/repos\/\$\{repository\}\/pulls\/\$\{prNumber\}/.test(source)
+      && source.indexOf('const liveBody = readLivePrBody(env);') < source.indexOf('if (env.CODEX_PR_BODY && env.CODEX_PR_BODY.trim())')
+      && source.indexOf('const liveBody = readLivePrBody(env);') < source.indexOf('if (env.GITHUB_EVENT_PATH)');
+  }],
+  ['v124_current_head_owner_confirmation_tolerates_missing_pr_number_env', () => {
+    const head = '79c2d714720c34daf44b72efafe93400f5e2ca05';
+    const result = parseV123CurrentHeadOwnerDecisionConfirmation({
+      text: `I confirm PR #338 current head ${head} for merge consideration.\nOwner decision: owner_merge_after_same_head_pass.`,
+      headSha: head,
+      prNumber: '',
+    });
+    return result.status === 'pass' && result.hasCurrentHead === true && result.hasOwnerDecision === true;
+  }],
+  ['v124_final_closure_accepts_safe_owner_confirmation_env', () => {
+    const source = fs.readFileSync('scripts/codex-local-quality-gate.mjs', 'utf8');
+    return /CODEX_OWNER_MERGE_CONFIRMED === '1'/.test(source)
+      && /return envConfirmed \|\| structuredReady \|\| bodyConfirmation\.status === 'pass';/.test(source);
+  }],
 ];
 
 const cases = [

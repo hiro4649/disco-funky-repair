@@ -192,6 +192,7 @@ jobs:
           CODEX_PR_NUMBER: ${{ github.event.pull_request.number || '' }}
           CODEX_PR_HEAD_SHA: ${{ github.event.pull_request.head.sha || '' }}
           CODEX_PR_BASE_SHA: ${{ github.event.pull_request.base.sha || '' }}
+          CODEX_PR_BODY: ${{ github.event.pull_request.body || '' }}
           CODEX_REPOSITORY: ${{ github.repository }}
           CODEX_LIFEBOAT_PATH: ${{ runner.temp }}/codex-minimal-safe-failure.json
           CODEX_EXECUTION_MODE: target_pr
@@ -202,6 +203,14 @@ jobs:
         run: |
           set -euo pipefail
           if [ "${CODEX_EVENT_NAME:-}" = "pull_request" ]; then
+            current_pr_body="$(GH_TOKEN="${GITHUB_TOKEN:-}" gh pr view "${CODEX_PR_NUMBER:-}" --repo "${CODEX_REPOSITORY:-}" --json body -q .body 2>/dev/null || true)"
+            if [ -n "$current_pr_body" ]; then
+              export CODEX_PR_BODY="$current_pr_body"
+              if printf '%s' "$current_pr_body" | grep -F "I confirm PR #${CODEX_PR_NUMBER:-} current head ${CODEX_PR_HEAD_SHA:-} for merge consideration." >/dev/null \
+                && printf '%s' "$current_pr_body" | grep -F "Owner decision: owner_merge_after_same_head_pass." >/dev/null; then
+                export CODEX_OWNER_MERGE_CONFIRMED=1
+              fi
+            fi
             export CODEX_EVIDENCE_PACK_STRICT=1
             export CODEX_HUMAN_CONFIRMATION_STRICT=1
           else
