@@ -3465,12 +3465,18 @@ function v123ProductEvidenceStatus(report = {}) {
     || null;
 }
 
+function v123TargetQualityStatus(report = {}) {
+  return report.targetQualityScoreStatus
+    || report.qualityScoreStatus
+    || null;
+}
+
 export function v123TargetDecisionClosureNeedsLateReconcile(report = {}) {
   return HARNESS_VERSION === '1.2.3'
     && report.status === 'pass'
     && v123CurrentHeadEvidenceReady(report)
     && v123CurrentHeadOwnerDecisionReady(report)
-    && v123StatusPass(report.targetQualityScoreStatus)
+    && v123StatusPass(v123TargetQualityStatus(report))
     && v123StatusPass(v123SafeOutputStatus(report))
     && v123StatusPass(v123TestCoverageStatus(report))
     && v123StatusPass(v123ProductEvidenceStatus(report))
