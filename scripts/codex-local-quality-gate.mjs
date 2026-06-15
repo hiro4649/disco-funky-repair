@@ -3519,6 +3519,12 @@ function v123TargetQualityStatus(report = {}) {
     || null;
 }
 
+function v123FinalDecisionPointerStatus(report = {}) {
+  return report.finalDecisionPointerStatus
+    || report.finalDecisionStatus
+    || null;
+}
+
 export function v123TargetDecisionClosureNeedsLateReconcile(report = {}) {
   return ['1.2.3', '1.2.4'].includes(HARNESS_VERSION)
     && report.status === 'pass'
@@ -3528,7 +3534,7 @@ export function v123TargetDecisionClosureNeedsLateReconcile(report = {}) {
     && v123StatusPass(v123SafeOutputStatus(report))
     && v123StatusPass(v123TestCoverageStatus(report))
     && v123StatusPass(v123ProductEvidenceStatus(report))
-    && v123StatusPass(report.finalDecisionPointerStatus)
+    && v123StatusPass(v123FinalDecisionPointerStatus(report))
     && v123StatusPass(report.permissionGrantStatus)
     && v123StatusPass(report.ownerDecisionBriefStatus)
     && v123OptionalStatusPass(report.observedSkillEvidenceStatus)
@@ -3546,7 +3552,7 @@ export function reconcileV123DecisionClosure(report = {}) {
     v123SafeOutputStatus(report),
     v123TestCoverageStatus(report),
     v123ProductEvidenceStatus(report),
-    report.finalDecisionPointerStatus,
+    v123FinalDecisionPointerStatus(report),
     report.permissionGrantStatus,
     report.ownerDecisionBriefStatus,
   ];

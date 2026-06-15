@@ -171,6 +171,7 @@ const previousEnv = {
   CODEX_PR_HEAD_SHA: process.env.CODEX_PR_HEAD_SHA,
   CODEX_PR_NUMBER: process.env.CODEX_PR_NUMBER,
   CODEX_PR_BODY: process.env.CODEX_PR_BODY,
+  CODEX_OWNER_MERGE_CONFIRMED: process.env.CODEX_OWNER_MERGE_CONFIRMED,
   CODEX_QUALITY_GATE_RUN_ID: process.env.CODEX_QUALITY_GATE_RUN_ID,
   CODEX_SAFE_ARTIFACT_ID: process.env.CODEX_SAFE_ARTIFACT_ID,
 };
@@ -276,6 +277,30 @@ const finalClosureAliasCases = [
       && report.decisionCapsule.terminalAction === 'merge_current_pr'
       && report.top3Blockers.safe_next_action === 'merge_current_pr';
   }],
+  ['v124_final_decision_reconcile_accepts_final_decision_status_alias', () => withEnv({
+    CODEX_EVENT_NAME: 'pull_request',
+    CODEX_PR_HEAD_SHA: '694c5b8ebeaf408702d37460658fa5c40d3b1b5a',
+    CODEX_PR_NUMBER: '338',
+    CODEX_QUALITY_GATE_RUN_ID: '27583157030',
+    CODEX_SAFE_ARTIFACT_ID: '27583157030-1',
+    CODEX_OWNER_MERGE_CONFIRMED: '1',
+  }, () => {
+    const report = {
+      status: 'pass',
+      evidenceCapsuleStatus: { status: 'pass' },
+      qualityScoreStatus: { status: 'pass' },
+      targetSafeSummaryRequiredClosureStatus: { status: 'pass' },
+      prEvidenceRendererStatus: { status: 'pass' },
+      workflowProductVerificationInvariantStatus: { status: 'pass' },
+      finalDecisionStatus: { status: 'pass' },
+      permissionGrantStatus: { status: 'pass' },
+      ownerDecisionBriefStatus: { status: 'pass' },
+    };
+    reconcileV123DecisionClosure(report);
+    return report.finalDecision?.terminalAction === 'merge_current_pr'
+      && report.finalDecision?.mergeAllowed === true
+      && report.finalDecisionPointerStatus?.status === 'pass';
+  })],
   ['v124_final_decision_artifact_matches_safe_summary_merge_allowed', () => {
     const source = fs.readFileSync('scripts/codex-local-quality-gate.mjs', 'utf8');
     return /finalDecision:\s*report\.finalDecision/.test(source)
