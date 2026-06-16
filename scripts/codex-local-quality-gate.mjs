@@ -282,7 +282,7 @@ function buildV117ArtifactEntries(head) {
 }
 
 export function synchronizeV124CanonicalFinalDecisionSurfaces(report = {}) {
-  if (!['1.2.4'].includes(HARNESS_VERSION)) return report;
+  if (!['1.2.4', '1.2.5'].includes(HARNESS_VERSION)) return report;
   const finalDecision = report.finalDecision;
   if (!finalDecision || finalDecision.safeSummaryOnly !== true) return report;
 
