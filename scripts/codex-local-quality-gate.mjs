@@ -6719,23 +6719,15 @@ function computeTargetQualityScoreStatus(report) {
 
 
 
-    if (HARNESS_VERSION === '1.1.1' || HARNESS_VERSION === '1.1.2' || HARNESS_VERSION === '1.1.3') {
+    compatibility = classifyTargetModeCompatibilityStatus(key, report[key], report);
 
 
 
-      compatibility = classifyTargetModeCompatibilityStatus(key, report[key], report);
+    if (['absorbed_by_v111', 'advisory_legacy', 'not_applicable_for_lane', 'not_required_for_target_mode', 'missing_nonblocking'].includes(compatibility.classification)) {
 
 
 
-      if (['absorbed_by_v111', 'advisory_legacy', 'not_applicable_for_lane', 'not_required_for_target_mode', 'missing_nonblocking'].includes(compatibility.classification)) {
-
-
-
-        effectiveStatus = compatibility.effectiveStatus;
-
-
-
-      }
+      effectiveStatus = compatibility.effectiveStatus;
 
 
 
