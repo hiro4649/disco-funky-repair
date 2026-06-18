@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import fs from 'fs';
 import path from 'path';
 import {
@@ -57,6 +58,8 @@ const build = (overrides: Partial<BuildTierUpdateActualSafeRowExportSafeSummaryJ
   })
 );
 
+const sha256Hex = (value: string) => createHash('sha256').update(value, 'utf8').digest('hex');
+
 describe('tierUpdateActualSafeRowExportSafeSummaryJsonlFixtureInMemoryBuilder', () => {
   it('ready builds synthetic in-memory rows', () => {
     const result = build();
@@ -87,6 +90,37 @@ describe('tierUpdateActualSafeRowExportSafeSummaryJsonlFixtureInMemoryBuilder', 
       expect(row.source_head_sha).toBe(sourceHeadSha);
       expect(row.source_hash).toMatch(/^sha256:[a-f0-9]{64}$/);
     }
+  });
+
+  it('uses real SHA-256 digest semantics for source_hash', () => {
+    const result = build();
+    const expectedDigest = sha256Hex('fixture-build-safe-1:fixture:0');
+
+    expect(sha256Hex('abc')).toBe('ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad');
+    expect(result.rows[0].source_hash).toBe(`sha256:${expectedDigest}`);
+    expect(result.rows[0].source_hash).toMatch(/^sha256:[a-f0-9]{64}$/);
+  });
+
+  it('keeps source_hash deterministic without repeated chunk digest behavior', () => {
+    const first = build();
+    const second = build();
+    const digest = first.rows[0].source_hash.replace('sha256:', '');
+
+    expect(first.rows[0].source_hash).toBe(second.rows[0].source_hash);
+    expect(first.rows[0].source_hash).not.toBe(first.rows[1].source_hash);
+    expect(first.rows[0].source_hash).not.toBe(first.rows[2].source_hash);
+    expect(digest).not.toBe(digest.slice(0, 8).repeat(8));
+  });
+
+  it('does not expose source_hash seed inputs or unsafe labels', () => {
+    const result = build();
+
+    expect(result.rows[0].source_hash).not.toContain('fixture-build-safe-1');
+    expect(result.rows[0].source_hash).not.toContain('fixture');
+    expect(result.rows[0].source_hash).not.toContain(sourceHeadSha);
+    expect(result.rows[0].source_hash).not.toContain('path');
+    expect(result.rows[0].source_hash).not.toContain('endpoint');
+    expect(result.rows[0].source_hash).not.toContain('secret');
   });
 
   it('ready rows use safe evidence origin, readiness claim, and required safety flags', () => {
@@ -203,5 +237,16 @@ describe('tierUpdateActualSafeRowExportSafeSummaryJsonlFixtureInMemoryBuilder', 
     expect(source).not.toMatch(/from ['"]fs['"]|require\(['"]fs['"]\)/);
     expect(source).not.toMatch(/fetch\(|axios|http\.|https\./);
     expect(source).not.toMatch(/controller|route|trackingService|main\.ts/);
+  });
+
+  it('source file uses deterministic SHA-256 and no random or time behavior', () => {
+    const sourcePath = path.join(__dirname, '..', 'tierUpdateActualSafeRowExportSafeSummaryJsonlFixtureInMemoryBuilder.ts');
+    const source = fs.readFileSync(sourcePath, 'utf8');
+
+    expect(source).toMatch(/from ['"]node:crypto['"]/);
+    expect(source).toMatch(/createHash\(['"]sha256['"]\)/);
+    expect(source).toMatch(/update\(value, ['"]utf8['"]\)/);
+    expect(source).toMatch(/digest\(['"]hex['"]\)/);
+    expect(source).not.toMatch(/randomBytes|randomUUID|Date\.now|Math\.random/);
   });
 });

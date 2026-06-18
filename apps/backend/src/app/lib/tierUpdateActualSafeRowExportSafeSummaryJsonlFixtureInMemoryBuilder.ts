@@ -1,3 +1,5 @@
+import { createHash } from 'node:crypto';
+
 import {
   D8AO_CANONICAL_FIELD_ORDER,
   D8AO_EVIDENCE_ORIGIN_ALLOWLIST,
@@ -317,14 +319,8 @@ function schemaIsCanonical(schema: D8AOSchemaInput | null | undefined): boolean 
   return true;
 }
 
-function stableHex(seed: string): string {
-  let state = 0x811c9dc5;
-  for (const char of seed) {
-    state ^= char.charCodeAt(0);
-    state = Math.imul(state, 0x01000193) >>> 0;
-  }
-  const chunk = state.toString(16).padStart(8, '0');
-  return (chunk + chunk + chunk + chunk + chunk + chunk + chunk + chunk).slice(0, 64);
+function sha256Hex(value: string): string {
+  return createHash('sha256').update(value, 'utf8').digest('hex');
 }
 
 function buildRows(
@@ -345,7 +341,7 @@ function buildRows(
       schema_version: '1',
       audit_export_id: `audit-${fixtureSchemaId}`,
       source_head_sha: sourceHeadSha,
-      source_hash: `sha256:${stableHex(`${fixtureBuildId}:${entityType}:${index}`)}`,
+      source_hash: `sha256:${sha256Hex(`${fixtureBuildId}:${entityType}:${index}`)}`,
       exported_at: '2026-01-01T00:00:00.000Z',
       row_id: rowId,
       dataset_name: datasetName,
