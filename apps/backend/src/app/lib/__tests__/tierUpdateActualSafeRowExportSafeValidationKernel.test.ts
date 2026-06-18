@@ -9,10 +9,12 @@ import {
   normalizeAllowlistedReviewReasons,
   normalizeGenericBlockerPresence,
   readOwnDataProperty,
+  readDenseOwnDataArray,
   reduceForbiddenBooleanFlags,
   safeJsonByteLength,
   safePrimitiveSnapshot,
   inspectOwnProperty,
+  inspectPropertyPresence,
   strictOrderedPrimitiveArrayEqual,
   strictOrderedStringArrayEqual
 } from '../tierUpdateActualSafeRowExportSafeValidationKernel';
@@ -298,5 +300,85 @@ describe('tierUpdateActualSafeRowExportSafeValidationKernel', () => {
     expect(safeJsonByteLength(proxy)).toEqual({ ok: false, byteLength: 0 });
     expect(getterTouched).toBe(false);
     expect(toJsonTouched).toBe(false);
+  });
+
+  it('reads dense own data arrays without using input iteration hooks', () => {
+    const source = ['a', 'b'];
+    const result = readDenseOwnDataArray(source, {
+      maxLength: 2,
+      validateItem: (value): value is string => typeof value === 'string'
+    });
+
+    expect(result).toEqual({ ok: true, values: ['a', 'b'] });
+    if (result.ok) {
+      source[0] = 'changed';
+      expect(result.values).toEqual(['a', 'b']);
+    }
+    expect(readDenseOwnDataArray([], { minLength: 1, maxLength: 1, validateItem: (value): value is string => typeof value === 'string' })).toEqual({ ok: false, reason: 'length_invalid' });
+    expect(readDenseOwnDataArray(['a', 'b'], { maxLength: 1, validateItem: (value): value is string => typeof value === 'string' })).toEqual({ ok: false, reason: 'too_long' });
+    const sparse = new Array(1);
+    expect(readDenseOwnDataArray(sparse, { maxLength: 1, validateItem: (value): value is string => typeof value === 'string' })).toEqual({ ok: false, reason: 'sparse' });
+    expect(readDenseOwnDataArray([Symbol('x')], { maxLength: 1, validateItem: (value): value is string => typeof value === 'string' })).toEqual({ ok: false, reason: 'invalid_item' });
+  });
+
+  it('rejects array accessors and descriptor traps without executing raw getters', () => {
+    let touched = false;
+    const accessor = ['safe'];
+    Object.defineProperty(accessor, '0', {
+      enumerable: true,
+      get() {
+        touched = true;
+        return 'unsafe';
+      }
+    });
+    const proxy = new Proxy(['safe'], {
+      getOwnPropertyDescriptor() {
+        throw new Error('raw descriptor trap');
+      }
+    });
+
+    expect(readDenseOwnDataArray(accessor, { maxLength: 1, validateItem: (value): value is string => typeof value === 'string' })).toEqual({ ok: false, reason: 'accessor' });
+    expect(readDenseOwnDataArray(proxy, { maxLength: 1, validateItem: (value): value is string => typeof value === 'string' })).toEqual({ ok: false, reason: 'descriptor_error' });
+    expect(touched).toBe(false);
+  });
+
+  it('classifies property presence without executing accessors', () => {
+    let touched = false;
+    const record = Object.defineProperty({ data: 'safe' }, 'accessor', {
+      enumerable: true,
+      get() {
+        touched = true;
+        return 'unsafe';
+      }
+    });
+    const proxy = new Proxy({}, {
+      getOwnPropertyDescriptor() {
+        throw new Error('raw descriptor trap');
+      }
+    });
+
+    expect(inspectPropertyPresence(record, 'missing')).toBe('absent');
+    expect(inspectPropertyPresence(record, 'data')).toBe('data');
+    expect(inspectPropertyPresence(record, 'accessor')).toBe('accessor');
+    expect(inspectPropertyPresence(proxy, 'anything')).toBe('error');
+    expect(touched).toBe(false);
+  });
+
+  it('normalizers and strict comparators fail closed for proxy arrays', () => {
+    const proxy = new Proxy(['safe'], {
+      getOwnPropertyDescriptor() {
+        throw new Error('raw descriptor trap');
+      }
+    });
+    const blockers: string[] = [];
+    const reviewReasons: string[] = [];
+
+    normalizeGenericBlockerPresence(proxy, (blocker) => blockers.push(blocker));
+    normalizeAllowlistedReviewReasons(proxy, ['known'], (blocker) => blockers.push(blocker), (reason) => reviewReasons.push(reason));
+
+    expect(blockers).toEqual(['upstream_blockers_invalid', 'needs_review_reasons_invalid']);
+    expect(reviewReasons).toEqual([]);
+    expect(strictOrderedStringArrayEqual(proxy, ['safe'])).toBe(false);
+    expect(strictOrderedPrimitiveArrayEqual(proxy, ['safe'])).toBe(false);
   });
 });

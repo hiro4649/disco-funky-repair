@@ -4,6 +4,21 @@ export type OwnPropertyInspection =
   | { kind: 'data'; value: unknown }
   | { kind: 'accessor' }
   | { kind: 'error' };
+export type SafeOwnDataArrayResult<T> =
+  | { ok: true; values: T[] }
+  | {
+      ok: false;
+      reason:
+        | 'not_array'
+        | 'length_invalid'
+        | 'too_long'
+        | 'sparse'
+        | 'accessor'
+        | 'descriptor_error'
+        | 'invalid_item';
+    };
+
+export type PropertyPresenceInspection = 'absent' | 'data' | 'accessor' | 'error';
 
 type TraversalState = {
   visited: WeakSet<object>;
@@ -73,9 +88,46 @@ export function inspectOwnProperty(record: object, key: string): OwnPropertyInsp
   }
 }
 
+export function inspectPropertyPresence(record: object, key: string): PropertyPresenceInspection {
+  return inspectOwnProperty(record, key).kind;
+}
+
 export function hasOwnPropertySafely(record: object, key: string): boolean {
   const inspection = inspectOwnProperty(record, key);
   return inspection.kind === 'data' || inspection.kind === 'accessor';
+}
+
+export function readDenseOwnDataArray<T>(
+  value: unknown,
+  options: {
+    maxLength: number;
+    minLength?: number;
+    validateItem: (value: unknown, index: number) => value is T;
+  }
+): SafeOwnDataArrayResult<T> {
+  if (!Array.isArray(value)) return { ok: false, reason: 'not_array' };
+  const lengthInspection = inspectOwnProperty(value, 'length');
+  if (lengthInspection.kind === 'accessor') return { ok: false, reason: 'accessor' };
+  if (lengthInspection.kind === 'error') return { ok: false, reason: 'descriptor_error' };
+  if (lengthInspection.kind !== 'data'
+    || typeof lengthInspection.value !== 'number'
+    || !Number.isFinite(lengthInspection.value)
+    || !Number.isInteger(lengthInspection.value)
+    || lengthInspection.value < (options.minLength ?? 0)) {
+    return { ok: false, reason: 'length_invalid' };
+  }
+  if (lengthInspection.value > options.maxLength) return { ok: false, reason: 'too_long' };
+
+  const values: T[] = [];
+  for (let index = 0; index < lengthInspection.value; index += 1) {
+    const inspection = inspectOwnProperty(value, String(index));
+    if (inspection.kind === 'absent') return { ok: false, reason: 'sparse' };
+    if (inspection.kind === 'accessor') return { ok: false, reason: 'accessor' };
+    if (inspection.kind === 'error') return { ok: false, reason: 'descriptor_error' };
+    if (!options.validateItem(inspection.value, index)) return { ok: false, reason: 'invalid_item' };
+    values.push(inspection.value);
+  }
+  return { ok: true, values };
 }
 
 export function isSafeLowerToken(value: unknown, max = 128): value is string {
@@ -161,11 +213,15 @@ export function normalizeGenericBlockerPresence(
   invalidCode = 'upstream_blockers_invalid',
   presentCode = 'upstream_blocker_present'
 ): void {
-  if (!Array.isArray(value)) {
+  const array = readDenseOwnDataArray(value, {
+    maxLength: 128,
+    validateItem: (item): item is string => typeof item === 'string'
+  });
+  if (!array.ok) {
     addBlocker(invalidCode);
     return;
   }
-  if (value.length > 0) addBlocker(presentCode);
+  if (array.values.length > 0) addBlocker(presentCode);
 }
 
 export function normalizeAllowlistedReviewReasons(
@@ -176,21 +232,34 @@ export function normalizeAllowlistedReviewReasons(
   invalidCode = 'needs_review_reasons_invalid',
   redactedCode = 'upstream_review_reason_redacted'
 ): void {
-  if (!Array.isArray(value)) {
+  const array = readDenseOwnDataArray(value, {
+    maxLength: 128,
+    validateItem: (item): item is string => typeof item === 'string'
+  });
+  if (!array.ok) {
     addBlocker(invalidCode);
     return;
   }
   const allowed = allowlist instanceof Set ? allowlist : new Set(allowlist);
-  for (const reason of value) {
-    if (typeof reason === 'string' && allowed.has(reason)) addReviewReason(reason);
+  for (const reason of array.values) {
+    if (allowed.has(reason)) addReviewReason(reason);
     else addReviewReason(redactedCode);
   }
 }
 
 export function strictOrderedStringArrayEqual(actual: unknown, expected: readonly string[]): boolean {
-  return Array.isArray(actual)
-    && actual.length === expected.length
-    && actual.every((value, index) => typeof value === 'string' && value === expected[index]);
+  const array = readDenseOwnDataArray(actual, {
+    maxLength: expected.length,
+    validateItem: (item): item is string => typeof item === 'string'
+  });
+  if (!array.ok || array.values.length !== expected.length) return false;
+  for (let index = 0; index < expected.length; index += 1) {
+    if (array.values[index] !== expected[index]) return false;
+    for (let seenIndex = 0; seenIndex < index; seenIndex += 1) {
+      if (array.values[seenIndex] === array.values[index]) return false;
+    }
+  }
+  return true;
 }
 
 export function isNonEmptyTrimmedString(value: unknown, max?: number): value is string {
@@ -201,18 +270,24 @@ export function strictOrderedPrimitiveArrayEqual(
   actual: unknown,
   expected: readonly (string | number | boolean | null)[]
 ): boolean {
-  if (!Array.isArray(actual) || actual.length !== expected.length) return false;
-  const seen = new Set<string>();
-  for (const [index, value] of actual.entries()) {
-    const expectedValue = expected[index];
+  const array = readDenseOwnDataArray(actual, {
+    maxLength: expected.length,
+    validateItem: (item): item is string | number | boolean | null => item === null
+      || typeof item === 'string'
+      || typeof item === 'boolean'
+      || (typeof item === 'number' && Number.isFinite(item))
+  });
+  if (!array.ok || array.values.length !== expected.length) return false;
+  for (let index = 0; index < expected.length; index += 1) {
+    const value = array.values[index];
     const valid = value === null
       || typeof value === 'string'
       || typeof value === 'boolean'
       || (typeof value === 'number' && Number.isFinite(value));
-    if (!valid || value !== expectedValue) return false;
-    const identity = `${typeof value}:${String(value)}`;
-    if (seen.has(identity)) return false;
-    seen.add(identity);
+    if (!valid || value !== expected[index]) return false;
+    for (let seenIndex = 0; seenIndex < index; seenIndex += 1) {
+      if (array.values[seenIndex] === value) return false;
+    }
   }
   return true;
 }

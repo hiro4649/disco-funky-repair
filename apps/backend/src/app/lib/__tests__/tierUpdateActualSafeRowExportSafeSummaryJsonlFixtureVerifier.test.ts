@@ -225,6 +225,68 @@ describe('tierUpdateActualSafeRowExportSafeSummaryJsonlFixtureVerifier', () => {
     expect(result.blockers).toContain('d8ap_build_accessor_property');
   });
 
+  it('blocks D8AP canonicalFieldOrder unsafe values without coercion', () => {
+    const unsafeValue = {
+      toString() {
+        throw new Error('raw coercion error');
+      }
+    };
+    const proxyArray = new Proxy(['schema_version'], {
+      getOwnPropertyDescriptor() {
+        throw new Error('raw descriptor trap');
+      }
+    });
+
+    expect(() => verify(withBuild({ canonicalFieldOrder: [unsafeValue] }))).not.toThrow();
+    expect(verify(withBuild({ canonicalFieldOrder: [unsafeValue] })).status).toBe('BLOCKED');
+    expect(() => verify(withBuild({ canonicalFieldOrder: proxyArray }))).not.toThrow();
+    expect(verify(withBuild({ canonicalFieldOrder: proxyArray })).status).toBe('BLOCKED');
+    expect(verify(withBuild({ canonicalFieldOrder: [...d8apBuild().canonicalFieldOrder.slice(0, -1), Symbol('field')] })).status).toBe('BLOCKED');
+  });
+
+  it('blocks D8AP jsonlContract accessors without executing nested getters', () => {
+    let touched = false;
+    const jsonlContract = { ...d8apBuild().jsonlContract };
+    Object.defineProperty(jsonlContract, 'jsonlLinesReturned', {
+      enumerable: true,
+      get() {
+        touched = true;
+        return false;
+      }
+    });
+    const result = verify(withBuild({ jsonlContract }));
+
+    expect(touched).toBe(false);
+    expect(result.status).toBe('BLOCKED');
+    expect(result.blockers).toContain('jsonl_contract_mismatch');
+  });
+
+  it('blocks D8AP raw proxy arrays before retaining them', () => {
+    const proxyArray = new Proxy([], {
+      getOwnPropertyDescriptor() {
+        throw new Error('raw descriptor trap');
+      }
+    });
+
+    for (const key of ['rows', 'rowIds', 'entityTypes', 'blockers', 'needsReviewReasons'] as const) {
+      expect(() => verify(withBuild({ [key]: proxyArray }))).not.toThrow();
+      expect(verify(withBuild({ [key]: proxyArray })).status).toBe('BLOCKED');
+    }
+  });
+
+  it('blocks row array fields backed by proxies without throwing', () => {
+    const proxyArray = new Proxy(['fixture_only'], {
+      getOwnPropertyDescriptor() {
+        throw new Error('raw descriptor trap');
+      }
+    });
+
+    expect(() => verify(withFirstRow({ safety_flags: proxyArray }))).not.toThrow();
+    expect(verify(withFirstRow({ safety_flags: proxyArray })).status).toBe('BLOCKED');
+    expect(() => verify(withFirstRow({ internal_only_field_labels: proxyArray }))).not.toThrow();
+    expect(verify(withFirstRow({ internal_only_field_labels: proxyArray })).status).toBe('BLOCKED');
+  });
+
   it.each([
     ['missing d8apBuild', { d8apBuild: null }],
     ['malformed d8apBuild primitive', { d8apBuild: 'bad' as unknown as never }],
