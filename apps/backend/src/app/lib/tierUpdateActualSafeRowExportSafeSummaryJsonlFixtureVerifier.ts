@@ -13,6 +13,21 @@ import {
   TIER_UPDATE_ACTUAL_SAFE_ROW_EXPORT_SAFE_SUMMARY_JSONL_FIXTURE_IN_MEMORY_BUILDER_TRACE_LABEL
 } from './tierUpdateActualSafeRowExportSafeSummaryJsonlFixtureInMemoryBuilder';
 import type { SafeSummaryJsonlFixtureRow } from './tierUpdateActualSafeRowExportSafeSummaryJsonlFixtureInMemoryBuilder';
+import {
+  containsUnsafeSafeSummaryString as unsafeString,
+  hasOwnDataProperty as hasDataProperty,
+  isPlainDataRecord as isRecord,
+  isSafeLowerToken as safeToken,
+  isSafeSha256Label as safeSha256,
+  isSafeSourceHeadSha as safeSourceHead,
+  listOwnEnumerableDataKeys as ownKeys,
+  normalizeAllowlistedReviewReasons,
+  normalizeGenericBlockerPresence,
+  readOwnDataProperty as safeRead,
+  reduceForbiddenBooleanFlags,
+  safeJsonByteLength,
+  safePrimitiveSnapshot
+} from './tierUpdateActualSafeRowExportSafeValidationKernel';
 
 export const TIER_UPDATE_ACTUAL_SAFE_ROW_EXPORT_SAFE_SUMMARY_JSONL_FIXTURE_VERIFIER_KIND =
   'tier_update_actual_safe_row_export_safe_summary_jsonl_fixture_verifier' as const;
@@ -295,88 +310,8 @@ const EXECUTABLE_SAFETY_FLAGS = new Set([
   'claims_staging_ready',
   'claims_production_ready'
 ]);
-const UNSAFE_PATTERNS = [
-  /raw[\s_-]*(secret|env|log|payload|endpoint)/i,
-  /private[\s_-]*(key|path|identifier)/i,
-  /local[\s_-]*(file[\s_-]*)?path/i,
-  /authorization\s*[:=]/i,
-  /bearer\s+[a-z0-9._-]+/i,
-  /jwt\s*[:=]/i,
-  /cookie\s*[:=]/i,
-  /database_url\s*[:=]/i,
-  /postgres(?:ql)?:\/\//i,
-  /rpc[\s_-]*secret/i,
-  /runtime[\s_-]*ready|production[\s_-]*ready|staging[\s_-]*ready|export[\s_-]*ready|actual[\s_-]*source[\s_-]*ready/i,
-  /https?:\/\//i,
-  /0x[a-f0-9]{40}/i,
-  /[a-z]:[\\/]/i,
-  /(^|[\s"'])(\/(?:users|home|var|etc|tmp)\/[^\s"']*)/i,
-  /\.\.[\\/]/
-];
-
 function addUnique(list: string[], value: string) {
   if (!list.includes(value)) list.push(value);
-}
-
-function hasOwn(input: object, key: string): boolean {
-  try {
-    return Object.prototype.hasOwnProperty.call(input, key);
-  } catch {
-    return false;
-  }
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  try {
-    if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
-    const proto = Object.getPrototypeOf(value);
-    return proto === Object.prototype || proto === null;
-  } catch {
-    return false;
-  }
-}
-
-function safeRead(record: Record<string, unknown>, key: string): unknown {
-  try {
-    const descriptor = Object.getOwnPropertyDescriptor(record, key);
-    if (!descriptor || !('value' in descriptor)) return undefined;
-    return descriptor.value;
-  } catch {
-    return undefined;
-  }
-}
-
-function hasDataProperty(record: Record<string, unknown>, key: string): boolean {
-  try {
-    const descriptor = Object.getOwnPropertyDescriptor(record, key);
-    return !!descriptor && 'value' in descriptor;
-  } catch {
-    return false;
-  }
-}
-
-function ownKeys(record: Record<string, unknown>): string[] | null {
-  try {
-    return Object.keys(record);
-  } catch {
-    return null;
-  }
-}
-
-function safeToken(value: unknown, max = 128): value is string {
-  return typeof value === 'string' && value.length <= max && /^[a-z0-9][a-z0-9_-]{2,127}$/.test(value);
-}
-
-function safeSourceHead(value: unknown): value is string {
-  return typeof value === 'string' && /^[a-f0-9]{40}$/.test(value);
-}
-
-function safeSha256(value: unknown): value is string {
-  return typeof value === 'string' && /^sha256:[a-f0-9]{64}$/.test(value);
-}
-
-function unsafeString(value: unknown): boolean {
-  return typeof value === 'string' && UNSAFE_PATTERNS.some((pattern) => pattern.test(value));
 }
 
 function sha256Hex(value: string): string {
@@ -421,11 +356,7 @@ function collectBoundarySources(input: BuildTierUpdateActualSafeRowExportSafeSum
 
 function boundarySummaryFor(input: BuildTierUpdateActualSafeRowExportSafeSummaryJsonlFixtureVerifierInput) {
   const summary = emptyBoundarySummary();
-  for (const source of collectBoundarySources(input)) {
-    for (const flag of FORBIDDEN_BOUNDARY_FLAGS) {
-      if (source[flag] === true) summary[flag] = true;
-    }
-  }
+  Object.assign(summary, reduceForbiddenBooleanFlags(collectBoundarySources(input), FORBIDDEN_BOUNDARY_FLAGS));
   return summary;
 }
 
@@ -438,18 +369,16 @@ function collectForbiddenBoundaryReasons(input: BuildTierUpdateActualSafeRowExpo
 }
 
 function normalizeInputCollections(input: BuildTierUpdateActualSafeRowExportSafeSummaryJsonlFixtureVerifierInput, blockers: string[], needsReviewReasons: string[]) {
-  if (hasOwn(input, 'blockers')) {
-    if (!Array.isArray(input.blockers)) addUnique(blockers, 'upstream_blockers_invalid');
-    else if (input.blockers.length > 0) addUnique(blockers, 'upstream_blocker_present');
+  if (hasDataProperty(input, 'blockers')) {
+    normalizeGenericBlockerPresence(input.blockers, (blocker) => addUnique(blockers, blocker));
   }
-  if (hasOwn(input, 'needsReviewReasons')) {
-    if (!Array.isArray(input.needsReviewReasons)) addUnique(blockers, 'needs_review_reasons_invalid');
-    else {
-      for (const reason of input.needsReviewReasons) {
-        if (SAFE_REVIEW_REASON_ALLOWLIST.has(String(reason))) addUnique(needsReviewReasons, String(reason));
-        else addUnique(needsReviewReasons, 'upstream_review_reason_redacted');
-      }
-    }
+  if (hasDataProperty(input, 'needsReviewReasons')) {
+    normalizeAllowlistedReviewReasons(
+      input.needsReviewReasons,
+      SAFE_REVIEW_REASON_ALLOWLIST,
+      (blocker) => addUnique(blockers, blocker),
+      (reason) => addUnique(needsReviewReasons, reason)
+    );
   }
 }
 
@@ -465,7 +394,7 @@ function validatePolicy(input: BuildTierUpdateActualSafeRowExportSafeSummaryJson
   if (input.noJsonlFileOutputRequired !== true) addUnique(blockers, 'no_jsonl_file_output_required');
   if (input.noArtifactUploadRequired !== true) addUnique(blockers, 'no_artifact_upload_required');
   if (input.nextSafeAction !== undefined && input.nextSafeAction !== READY_NEXT_ACTION) addUnique(blockers, 'next_safe_action_unsafe');
-  for (const key of FORBIDDEN_INPUT_KEYS) if (hasOwn(input, key)) addUnique(blockers, 'actual_row_input_forbidden');
+  for (const key of FORBIDDEN_INPUT_KEYS) if (hasDataProperty(input, key)) addUnique(blockers, 'actual_row_input_forbidden');
 }
 
 function isCanonicalRowObject(value: unknown): value is Record<keyof SafeSummaryJsonlFixtureRow, unknown> {
@@ -536,12 +465,6 @@ function validateTimestamp(value: unknown, blockers: string[]): boolean {
   return true;
 }
 
-function snapshotPrimitive(value: unknown): string | number | boolean | null | undefined {
-  if (value === null || typeof value === 'string' || typeof value === 'boolean') return value;
-  if (typeof value === 'number' && Number.isFinite(value)) return value;
-  return undefined;
-}
-
 function encodedSizeOk(row: Record<string, unknown>, blockers: string[]): boolean {
   const safeSnapshot: Record<string, unknown> = {};
   for (const key of D8AO_CANONICAL_FIELD_ORDER) {
@@ -559,7 +482,7 @@ function encodedSizeOk(row: Record<string, unknown>, blockers: string[]): boolea
     const value = descriptor.value;
     if (value && typeof value === 'object') {
       if (Array.isArray(value)) {
-        const items = value.map(snapshotPrimitive);
+        const items = value.map(safePrimitiveSnapshot);
         if (items.some((item) => item === undefined)) {
           addUnique(blockers, 'row_encoded_size_unavailable');
           return false;
@@ -585,7 +508,7 @@ function encodedSizeOk(row: Record<string, unknown>, blockers: string[]): boolea
             addUnique(blockers, 'row_encoded_size_unavailable');
             return false;
           }
-          const primitive = snapshotPrimitive(nestedDescriptor.value);
+          const primitive = safePrimitiveSnapshot(nestedDescriptor.value);
           if (primitive === undefined) {
             addUnique(blockers, 'row_encoded_size_unavailable');
             return false;
@@ -598,7 +521,7 @@ function encodedSizeOk(row: Record<string, unknown>, blockers: string[]): boolea
         return false;
       }
     } else {
-      const primitive = snapshotPrimitive(value);
+      const primitive = safePrimitiveSnapshot(value);
       if (primitive === undefined) {
         addUnique(blockers, 'row_encoded_size_unavailable');
         return false;
@@ -606,14 +529,12 @@ function encodedSizeOk(row: Record<string, unknown>, blockers: string[]): boolea
       safeSnapshot[key] = primitive;
     }
   }
-  let size = 0;
-  try {
-    size = Buffer.byteLength(JSON.stringify(safeSnapshot), 'utf8');
-  } catch {
+  const size = safeJsonByteLength(safeSnapshot);
+  if (!size.ok) {
     addUnique(blockers, 'row_encoded_size_unavailable');
     return false;
   }
-  if (size > MAX_ROW_BYTES) {
+  if (size.byteLength > MAX_ROW_BYTES) {
     addUnique(blockers, 'row_encoded_size_too_large');
     return false;
   }
@@ -882,7 +803,7 @@ function normalizeBuildMetadata(build: D8APBuild | null | undefined, blockers: s
   }
   const record = build as Record<string, unknown>;
   if (!ownKeys(record)) {
-    addUnique(blockers, 'd8ap_build_missing');
+    addUnique(blockers, 'd8ap_build_accessor_property');
     return null;
   }
   const requiredDataProperties = [
@@ -915,7 +836,7 @@ function normalizeBuildMetadata(build: D8APBuild | null | undefined, blockers: s
     if (!hasDataProperty(record, key)) addUnique(blockers, 'd8ap_build_accessor_property');
   }
   for (const key of FORBIDDEN_INPUT_KEYS) {
-    if (hasOwn(record, key)) addUnique(blockers, 'd8ap_forbidden_input_surface_present');
+    if (hasDataProperty(record, key)) addUnique(blockers, 'd8ap_forbidden_input_surface_present');
   }
   const normalized: NormalizedD8APBuild = {
     status: typeof safeRead(record, 'status') === 'string' ? safeRead(record, 'status') as string : '',

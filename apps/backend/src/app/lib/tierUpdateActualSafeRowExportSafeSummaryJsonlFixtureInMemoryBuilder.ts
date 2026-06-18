@@ -11,6 +11,14 @@ import {
   TIER_UPDATE_ACTUAL_SAFE_ROW_EXPORT_SAFE_SUMMARY_JSONL_FIXTURE_SCHEMA_TRACE_LABEL,
   TIER_UPDATE_ACTUAL_SAFE_ROW_EXPORT_SAFE_SUMMARY_JSONL_FIXTURE_SCHEMA_VERSION
 } from './tierUpdateActualSafeRowExportSafeSummaryJsonlFixtureSchema';
+import {
+  containsUnsafeSafeSummaryString,
+  hasOwnDataProperty as hasOwn,
+  isSafeLowerToken,
+  isSafeSourceHeadSha,
+  normalizeAllowlistedReviewReasons,
+  normalizeGenericBlockerPresence
+} from './tierUpdateActualSafeRowExportSafeValidationKernel';
 
 export const TIER_UPDATE_ACTUAL_SAFE_ROW_EXPORT_SAFE_SUMMARY_JSONL_FIXTURE_IN_MEMORY_BUILDER_KIND =
   'tier_update_actual_safe_row_export_safe_summary_jsonl_fixture_in_memory_builder' as const;
@@ -283,24 +291,6 @@ const SAFE_REVIEW_REASON_ALLOWLIST = [
   'deferred_entity_isolated_review'
 ] as const;
 
-const UNSAFE_PATTERNS = [
-  /raw[\s_-]*(secret|env|log|payload|endpoint)/i,
-  /private[\s_-]*(key|path|identifier)/i,
-  /local[\s_-]*(file[\s_-]*)?path/i,
-  /authorization\s*[:=]/i,
-  /bearer\s+[a-z0-9._-]+/i,
-  /jwt\s*[:=]/i,
-  /cookie\s*[:=]/i,
-  /database_url\s*[:=]/i,
-  /postgres(?:ql)?:\/\//i,
-  /rpc[\s_-]*secret/i,
-  /runtime[\s_-]*ready|production[\s_-]*ready|staging[\s_-]*ready|export[\s_-]*ready|actual[\s_-]*source[\s_-]*ready/i,
-  /0x[a-f0-9]{40}/i,
-  /[a-z]:[\\/]/i,
-  /(^|[\s"'])(\/(?:users|home|var|etc|tmp)\/[^\s"']*)/i,
-  /\.\.[\\/]/
-];
-
 function addUnique(list: string[], value: string) {
   if (!list.includes(value)) list.push(value);
 }
@@ -309,12 +299,8 @@ function hasValue(value: unknown): boolean {
   return value !== undefined && value !== null && String(value).trim() !== '';
 }
 
-function hasOwn(input: object, key: string): boolean {
-  return Object.prototype.hasOwnProperty.call(input, key);
-}
-
 function validSafeToken(value: string | null | undefined): boolean {
-  return /^[a-z0-9][a-z0-9_-]{2,95}$/.test(String(value || ''));
+  return isSafeLowerToken(value || '', 96);
 }
 
 function validSafeRowId(value: unknown): value is string {
@@ -326,14 +312,11 @@ function validSafeDatasetName(value: unknown): value is string {
 }
 
 function validSourceHeadSha(value: string | null | undefined): boolean {
-  return /^[a-f0-9]{40}$/.test(String(value || ''));
+  return isSafeSourceHeadSha(value || '');
 }
 
 function hasUnsafeValue(value: unknown): boolean {
-  if (typeof value === 'string') return UNSAFE_PATTERNS.some((pattern) => pattern.test(value));
-  if (Array.isArray(value)) return value.some(hasUnsafeValue);
-  if (value && typeof value === 'object') return Object.values(value).some(hasUnsafeValue);
-  return false;
+  return containsUnsafeSafeSummaryString(value);
 }
 
 function malformedExplicitValue(input: object, key: string, value: unknown): boolean {
@@ -342,11 +325,7 @@ function malformedExplicitValue(input: object, key: string, value: unknown): boo
 
 function normalizeUpstreamBlockers(input: BuildTierUpdateActualSafeRowExportSafeSummaryJsonlFixtureInMemoryBuilderInput, blockers: string[]) {
   if (!hasOwn(input, 'blockers')) return;
-  if (!Array.isArray(input.blockers)) {
-    addUnique(blockers, 'upstream_blockers_invalid');
-    return;
-  }
-  if (input.blockers.length > 0) addUnique(blockers, 'upstream_blocker_present');
+  normalizeGenericBlockerPresence(input.blockers, (blocker) => addUnique(blockers, blocker));
 }
 
 function normalizeNeedsReviewReasons(
@@ -355,17 +334,12 @@ function normalizeNeedsReviewReasons(
   needsReviewReasons: string[]
 ) {
   if (!hasOwn(input, 'needsReviewReasons')) return;
-  if (!Array.isArray(input.needsReviewReasons)) {
-    addUnique(blockers, 'needs_review_reasons_invalid');
-    return;
-  }
-  for (const reason of input.needsReviewReasons) {
-    if (SAFE_REVIEW_REASON_ALLOWLIST.includes(reason as typeof SAFE_REVIEW_REASON_ALLOWLIST[number])) {
-      addUnique(needsReviewReasons, reason);
-    } else {
-      addUnique(needsReviewReasons, 'upstream_review_reason_redacted');
-    }
-  }
+  normalizeAllowlistedReviewReasons(
+    input.needsReviewReasons,
+    SAFE_REVIEW_REASON_ALLOWLIST,
+    (blocker) => addUnique(blockers, blocker),
+    (reason) => addUnique(needsReviewReasons, reason)
+  );
 }
 
 function emptyBoundarySummary(): TierUpdateActualSafeRowExportSafeSummaryJsonlFixtureInMemoryBuilder['boundarySummary'] {
@@ -421,7 +395,7 @@ function forbiddenBoundaryReasons(input: BuildTierUpdateActualSafeRowExportSafeS
 }
 
 function rowInputsPresent(input: BuildTierUpdateActualSafeRowExportSafeSummaryJsonlFixtureInMemoryBuilderInput): boolean {
-  return FORBIDDEN_INPUT_PRESENCE_KEYS.some((key) => Object.prototype.hasOwnProperty.call(input, key));
+  return FORBIDDEN_INPUT_PRESENCE_KEYS.some((key) => hasOwn(input, key));
 }
 
 function sameArray(actual: unknown[] | undefined, expected: readonly unknown[]): boolean {
@@ -615,9 +589,9 @@ export function buildTierUpdateActualSafeRowExportSafeSummaryJsonlFixtureInMemor
   if (!schemaIsCanonical(schema)) addUnique(blockers, 'd8ao_schema_contract_not_canonical');
   if (!hasValue(fixtureBuildId) || !validSafeToken(fixtureBuildId)) addUnique(blockers, 'fixture_build_id_missing');
   if (!hasValue(fixtureSchemaId) || !validSafeToken(fixtureSchemaId)) addUnique(blockers, 'fixture_schema_id_missing');
-  if (Object.prototype.hasOwnProperty.call(input, 'fixtureSchemaId') && input.fixtureSchemaId !== fixtureSchemaId) addUnique(blockers, 'fixture_schema_id_mismatch');
-  if (Object.prototype.hasOwnProperty.call(input, 'sourceHeadSha') && input.sourceHeadSha !== sourceHeadSha) addUnique(blockers, 'source_head_sha_schema_mismatch');
-  if (Object.prototype.hasOwnProperty.call(input, 'd8aoSchemaStatus') && input.d8aoSchemaStatus !== d8aoStatus) addUnique(blockers, 'd8ao_schema_status_mismatch');
+  if (hasOwn(input, 'fixtureSchemaId') && input.fixtureSchemaId !== fixtureSchemaId) addUnique(blockers, 'fixture_schema_id_mismatch');
+  if (hasOwn(input, 'sourceHeadSha') && input.sourceHeadSha !== sourceHeadSha) addUnique(blockers, 'source_head_sha_schema_mismatch');
+  if (hasOwn(input, 'd8aoSchemaStatus') && input.d8aoSchemaStatus !== d8aoStatus) addUnique(blockers, 'd8ao_schema_status_mismatch');
   if (!hasValue(sourceHeadSha)) addUnique(blockers, 'source_head_sha_missing');
   else if (!validSourceHeadSha(sourceHeadSha)) addUnique(blockers, 'source_head_sha_invalid');
   if (!Number.isFinite(requested) || !Number.isInteger(requested)) addUnique(blockers, 'fixture_rows_requested_not_finite_integer');
