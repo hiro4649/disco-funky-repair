@@ -13,11 +13,17 @@ import {
 } from './tierUpdateActualSafeRowExportSafeSummaryJsonlFixtureSchema';
 import {
   containsUnsafeSafeSummaryString,
-  hasOwnDataProperty as hasOwn,
+  hasOwnPropertySafely,
+  inspectOwnProperty,
+  isNonEmptyTrimmedString,
+  isPlainDataRecord,
   isSafeLowerToken,
   isSafeSourceHeadSha,
   normalizeAllowlistedReviewReasons,
-  normalizeGenericBlockerPresence
+  normalizeGenericBlockerPresence,
+  readOwnDataProperty,
+  reduceForbiddenBooleanFlags,
+  strictOrderedPrimitiveArrayEqual
 } from './tierUpdateActualSafeRowExportSafeValidationKernel';
 
 export const TIER_UPDATE_ACTUAL_SAFE_ROW_EXPORT_SAFE_SUMMARY_JSONL_FIXTURE_IN_MEMORY_BUILDER_KIND =
@@ -296,7 +302,7 @@ function addUnique(list: string[], value: string) {
 }
 
 function hasValue(value: unknown): boolean {
-  return value !== undefined && value !== null && String(value).trim() !== '';
+  return isNonEmptyTrimmedString(value);
 }
 
 function validSafeToken(value: string | null | undefined): boolean {
@@ -320,12 +326,15 @@ function hasUnsafeValue(value: unknown): boolean {
 }
 
 function malformedExplicitValue(input: object, key: string, value: unknown): boolean {
-  return hasOwn(input, key) && (value === undefined || value === null || String(value).trim() === '');
+  const inspection = inspectOwnProperty(input, key);
+  if (inspection.kind === 'absent') return false;
+  if (inspection.kind !== 'data') return true;
+  return !isNonEmptyTrimmedString(inspection.value);
 }
 
 function normalizeUpstreamBlockers(input: BuildTierUpdateActualSafeRowExportSafeSummaryJsonlFixtureInMemoryBuilderInput, blockers: string[]) {
-  if (!hasOwn(input, 'blockers')) return;
-  normalizeGenericBlockerPresence(input.blockers, (blocker) => addUnique(blockers, blocker));
+  if (!hasOwnPropertySafely(input, 'blockers')) return;
+  normalizeGenericBlockerPresence(readOwnDataProperty(input, 'blockers'), (blocker) => addUnique(blockers, blocker));
 }
 
 function normalizeNeedsReviewReasons(
@@ -333,9 +342,9 @@ function normalizeNeedsReviewReasons(
   blockers: string[],
   needsReviewReasons: string[]
 ) {
-  if (!hasOwn(input, 'needsReviewReasons')) return;
+  if (!hasOwnPropertySafely(input, 'needsReviewReasons')) return;
   normalizeAllowlistedReviewReasons(
-    input.needsReviewReasons,
+    readOwnDataProperty(input, 'needsReviewReasons'),
     SAFE_REVIEW_REASON_ALLOWLIST,
     (blocker) => addUnique(blockers, blocker),
     (reason) => addUnique(needsReviewReasons, reason)
@@ -372,37 +381,36 @@ function emptyBoundarySummary(): TierUpdateActualSafeRowExportSafeSummaryJsonlFi
 
 function boundarySummaryFor(input: BuildTierUpdateActualSafeRowExportSafeSummaryJsonlFixtureInMemoryBuilderInput): TierUpdateActualSafeRowExportSafeSummaryJsonlFixtureInMemoryBuilder['boundarySummary'] {
   const summary = emptyBoundarySummary();
-  for (const source of collectBoundarySources(input)) {
-    for (const flag of FORBIDDEN_BOUNDARY_FLAGS) {
-      if (source[flag] === true) summary[flag] = true;
-    }
-  }
+  Object.assign(summary, reduceForbiddenBooleanFlags(collectBoundarySources(input), FORBIDDEN_BOUNDARY_FLAGS));
   return summary;
 }
 
-function collectBoundarySources(input: BuildTierUpdateActualSafeRowExportSafeSummaryJsonlFixtureInMemoryBuilderInput): BoundaryFlags[] {
-  return [input, input.boundarySummary || {}, input.boundaryFlags || {}, input.d8aoSchema || {}];
+function collectBoundarySources(input: BuildTierUpdateActualSafeRowExportSafeSummaryJsonlFixtureInMemoryBuilderInput): Array<BoundaryFlags | null | undefined> {
+  return [
+    input,
+    readOwnDataProperty(input, 'boundarySummary') as BoundaryFlags | null | undefined,
+    readOwnDataProperty(input, 'boundaryFlags') as BoundaryFlags | null | undefined,
+    readOwnDataProperty(input, 'd8aoSchema') as BoundaryFlags | null | undefined
+  ];
 }
 
 function forbiddenBoundaryReasons(input: BuildTierUpdateActualSafeRowExportSafeSummaryJsonlFixtureInMemoryBuilderInput): string[] {
   const reasons: string[] = [];
-  for (const source of collectBoundarySources(input)) {
-    for (const flag of FORBIDDEN_BOUNDARY_FLAGS) {
-      if (source[flag] === true) addUnique(reasons, `${flag}_forbidden`);
-    }
+  for (const key of ['boundarySummary', 'boundaryFlags', 'd8aoSchema'] as const) {
+    const inspection = inspectOwnProperty(input, key);
+    if (inspection.kind === 'accessor' || inspection.kind === 'error') addUnique(reasons, 'boundary_source_malformed');
   }
+  const reduced = reduceForbiddenBooleanFlags(collectBoundarySources(input), FORBIDDEN_BOUNDARY_FLAGS, () => addUnique(reasons, 'boundary_source_malformed'));
+  for (const flag of FORBIDDEN_BOUNDARY_FLAGS) if (reduced[flag]) addUnique(reasons, `${flag}_forbidden`);
   return reasons;
 }
 
 function rowInputsPresent(input: BuildTierUpdateActualSafeRowExportSafeSummaryJsonlFixtureInMemoryBuilderInput): boolean {
-  return FORBIDDEN_INPUT_PRESENCE_KEYS.some((key) => hasOwn(input, key));
+  return FORBIDDEN_INPUT_PRESENCE_KEYS.some((key) => hasOwnPropertySafely(input, key));
 }
 
 function sameArray(actual: unknown[] | undefined, expected: readonly unknown[]): boolean {
-  return Array.isArray(actual)
-    && actual.length === expected.length
-    && actual.every((value, index) => value === expected[index])
-    && new Set(actual.map((value) => String(value))).size === actual.length;
+  return strictOrderedPrimitiveArrayEqual(actual, expected as readonly (string | number | boolean | null)[]);
 }
 
 function sameFieldDefinitions(actual: D8AOSchemaInput['fieldDefinitions']): boolean {
@@ -410,51 +418,61 @@ function sameFieldDefinitions(actual: D8AOSchemaInput['fieldDefinitions']): bool
     && actual.length === D8AP_EXPECTED_FIELD_DEFINITIONS.length
     && actual.every((field, index) => {
       const expected = D8AP_EXPECTED_FIELD_DEFINITIONS[index];
-      return field.key === expected.key
-        && field.type === expected.type
-        && field.required === expected.required
-        && field.policy === expected.policy;
+      return isPlainDataRecord(field)
+        && readOwnDataProperty(field, 'key') === expected.key
+        && readOwnDataProperty(field, 'type') === expected.type
+        && readOwnDataProperty(field, 'required') === expected.required
+        && readOwnDataProperty(field, 'policy') === expected.policy;
     });
+}
+
+function isPlainSchemaInput(value: unknown): value is D8AOSchemaInput {
+  return isPlainDataRecord(value);
 }
 
 function schemaIsCanonical(schema: D8AOSchemaInput | null | undefined): boolean {
   if (!schema) return false;
-  if (schema.status !== D8AO_READY_STATUS) return false;
-  if (schema.kind !== TIER_UPDATE_ACTUAL_SAFE_ROW_EXPORT_SAFE_SUMMARY_JSONL_FIXTURE_SCHEMA_KIND) return false;
-  if (schema.traceLabel !== TIER_UPDATE_ACTUAL_SAFE_ROW_EXPORT_SAFE_SUMMARY_JSONL_FIXTURE_SCHEMA_TRACE_LABEL) return false;
-  if (schema.schemaVersion !== TIER_UPDATE_ACTUAL_SAFE_ROW_EXPORT_SAFE_SUMMARY_JSONL_FIXTURE_SCHEMA_VERSION) return false;
-  if (schema.safeSummaryOnly !== true || schema.fixtureOnly !== true || schema.inMemoryOnly !== true || schema.zeroRealRows !== true) return false;
-  if (!validSafeToken(schema.fixtureSchemaId || '')) return false;
-  if (!validSourceHeadSha(schema.sourceHeadSha)) return false;
-  if (!sameArray(schema.canonicalFieldOrder, D8AO_CANONICAL_FIELD_ORDER)) return false;
-  if (!sameFieldDefinitions(schema.fieldDefinitions)) return false;
-  if (!sameArray(schema.entityTypeAllowlist, D8AO_ENTITY_TYPE_ALLOWLIST)) return false;
-  if (!sameArray(schema.evidenceOriginAllowlist, D8AO_EVIDENCE_ORIGIN_ALLOWLIST)) return false;
-  if (!sameArray(schema.readinessClaimAllowlist, D8AO_READINESS_CLAIM_ALLOWLIST)) return false;
-  if (!sameArray(schema.walletAddressSummaryAllowlist, D8AO_WALLET_ADDRESS_SUMMARY_ALLOWLIST)) return false;
-  if (!sameArray(schema.chainIdAllowlist, D8AP_CHAIN_ID_ALLOWLIST)) return false;
-  if (!sameArray(schema.networkLabelAllowlist, D8AP_NETWORK_LABEL_ALLOWLIST)) return false;
-  if (!sameArray(schema.safetyFlagAllowlist, D8AO_SAFETY_FLAG_ALLOWLIST)) return false;
-  if (!schema.jsonlContract
-    || schema.jsonlContract.utf8Required !== true
-    || schema.jsonlContract.oneJsonObjectPerLineContract !== true
-    || schema.jsonlContract.canonicalFieldOrderRequired !== true
-    || schema.jsonlContract.multilineStringForbidden !== true
-    || schema.jsonlContract.commentsForbidden !== true
-    || schema.jsonlContract.fileWriteEnabled !== false
-    || schema.jsonlContract.jsonlLinesReturned !== false
-    || schema.jsonlContract.maxFixtureRowBytes !== MAX_FIXTURE_ROW_BYTES) return false;
-  if (!schema.identifierPolicies
-    || schema.identifierPolicies.sourceHashAlgorithm !== 'sha256'
-    || schema.identifierPolicies.rowIdStrategy !== 'synthetic_deterministic_safe_id'
-    || schema.identifierPolicies.auditExportIdStrategy !== 'synthetic_fixture_batch_id') return false;
-  if (!schema.rowValuePolicy
-    || schema.rowValuePolicy.rowValuesAccepted !== false
-    || schema.rowValuePolicy.fixtureRowsAccepted !== false
-    || schema.rowValuePolicy.actualRowsAccepted !== false
-    || schema.rowValuePolicy.rawRowsAccepted !== false
-    || schema.rowValuePolicy.recordsAccepted !== false
-    || schema.rowValuePolicy.jsonlLinesAccepted !== false) return false;
+  if (!isPlainDataRecord(schema)) return false;
+  const jsonlContract = readOwnDataProperty(schema, 'jsonlContract');
+  const identifierPolicies = readOwnDataProperty(schema, 'identifierPolicies');
+  const rowValuePolicy = readOwnDataProperty(schema, 'rowValuePolicy');
+  if (readOwnDataProperty(schema, 'status') !== D8AO_READY_STATUS) return false;
+  if (readOwnDataProperty(schema, 'kind') !== TIER_UPDATE_ACTUAL_SAFE_ROW_EXPORT_SAFE_SUMMARY_JSONL_FIXTURE_SCHEMA_KIND) return false;
+  if (readOwnDataProperty(schema, 'traceLabel') !== TIER_UPDATE_ACTUAL_SAFE_ROW_EXPORT_SAFE_SUMMARY_JSONL_FIXTURE_SCHEMA_TRACE_LABEL) return false;
+  if (readOwnDataProperty(schema, 'schemaVersion') !== TIER_UPDATE_ACTUAL_SAFE_ROW_EXPORT_SAFE_SUMMARY_JSONL_FIXTURE_SCHEMA_VERSION) return false;
+  if (readOwnDataProperty(schema, 'safeSummaryOnly') !== true || readOwnDataProperty(schema, 'fixtureOnly') !== true || readOwnDataProperty(schema, 'inMemoryOnly') !== true || readOwnDataProperty(schema, 'zeroRealRows') !== true) return false;
+  if (!validSafeToken(String(readOwnDataProperty(schema, 'fixtureSchemaId') || ''))) return false;
+  const schemaSourceHeadSha = readOwnDataProperty(schema, 'sourceHeadSha');
+  if (!validSourceHeadSha(typeof schemaSourceHeadSha === 'string' ? schemaSourceHeadSha : undefined)) return false;
+  if (!sameArray(readOwnDataProperty(schema, 'canonicalFieldOrder') as unknown[] | undefined, D8AO_CANONICAL_FIELD_ORDER)) return false;
+  if (!sameFieldDefinitions(readOwnDataProperty(schema, 'fieldDefinitions') as D8AOSchemaInput['fieldDefinitions'])) return false;
+  if (!sameArray(readOwnDataProperty(schema, 'entityTypeAllowlist') as unknown[] | undefined, D8AO_ENTITY_TYPE_ALLOWLIST)) return false;
+  if (!sameArray(readOwnDataProperty(schema, 'evidenceOriginAllowlist') as unknown[] | undefined, D8AO_EVIDENCE_ORIGIN_ALLOWLIST)) return false;
+  if (!sameArray(readOwnDataProperty(schema, 'readinessClaimAllowlist') as unknown[] | undefined, D8AO_READINESS_CLAIM_ALLOWLIST)) return false;
+  if (!sameArray(readOwnDataProperty(schema, 'walletAddressSummaryAllowlist') as unknown[] | undefined, D8AO_WALLET_ADDRESS_SUMMARY_ALLOWLIST)) return false;
+  if (!sameArray(readOwnDataProperty(schema, 'chainIdAllowlist') as unknown[] | undefined, D8AP_CHAIN_ID_ALLOWLIST)) return false;
+  if (!sameArray(readOwnDataProperty(schema, 'networkLabelAllowlist') as unknown[] | undefined, D8AP_NETWORK_LABEL_ALLOWLIST)) return false;
+  if (!sameArray(readOwnDataProperty(schema, 'safetyFlagAllowlist') as unknown[] | undefined, D8AO_SAFETY_FLAG_ALLOWLIST)) return false;
+  if (!isPlainDataRecord(jsonlContract)
+    || readOwnDataProperty(jsonlContract, 'utf8Required') !== true
+    || readOwnDataProperty(jsonlContract, 'oneJsonObjectPerLineContract') !== true
+    || readOwnDataProperty(jsonlContract, 'canonicalFieldOrderRequired') !== true
+    || readOwnDataProperty(jsonlContract, 'multilineStringForbidden') !== true
+    || readOwnDataProperty(jsonlContract, 'commentsForbidden') !== true
+    || readOwnDataProperty(jsonlContract, 'fileWriteEnabled') !== false
+    || readOwnDataProperty(jsonlContract, 'jsonlLinesReturned') !== false
+    || readOwnDataProperty(jsonlContract, 'maxFixtureRowBytes') !== MAX_FIXTURE_ROW_BYTES) return false;
+  if (!isPlainDataRecord(identifierPolicies)
+    || readOwnDataProperty(identifierPolicies, 'sourceHashAlgorithm') !== 'sha256'
+    || readOwnDataProperty(identifierPolicies, 'rowIdStrategy') !== 'synthetic_deterministic_safe_id'
+    || readOwnDataProperty(identifierPolicies, 'auditExportIdStrategy') !== 'synthetic_fixture_batch_id') return false;
+  if (!isPlainDataRecord(rowValuePolicy)
+    || readOwnDataProperty(rowValuePolicy, 'rowValuesAccepted') !== false
+    || readOwnDataProperty(rowValuePolicy, 'fixtureRowsAccepted') !== false
+    || readOwnDataProperty(rowValuePolicy, 'actualRowsAccepted') !== false
+    || readOwnDataProperty(rowValuePolicy, 'rawRowsAccepted') !== false
+    || readOwnDataProperty(rowValuePolicy, 'recordsAccepted') !== false
+    || readOwnDataProperty(rowValuePolicy, 'jsonlLinesAccepted') !== false) return false;
   return true;
 }
 
@@ -540,19 +558,35 @@ function rowsValid(rows: SafeSummaryJsonlFixtureRow[], sourceHeadSha: string, fi
 
 function hasUnsafeDirectInput(input: BuildTierUpdateActualSafeRowExportSafeSummaryJsonlFixtureInMemoryBuilderInput): boolean {
   return hasUnsafeValue([
-    input.fixtureBuildId,
-    input.fixtureDatasetName,
-    input.syntheticSeedLabel,
-    input.filePath,
-    input.outputPath,
-    input.artifactName,
-    input.sql,
-    input.query,
-    input.rawPayload,
-    input.endpoint,
-    input.overrideRowIds,
-    input.overrideReadinessClaim
+    readOwnDataProperty(input, 'fixtureBuildId'),
+    readOwnDataProperty(input, 'fixtureDatasetName'),
+    readOwnDataProperty(input, 'syntheticSeedLabel'),
+    readOwnDataProperty(input, 'filePath'),
+    readOwnDataProperty(input, 'outputPath'),
+    readOwnDataProperty(input, 'artifactName'),
+    readOwnDataProperty(input, 'sql'),
+    readOwnDataProperty(input, 'query'),
+    readOwnDataProperty(input, 'rawPayload'),
+    readOwnDataProperty(input, 'endpoint'),
+    readOwnDataProperty(input, 'overrideRowIds'),
+    readOwnDataProperty(input, 'overrideReadinessClaim')
   ]);
+}
+
+function isExplicitUnsafeInput(input: BuildTierUpdateActualSafeRowExportSafeSummaryJsonlFixtureInMemoryBuilderInput, key: keyof BuildTierUpdateActualSafeRowExportSafeSummaryJsonlFixtureInMemoryBuilderInput): boolean {
+  const inspection = inspectOwnProperty(input, key);
+  if (inspection.kind === 'absent') return false;
+  if (inspection.kind !== 'data') return true;
+  return hasUnsafeValue(inspection.value);
+}
+
+function safeInputValue<T>(
+  input: BuildTierUpdateActualSafeRowExportSafeSummaryJsonlFixtureInMemoryBuilderInput,
+  key: keyof BuildTierUpdateActualSafeRowExportSafeSummaryJsonlFixtureInMemoryBuilderInput,
+  fallback: T
+): unknown | T {
+  const inspection = inspectOwnProperty(input, key);
+  return inspection.kind === 'data' ? inspection.value : fallback;
 }
 
 function nextSafeAction(blockers: string[], needsReviewReasons: string[]): TierUpdateActualSafeRowExportSafeSummaryJsonlFixtureInMemoryBuilder['nextSafeAction'] {
@@ -572,32 +606,54 @@ export function buildTierUpdateActualSafeRowExportSafeSummaryJsonlFixtureInMemor
 ): TierUpdateActualSafeRowExportSafeSummaryJsonlFixtureInMemoryBuilder {
   const blockers: string[] = [];
   const needsReviewReasons: string[] = [];
-  const schema = input.d8aoSchema || null;
-  const d8aoStatus = schema?.status || 'missing';
-  const fixtureSchemaId = schema?.fixtureSchemaId || '';
-  const sourceHeadSha = schema?.sourceHeadSha || '';
-  const requested = input.fixtureRowsRequested ?? 1;
-  const fixtureBuildId = input.fixtureBuildId || '';
-  const datasetName = hasOwn(input, 'fixtureDatasetName') ? input.fixtureDatasetName : 'safe_summary_jsonl_fixture_dataset';
-  const entityTypes = hasOwn(input, 'fixtureEntityTypes') ? input.fixtureEntityTypes : ['fixture'];
-  const overrideReadinessClaim = hasOwn(input, 'overrideReadinessClaim') ? input.overrideReadinessClaim : 'fixture_only';
+  const schemaValue = safeInputValue(input, 'd8aoSchema', null);
+  const schema = isPlainSchemaInput(schemaValue) ? schemaValue : null;
+  const schemaRecord = schema ?? {};
+  const d8aoStatusValue = readOwnDataProperty(schemaRecord, 'status');
+  const fixtureSchemaIdValue = readOwnDataProperty(schemaRecord, 'fixtureSchemaId');
+  const sourceHeadShaValue = readOwnDataProperty(schemaRecord, 'sourceHeadSha');
+  const d8aoStatus = typeof d8aoStatusValue === 'string' ? d8aoStatusValue : 'missing';
+  const fixtureSchemaId = typeof fixtureSchemaIdValue === 'string' ? fixtureSchemaIdValue : '';
+  const sourceHeadSha = typeof sourceHeadShaValue === 'string' ? sourceHeadShaValue : '';
+  const requestedValue = safeInputValue(input, 'fixtureRowsRequested', 1);
+  const requested = typeof requestedValue === 'number' ? requestedValue : NaN;
+  const fixtureBuildIdInspection = inspectOwnProperty(input, 'fixtureBuildId');
+  const fixtureBuildId = fixtureBuildIdInspection.kind === 'data' && typeof fixtureBuildIdInspection.value === 'string'
+    ? fixtureBuildIdInspection.value
+    : '';
+  const fixtureDatasetNameInspection = inspectOwnProperty(input, 'fixtureDatasetName');
+  const fixtureEntityTypesInspection = inspectOwnProperty(input, 'fixtureEntityTypes');
+  const overrideReadinessClaimInspection = inspectOwnProperty(input, 'overrideReadinessClaim');
+  const overrideRowIdsInspection = inspectOwnProperty(input, 'overrideRowIds');
+  const datasetName = fixtureDatasetNameInspection.kind === 'absent' ? 'safe_summary_jsonl_fixture_dataset' : readOwnDataProperty(input, 'fixtureDatasetName');
+  const entityTypes = fixtureEntityTypesInspection.kind === 'absent' ? ['fixture'] : readOwnDataProperty(input, 'fixtureEntityTypes');
+  const overrideReadinessClaim = overrideReadinessClaimInspection.kind === 'absent' ? 'fixture_only' : readOwnDataProperty(input, 'overrideReadinessClaim');
   const safeDatasetName = typeof datasetName === 'string' ? datasetName : '';
   const safeOverrideReadinessClaim = typeof overrideReadinessClaim === 'string' ? overrideReadinessClaim : '';
 
   if (!schema) addUnique(blockers, 'd8ao_schema_missing');
   if (d8aoStatus !== D8AO_READY_STATUS) addUnique(blockers, 'd8ao_schema_not_ready');
   if (!schemaIsCanonical(schema)) addUnique(blockers, 'd8ao_schema_contract_not_canonical');
+  if (fixtureBuildIdInspection.kind === 'accessor' || fixtureBuildIdInspection.kind === 'error') addUnique(blockers, 'fixture_build_id_missing');
   if (!hasValue(fixtureBuildId) || !validSafeToken(fixtureBuildId)) addUnique(blockers, 'fixture_build_id_missing');
   if (!hasValue(fixtureSchemaId) || !validSafeToken(fixtureSchemaId)) addUnique(blockers, 'fixture_schema_id_missing');
-  if (hasOwn(input, 'fixtureSchemaId') && input.fixtureSchemaId !== fixtureSchemaId) addUnique(blockers, 'fixture_schema_id_mismatch');
-  if (hasOwn(input, 'sourceHeadSha') && input.sourceHeadSha !== sourceHeadSha) addUnique(blockers, 'source_head_sha_schema_mismatch');
-  if (hasOwn(input, 'd8aoSchemaStatus') && input.d8aoSchemaStatus !== d8aoStatus) addUnique(blockers, 'd8ao_schema_status_mismatch');
+  for (const [key, code] of [
+    ['fixtureSchemaId', 'fixture_schema_id_mismatch'],
+    ['sourceHeadSha', 'source_head_sha_schema_mismatch'],
+    ['d8aoSchemaStatus', 'd8ao_schema_status_mismatch']
+  ] as const) {
+    const inspection = inspectOwnProperty(input, key);
+    if (inspection.kind === 'accessor' || inspection.kind === 'error') addUnique(blockers, code);
+  }
+  if (inspectOwnProperty(input, 'fixtureSchemaId').kind === 'data' && readOwnDataProperty(input, 'fixtureSchemaId') !== fixtureSchemaId) addUnique(blockers, 'fixture_schema_id_mismatch');
+  if (inspectOwnProperty(input, 'sourceHeadSha').kind === 'data' && readOwnDataProperty(input, 'sourceHeadSha') !== sourceHeadSha) addUnique(blockers, 'source_head_sha_schema_mismatch');
+  if (inspectOwnProperty(input, 'd8aoSchemaStatus').kind === 'data' && readOwnDataProperty(input, 'd8aoSchemaStatus') !== d8aoStatus) addUnique(blockers, 'd8ao_schema_status_mismatch');
   if (!hasValue(sourceHeadSha)) addUnique(blockers, 'source_head_sha_missing');
   else if (!validSourceHeadSha(sourceHeadSha)) addUnique(blockers, 'source_head_sha_invalid');
   if (!Number.isFinite(requested) || !Number.isInteger(requested)) addUnique(blockers, 'fixture_rows_requested_not_finite_integer');
   else if (requested < 1) addUnique(blockers, 'fixture_rows_requested_too_low');
   else if (requested > SAFE_ROW_CAP) addUnique(blockers, 'fixture_rows_requested_too_high');
-  if (malformedExplicitValue(input, 'fixtureDatasetName', input.fixtureDatasetName)) addUnique(blockers, 'fixture_dataset_name_unsafe');
+  if (malformedExplicitValue(input, 'fixtureDatasetName', datasetName)) addUnique(blockers, 'fixture_dataset_name_unsafe');
   if (!validSafeDatasetName(safeDatasetName)) addUnique(blockers, 'fixture_dataset_name_unsafe');
 
   if (!Array.isArray(entityTypes)) {
@@ -611,43 +667,46 @@ export function buildTierUpdateActualSafeRowExportSafeSummaryJsonlFixtureInMemor
     }
   }
 
-  if (hasOwn(input, 'overrideReadinessClaim')) {
+  if (overrideReadinessClaimInspection.kind === 'accessor' || overrideReadinessClaimInspection.kind === 'error') addUnique(blockers, 'override_readiness_claim_unsafe');
+  if (hasOwnPropertySafely(input, 'overrideReadinessClaim')) {
     if (safeOverrideReadinessClaim.trim() === '') addUnique(blockers, 'override_readiness_claim_unsafe');
     else if (!D8AO_READINESS_CLAIM_ALLOWLIST.includes(safeOverrideReadinessClaim as typeof D8AO_READINESS_CLAIM_ALLOWLIST[number])) {
       addUnique(blockers, 'override_readiness_claim_unsafe');
     }
   }
 
-  if (input.overrideRowIds !== undefined) {
-    if (!Array.isArray(input.overrideRowIds)) addUnique(blockers, 'override_row_ids_invalid');
+  if (overrideRowIdsInspection.kind === 'accessor' || overrideRowIdsInspection.kind === 'error') addUnique(blockers, 'override_row_ids_invalid');
+  if (overrideRowIdsInspection.kind === 'data') {
+    const overrideRowIds = overrideRowIdsInspection.value;
+    if (!Array.isArray(overrideRowIds)) addUnique(blockers, 'override_row_ids_invalid');
     else {
-      if (Number.isInteger(requested) && input.overrideRowIds.length !== requested) addUnique(blockers, 'override_row_ids_length_mismatch');
-      if (new Set(input.overrideRowIds).size !== input.overrideRowIds.length) addUnique(blockers, 'duplicate_row_id');
-      for (const rowId of input.overrideRowIds) {
+      if (Number.isInteger(requested) && overrideRowIds.length !== requested) addUnique(blockers, 'override_row_ids_length_mismatch');
+      if (new Set(overrideRowIds).size !== overrideRowIds.length) addUnique(blockers, 'duplicate_row_id');
+      for (const rowId of overrideRowIds) {
         if (!validSafeRowId(rowId)) addUnique(blockers, 'override_row_id_unsafe');
       }
     }
   }
 
-  if (input.inMemoryOnly !== true) addUnique(blockers, 'in_memory_only_required');
-  if (input.fixtureOnly !== true) addUnique(blockers, 'fixture_only_required');
-  if (input.zeroRealRowsRequired !== true) addUnique(blockers, 'zero_real_rows_required');
-  if (input.noFileOutputRequired !== true) addUnique(blockers, 'no_file_output_required');
-  if (input.noJsonlFileOutputRequired !== true) addUnique(blockers, 'no_jsonl_file_output_required');
+  if (readOwnDataProperty(input, 'inMemoryOnly') !== true) addUnique(blockers, 'in_memory_only_required');
+  if (readOwnDataProperty(input, 'fixtureOnly') !== true) addUnique(blockers, 'fixture_only_required');
+  if (readOwnDataProperty(input, 'zeroRealRowsRequired') !== true) addUnique(blockers, 'zero_real_rows_required');
+  if (readOwnDataProperty(input, 'noFileOutputRequired') !== true) addUnique(blockers, 'no_file_output_required');
+  if (readOwnDataProperty(input, 'noJsonlFileOutputRequired') !== true) addUnique(blockers, 'no_jsonl_file_output_required');
   if (rowInputsPresent(input)) addUnique(blockers, 'actual_row_input_forbidden');
-  if (hasValue(input.filePath) || hasValue(input.outputPath)) addUnique(blockers, 'file_output_path_forbidden');
-  if (hasValue(input.artifactName)) addUnique(blockers, 'artifact_name_forbidden');
-  if (hasValue(input.sql) || hasValue(input.query)) addUnique(blockers, 'sql_or_query_forbidden');
-  if (hasValue(input.rawPayload)) addUnique(blockers, 'raw_payload_forbidden');
-  if (hasValue(input.endpoint)) addUnique(blockers, 'endpoint_forbidden');
+  if (isExplicitUnsafeInput(input, 'filePath') || isExplicitUnsafeInput(input, 'outputPath')) addUnique(blockers, 'file_output_path_forbidden');
+  if (isExplicitUnsafeInput(input, 'artifactName')) addUnique(blockers, 'artifact_name_forbidden');
+  if (isExplicitUnsafeInput(input, 'sql') || isExplicitUnsafeInput(input, 'query')) addUnique(blockers, 'sql_or_query_forbidden');
+  if (isExplicitUnsafeInput(input, 'rawPayload')) addUnique(blockers, 'raw_payload_forbidden');
+  if (isExplicitUnsafeInput(input, 'endpoint')) addUnique(blockers, 'endpoint_forbidden');
   for (const reason of forbiddenBoundaryReasons(input)) addUnique(blockers, reason);
   normalizeUpstreamBlockers(input, blockers);
   normalizeNeedsReviewReasons(input, blockers, needsReviewReasons);
   if (hasUnsafeDirectInput(input)) addUnique(blockers, 'unsafe_fixture_builder_value');
-  if (input.nextSafeAction !== undefined && input.nextSafeAction !== READY_NEXT_ACTION) addUnique(blockers, 'next_safe_action_unsafe');
+  if (inspectOwnProperty(input, 'nextSafeAction').kind !== 'absent' && readOwnDataProperty(input, 'nextSafeAction') !== READY_NEXT_ACTION) addUnique(blockers, 'next_safe_action_unsafe');
 
   let rows = blockers.length === 0 && needsReviewReasons.length === 0 && Array.isArray(entityTypes)
-    ? buildRows(fixtureBuildId, fixtureSchemaId, sourceHeadSha, safeDatasetName, entityTypes, requested, safeOverrideReadinessClaim, input.overrideRowIds)
+    ? buildRows(fixtureBuildId, fixtureSchemaId, sourceHeadSha, safeDatasetName, entityTypes, requested, safeOverrideReadinessClaim, overrideRowIdsInspection.kind === 'data' && Array.isArray(overrideRowIdsInspection.value) ? overrideRowIdsInspection.value : undefined)
     : [];
   for (const rowBlocker of rowsValid(rows, sourceHeadSha, fixtureBuildId)) addUnique(blockers, rowBlocker);
   if (blockers.length > 0) rows = [];

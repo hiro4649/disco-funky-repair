@@ -75,6 +75,34 @@ const verify = (overrides: Partial<BuildTierUpdateActualSafeRowExportSafeSummary
   })
 );
 
+const verifyWithDescriptor = (
+  key: keyof BuildTierUpdateActualSafeRowExportSafeSummaryJsonlFixtureVerifierInput,
+  descriptor: PropertyDescriptor
+) => {
+  const input = baseInput();
+  Object.defineProperty(input, key, {
+    enumerable: true,
+    configurable: true,
+    ...descriptor
+  });
+  return buildTierUpdateActualSafeRowExportSafeSummaryJsonlFixtureVerifier(input);
+};
+
+const verifyWithD8apDescriptor = (
+  key: string,
+  descriptor: PropertyDescriptor
+) => {
+  const input = baseInput();
+  const build = { ...d8apBuild() } as Record<string, unknown>;
+  Object.defineProperty(build, key, {
+    enumerable: true,
+    configurable: true,
+    ...descriptor
+  });
+  input.d8apBuild = build as never;
+  return buildTierUpdateActualSafeRowExportSafeSummaryJsonlFixtureVerifier(input);
+};
+
 const withBuild = (overrides: Record<string, unknown>) => ({
   d8apBuild: {
     ...d8apBuild(),
@@ -151,6 +179,50 @@ describe('tierUpdateActualSafeRowExportSafeSummaryJsonlFixtureVerifier', () => {
 
     expect(sha256Hex('abc')).toBe('ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad');
     expect(result.sourceHashesVerified).toBe(true);
+  });
+
+  it('blocks top-level boundary getters without executing them', () => {
+    let getterExecuted = false;
+    const result = verifyWithDescriptor('boundarySummary', {
+      get: () => {
+        getterExecuted = true;
+        return { actualDbQueryEnabled: true };
+      }
+    });
+
+    expect(getterExecuted).toBe(false);
+    expect(result.status).toBe('BLOCKED');
+    expect(result.blockers).toContain('boundary_source_malformed');
+    expect(result.boundarySummary.actualDbQueryEnabled).toBe(false);
+  });
+
+  it('blocks forbidden D8AP build getter surfaces without executing them', () => {
+    let getterExecuted = false;
+    const result = verifyWithD8apDescriptor('actualRows', {
+      get: () => {
+        getterExecuted = true;
+        return [{ rawPayload: 'raw_secret_payload' }];
+      }
+    });
+
+    expect(getterExecuted).toBe(false);
+    expect(result.status).toBe('BLOCKED');
+    expect(result.blockers).toContain('d8ap_forbidden_input_surface_present');
+    expect(JSON.stringify(result)).not.toContain('raw_secret_payload');
+  });
+
+  it('blocks D8AP boundary summary accessors without executing them', () => {
+    let getterExecuted = false;
+    const result = verifyWithD8apDescriptor('boundarySummary', {
+      get: () => {
+        getterExecuted = true;
+        return { actualDbQueryEnabled: true };
+      }
+    });
+
+    expect(getterExecuted).toBe(false);
+    expect(result.status).toBe('BLOCKED');
+    expect(result.blockers).toContain('d8ap_build_accessor_property');
   });
 
   it.each([

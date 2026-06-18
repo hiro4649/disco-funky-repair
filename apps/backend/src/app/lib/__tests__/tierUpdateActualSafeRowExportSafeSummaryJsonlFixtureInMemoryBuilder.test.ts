@@ -59,6 +59,19 @@ const build = (overrides: Partial<BuildTierUpdateActualSafeRowExportSafeSummaryJ
   })
 );
 
+const buildWithDescriptor = (
+  key: keyof BuildTierUpdateActualSafeRowExportSafeSummaryJsonlFixtureInMemoryBuilderInput,
+  descriptor: PropertyDescriptor
+) => {
+  const input = baseInput();
+  Object.defineProperty(input, key, {
+    enumerable: true,
+    configurable: true,
+    ...descriptor
+  });
+  return buildTierUpdateActualSafeRowExportSafeSummaryJsonlFixtureInMemoryBuilder(input);
+};
+
 const sha256Hex = (value: string) => createHash('sha256').update(value, 'utf8').digest('hex');
 
 const withSchema = (overrides: Record<string, unknown>) => ({
@@ -577,6 +590,55 @@ describe('tierUpdateActualSafeRowExportSafeSummaryJsonlFixtureInMemoryBuilder', 
     expect(result.fixtureBuildId).toBe('');
     expect(result.fixtureSchemaId).toBe('');
     expect(result.sourceHeadSha).toBe('');
+  });
+
+  it('blocks malformed descriptor inputs without executing getters', () => {
+    let getterExecuted = false;
+    const result = buildWithDescriptor('fixtureBuildId', {
+      get: () => {
+        getterExecuted = true;
+        throw new Error('raw getter error');
+      }
+    });
+
+    expect(getterExecuted).toBe(false);
+    expect(result.status).toBe('BLOCKED');
+    expect(result.blockers).toContain('fixture_build_id_missing');
+    expect(JSON.stringify(result)).not.toContain('raw getter error');
+  });
+
+  it('blocks unsafe boundary getter inputs without executing them', () => {
+    let getterExecuted = false;
+    const result = buildWithDescriptor('boundarySummary', {
+      get: () => {
+        getterExecuted = true;
+        return { actualDbQueryEnabled: true };
+      }
+    });
+
+    expect(getterExecuted).toBe(false);
+    expect(result.status).toBe('BLOCKED');
+    expect(result.blockers).toContain('boundary_source_malformed');
+    expect(result.boundarySummary.actualDbQueryEnabled).toBe(false);
+  });
+
+  it('blocks cyclic raw payload input without throwing or echoing raw values', () => {
+    const rawPayload: Record<string, unknown> = { label: 'raw_secret_payload' };
+    rawPayload.self = rawPayload;
+    const result = build({ rawPayload });
+
+    expect(result.status).toBe('BLOCKED');
+    expect(result.blockers).toEqual(expect.arrayContaining(['actual_row_input_forbidden', 'raw_payload_forbidden', 'unsafe_fixture_builder_value']));
+    expect(JSON.stringify(result)).not.toContain('raw_secret_payload');
+  });
+
+  it('blocks malformed canonical array entries without coercion', () => {
+    const result = build(withSchema({
+      canonicalFieldOrder: [...D8AO_CANONICAL_FIELD_ORDER.slice(0, -1), Symbol('safe_summary_symbol')]
+    }));
+
+    expect(result.status).toBe('BLOCKED');
+    expect(result.blockers).toContain('d8ao_schema_contract_not_canonical');
   });
 
   it('returns NEEDS_REVIEW for isolated unknown network label', () => {

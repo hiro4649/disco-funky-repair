@@ -16,6 +16,8 @@ import type { SafeSummaryJsonlFixtureRow } from './tierUpdateActualSafeRowExport
 import {
   containsUnsafeSafeSummaryString as unsafeString,
   hasOwnDataProperty as hasDataProperty,
+  hasOwnPropertySafely,
+  inspectOwnProperty,
   isPlainDataRecord as isRecord,
   isSafeLowerToken as safeToken,
   isSafeSha256Label as safeSha256,
@@ -347,11 +349,19 @@ function emptyBoundarySummary(): TierUpdateActualSafeRowExportSafeSummaryJsonlFi
 }
 
 function collectBoundarySources(input: BuildTierUpdateActualSafeRowExportSafeSummaryJsonlFixtureVerifierInput): BoundaryFlags[] {
-  const d8apBuild = isRecord(input.d8apBuild) ? input.d8apBuild : {};
-  const d8apBoundarySummary = isRecord(d8apBuild) && isRecord(safeRead(d8apBuild, 'boundarySummary'))
-    ? safeRead(d8apBuild, 'boundarySummary') as BoundaryFlags
+  const d8apBuildValue = safeRead(input, 'd8apBuild');
+  const d8apBuild = isRecord(d8apBuildValue) ? d8apBuildValue : {};
+  const d8apBoundarySummaryValue = isRecord(d8apBuild) ? safeRead(d8apBuild, 'boundarySummary') : undefined;
+  const d8apBoundarySummary = isRecord(d8apBoundarySummaryValue)
+    ? d8apBoundarySummaryValue as BoundaryFlags
     : {};
-  return [input, input.boundarySummary || {}, input.boundaryFlags || {}, d8apBuild as BoundaryFlags, d8apBoundarySummary];
+  return [
+    input,
+    safeRead(input, 'boundarySummary') as BoundaryFlags | undefined || {},
+    safeRead(input, 'boundaryFlags') as BoundaryFlags | undefined || {},
+    d8apBuild as BoundaryFlags,
+    d8apBoundarySummary
+  ];
 }
 
 function boundarySummaryFor(input: BuildTierUpdateActualSafeRowExportSafeSummaryJsonlFixtureVerifierInput) {
@@ -361,20 +371,21 @@ function boundarySummaryFor(input: BuildTierUpdateActualSafeRowExportSafeSummary
 }
 
 function collectForbiddenBoundaryReasons(input: BuildTierUpdateActualSafeRowExportSafeSummaryJsonlFixtureVerifierInput, blockers: string[]) {
-  for (const source of collectBoundarySources(input)) {
-    for (const flag of FORBIDDEN_BOUNDARY_FLAGS) {
-      if (source[flag] === true) addUnique(blockers, `${flag}_forbidden`);
-    }
+  for (const key of ['boundarySummary', 'boundaryFlags', 'd8apBuild'] as const) {
+    const inspection = inspectOwnProperty(input, key);
+    if (inspection.kind === 'accessor' || inspection.kind === 'error') addUnique(blockers, 'boundary_source_malformed');
   }
+  const reduced = reduceForbiddenBooleanFlags(collectBoundarySources(input), FORBIDDEN_BOUNDARY_FLAGS, () => addUnique(blockers, 'boundary_source_malformed'));
+  for (const flag of FORBIDDEN_BOUNDARY_FLAGS) if (reduced[flag]) addUnique(blockers, `${flag}_forbidden`);
 }
 
 function normalizeInputCollections(input: BuildTierUpdateActualSafeRowExportSafeSummaryJsonlFixtureVerifierInput, blockers: string[], needsReviewReasons: string[]) {
-  if (hasDataProperty(input, 'blockers')) {
-    normalizeGenericBlockerPresence(input.blockers, (blocker) => addUnique(blockers, blocker));
+  if (hasOwnPropertySafely(input, 'blockers')) {
+    normalizeGenericBlockerPresence(safeRead(input, 'blockers'), (blocker) => addUnique(blockers, blocker));
   }
-  if (hasDataProperty(input, 'needsReviewReasons')) {
+  if (hasOwnPropertySafely(input, 'needsReviewReasons')) {
     normalizeAllowlistedReviewReasons(
-      input.needsReviewReasons,
+      safeRead(input, 'needsReviewReasons'),
       SAFE_REVIEW_REASON_ALLOWLIST,
       (blocker) => addUnique(blockers, blocker),
       (reason) => addUnique(needsReviewReasons, reason)
@@ -383,18 +394,22 @@ function normalizeInputCollections(input: BuildTierUpdateActualSafeRowExportSafe
 }
 
 function validatePolicy(input: BuildTierUpdateActualSafeRowExportSafeSummaryJsonlFixtureVerifierInput, blockers: string[]) {
-  if (!safeToken(input.fixtureVerifierId, 96)) addUnique(blockers, 'fixture_verifier_id_missing');
-  if (!input.verificationMode || FORBIDDEN_MODES.has(input.verificationMode) || !SAFE_MODES.has(input.verificationMode)) {
+  const fixtureVerifierId = safeRead(input, 'fixtureVerifierId');
+  const verificationMode = safeRead(input, 'verificationMode');
+  if (!safeToken(fixtureVerifierId, 96)) addUnique(blockers, 'fixture_verifier_id_missing');
+  if (!verificationMode || typeof verificationMode !== 'string' || FORBIDDEN_MODES.has(verificationMode) || !SAFE_MODES.has(verificationMode)) {
     addUnique(blockers, 'verification_mode_unsafe');
   }
-  if (input.fixtureOnlyRequired !== true) addUnique(blockers, 'fixture_only_required');
-  if (input.inMemoryOnlyRequired !== true) addUnique(blockers, 'in_memory_only_required');
-  if (input.zeroRealRowsRequired !== true) addUnique(blockers, 'zero_real_rows_required');
-  if (input.noFileOutputRequired !== true) addUnique(blockers, 'no_file_output_required');
-  if (input.noJsonlFileOutputRequired !== true) addUnique(blockers, 'no_jsonl_file_output_required');
-  if (input.noArtifactUploadRequired !== true) addUnique(blockers, 'no_artifact_upload_required');
-  if (input.nextSafeAction !== undefined && input.nextSafeAction !== READY_NEXT_ACTION) addUnique(blockers, 'next_safe_action_unsafe');
-  for (const key of FORBIDDEN_INPUT_KEYS) if (hasDataProperty(input, key)) addUnique(blockers, 'actual_row_input_forbidden');
+  if (safeRead(input, 'fixtureOnlyRequired') !== true) addUnique(blockers, 'fixture_only_required');
+  if (safeRead(input, 'inMemoryOnlyRequired') !== true) addUnique(blockers, 'in_memory_only_required');
+  if (safeRead(input, 'zeroRealRowsRequired') !== true) addUnique(blockers, 'zero_real_rows_required');
+  if (safeRead(input, 'noFileOutputRequired') !== true) addUnique(blockers, 'no_file_output_required');
+  if (safeRead(input, 'noJsonlFileOutputRequired') !== true) addUnique(blockers, 'no_jsonl_file_output_required');
+  if (safeRead(input, 'noArtifactUploadRequired') !== true) addUnique(blockers, 'no_artifact_upload_required');
+  const nextAction = inspectOwnProperty(input, 'nextSafeAction');
+  if (nextAction.kind === 'data' && nextAction.value !== READY_NEXT_ACTION) addUnique(blockers, 'next_safe_action_unsafe');
+  if (nextAction.kind === 'accessor' || nextAction.kind === 'error') addUnique(blockers, 'next_safe_action_unsafe');
+  for (const key of FORBIDDEN_INPUT_KEYS) if (hasOwnPropertySafely(input, key)) addUnique(blockers, 'actual_row_input_forbidden');
 }
 
 function isCanonicalRowObject(value: unknown): value is Record<keyof SafeSummaryJsonlFixtureRow, unknown> {
@@ -802,6 +817,9 @@ function normalizeBuildMetadata(build: D8APBuild | null | undefined, blockers: s
     return null;
   }
   const record = build as Record<string, unknown>;
+  for (const key of FORBIDDEN_INPUT_KEYS) {
+    if (hasOwnPropertySafely(record, key)) addUnique(blockers, 'd8ap_forbidden_input_surface_present');
+  }
   if (!ownKeys(record)) {
     addUnique(blockers, 'd8ap_build_accessor_property');
     return null;
@@ -834,9 +852,6 @@ function normalizeBuildMetadata(build: D8APBuild | null | undefined, blockers: s
   ];
   for (const key of requiredDataProperties) {
     if (!hasDataProperty(record, key)) addUnique(blockers, 'd8ap_build_accessor_property');
-  }
-  for (const key of FORBIDDEN_INPUT_KEYS) {
-    if (hasDataProperty(record, key)) addUnique(blockers, 'd8ap_forbidden_input_surface_present');
   }
   const normalized: NormalizedD8APBuild = {
     status: typeof safeRead(record, 'status') === 'string' ? safeRead(record, 'status') as string : '',
@@ -987,7 +1002,7 @@ export function buildTierUpdateActualSafeRowExportSafeSummaryJsonlFixtureVerifie
   normalizeInputCollections(input, blockers, needsReviewReasons);
 
   const beforeBuildBlockerCount = blockers.length;
-  const build = normalizeBuildMetadata(input.d8apBuild, blockers);
+  const build = normalizeBuildMetadata(safeRead(input, 'd8apBuild') as D8APBuild | null | undefined, blockers);
   const buildMetadataVerified = !!build && blockers.length === beforeBuildBlockerCount;
   const rows = build ? build.rows : [];
   const seen = new Set<string>();
@@ -1045,6 +1060,13 @@ export function buildTierUpdateActualSafeRowExportSafeSummaryJsonlFixtureVerifie
   const verifiedEntityTypes = status === 'BLOCKED'
     ? []
     : build?.entityTypes.filter((entityType): entityType is string => typeof entityType === 'string') || [];
+  const fixtureVerifierId = safeRead(input, 'fixtureVerifierId');
+  const fixtureOnlyRequired = safeRead(input, 'fixtureOnlyRequired');
+  const inMemoryOnlyRequired = safeRead(input, 'inMemoryOnlyRequired');
+  const zeroRealRowsRequired = safeRead(input, 'zeroRealRowsRequired');
+  const noFileOutputRequired = safeRead(input, 'noFileOutputRequired');
+  const noJsonlFileOutputRequired = safeRead(input, 'noJsonlFileOutputRequired');
+  const noArtifactUploadRequired = safeRead(input, 'noArtifactUploadRequired');
 
   return {
     status,
@@ -1053,7 +1075,7 @@ export function buildTierUpdateActualSafeRowExportSafeSummaryJsonlFixtureVerifie
     schemaVersion: 1,
     skillProfileId: 'FUNKY_NO_TX_NO_RUNTIME_PROFILE',
     safeSummaryOnly: true,
-    fixtureVerifierId: safeToken(input.fixtureVerifierId, 96) ? input.fixtureVerifierId : '',
+    fixtureVerifierId: safeToken(fixtureVerifierId, 96) ? fixtureVerifierId as string : '',
     fixtureBuildId: buildMetadataVerified && safeToken(build?.fixtureBuildId, 96) ? build.fixtureBuildId : '',
     fixtureSchemaId: buildMetadataVerified && safeToken(build?.fixtureSchemaId, 96) ? build.fixtureSchemaId : '',
     sourceHeadSha: buildMetadataVerified && safeSourceHead(build?.sourceHeadSha) ? build.sourceHeadSha : '',
@@ -1074,12 +1096,12 @@ export function buildTierUpdateActualSafeRowExportSafeSummaryJsonlFixtureVerifie
     walletSummaryVerified: status !== 'BLOCKED' && walletSummaryVerified,
     chainNetworkVerified,
     requiredSafetyFlagsVerified,
-    fixtureOnlyVerified: status !== 'BLOCKED' && build?.fixtureOnly === true && input.fixtureOnlyRequired === true,
-    inMemoryOnlyVerified: status !== 'BLOCKED' && build?.inMemoryOnly === true && input.inMemoryOnlyRequired === true,
-    zeroRealRowsVerified: status !== 'BLOCKED' && build?.zeroRealRows === true && input.zeroRealRowsRequired === true,
-    noFileOutputVerified: status !== 'BLOCKED' && build?.jsonlContract?.fileWriteEnabled === false && input.noFileOutputRequired === true,
-    noJsonlFileOutputVerified: status !== 'BLOCKED' && build?.jsonlContract?.jsonlLinesReturned === false && input.noJsonlFileOutputRequired === true,
-    noArtifactUploadVerified: status !== 'BLOCKED' && input.noArtifactUploadRequired === true,
+    fixtureOnlyVerified: status !== 'BLOCKED' && build?.fixtureOnly === true && fixtureOnlyRequired === true,
+    inMemoryOnlyVerified: status !== 'BLOCKED' && build?.inMemoryOnly === true && inMemoryOnlyRequired === true,
+    zeroRealRowsVerified: status !== 'BLOCKED' && build?.zeroRealRows === true && zeroRealRowsRequired === true,
+    noFileOutputVerified: status !== 'BLOCKED' && build?.jsonlContract?.fileWriteEnabled === false && noFileOutputRequired === true,
+    noJsonlFileOutputVerified: status !== 'BLOCKED' && build?.jsonlContract?.jsonlLinesReturned === false && noJsonlFileOutputRequired === true,
+    noArtifactUploadVerified: status !== 'BLOCKED' && noArtifactUploadRequired === true,
     boundarySummary: boundarySummaryFor(input),
     blockerCount: blockers.length,
     blockers,
