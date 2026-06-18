@@ -311,6 +311,62 @@ describe('tierUpdateActualSafeRowExportSafeSummaryJsonlFixtureInMemoryBuilder', 
   });
 
   it.each([
+    ['secret blocker', { blockers: ['secret=example'] }, 'secret=example'],
+    ['path blocker', { blockers: ['C:\\private\\path'] }, 'C:\\private\\path'],
+    ['endpoint blocker', { blockers: ['https://private.example.invalid'] }, 'https://private.example.invalid'],
+    ['wallet blocker', { blockers: ['0x1234567890abcdef1234567890abcdef12345678'] }, '0x1234567890abcdef1234567890abcdef12345678'],
+    ['safe blocker code', { blockers: ['caller_safe_code'] }, 'caller_safe_code']
+  ])('redacts upstream blocker text: %s', (_name, overrides, unsafeValue) => {
+    const result = build(overrides);
+    const serialized = JSON.stringify(result);
+
+    expect(result.status).toBe('BLOCKED');
+    expect(result.blockers).toEqual(expect.arrayContaining(['upstream_blocker_present']));
+    expect(result.blockers).not.toContain(unsafeValue);
+    expect(serialized).not.toContain(unsafeValue);
+    expect(result.rows).toEqual([]);
+  });
+
+  it('does not block when upstream blockers is an empty array', () => {
+    expect(build({ blockers: [] }).status).toBe('SAFE_SUMMARY_JSONL_FIXTURE_IN_MEMORY_ROWS_READY');
+  });
+
+  it('blocks non-array upstream blockers without throwing', () => {
+    const input = { blockers: 'secret=example' } as unknown as BuildTierUpdateActualSafeRowExportSafeSummaryJsonlFixtureInMemoryBuilderInput;
+
+    expect(() => build(input)).not.toThrow();
+    expect(build(input).status).toBe('BLOCKED');
+    expect(JSON.stringify(build(input))).not.toContain('secret=example');
+  });
+
+  it.each([
+    'unknown_network_label_isolated_review',
+    'incomplete_safe_fixture_coverage'
+  ])('preserves safe review reason %s', (reason) => {
+    const result = build({ needsReviewReasons: [reason] });
+
+    expect(result.status).toBe('NEEDS_REVIEW');
+    expect(result.needsReviewReasons).toEqual(expect.arrayContaining([reason]));
+  });
+
+  it('redacts unsafe upstream review reason', () => {
+    const result = build({ needsReviewReasons: ['raw_secret=value'] });
+    const serialized = JSON.stringify(result);
+
+    expect(result.status).toBe('NEEDS_REVIEW');
+    expect(result.needsReviewReasons).toEqual(['upstream_review_reason_redacted']);
+    expect(serialized).not.toContain('raw_secret=value');
+  });
+
+  it('blocks non-array upstream review reasons without throwing', () => {
+    const input = { needsReviewReasons: 'raw_secret=value' } as unknown as BuildTierUpdateActualSafeRowExportSafeSummaryJsonlFixtureInMemoryBuilderInput;
+
+    expect(() => build(input)).not.toThrow();
+    expect(build(input).status).toBe('BLOCKED');
+    expect(JSON.stringify(build(input))).not.toContain('raw_secret=value');
+  });
+
+  it.each([
     ['NaN', NaN],
     ['Infinity', Infinity],
     ['-Infinity', -Infinity],
@@ -334,6 +390,54 @@ describe('tierUpdateActualSafeRowExportSafeSummaryJsonlFixtureInMemoryBuilder', 
 
     expect(result.status).toBe('SAFE_SUMMARY_JSONL_FIXTURE_IN_MEMORY_ROWS_READY');
     expect(result.rowCount).toBe(fixtureRowsRequested);
+  });
+
+  it('uses safe default dataset only when fixtureDatasetName is absent', () => {
+    const result = build();
+
+    expect(result.status).toBe('SAFE_SUMMARY_JSONL_FIXTURE_IN_MEMORY_ROWS_READY');
+    expect(result.rows[0].dataset_name).toBe('safe_summary_jsonl_fixture_dataset');
+  });
+
+  it.each([
+    ['empty string', ''],
+    ['null', null],
+    ['undefined', undefined],
+    ['whitespace', '   ']
+  ])('blocks explicit empty fixtureDatasetName %s', (_name, fixtureDatasetName) => {
+    const input = { fixtureDatasetName } as unknown as Partial<BuildTierUpdateActualSafeRowExportSafeSummaryJsonlFixtureInMemoryBuilderInput>;
+    const result = build(input);
+
+    expect(result.status).toBe('BLOCKED');
+    expect(result.rows).toEqual([]);
+  });
+
+  it('uses fixture_only readiness only when overrideReadinessClaim is absent', () => {
+    const result = build();
+
+    expect(result.status).toBe('SAFE_SUMMARY_JSONL_FIXTURE_IN_MEMORY_ROWS_READY');
+    expect(result.rows[0].readiness_claim).toBe('fixture_only');
+  });
+
+  it.each([
+    ['empty string', ''],
+    ['null', null],
+    ['undefined', undefined],
+    ['runtime ready', 'runtime_ready']
+  ])('blocks unsafe explicit overrideReadinessClaim %s', (_name, overrideReadinessClaim) => {
+    const input = { overrideReadinessClaim } as unknown as Partial<BuildTierUpdateActualSafeRowExportSafeSummaryJsonlFixtureInMemoryBuilderInput>;
+    const result = build(input);
+
+    expect(result.status).toBe('BLOCKED');
+    expect(result.rows).toEqual([]);
+  });
+
+  it('allows needs_review override without runtime readiness claim', () => {
+    const result = build({ overrideReadinessClaim: 'needs_review' });
+
+    expect(result.status).toBe('SAFE_SUMMARY_JSONL_FIXTURE_IN_MEMORY_ROWS_READY');
+    expect(result.rows[0].readiness_claim).toBe('needs_review');
+    expect(result.boundarySummary.runtimeReadinessClaimed).toBe(false);
   });
 
   it.each([
@@ -360,6 +464,26 @@ describe('tierUpdateActualSafeRowExportSafeSummaryJsonlFixtureInMemoryBuilder', 
 
     expect(result.status).toBe('SAFE_SUMMARY_JSONL_FIXTURE_IN_MEMORY_ROWS_READY');
     expect(result.rowIds).toEqual(['row-one', 'row-two', 'row-three']);
+  });
+
+  it('blocks non-array fixtureEntityTypes without throwing', () => {
+    const input = { fixtureEntityTypes: 'fixture' } as unknown as BuildTierUpdateActualSafeRowExportSafeSummaryJsonlFixtureInMemoryBuilderInput;
+
+    expect(() => build(input)).not.toThrow();
+    expect(build(input).status).toBe('BLOCKED');
+    expect(build(input).rows).toEqual([]);
+  });
+
+  it('returns NEEDS_REVIEW without rows for unknown_review_only entity', () => {
+    const result = build({ fixtureEntityTypes: ['unknown_review_only'] });
+
+    expect(result.status).toBe('NEEDS_REVIEW');
+    expect(result.needsReviewReasons).toEqual(expect.arrayContaining(['unknown_entity_type_isolated_review']));
+    expect(result.rowCount).toBe(0);
+    expect(result.rows).toEqual([]);
+    expect(result.rowIds).toEqual([]);
+    expect(result.entityTypes).toEqual([]);
+    expect(d8aoSchema.entityTypeAllowlist).not.toContain('unknown_review_only');
   });
 
   it.each([

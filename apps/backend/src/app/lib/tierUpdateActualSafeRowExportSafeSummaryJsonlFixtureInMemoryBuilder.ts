@@ -275,6 +275,14 @@ const FORBIDDEN_INPUT_PRESENCE_KEYS = [
   'endpoint'
 ] as const;
 
+const SAFE_REVIEW_REASON_ALLOWLIST = [
+  'unknown_network_label_isolated_review',
+  'incomplete_safe_fixture_coverage',
+  'unknown_entity_type_isolated_review',
+  'optional_fixture_metadata_incomplete',
+  'deferred_entity_isolated_review'
+] as const;
+
 const UNSAFE_PATTERNS = [
   /raw[\s_-]*(secret|env|log|payload|endpoint)/i,
   /private[\s_-]*(key|path|identifier)/i,
@@ -301,6 +309,10 @@ function hasValue(value: unknown): boolean {
   return value !== undefined && value !== null && String(value).trim() !== '';
 }
 
+function hasOwn(input: object, key: string): boolean {
+  return Object.prototype.hasOwnProperty.call(input, key);
+}
+
 function validSafeToken(value: string | null | undefined): boolean {
   return /^[a-z0-9][a-z0-9_-]{2,95}$/.test(String(value || ''));
 }
@@ -322,6 +334,38 @@ function hasUnsafeValue(value: unknown): boolean {
   if (Array.isArray(value)) return value.some(hasUnsafeValue);
   if (value && typeof value === 'object') return Object.values(value).some(hasUnsafeValue);
   return false;
+}
+
+function malformedExplicitValue(input: object, key: string, value: unknown): boolean {
+  return hasOwn(input, key) && (value === undefined || value === null || String(value).trim() === '');
+}
+
+function normalizeUpstreamBlockers(input: BuildTierUpdateActualSafeRowExportSafeSummaryJsonlFixtureInMemoryBuilderInput, blockers: string[]) {
+  if (!hasOwn(input, 'blockers')) return;
+  if (!Array.isArray(input.blockers)) {
+    addUnique(blockers, 'upstream_blockers_invalid');
+    return;
+  }
+  if (input.blockers.length > 0) addUnique(blockers, 'upstream_blocker_present');
+}
+
+function normalizeNeedsReviewReasons(
+  input: BuildTierUpdateActualSafeRowExportSafeSummaryJsonlFixtureInMemoryBuilderInput,
+  blockers: string[],
+  needsReviewReasons: string[]
+) {
+  if (!hasOwn(input, 'needsReviewReasons')) return;
+  if (!Array.isArray(input.needsReviewReasons)) {
+    addUnique(blockers, 'needs_review_reasons_invalid');
+    return;
+  }
+  for (const reason of input.needsReviewReasons) {
+    if (SAFE_REVIEW_REASON_ALLOWLIST.includes(reason as typeof SAFE_REVIEW_REASON_ALLOWLIST[number])) {
+      addUnique(needsReviewReasons, reason);
+    } else {
+      addUnique(needsReviewReasons, 'upstream_review_reason_redacted');
+    }
+  }
 }
 
 function emptyBoundarySummary(): TierUpdateActualSafeRowExportSafeSummaryJsonlFixtureInMemoryBuilder['boundarySummary'] {
@@ -560,8 +604,11 @@ export function buildTierUpdateActualSafeRowExportSafeSummaryJsonlFixtureInMemor
   const sourceHeadSha = schema?.sourceHeadSha || '';
   const requested = input.fixtureRowsRequested ?? 1;
   const fixtureBuildId = input.fixtureBuildId || '';
-  const datasetName = input.fixtureDatasetName || 'safe_summary_jsonl_fixture_dataset';
-  const entityTypes = input.fixtureEntityTypes || ['fixture'];
+  const datasetName = hasOwn(input, 'fixtureDatasetName') ? input.fixtureDatasetName : 'safe_summary_jsonl_fixture_dataset';
+  const entityTypes = hasOwn(input, 'fixtureEntityTypes') ? input.fixtureEntityTypes : ['fixture'];
+  const overrideReadinessClaim = hasOwn(input, 'overrideReadinessClaim') ? input.overrideReadinessClaim : 'fixture_only';
+  const safeDatasetName = typeof datasetName === 'string' ? datasetName : '';
+  const safeOverrideReadinessClaim = typeof overrideReadinessClaim === 'string' ? overrideReadinessClaim : '';
 
   if (!schema) addUnique(blockers, 'd8ao_schema_missing');
   if (d8aoStatus !== D8AO_READY_STATUS) addUnique(blockers, 'd8ao_schema_not_ready');
@@ -576,12 +623,25 @@ export function buildTierUpdateActualSafeRowExportSafeSummaryJsonlFixtureInMemor
   if (!Number.isFinite(requested) || !Number.isInteger(requested)) addUnique(blockers, 'fixture_rows_requested_not_finite_integer');
   else if (requested < 1) addUnique(blockers, 'fixture_rows_requested_too_low');
   else if (requested > SAFE_ROW_CAP) addUnique(blockers, 'fixture_rows_requested_too_high');
-  if (entityTypes.length === 0) addUnique(blockers, 'fixture_entity_types_empty');
-  if (!validSafeDatasetName(datasetName)) addUnique(blockers, 'fixture_dataset_name_unsafe');
+  if (malformedExplicitValue(input, 'fixtureDatasetName', input.fixtureDatasetName)) addUnique(blockers, 'fixture_dataset_name_unsafe');
+  if (!validSafeDatasetName(safeDatasetName)) addUnique(blockers, 'fixture_dataset_name_unsafe');
 
-  for (const entityType of entityTypes) {
-    if (entityType === 'unknown_review_only') addUnique(needsReviewReasons, 'unknown_entity_type_isolated_review');
-    else if (!D8AO_ENTITY_TYPE_ALLOWLIST.includes(entityType as typeof D8AO_ENTITY_TYPE_ALLOWLIST[number])) addUnique(blockers, 'fixture_entity_type_unsafe');
+  if (!Array.isArray(entityTypes)) {
+    addUnique(blockers, 'fixture_entity_types_invalid');
+  } else {
+    if (entityTypes.length === 0) addUnique(blockers, 'fixture_entity_types_empty');
+    for (const entityType of entityTypes) {
+      if (typeof entityType !== 'string') addUnique(blockers, 'fixture_entity_type_unsafe');
+      else if (entityType === 'unknown_review_only') addUnique(needsReviewReasons, 'unknown_entity_type_isolated_review');
+      else if (!D8AO_ENTITY_TYPE_ALLOWLIST.includes(entityType as typeof D8AO_ENTITY_TYPE_ALLOWLIST[number])) addUnique(blockers, 'fixture_entity_type_unsafe');
+    }
+  }
+
+  if (hasOwn(input, 'overrideReadinessClaim')) {
+    if (safeOverrideReadinessClaim.trim() === '') addUnique(blockers, 'override_readiness_claim_unsafe');
+    else if (!D8AO_READINESS_CLAIM_ALLOWLIST.includes(safeOverrideReadinessClaim as typeof D8AO_READINESS_CLAIM_ALLOWLIST[number])) {
+      addUnique(blockers, 'override_readiness_claim_unsafe');
+    }
   }
 
   if (input.overrideRowIds !== undefined) {
@@ -607,13 +667,13 @@ export function buildTierUpdateActualSafeRowExportSafeSummaryJsonlFixtureInMemor
   if (hasValue(input.rawPayload)) addUnique(blockers, 'raw_payload_forbidden');
   if (hasValue(input.endpoint)) addUnique(blockers, 'endpoint_forbidden');
   for (const reason of forbiddenBoundaryReasons(input)) addUnique(blockers, reason);
-  for (const blocker of input.blockers || []) addUnique(blockers, blocker);
-  for (const reason of input.needsReviewReasons || []) addUnique(needsReviewReasons, reason);
+  normalizeUpstreamBlockers(input, blockers);
+  normalizeNeedsReviewReasons(input, blockers, needsReviewReasons);
   if (hasUnsafeDirectInput(input)) addUnique(blockers, 'unsafe_fixture_builder_value');
   if (input.nextSafeAction !== undefined && input.nextSafeAction !== READY_NEXT_ACTION) addUnique(blockers, 'next_safe_action_unsafe');
 
-  let rows = blockers.length === 0
-    ? buildRows(fixtureBuildId, fixtureSchemaId, sourceHeadSha, datasetName, entityTypes, requested, input.overrideReadinessClaim, input.overrideRowIds)
+  let rows = blockers.length === 0 && needsReviewReasons.length === 0 && Array.isArray(entityTypes)
+    ? buildRows(fixtureBuildId, fixtureSchemaId, sourceHeadSha, safeDatasetName, entityTypes, requested, safeOverrideReadinessClaim, input.overrideRowIds)
     : [];
   for (const rowBlocker of rowsValid(rows, sourceHeadSha, fixtureBuildId)) addUnique(blockers, rowBlocker);
   if (blockers.length > 0) rows = [];
