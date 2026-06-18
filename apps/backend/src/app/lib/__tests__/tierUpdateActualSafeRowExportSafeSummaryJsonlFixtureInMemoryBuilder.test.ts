@@ -2,7 +2,8 @@ import { createHash } from 'node:crypto';
 import fs from 'fs';
 import path from 'path';
 import {
-  buildTierUpdateActualSafeRowExportSafeSummaryJsonlFixtureSchema
+  buildTierUpdateActualSafeRowExportSafeSummaryJsonlFixtureSchema,
+  D8AO_CANONICAL_FIELD_ORDER
 } from '../tierUpdateActualSafeRowExportSafeSummaryJsonlFixtureSchema';
 import {
   buildTierUpdateActualSafeRowExportSafeSummaryJsonlFixtureInMemoryBuilder
@@ -59,6 +60,34 @@ const build = (overrides: Partial<BuildTierUpdateActualSafeRowExportSafeSummaryJ
 );
 
 const sha256Hex = (value: string) => createHash('sha256').update(value, 'utf8').digest('hex');
+
+const withSchema = (overrides: Record<string, unknown>) => ({
+  d8aoSchema: {
+    ...d8aoSchema,
+    ...overrides
+  }
+});
+
+const withJsonlContract = (overrides: Record<string, unknown>) => withSchema({
+  jsonlContract: {
+    ...d8aoSchema.jsonlContract,
+    ...overrides
+  }
+});
+
+const withIdentifierPolicies = (overrides: Record<string, unknown>) => withSchema({
+  identifierPolicies: {
+    ...d8aoSchema.identifierPolicies,
+    ...overrides
+  }
+});
+
+const withRowValuePolicy = (overrides: Record<string, unknown>) => withSchema({
+  rowValuePolicy: {
+    ...d8aoSchema.rowValuePolicy,
+    ...overrides
+  }
+});
 
 describe('tierUpdateActualSafeRowExportSafeSummaryJsonlFixtureInMemoryBuilder', () => {
   it('ready builds synthetic in-memory rows', () => {
@@ -155,6 +184,80 @@ describe('tierUpdateActualSafeRowExportSafeSummaryJsonlFixtureInMemoryBuilder', 
   });
 
   it.each([
+    ['entityTypeAllowlist unsafe replacement', withSchema({ entityTypeAllowlist: ['unsafe_runtime_entity'] })],
+    ['entityTypeAllowlist missing item', withSchema({ entityTypeAllowlist: d8aoSchema.entityTypeAllowlist.slice(1) })],
+    ['entityTypeAllowlist extra item', withSchema({ entityTypeAllowlist: [...d8aoSchema.entityTypeAllowlist, 'unsafe_runtime_entity'] })],
+    ['wallet allowlist extra full address', withSchema({ walletAddressSummaryAllowlist: [...d8aoSchema.walletAddressSummaryAllowlist, 'full_address'] })],
+    ['chain allowlist unknown chain', withSchema({ chainIdAllowlist: [...d8aoSchema.chainIdAllowlist, 1] })],
+    ['network label runtime addition', withSchema({ networkLabelAllowlist: [...d8aoSchema.networkLabelAllowlist, 'runtime'] })],
+    ['evidence origin raw db addition', withSchema({ evidenceOriginAllowlist: [...d8aoSchema.evidenceOriginAllowlist, 'raw_db'] })],
+    ['readiness claim runtime ready addition', withSchema({ readinessClaimAllowlist: [...d8aoSchema.readinessClaimAllowlist, 'runtime_ready'] })],
+    ['safety flag executable addition', withSchema({ safetyFlagAllowlist: [...d8aoSchema.safetyFlagAllowlist, 'executable'] })]
+  ])('blocks canonical allowlist weakening: %s', (_name, overrides) => {
+    const result = build(overrides);
+
+    expect(result.status).toBe('BLOCKED');
+    expect(result.rows).toEqual([]);
+  });
+
+  it.each([
+    ['field definition type mutation', withSchema({ fieldDefinitions: d8aoSchema.fieldDefinitions.map((field, index) => index === 0 ? { ...field, type: 'number' } : field) })],
+    ['field definition required mutation', withSchema({ fieldDefinitions: d8aoSchema.fieldDefinitions.map((field, index) => index === 0 ? { ...field, required: false } : field) })],
+    ['field definition policy mutation', withSchema({ fieldDefinitions: d8aoSchema.fieldDefinitions.map((field, index) => index === 0 ? { ...field, policy: 'weakened policy' } : field) })],
+    ['field definition duplicate key', withSchema({ fieldDefinitions: d8aoSchema.fieldDefinitions.map((field, index) => index === 1 ? { ...field, key: D8AO_CANONICAL_FIELD_ORDER[0] } : field) })]
+  ])('blocks canonical field definition weakening: %s', (_name, overrides) => {
+    const result = build(overrides as Partial<BuildTierUpdateActualSafeRowExportSafeSummaryJsonlFixtureInMemoryBuilderInput>);
+
+    expect(result.status).toBe('BLOCKED');
+    expect(result.rows).toEqual([]);
+  });
+
+  it.each([
+    ['utf8Required false', withJsonlContract({ utf8Required: false })],
+    ['oneJsonObjectPerLineContract false', withJsonlContract({ oneJsonObjectPerLineContract: false })],
+    ['canonicalFieldOrderRequired false', withJsonlContract({ canonicalFieldOrderRequired: false })],
+    ['multilineStringForbidden false', withJsonlContract({ multilineStringForbidden: false })],
+    ['commentsForbidden false', withJsonlContract({ commentsForbidden: false })],
+    ['jsonlLinesReturned true', withJsonlContract({ jsonlLinesReturned: true })],
+    ['fileWriteEnabled true', withJsonlContract({ fileWriteEnabled: true })],
+    ['maxFixtureRowBytes mutation', withJsonlContract({ maxFixtureRowBytes: 32767 })],
+    ['rowIdStrategy mutation', withIdentifierPolicies({ rowIdStrategy: 'caller_controlled' })],
+    ['auditExportIdStrategy mutation', withIdentifierPolicies({ auditExportIdStrategy: 'caller_controlled' })],
+    ['rowValuesAccepted true', withRowValuePolicy({ rowValuesAccepted: true })],
+    ['fixtureRowsAccepted true', withRowValuePolicy({ fixtureRowsAccepted: true })],
+    ['actualRowsAccepted true', withRowValuePolicy({ actualRowsAccepted: true })],
+    ['rawRowsAccepted true', withRowValuePolicy({ rawRowsAccepted: true })],
+    ['recordsAccepted true', withRowValuePolicy({ recordsAccepted: true })],
+    ['jsonlLinesAccepted true', withRowValuePolicy({ jsonlLinesAccepted: true })]
+  ])('blocks canonical policy weakening: %s', (_name, overrides) => {
+    const result = build(overrides);
+
+    expect(result.status).toBe('BLOCKED');
+    expect(result.rows).toEqual([]);
+  });
+
+  it.each([
+    ['different valid fixtureSchemaId', { fixtureSchemaId: 'different-safe-schema' }],
+    ['different valid sourceHeadSha', { sourceHeadSha: 'c'.repeat(40) }],
+    ['different d8aoSchemaStatus', { d8aoSchemaStatus: 'BLOCKED' }]
+  ])('blocks explicit schema binding mismatch: %s', (_name, overrides) => {
+    const result = build(overrides);
+
+    expect(result.status).toBe('BLOCKED');
+    expect(result.rows).toEqual([]);
+  });
+
+  it('keeps same explicit schema binding values ready', () => {
+    const result = build({
+      fixtureSchemaId: d8aoSchema.fixtureSchemaId,
+      sourceHeadSha: d8aoSchema.sourceHeadSha,
+      d8aoSchemaStatus: d8aoSchema.status
+    });
+
+    expect(result.status).toBe('SAFE_SUMMARY_JSONL_FIXTURE_IN_MEMORY_ROWS_READY');
+  });
+
+  it.each([
     ['missing D8AO', { d8aoSchema: null }],
     ['D8AO not ready', { d8aoSchema: { ...d8aoSchema, status: 'BLOCKED' } }],
     ['missing fixtureBuildId', { fixtureBuildId: null }],
@@ -187,6 +290,79 @@ describe('tierUpdateActualSafeRowExportSafeSummaryJsonlFixtureInMemoryBuilder', 
   });
 
   it.each([
+    ['actualRows empty', { actualRows: [] }],
+    ['rawRows empty', { rawRows: [] }],
+    ['dbRows empty', { dbRows: [] }],
+    ['sourceRows empty', { sourceRows: [] }],
+    ['records empty', { records: [] }],
+    ['jsonlLines empty', { jsonlLines: [] }],
+    ['filePath empty', { filePath: '' }],
+    ['outputPath empty', { outputPath: '' }],
+    ['artifactName empty', { artifactName: '' }],
+    ['sql empty', { sql: '' }],
+    ['query empty', { query: '' }],
+    ['rawPayload empty object', { rawPayload: {} }],
+    ['endpoint empty', { endpoint: '' }]
+  ])('blocks forbidden input presence even when value is empty: %s', (_name, overrides) => {
+    const result = build(overrides);
+
+    expect(result.status).toBe('BLOCKED');
+    expect(result.rows).toEqual([]);
+  });
+
+  it.each([
+    ['NaN', NaN],
+    ['Infinity', Infinity],
+    ['-Infinity', -Infinity],
+    ['1.5', 1.5],
+    ['0.5', 0.5],
+    ['-1', -1],
+    ['0', 0],
+    ['SAFE_ROW_CAP+1', 13]
+  ])('blocks invalid fixtureRowsRequested %s', (_name, fixtureRowsRequested) => {
+    const result = build({ fixtureRowsRequested });
+
+    expect(result.status).toBe('BLOCKED');
+    expect(result.rows).toEqual([]);
+  });
+
+  it.each([1, 12])('allows valid fixtureRowsRequested %s', (fixtureRowsRequested) => {
+    const result = build({
+      fixtureRowsRequested,
+      fixtureEntityTypes: ['fixture']
+    });
+
+    expect(result.status).toBe('SAFE_SUMMARY_JSONL_FIXTURE_IN_MEMORY_ROWS_READY');
+    expect(result.rowCount).toBe(fixtureRowsRequested);
+  });
+
+  it.each([
+    ['dataset whitespace', { fixtureDatasetName: 'bad dataset' }],
+    ['dataset newline', { fixtureDatasetName: 'bad\ndataset' }],
+    ['dataset URL', { fixtureDatasetName: 'https://example.invalid/dataset' }],
+    ['dataset slash', { fixtureDatasetName: 'bad/dataset' }],
+    ['dataset over 96 chars', { fixtureDatasetName: `a${'b'.repeat(96)}` }],
+    ['override row ID whitespace', { overrideRowIds: ['row one', 'row-two', 'row-three'] }],
+    ['override row ID newline', { overrideRowIds: ['row-one', 'row\ntwo', 'row-three'] }],
+    ['override row ID path', { overrideRowIds: ['row-one', '../row-two', 'row-three'] }],
+    ['override row ID full wallet', { overrideRowIds: ['row-one', '0x1234567890abcdef1234567890abcdef12345678', 'row-three'] }],
+    ['override row ID over 128 chars', { overrideRowIds: [`a${'b'.repeat(128)}`, 'row-two', 'row-three'] }],
+    ['override row IDs length mismatch', { overrideRowIds: ['row-one'] }]
+  ])('blocks unsafe dataset or row id: %s', (_name, overrides) => {
+    const result = build(overrides);
+
+    expect(result.status).toBe('BLOCKED');
+    expect(result.rows).toEqual([]);
+  });
+
+  it('valid safe override row IDs remain ready', () => {
+    const result = build({ overrideRowIds: ['row-one', 'row-two', 'row-three'] });
+
+    expect(result.status).toBe('SAFE_SUMMARY_JSONL_FIXTURE_IN_MEMORY_ROWS_READY');
+    expect(result.rowIds).toEqual(['row-one', 'row-two', 'row-three']);
+  });
+
+  it.each([
     'actualDbQueryEnabled',
     'actualDbExportEnabled',
     'realDbQueryEnabled',
@@ -212,12 +388,71 @@ describe('tierUpdateActualSafeRowExportSafeSummaryJsonlFixtureInMemoryBuilder', 
     expect(build({ boundarySummary: { [flag]: true } }).status).toBe('BLOCKED');
   });
 
+  it('reflects forbidden boundary flag attempts in safe boundary summary', () => {
+    const result = build({
+      actualDbQueryEnabled: true,
+      boundarySummary: { actualDbQueryEnabled: false }
+    });
+
+    expect(result.status).toBe('BLOCKED');
+    expect(result.boundarySummary.actualDbQueryEnabled).toBe(true);
+    expect(result.rows).toEqual([]);
+  });
+
+  it('keeps all forbidden boundary flags false for READY output', () => {
+    const result = build();
+
+    expect(result.status).toBe('SAFE_SUMMARY_JSONL_FIXTURE_IN_MEMORY_ROWS_READY');
+    expect(result.boundarySummary.actualDbQueryEnabled).toBe(false);
+    expect(result.boundarySummary.actualDbExportEnabled).toBe(false);
+    expect(result.boundarySummary.sourceAccessEnabled).toBe(false);
+    expect(result.boundarySummary.prismaClientEnabled).toBe(false);
+    expect(result.boundarySummary.databaseUrlReadEnabled).toBe(false);
+    expect(result.boundarySummary.envReadEnabled).toBe(false);
+    expect(result.boundarySummary.fileExportEnabled).toBe(false);
+    expect(result.boundarySummary.jsonlFileExportEnabled).toBe(false);
+    expect(result.boundarySummary.artifactUploadEnabled).toBe(false);
+    expect(result.boundarySummary.runtimeReadinessClaimed).toBe(false);
+    expect(result.boundarySummary.productionReadinessClaimed).toBe(false);
+  });
+
   it('blocks duplicate row_id', () => {
     expect(build({ overrideRowIds: ['duplicate', 'duplicate', 'third'] }).status).toBe('BLOCKED');
   });
 
   it('blocks unsafe readiness claim', () => {
     expect(build({ overrideReadinessClaim: 'runtime_ready' }).status).toBe('BLOCKED');
+  });
+
+  it.each([
+    ['unsafe dataset', { fixtureDatasetName: 'bad dataset' }, 'bad dataset'],
+    ['full wallet override', { overrideRowIds: ['row-one', '0x1234567890abcdef1234567890abcdef12345678', 'row-three'] }, '0x1234567890abcdef1234567890abcdef12345678'],
+    ['private path input', { fixtureBuildId: 'private_path_build' }, 'private_path_build'],
+    ['runtime readiness override', { overrideReadinessClaim: 'runtime_ready' }, 'runtime_ready'],
+    ['actual row object input', { actualRows: [{ unsafe: 'raw_secret_value' }] }, 'raw_secret_value']
+  ])('blocked output strips unsafe supplied value: %s', (_name, overrides, unsafeValue) => {
+    const result = build(overrides);
+    const serialized = JSON.stringify(result);
+
+    expect(result.status).toBe('BLOCKED');
+    expect(result.rowCount).toBe(0);
+    expect(result.rows).toEqual([]);
+    expect(result.rowIds).toEqual([]);
+    expect(result.entityTypes).toEqual([]);
+    expect(serialized).not.toContain(unsafeValue);
+  });
+
+  it('does not echo invalid top-level identifiers', () => {
+    const result = build({
+      fixtureBuildId: 'private_path_build',
+      fixtureSchemaId: 'different-safe-schema',
+      sourceHeadSha: 'c'.repeat(40)
+    });
+
+    expect(result.status).toBe('BLOCKED');
+    expect(result.fixtureBuildId).toBe('');
+    expect(result.fixtureSchemaId).toBe('');
+    expect(result.sourceHeadSha).toBe('');
   });
 
   it('returns NEEDS_REVIEW for isolated unknown network label', () => {
@@ -247,6 +482,7 @@ describe('tierUpdateActualSafeRowExportSafeSummaryJsonlFixtureInMemoryBuilder', 
     expect(source).toMatch(/createHash\(['"]sha256['"]\)/);
     expect(source).toMatch(/update\(value, ['"]utf8['"]\)/);
     expect(source).toMatch(/digest\(['"]hex['"]\)/);
+    expect(source).toMatch(/row\.source_hash !== `sha256:\$[{]sha256Hex\(`\$[{]fixtureBuildId[}]:\$[{]row\.entity_type[}]:\$[{]index[}]`[)][}]`/);
     expect(source).not.toMatch(/randomBytes|randomUUID|Date\.now|Math\.random/);
   });
 });

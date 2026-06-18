@@ -2,9 +2,14 @@ import { createHash } from 'node:crypto';
 
 import {
   D8AO_CANONICAL_FIELD_ORDER,
+  D8AO_ENTITY_TYPE_ALLOWLIST,
   D8AO_EVIDENCE_ORIGIN_ALLOWLIST,
   D8AO_READINESS_CLAIM_ALLOWLIST,
-  D8AO_SAFETY_FLAG_ALLOWLIST
+  D8AO_SAFETY_FLAG_ALLOWLIST,
+  D8AO_WALLET_ADDRESS_SUMMARY_ALLOWLIST,
+  TIER_UPDATE_ACTUAL_SAFE_ROW_EXPORT_SAFE_SUMMARY_JSONL_FIXTURE_SCHEMA_KIND,
+  TIER_UPDATE_ACTUAL_SAFE_ROW_EXPORT_SAFE_SUMMARY_JSONL_FIXTURE_SCHEMA_TRACE_LABEL,
+  TIER_UPDATE_ACTUAL_SAFE_ROW_EXPORT_SAFE_SUMMARY_JSONL_FIXTURE_SCHEMA_VERSION
 } from './tierUpdateActualSafeRowExportSafeSummaryJsonlFixtureSchema';
 
 export const TIER_UPDATE_ACTUAL_SAFE_ROW_EXPORT_SAFE_SUMMARY_JSONL_FIXTURE_IN_MEMORY_BUILDER_KIND =
@@ -40,6 +45,12 @@ type BoundaryFlags = {
 
 type D8AOSchemaInput = BoundaryFlags & {
   status?: string | null;
+  kind?: string | null;
+  traceLabel?: string | null;
+  safeSummaryOnly?: boolean;
+  fixtureOnly?: boolean;
+  inMemoryOnly?: boolean;
+  zeroRealRows?: boolean;
   fixtureSchemaId?: string | null;
   sourceHeadSha?: string | null;
   schemaVersion?: string | null;
@@ -57,8 +68,10 @@ type D8AOSchemaInput = BoundaryFlags & {
     oneJsonObjectPerLineContract?: boolean;
     canonicalFieldOrderRequired?: boolean;
     multilineStringForbidden?: boolean;
+    commentsForbidden?: boolean;
     jsonlLinesReturned?: boolean;
     fileWriteEnabled?: boolean;
+    maxFixtureRowBytes?: number;
   };
   identifierPolicies?: {
     sourceHashAlgorithm?: string | null;
@@ -66,6 +79,7 @@ type D8AOSchemaInput = BoundaryFlags & {
     auditExportIdStrategy?: string | null;
   };
   rowValuePolicy?: {
+    rowValuesAccepted?: boolean;
     fixtureRowsAccepted?: boolean;
     actualRowsAccepted?: boolean;
     rawRowsAccepted?: boolean;
@@ -182,6 +196,7 @@ const READY_STATUS = 'SAFE_SUMMARY_JSONL_FIXTURE_IN_MEMORY_ROWS_READY';
 const D8AO_READY_STATUS = 'SAFE_SUMMARY_JSONL_FIXTURE_SCHEMA_READY';
 const READY_NEXT_ACTION = 'prepare_pr_d8aq_safe_summary_jsonl_fixture_verifier';
 const SAFE_ROW_CAP = 12;
+const MAX_FIXTURE_ROW_BYTES = 32768;
 const REQUIRED_SAFETY_FLAGS = [
   'fixture_only',
   'synthetic_only',
@@ -217,6 +232,49 @@ const FORBIDDEN_BOUNDARY_FLAGS = [
   'productionReadinessClaimed'
 ] as const;
 
+const D8AP_CHAIN_ID_ALLOWLIST = [56, 97, null] as const;
+const D8AP_NETWORK_LABEL_ALLOWLIST = ['none', 'bsc_testnet', 'bsc_mainnet', 'unknown'] as const;
+
+const D8AP_EXPECTED_FIELD_DEFINITIONS = [
+  { key: 'schema_version', type: 'string', required: true, policy: 'fixed fixture schema label only' },
+  { key: 'audit_export_id', type: 'string', required: true, policy: 'synthetic safe batch id only' },
+  { key: 'source_head_sha', type: 'string', required: true, policy: '40 lowercase hex characters' },
+  { key: 'source_hash', type: 'string', required: true, policy: 'sha256:<64 lowercase hex>' },
+  { key: 'exported_at', type: 'string', required: true, policy: 'ISO-8601 UTC metadata only' },
+  { key: 'row_id', type: 'string', required: true, policy: 'synthetic deterministic safe id only' },
+  { key: 'dataset_name', type: 'string', required: true, policy: 'safe label, no path, URL, or endpoint' },
+  { key: 'entity_type', type: 'enum', required: true, policy: 'canonical fixture-lane entity allowlist' },
+  { key: 'source_table', type: 'string|null', required: true, policy: 'safe logical label only' },
+  { key: 'source_file', type: 'string|null', required: true, policy: 'safe token only, no filesystem path' },
+  { key: 'status', type: 'string', required: true, policy: 'bounded safe status label' },
+  { key: 'evidence_origin', type: 'enum', required: true, policy: 'fixture-lane evidence origin only' },
+  { key: 'readiness_claim', type: 'enum', required: true, policy: 'fixture-lane claim only' },
+  { key: 'record_summary', type: 'string', required: true, policy: 'single-line safe short summary' },
+  { key: 'public_visible_fields', type: 'object', required: true, policy: 'flat safe primitives only' },
+  { key: 'internal_only_field_labels', type: 'string[]', required: true, policy: 'labels only, never values' },
+  { key: 'wallet_address_summary', type: 'enum', required: true, policy: 'none, synthetic, masked, or hash summary only' },
+  { key: 'chain_id', type: 'integer|null', required: true, policy: '56, 97, or null only' },
+  { key: 'network_label', type: 'enum', required: true, policy: 'none, bsc_testnet, bsc_mainnet, or unknown' },
+  { key: 'expected_safe_summary', type: 'string', required: true, policy: 'single-line safe expected outcome summary' },
+  { key: 'safety_flags', type: 'enum[]', required: true, policy: 'canonical safety flag allowlist only' }
+] as const;
+
+const FORBIDDEN_INPUT_PRESENCE_KEYS = [
+  'actualRows',
+  'rawRows',
+  'dbRows',
+  'sourceRows',
+  'records',
+  'jsonlLines',
+  'filePath',
+  'outputPath',
+  'artifactName',
+  'sql',
+  'query',
+  'rawPayload',
+  'endpoint'
+] as const;
+
 const UNSAFE_PATTERNS = [
   /raw[\s_-]*(secret|env|log|payload|endpoint)/i,
   /private[\s_-]*(key|path|identifier)/i,
@@ -245,6 +303,14 @@ function hasValue(value: unknown): boolean {
 
 function validSafeToken(value: string | null | undefined): boolean {
   return /^[a-z0-9][a-z0-9_-]{2,95}$/.test(String(value || ''));
+}
+
+function validSafeRowId(value: unknown): value is string {
+  return typeof value === 'string' && /^[a-z0-9][a-z0-9_-]{2,127}$/.test(value);
+}
+
+function validSafeDatasetName(value: unknown): value is string {
+  return typeof value === 'string' && /^[a-z0-9][a-z0-9_-]{2,95}$/.test(value);
 }
 
 function validSourceHeadSha(value: string | null | undefined): boolean {
@@ -286,6 +352,16 @@ function emptyBoundarySummary(): TierUpdateActualSafeRowExportSafeSummaryJsonlFi
   };
 }
 
+function boundarySummaryFor(input: BuildTierUpdateActualSafeRowExportSafeSummaryJsonlFixtureInMemoryBuilderInput): TierUpdateActualSafeRowExportSafeSummaryJsonlFixtureInMemoryBuilder['boundarySummary'] {
+  const summary = emptyBoundarySummary();
+  for (const source of collectBoundarySources(input)) {
+    for (const flag of FORBIDDEN_BOUNDARY_FLAGS) {
+      if (source[flag] === true) summary[flag] = true;
+    }
+  }
+  return summary;
+}
+
 function collectBoundarySources(input: BuildTierUpdateActualSafeRowExportSafeSummaryJsonlFixtureInMemoryBuilderInput): BoundaryFlags[] {
   return [input, input.boundarySummary || {}, input.boundaryFlags || {}, input.d8aoSchema || {}];
 }
@@ -301,21 +377,66 @@ function forbiddenBoundaryReasons(input: BuildTierUpdateActualSafeRowExportSafeS
 }
 
 function rowInputsPresent(input: BuildTierUpdateActualSafeRowExportSafeSummaryJsonlFixtureInMemoryBuilderInput): boolean {
-  return [input.actualRows, input.rawRows, input.dbRows, input.sourceRows, input.records, input.jsonlLines]
-    .some((value) => Array.isArray(value) && value.length > 0);
+  return FORBIDDEN_INPUT_PRESENCE_KEYS.some((key) => Object.prototype.hasOwnProperty.call(input, key));
+}
+
+function sameArray(actual: unknown[] | undefined, expected: readonly unknown[]): boolean {
+  return Array.isArray(actual)
+    && actual.length === expected.length
+    && actual.every((value, index) => value === expected[index])
+    && new Set(actual.map((value) => String(value))).size === actual.length;
+}
+
+function sameFieldDefinitions(actual: D8AOSchemaInput['fieldDefinitions']): boolean {
+  return Array.isArray(actual)
+    && actual.length === D8AP_EXPECTED_FIELD_DEFINITIONS.length
+    && actual.every((field, index) => {
+      const expected = D8AP_EXPECTED_FIELD_DEFINITIONS[index];
+      return field.key === expected.key
+        && field.type === expected.type
+        && field.required === expected.required
+        && field.policy === expected.policy;
+    });
 }
 
 function schemaIsCanonical(schema: D8AOSchemaInput | null | undefined): boolean {
   if (!schema) return false;
   if (schema.status !== D8AO_READY_STATUS) return false;
-  if (!schema.canonicalFieldOrder || schema.canonicalFieldOrder.join('|') !== D8AO_CANONICAL_FIELD_ORDER.join('|')) return false;
-  if (!schema.fieldDefinitions || schema.fieldDefinitions.map((field) => field.key).join('|') !== D8AO_CANONICAL_FIELD_ORDER.join('|')) return false;
-  if (!schema.evidenceOriginAllowlist || schema.evidenceOriginAllowlist.join('|') !== D8AO_EVIDENCE_ORIGIN_ALLOWLIST.join('|')) return false;
-  if (!schema.readinessClaimAllowlist || schema.readinessClaimAllowlist.join('|') !== D8AO_READINESS_CLAIM_ALLOWLIST.join('|')) return false;
-  if (!schema.safetyFlagAllowlist || schema.safetyFlagAllowlist.join('|') !== D8AO_SAFETY_FLAG_ALLOWLIST.join('|')) return false;
-  if (!schema.jsonlContract || schema.jsonlContract.fileWriteEnabled !== false || schema.jsonlContract.jsonlLinesReturned !== false) return false;
-  if (!schema.identifierPolicies || schema.identifierPolicies.sourceHashAlgorithm !== 'sha256') return false;
-  if (!schema.rowValuePolicy || schema.rowValuePolicy.actualRowsAccepted !== false || schema.rowValuePolicy.jsonlLinesAccepted !== false) return false;
+  if (schema.kind !== TIER_UPDATE_ACTUAL_SAFE_ROW_EXPORT_SAFE_SUMMARY_JSONL_FIXTURE_SCHEMA_KIND) return false;
+  if (schema.traceLabel !== TIER_UPDATE_ACTUAL_SAFE_ROW_EXPORT_SAFE_SUMMARY_JSONL_FIXTURE_SCHEMA_TRACE_LABEL) return false;
+  if (schema.schemaVersion !== TIER_UPDATE_ACTUAL_SAFE_ROW_EXPORT_SAFE_SUMMARY_JSONL_FIXTURE_SCHEMA_VERSION) return false;
+  if (schema.safeSummaryOnly !== true || schema.fixtureOnly !== true || schema.inMemoryOnly !== true || schema.zeroRealRows !== true) return false;
+  if (!validSafeToken(schema.fixtureSchemaId || '')) return false;
+  if (!validSourceHeadSha(schema.sourceHeadSha)) return false;
+  if (!sameArray(schema.canonicalFieldOrder, D8AO_CANONICAL_FIELD_ORDER)) return false;
+  if (!sameFieldDefinitions(schema.fieldDefinitions)) return false;
+  if (!sameArray(schema.entityTypeAllowlist, D8AO_ENTITY_TYPE_ALLOWLIST)) return false;
+  if (!sameArray(schema.evidenceOriginAllowlist, D8AO_EVIDENCE_ORIGIN_ALLOWLIST)) return false;
+  if (!sameArray(schema.readinessClaimAllowlist, D8AO_READINESS_CLAIM_ALLOWLIST)) return false;
+  if (!sameArray(schema.walletAddressSummaryAllowlist, D8AO_WALLET_ADDRESS_SUMMARY_ALLOWLIST)) return false;
+  if (!sameArray(schema.chainIdAllowlist, D8AP_CHAIN_ID_ALLOWLIST)) return false;
+  if (!sameArray(schema.networkLabelAllowlist, D8AP_NETWORK_LABEL_ALLOWLIST)) return false;
+  if (!sameArray(schema.safetyFlagAllowlist, D8AO_SAFETY_FLAG_ALLOWLIST)) return false;
+  if (!schema.jsonlContract
+    || schema.jsonlContract.utf8Required !== true
+    || schema.jsonlContract.oneJsonObjectPerLineContract !== true
+    || schema.jsonlContract.canonicalFieldOrderRequired !== true
+    || schema.jsonlContract.multilineStringForbidden !== true
+    || schema.jsonlContract.commentsForbidden !== true
+    || schema.jsonlContract.fileWriteEnabled !== false
+    || schema.jsonlContract.jsonlLinesReturned !== false
+    || schema.jsonlContract.maxFixtureRowBytes !== MAX_FIXTURE_ROW_BYTES) return false;
+  if (!schema.identifierPolicies
+    || schema.identifierPolicies.sourceHashAlgorithm !== 'sha256'
+    || schema.identifierPolicies.rowIdStrategy !== 'synthetic_deterministic_safe_id'
+    || schema.identifierPolicies.auditExportIdStrategy !== 'synthetic_fixture_batch_id') return false;
+  if (!schema.rowValuePolicy
+    || schema.rowValuePolicy.rowValuesAccepted !== false
+    || schema.rowValuePolicy.fixtureRowsAccepted !== false
+    || schema.rowValuePolicy.actualRowsAccepted !== false
+    || schema.rowValuePolicy.rawRowsAccepted !== false
+    || schema.rowValuePolicy.recordsAccepted !== false
+    || schema.rowValuePolicy.jsonlLinesAccepted !== false) return false;
   return true;
 }
 
@@ -368,20 +489,23 @@ function buildRows(
   return rows;
 }
 
-function rowsValid(rows: SafeSummaryJsonlFixtureRow[], sourceHeadSha: string, canonicalEntityTypes: string[]): string[] {
+function rowsValid(rows: SafeSummaryJsonlFixtureRow[], sourceHeadSha: string, fixtureBuildId: string): string[] {
   const blockers: string[] = [];
   const ids = new Set<string>();
-  for (const row of rows) {
+  for (const [index, row] of rows.entries()) {
     const keys = Object.keys(row);
     if (keys.join('|') !== D8AO_CANONICAL_FIELD_ORDER.join('|')) addUnique(blockers, 'row_canonical_keys_mismatch');
     if (ids.has(row.row_id)) addUnique(blockers, 'duplicate_row_id');
     ids.add(row.row_id);
+    if (!validSafeRowId(row.row_id)) addUnique(blockers, 'row_id_unsafe');
+    if (!validSafeDatasetName(row.dataset_name)) addUnique(blockers, 'dataset_name_unsafe');
     if (row.source_head_sha !== sourceHeadSha) addUnique(blockers, 'row_source_head_mismatch');
     if (!/^sha256:[a-f0-9]{64}$/.test(row.source_hash)) addUnique(blockers, 'row_source_hash_invalid');
+    if (row.source_hash !== `sha256:${sha256Hex(`${fixtureBuildId}:${row.entity_type}:${index}`)}`) addUnique(blockers, 'row_source_hash_semantic_mismatch');
     if (!D8AO_EVIDENCE_ORIGIN_ALLOWLIST.includes(row.evidence_origin as typeof D8AO_EVIDENCE_ORIGIN_ALLOWLIST[number])) addUnique(blockers, 'row_evidence_origin_unsafe');
     if (!D8AO_READINESS_CLAIM_ALLOWLIST.includes(row.readiness_claim as typeof D8AO_READINESS_CLAIM_ALLOWLIST[number])) addUnique(blockers, 'row_readiness_claim_unsafe');
     for (const flag of REQUIRED_SAFETY_FLAGS) if (!row.safety_flags.includes(flag)) addUnique(blockers, 'row_required_safety_flag_missing');
-    if (!canonicalEntityTypes.includes(row.entity_type)) addUnique(blockers, 'row_entity_type_unsafe');
+    if (!D8AO_ENTITY_TYPE_ALLOWLIST.includes(row.entity_type as typeof D8AO_ENTITY_TYPE_ALLOWLIST[number])) addUnique(blockers, 'row_entity_type_unsafe');
     if (hasUnsafeValue([
       row.audit_export_id,
       row.row_id,
@@ -431,9 +555,9 @@ export function buildTierUpdateActualSafeRowExportSafeSummaryJsonlFixtureInMemor
   const blockers: string[] = [];
   const needsReviewReasons: string[] = [];
   const schema = input.d8aoSchema || null;
-  const d8aoStatus = input.d8aoSchemaStatus || schema?.status || 'missing';
-  const fixtureSchemaId = input.fixtureSchemaId || schema?.fixtureSchemaId || '';
-  const sourceHeadSha = input.sourceHeadSha || schema?.sourceHeadSha || '';
+  const d8aoStatus = schema?.status || 'missing';
+  const fixtureSchemaId = schema?.fixtureSchemaId || '';
+  const sourceHeadSha = schema?.sourceHeadSha || '';
   const requested = input.fixtureRowsRequested ?? 1;
   const fixtureBuildId = input.fixtureBuildId || '';
   const datasetName = input.fixtureDatasetName || 'safe_summary_jsonl_fixture_dataset';
@@ -444,16 +568,31 @@ export function buildTierUpdateActualSafeRowExportSafeSummaryJsonlFixtureInMemor
   if (!schemaIsCanonical(schema)) addUnique(blockers, 'd8ao_schema_contract_not_canonical');
   if (!hasValue(fixtureBuildId) || !validSafeToken(fixtureBuildId)) addUnique(blockers, 'fixture_build_id_missing');
   if (!hasValue(fixtureSchemaId) || !validSafeToken(fixtureSchemaId)) addUnique(blockers, 'fixture_schema_id_missing');
+  if (Object.prototype.hasOwnProperty.call(input, 'fixtureSchemaId') && input.fixtureSchemaId !== fixtureSchemaId) addUnique(blockers, 'fixture_schema_id_mismatch');
+  if (Object.prototype.hasOwnProperty.call(input, 'sourceHeadSha') && input.sourceHeadSha !== sourceHeadSha) addUnique(blockers, 'source_head_sha_schema_mismatch');
+  if (Object.prototype.hasOwnProperty.call(input, 'd8aoSchemaStatus') && input.d8aoSchemaStatus !== d8aoStatus) addUnique(blockers, 'd8ao_schema_status_mismatch');
   if (!hasValue(sourceHeadSha)) addUnique(blockers, 'source_head_sha_missing');
   else if (!validSourceHeadSha(sourceHeadSha)) addUnique(blockers, 'source_head_sha_invalid');
-  if (requested < 1) addUnique(blockers, 'fixture_rows_requested_too_low');
-  if (requested > SAFE_ROW_CAP) addUnique(blockers, 'fixture_rows_requested_too_high');
+  if (!Number.isFinite(requested) || !Number.isInteger(requested)) addUnique(blockers, 'fixture_rows_requested_not_finite_integer');
+  else if (requested < 1) addUnique(blockers, 'fixture_rows_requested_too_low');
+  else if (requested > SAFE_ROW_CAP) addUnique(blockers, 'fixture_rows_requested_too_high');
   if (entityTypes.length === 0) addUnique(blockers, 'fixture_entity_types_empty');
+  if (!validSafeDatasetName(datasetName)) addUnique(blockers, 'fixture_dataset_name_unsafe');
 
-  const allowedEntityTypes = schema?.entityTypeAllowlist || [];
   for (const entityType of entityTypes) {
     if (entityType === 'unknown_review_only') addUnique(needsReviewReasons, 'unknown_entity_type_isolated_review');
-    else if (!allowedEntityTypes.includes(entityType)) addUnique(blockers, 'fixture_entity_type_unsafe');
+    else if (!D8AO_ENTITY_TYPE_ALLOWLIST.includes(entityType as typeof D8AO_ENTITY_TYPE_ALLOWLIST[number])) addUnique(blockers, 'fixture_entity_type_unsafe');
+  }
+
+  if (input.overrideRowIds !== undefined) {
+    if (!Array.isArray(input.overrideRowIds)) addUnique(blockers, 'override_row_ids_invalid');
+    else {
+      if (Number.isInteger(requested) && input.overrideRowIds.length !== requested) addUnique(blockers, 'override_row_ids_length_mismatch');
+      if (new Set(input.overrideRowIds).size !== input.overrideRowIds.length) addUnique(blockers, 'duplicate_row_id');
+      for (const rowId of input.overrideRowIds) {
+        if (!validSafeRowId(rowId)) addUnique(blockers, 'override_row_id_unsafe');
+      }
+    }
   }
 
   if (input.inMemoryOnly !== true) addUnique(blockers, 'in_memory_only_required');
@@ -473,9 +612,11 @@ export function buildTierUpdateActualSafeRowExportSafeSummaryJsonlFixtureInMemor
   if (hasUnsafeDirectInput(input)) addUnique(blockers, 'unsafe_fixture_builder_value');
   if (input.nextSafeAction !== undefined && input.nextSafeAction !== READY_NEXT_ACTION) addUnique(blockers, 'next_safe_action_unsafe');
 
-  let rows = buildRows(fixtureBuildId || 'fixture-build', fixtureSchemaId || 'fixture-schema', sourceHeadSha || 'a'.repeat(40), datasetName, entityTypes.length ? entityTypes : ['fixture'], Math.max(1, Math.min(requested, SAFE_ROW_CAP)), input.overrideReadinessClaim, input.overrideRowIds);
-  if (blockers.includes('fixture_entity_type_unsafe')) rows = [];
-  for (const rowBlocker of rowsValid(rows, sourceHeadSha, allowedEntityTypes)) addUnique(blockers, rowBlocker);
+  let rows = blockers.length === 0
+    ? buildRows(fixtureBuildId, fixtureSchemaId, sourceHeadSha, datasetName, entityTypes, requested, input.overrideReadinessClaim, input.overrideRowIds)
+    : [];
+  for (const rowBlocker of rowsValid(rows, sourceHeadSha, fixtureBuildId)) addUnique(blockers, rowBlocker);
+  if (blockers.length > 0) rows = [];
   if (needsReviewReasons.includes('incomplete_safe_fixture_coverage')) {
     // Keep the rows, but require owner/operator review before treating the slice as ready.
   }
@@ -494,9 +635,9 @@ export function buildTierUpdateActualSafeRowExportSafeSummaryJsonlFixtureInMemor
     schemaVersion: '1',
     safeSummaryOnly: true,
     skillProfileId: 'FUNKY_NO_TX_NO_RUNTIME_PROFILE',
-    fixtureBuildId,
-    fixtureSchemaId,
-    sourceHeadSha,
+    fixtureBuildId: validSafeToken(fixtureBuildId) && !hasUnsafeValue(fixtureBuildId) ? fixtureBuildId : '',
+    fixtureSchemaId: blockers.includes('fixture_schema_id_mismatch') || !validSafeToken(fixtureSchemaId) ? '' : fixtureSchemaId,
+    sourceHeadSha: blockers.includes('source_head_sha_schema_mismatch') || !validSourceHeadSha(sourceHeadSha) ? '' : sourceHeadSha,
     fixtureOnly: true,
     inMemoryOnly: true,
     zeroRealRows: true,
@@ -510,7 +651,7 @@ export function buildTierUpdateActualSafeRowExportSafeSummaryJsonlFixtureInMemor
       fileWriteEnabled: false,
       inMemoryRowsOnly: true
     },
-    boundarySummary: emptyBoundarySummary(),
+    boundarySummary: boundarySummaryFor(input),
     blockerCount: blockers.length,
     blockers,
     needsReviewReasonCount: needsReviewReasons.length,
