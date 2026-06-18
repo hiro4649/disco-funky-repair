@@ -76,6 +76,41 @@ type D8APBuild = BoundaryFlags & {
   nextSafeAction?: string | null;
 };
 
+type NormalizedD8APBuild = {
+  status: string;
+  kind: string;
+  traceLabel: string;
+  schemaVersion: string;
+  skillProfileId: string;
+  safeSummaryOnly: boolean;
+  fixtureBuildId: string;
+  fixtureSchemaId: string;
+  sourceHeadSha: string;
+  fixtureOnly: boolean;
+  inMemoryOnly: boolean;
+  zeroRealRows: boolean;
+  rowCount: number;
+  rows: unknown[];
+  rowIds: unknown[];
+  entityTypes: unknown[];
+  canonicalFieldOrder: unknown[];
+  jsonlContract: {
+    jsonlLinesReturned?: boolean;
+    fileWriteEnabled?: boolean;
+    inMemoryRowsOnly?: boolean;
+  };
+  boundarySummary: BoundaryFlags & {
+    safeSummaryOnly?: boolean;
+    fixtureOnly?: boolean;
+    inMemoryOnly?: boolean;
+  };
+  blockerCount: number;
+  blockers: unknown[];
+  needsReviewReasonCount: number;
+  needsReviewReasons: unknown[];
+  nextSafeAction: string | null;
+};
+
 export type BuildTierUpdateActualSafeRowExportSafeSummaryJsonlFixtureVerifierInput = BoundaryFlags & {
   d8apBuild?: D8APBuild | null;
   fixtureVerifierId?: string | null;
@@ -284,19 +319,48 @@ function addUnique(list: string[], value: string) {
 }
 
 function hasOwn(input: object, key: string): boolean {
-  return Object.prototype.hasOwnProperty.call(input, key);
+  try {
+    return Object.prototype.hasOwnProperty.call(input, key);
+  } catch {
+    return false;
+  }
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
-  if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
-  const proto = Object.getPrototypeOf(value);
-  return proto === Object.prototype || proto === null;
+  try {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
+    const proto = Object.getPrototypeOf(value);
+    return proto === Object.prototype || proto === null;
+  } catch {
+    return false;
+  }
 }
 
 function safeRead(record: Record<string, unknown>, key: string): unknown {
-  const descriptor = Object.getOwnPropertyDescriptor(record, key);
-  if (!descriptor || !('value' in descriptor)) return undefined;
-  return descriptor.value;
+  try {
+    const descriptor = Object.getOwnPropertyDescriptor(record, key);
+    if (!descriptor || !('value' in descriptor)) return undefined;
+    return descriptor.value;
+  } catch {
+    return undefined;
+  }
+}
+
+function hasDataProperty(record: Record<string, unknown>, key: string): boolean {
+  try {
+    const descriptor = Object.getOwnPropertyDescriptor(record, key);
+    return !!descriptor && 'value' in descriptor;
+  } catch {
+    return false;
+  }
+}
+
+function ownKeys(record: Record<string, unknown>): string[] | null {
+  try {
+    return Object.keys(record);
+  } catch {
+    return null;
+  }
 }
 
 function safeToken(value: unknown, max = 128): value is string {
@@ -348,7 +412,11 @@ function emptyBoundarySummary(): TierUpdateActualSafeRowExportSafeSummaryJsonlFi
 }
 
 function collectBoundarySources(input: BuildTierUpdateActualSafeRowExportSafeSummaryJsonlFixtureVerifierInput): BoundaryFlags[] {
-  return [input, input.boundarySummary || {}, input.boundaryFlags || {}, input.d8apBuild || {}, input.d8apBuild?.boundarySummary || {}];
+  const d8apBuild = isRecord(input.d8apBuild) ? input.d8apBuild : {};
+  const d8apBoundarySummary = isRecord(d8apBuild) && isRecord(safeRead(d8apBuild, 'boundarySummary'))
+    ? safeRead(d8apBuild, 'boundarySummary') as BoundaryFlags
+    : {};
+  return [input, input.boundarySummary || {}, input.boundaryFlags || {}, d8apBuild as BoundaryFlags, d8apBoundarySummary];
 }
 
 function boundarySummaryFor(input: BuildTierUpdateActualSafeRowExportSafeSummaryJsonlFixtureVerifierInput) {
@@ -402,7 +470,8 @@ function validatePolicy(input: BuildTierUpdateActualSafeRowExportSafeSummaryJson
 
 function isCanonicalRowObject(value: unknown): value is Record<keyof SafeSummaryJsonlFixtureRow, unknown> {
   if (!isRecord(value)) return false;
-  return Object.keys(value).join('|') === D8AO_CANONICAL_FIELD_ORDER.join('|');
+  const keys = ownKeys(value);
+  return !!keys && keys.join('|') === D8AO_CANONICAL_FIELD_ORDER.join('|');
 }
 
 function validateFlatPublicFields(value: unknown, blockers: string[]): boolean {
@@ -410,7 +479,11 @@ function validateFlatPublicFields(value: unknown, blockers: string[]): boolean {
     addUnique(blockers, 'public_visible_fields_malformed');
     return false;
   }
-  const keys = Object.keys(value);
+  const keys = ownKeys(value);
+  if (!keys) {
+    addUnique(blockers, 'public_visible_fields_malformed');
+    return false;
+  }
   if (keys.length > 32) addUnique(blockers, 'public_visible_fields_too_many');
   let ok = true;
   for (const key of keys) {
@@ -463,30 +536,83 @@ function validateTimestamp(value: unknown, blockers: string[]): boolean {
   return true;
 }
 
+function snapshotPrimitive(value: unknown): string | number | boolean | null | undefined {
+  if (value === null || typeof value === 'string' || typeof value === 'boolean') return value;
+  if (typeof value === 'number' && Number.isFinite(value)) return value;
+  return undefined;
+}
+
 function encodedSizeOk(row: Record<string, unknown>, blockers: string[]): boolean {
   const safeSnapshot: Record<string, unknown> = {};
   for (const key of D8AO_CANONICAL_FIELD_ORDER) {
-    const descriptor = Object.getOwnPropertyDescriptor(row, key);
+    let descriptor: PropertyDescriptor | undefined;
+    try {
+      descriptor = Object.getOwnPropertyDescriptor(row, key);
+    } catch {
+      addUnique(blockers, 'row_encoded_size_unavailable');
+      return false;
+    }
     if (!descriptor || !('value' in descriptor)) {
       addUnique(blockers, 'row_encoded_size_unavailable');
       return false;
     }
     const value = descriptor.value;
     if (value && typeof value === 'object') {
-      if (Array.isArray(value)) safeSnapshot[key] = value.filter((item) => typeof item !== 'object');
+      if (Array.isArray(value)) {
+        const items = value.map(snapshotPrimitive);
+        if (items.some((item) => item === undefined)) {
+          addUnique(blockers, 'row_encoded_size_unavailable');
+          return false;
+        }
+        safeSnapshot[key] = items;
+      }
       else if (isRecord(value)) {
         const flat: Record<string, unknown> = {};
-        for (const nestedKey of Object.keys(value)) {
-          const nestedDescriptor = Object.getOwnPropertyDescriptor(value, nestedKey);
-          if (nestedDescriptor && 'value' in nestedDescriptor && (!nestedDescriptor.value || typeof nestedDescriptor.value !== 'object')) {
-            flat[nestedKey] = nestedDescriptor.value;
+        const keys = ownKeys(value);
+        if (!keys) {
+          addUnique(blockers, 'row_encoded_size_unavailable');
+          return false;
+        }
+        for (const nestedKey of keys) {
+          let nestedDescriptor: PropertyDescriptor | undefined;
+          try {
+            nestedDescriptor = Object.getOwnPropertyDescriptor(value, nestedKey);
+          } catch {
+            addUnique(blockers, 'row_encoded_size_unavailable');
+            return false;
           }
+          if (!nestedDescriptor || !('value' in nestedDescriptor)) {
+            addUnique(blockers, 'row_encoded_size_unavailable');
+            return false;
+          }
+          const primitive = snapshotPrimitive(nestedDescriptor.value);
+          if (primitive === undefined) {
+            addUnique(blockers, 'row_encoded_size_unavailable');
+            return false;
+          }
+          flat[nestedKey] = primitive;
         }
         safeSnapshot[key] = flat;
-      } else safeSnapshot[key] = null;
-    } else safeSnapshot[key] = value;
+      } else {
+        addUnique(blockers, 'row_encoded_size_unavailable');
+        return false;
+      }
+    } else {
+      const primitive = snapshotPrimitive(value);
+      if (primitive === undefined) {
+        addUnique(blockers, 'row_encoded_size_unavailable');
+        return false;
+      }
+      safeSnapshot[key] = primitive;
+    }
   }
-  const size = Buffer.byteLength(JSON.stringify(safeSnapshot), 'utf8');
+  let size = 0;
+  try {
+    size = Buffer.byteLength(JSON.stringify(safeSnapshot), 'utf8');
+  } catch {
+    addUnique(blockers, 'row_encoded_size_unavailable');
+    return false;
+  }
   if (size > MAX_ROW_BYTES) {
     addUnique(blockers, 'row_encoded_size_too_large');
     return false;
@@ -497,7 +623,7 @@ function encodedSizeOk(row: Record<string, unknown>, blockers: string[]): boolea
 function validateRow(
   row: unknown,
   index: number,
-  build: D8APBuild,
+  build: NormalizedD8APBuild,
   blockers: string[],
   needsReviewReasons: string[],
   seenRowIds: Set<string>
@@ -507,9 +633,9 @@ function validateRow(
     return false;
   }
   let ok = true;
-  const fixtureBuildId = String(build.fixtureBuildId || '');
-  const fixtureSchemaId = String(build.fixtureSchemaId || '');
-  const sourceHeadSha = String(build.sourceHeadSha || '');
+  const fixtureBuildId = build.fixtureBuildId;
+  const fixtureSchemaId = build.fixtureSchemaId;
+  const sourceHeadSha = build.sourceHeadSha;
   const read = (key: keyof SafeSummaryJsonlFixtureRow) => safeRead(row, key);
   const rowId = read('row_id');
   const entityType = read('entity_type');
@@ -534,7 +660,13 @@ function validateRow(
     addUnique(blockers, 'source_head_sha_mismatch');
     ok = false;
   }
-  const expectedHash = `sha256:${sha256Hex(`${fixtureBuildId}:${entityType}:${index}`)}`;
+  if (typeof entityType !== 'string') {
+    addUnique(blockers, 'entity_type_unsafe');
+    ok = false;
+  }
+  const expectedHash = typeof entityType === 'string'
+    ? `sha256:${sha256Hex(`${fixtureBuildId}:${entityType}:${index}`)}`
+    : '';
   if (!safeSha256(read('source_hash')) || read('source_hash') !== expectedHash) {
     addUnique(blockers, 'source_hash_semantic_mismatch');
     ok = false;
@@ -544,7 +676,7 @@ function validateRow(
     addUnique(blockers, 'dataset_name_unsafe');
     ok = false;
   }
-  if (!D8AO_ENTITY_TYPE_ALLOWLIST.includes(String(entityType) as typeof D8AO_ENTITY_TYPE_ALLOWLIST[number])) {
+  if (typeof entityType !== 'string' || !D8AO_ENTITY_TYPE_ALLOWLIST.includes(entityType as typeof D8AO_ENTITY_TYPE_ALLOWLIST[number])) {
     addUnique(blockers, 'entity_type_unsafe');
     ok = false;
   }
@@ -562,12 +694,13 @@ function validateRow(
     addUnique(blockers, 'row_status_unsafe');
     ok = false;
   }
-  if (!D8AO_EVIDENCE_ORIGIN_ALLOWLIST.includes(String(read('evidence_origin')) as typeof D8AO_EVIDENCE_ORIGIN_ALLOWLIST[number])) {
+  const evidenceOrigin = read('evidence_origin');
+  if (typeof evidenceOrigin !== 'string' || !D8AO_EVIDENCE_ORIGIN_ALLOWLIST.includes(evidenceOrigin as typeof D8AO_EVIDENCE_ORIGIN_ALLOWLIST[number])) {
     addUnique(blockers, 'evidence_origin_unsafe');
     ok = false;
   }
   const readiness = read('readiness_claim');
-  if (!D8AO_READINESS_CLAIM_ALLOWLIST.includes(String(readiness) as typeof D8AO_READINESS_CLAIM_ALLOWLIST[number])) {
+  if (typeof readiness !== 'string' || !D8AO_READINESS_CLAIM_ALLOWLIST.includes(readiness as typeof D8AO_READINESS_CLAIM_ALLOWLIST[number])) {
     addUnique(blockers, 'readiness_claim_unsafe');
     ok = false;
   }
@@ -581,7 +714,8 @@ function validateRow(
   }
   if (!validateFlatPublicFields(read('public_visible_fields'), blockers)) ok = false;
   if (!validateInternalLabels(read('internal_only_field_labels'), blockers)) ok = false;
-  if (!D8AO_WALLET_ADDRESS_SUMMARY_ALLOWLIST.includes(String(read('wallet_address_summary')) as typeof D8AO_WALLET_ADDRESS_SUMMARY_ALLOWLIST[number])) {
+  const walletSummary = read('wallet_address_summary');
+  if (typeof walletSummary !== 'string' || !D8AO_WALLET_ADDRESS_SUMMARY_ALLOWLIST.includes(walletSummary as typeof D8AO_WALLET_ADDRESS_SUMMARY_ALLOWLIST[number])) {
     addUnique(blockers, 'wallet_address_summary_unsafe');
     ok = false;
   }
@@ -590,7 +724,7 @@ function validateRow(
     ok = false;
   }
   const networkLabel = read('network_label');
-  if (!['none', 'bsc_testnet', 'bsc_mainnet', 'unknown'].includes(String(networkLabel))) {
+  if (typeof networkLabel !== 'string' || !['none', 'bsc_testnet', 'bsc_mainnet', 'unknown'].includes(networkLabel)) {
     addUnique(blockers, 'network_label_unsafe');
     ok = false;
   }
@@ -602,7 +736,7 @@ function validateRow(
   } else {
     for (const flag of REQUIRED_SAFETY_FLAGS) if (!safetyFlags.includes(flag)) addUnique(blockers, 'required_safety_flag_missing');
     for (const flag of safetyFlags) {
-      if (!D8AO_SAFETY_FLAG_ALLOWLIST.includes(String(flag) as typeof D8AO_SAFETY_FLAG_ALLOWLIST[number]) || EXECUTABLE_SAFETY_FLAGS.has(String(flag))) {
+      if (typeof flag !== 'string' || !D8AO_SAFETY_FLAG_ALLOWLIST.includes(flag as typeof D8AO_SAFETY_FLAG_ALLOWLIST[number]) || EXECUTABLE_SAFETY_FLAGS.has(flag)) {
         addUnique(blockers, 'safety_flag_unsafe');
         ok = false;
       }
@@ -614,80 +748,302 @@ function validateRow(
   return ok;
 }
 
-function validateBuildMetadata(build: D8APBuild | null | undefined, blockers: string[]): boolean {
-  if (!build || !isRecord(build)) {
-    addUnique(blockers, 'd8ap_build_missing');
+function validateBuildBoundarySummary(build: NormalizedD8APBuild, blockers: string[]): boolean {
+  if (!isRecord(build.boundarySummary)) {
+    addUnique(blockers, 'd8ap_boundary_summary_malformed');
     return false;
   }
   let ok = true;
-  if (build.status !== D8AP_READY_STATUS) {
-    addUnique(blockers, 'd8ap_build_not_ready');
+  const keys = ownKeys(build.boundarySummary);
+  if (!keys) {
+    addUnique(blockers, 'd8ap_boundary_summary_malformed');
+    return false;
+  }
+  for (const key of [...FORBIDDEN_BOUNDARY_FLAGS, 'safeSummaryOnly', 'fixtureOnly', 'inMemoryOnly']) {
+    if (!hasDataProperty(build.boundarySummary, key)) {
+      addUnique(blockers, 'd8ap_boundary_summary_malformed');
+      ok = false;
+    }
+  }
+  for (const flag of FORBIDDEN_BOUNDARY_FLAGS) {
+    if (safeRead(build.boundarySummary, flag) !== false) {
+      addUnique(blockers, 'd8ap_boundary_flag_unsafe');
+      ok = false;
+    }
+  }
+  if (safeRead(build.boundarySummary, 'safeSummaryOnly') !== true
+    || safeRead(build.boundarySummary, 'fixtureOnly') !== true
+    || safeRead(build.boundarySummary, 'inMemoryOnly') !== true) {
+    addUnique(blockers, 'd8ap_boundary_summary_mismatch');
     ok = false;
   }
-  if (build.kind !== TIER_UPDATE_ACTUAL_SAFE_ROW_EXPORT_SAFE_SUMMARY_JSONL_FIXTURE_IN_MEMORY_BUILDER_KIND) {
-    addUnique(blockers, 'd8ap_kind_mismatch');
-    ok = false;
+  for (const key of keys) {
+    if ((key.toLowerCase().includes('query')
+      || key.toLowerCase().includes('export')
+      || key.toLowerCase().includes('artifact')
+      || key.toLowerCase().includes('runtime')
+      || key.toLowerCase().includes('source'))
+      && ![...FORBIDDEN_BOUNDARY_FLAGS, 'safeSummaryOnly', 'fixtureOnly', 'inMemoryOnly'].includes(key as typeof FORBIDDEN_BOUNDARY_FLAGS[number])) {
+      addUnique(blockers, 'd8ap_boundary_extra_unsafe_key');
+      ok = false;
+    }
   }
-  if (build.traceLabel !== TIER_UPDATE_ACTUAL_SAFE_ROW_EXPORT_SAFE_SUMMARY_JSONL_FIXTURE_IN_MEMORY_BUILDER_TRACE_LABEL) {
-    addUnique(blockers, 'd8ap_trace_label_mismatch');
-    ok = false;
-  }
-  if (build.schemaVersion !== '1' || build.skillProfileId !== 'FUNKY_NO_TX_NO_RUNTIME_PROFILE' || build.safeSummaryOnly !== true) {
-    addUnique(blockers, 'd8ap_metadata_mismatch');
-    ok = false;
-  }
-  if (!safeToken(build.fixtureBuildId, 96)) {
-    addUnique(blockers, 'fixture_build_id_missing');
-    ok = false;
-  }
-  if (!safeToken(build.fixtureSchemaId, 96)) {
-    addUnique(blockers, 'fixture_schema_id_missing');
-    ok = false;
-  }
-  if (!safeSourceHead(build.sourceHeadSha)) {
-    addUnique(blockers, 'source_head_sha_missing');
-    ok = false;
-  }
-  if (build.fixtureOnly !== true || build.inMemoryOnly !== true || build.zeroRealRows !== true) {
-    addUnique(blockers, 'd8ap_fixture_boundary_mismatch');
-    ok = false;
-  }
-  if (!Number.isInteger(build.rowCount) || Number(build.rowCount) < 1 || Number(build.rowCount) > MAX_ROW_COUNT) {
-    addUnique(blockers, 'row_count_invalid');
-    ok = false;
-  }
-  if (!Array.isArray(build.rows) || !Array.isArray(build.rowIds) || !Array.isArray(build.entityTypes)) {
-    addUnique(blockers, 'd8ap_row_collections_malformed');
-    ok = false;
-  }
-  if (Array.isArray(build.rows) && build.rows.length !== build.rowCount) {
-    addUnique(blockers, 'row_count_mismatch');
-    ok = false;
-  }
-  if (Array.isArray(build.rowIds) && build.rowIds.length !== build.rowCount) {
-    addUnique(blockers, 'row_ids_length_mismatch');
-    ok = false;
-  }
-  if (!Array.isArray(build.canonicalFieldOrder) || build.canonicalFieldOrder.join('|') !== D8AO_CANONICAL_FIELD_ORDER.join('|')) {
-    addUnique(blockers, 'canonical_field_order_mismatch');
-    ok = false;
-  }
-  if (!build.jsonlContract
-    || build.jsonlContract.jsonlLinesReturned !== false
-    || build.jsonlContract.fileWriteEnabled !== false
-    || build.jsonlContract.inMemoryRowsOnly !== true) {
-    addUnique(blockers, 'jsonl_contract_mismatch');
-    ok = false;
-  }
-  if (build.blockerCount !== 0 || (Array.isArray(build.blockers) && build.blockers.length > 0)) {
-    addUnique(blockers, 'd8ap_blockers_present');
-    ok = false;
-  }
-  if (build.nextSafeAction !== D8AP_EXPECTED_NEXT_ACTION) {
-    addUnique(blockers, 'd8ap_next_safe_action_mismatch');
+  if (build.safeSummaryOnly !== true || build.fixtureOnly !== true || build.inMemoryOnly !== true) {
+    addUnique(blockers, 'd8ap_boundary_summary_mismatch');
     ok = false;
   }
   return ok;
+}
+
+function validateRowIds(build: NormalizedD8APBuild, rows: unknown[], blockers: string[]): boolean {
+  if (!Array.isArray(build.rowIds)) {
+    addUnique(blockers, 'row_ids_collection_malformed');
+    return false;
+  }
+  let ok = true;
+  if (build.rowIds.length !== rows.length) {
+    addUnique(blockers, 'row_ids_length_mismatch');
+    ok = false;
+  }
+  const seen = new Set<string>();
+  const actualIds: string[] = [];
+  for (const row of rows) {
+    const rowId = isRecord(row) ? safeRead(row, 'row_id') : undefined;
+    if (typeof rowId === 'string') actualIds.push(rowId);
+    else {
+      addUnique(blockers, 'row_ids_order_mismatch');
+      ok = false;
+    }
+  }
+  for (const [index, rowId] of build.rowIds.entries()) {
+    if (!safeToken(rowId, 128)) {
+      addUnique(blockers, 'row_ids_collection_malformed');
+      ok = false;
+      continue;
+    }
+    if (seen.has(rowId)) {
+      addUnique(blockers, 'duplicate_row_id');
+      ok = false;
+    }
+    seen.add(rowId);
+    if (actualIds[index] !== rowId) {
+      addUnique(blockers, 'row_ids_order_mismatch');
+      ok = false;
+    }
+  }
+  return ok;
+}
+
+function validateEntityTypes(build: NormalizedD8APBuild, rows: unknown[], blockers: string[]): boolean {
+  if (!Array.isArray(build.entityTypes)) {
+    addUnique(blockers, 'entity_types_collection_malformed');
+    return false;
+  }
+  let ok = true;
+  const seen = new Set<string>();
+  const expected: string[] = [];
+  for (const row of rows) {
+    const entityType = isRecord(row) ? safeRead(row, 'entity_type') : undefined;
+    if (typeof entityType === 'string' && D8AO_ENTITY_TYPE_ALLOWLIST.includes(entityType as typeof D8AO_ENTITY_TYPE_ALLOWLIST[number]) && !seen.has(entityType)) {
+      expected.push(entityType);
+      seen.add(entityType);
+    }
+  }
+  const actual: string[] = [];
+  const actualSeen = new Set<string>();
+  for (const entityType of build.entityTypes) {
+    if (typeof entityType !== 'string' || unsafeString(entityType) || !D8AO_ENTITY_TYPE_ALLOWLIST.includes(entityType as typeof D8AO_ENTITY_TYPE_ALLOWLIST[number])) {
+      addUnique(blockers, 'entity_types_unsafe');
+      ok = false;
+      continue;
+    }
+    if (actualSeen.has(entityType)) {
+      addUnique(blockers, 'entity_types_duplicate');
+      ok = false;
+    }
+    actualSeen.add(entityType);
+    actual.push(entityType);
+  }
+  if (actual.length !== build.entityTypes.length) {
+    addUnique(blockers, 'entity_types_collection_malformed');
+    ok = false;
+  }
+  if (actual.join('|') !== expected.join('|')) {
+    addUnique(blockers, 'entity_types_row_mismatch');
+    ok = false;
+  }
+  return ok;
+}
+
+function normalizeBuildMetadata(build: D8APBuild | null | undefined, blockers: string[]): NormalizedD8APBuild | null {
+  if (!build || !isRecord(build)) {
+    addUnique(blockers, 'd8ap_build_missing');
+    return null;
+  }
+  const record = build as Record<string, unknown>;
+  if (!ownKeys(record)) {
+    addUnique(blockers, 'd8ap_build_missing');
+    return null;
+  }
+  const requiredDataProperties = [
+    'status',
+    'kind',
+    'traceLabel',
+    'schemaVersion',
+    'skillProfileId',
+    'safeSummaryOnly',
+    'fixtureBuildId',
+    'fixtureSchemaId',
+    'sourceHeadSha',
+    'fixtureOnly',
+    'inMemoryOnly',
+    'zeroRealRows',
+    'rowCount',
+    'rows',
+    'rowIds',
+    'entityTypes',
+    'canonicalFieldOrder',
+    'jsonlContract',
+    'boundarySummary',
+    'blockerCount',
+    'blockers',
+    'needsReviewReasonCount',
+    'needsReviewReasons',
+    'nextSafeAction'
+  ];
+  for (const key of requiredDataProperties) {
+    if (!hasDataProperty(record, key)) addUnique(blockers, 'd8ap_build_accessor_property');
+  }
+  for (const key of FORBIDDEN_INPUT_KEYS) {
+    if (hasOwn(record, key)) addUnique(blockers, 'd8ap_forbidden_input_surface_present');
+  }
+  const normalized: NormalizedD8APBuild = {
+    status: typeof safeRead(record, 'status') === 'string' ? safeRead(record, 'status') as string : '',
+    kind: typeof safeRead(record, 'kind') === 'string' ? safeRead(record, 'kind') as string : '',
+    traceLabel: typeof safeRead(record, 'traceLabel') === 'string' ? safeRead(record, 'traceLabel') as string : '',
+    schemaVersion: typeof safeRead(record, 'schemaVersion') === 'string' ? safeRead(record, 'schemaVersion') as string : '',
+    skillProfileId: typeof safeRead(record, 'skillProfileId') === 'string' ? safeRead(record, 'skillProfileId') as string : '',
+    safeSummaryOnly: safeRead(record, 'safeSummaryOnly') === true,
+    fixtureBuildId: typeof safeRead(record, 'fixtureBuildId') === 'string' ? safeRead(record, 'fixtureBuildId') as string : '',
+    fixtureSchemaId: typeof safeRead(record, 'fixtureSchemaId') === 'string' ? safeRead(record, 'fixtureSchemaId') as string : '',
+    sourceHeadSha: typeof safeRead(record, 'sourceHeadSha') === 'string' ? safeRead(record, 'sourceHeadSha') as string : '',
+    fixtureOnly: safeRead(record, 'fixtureOnly') === true,
+    inMemoryOnly: safeRead(record, 'inMemoryOnly') === true,
+    zeroRealRows: safeRead(record, 'zeroRealRows') === true,
+    rowCount: typeof safeRead(record, 'rowCount') === 'number' ? safeRead(record, 'rowCount') as number : NaN,
+    rows: Array.isArray(safeRead(record, 'rows')) ? safeRead(record, 'rows') as unknown[] : [],
+    rowIds: Array.isArray(safeRead(record, 'rowIds')) ? safeRead(record, 'rowIds') as unknown[] : [],
+    entityTypes: Array.isArray(safeRead(record, 'entityTypes')) ? safeRead(record, 'entityTypes') as unknown[] : [],
+    canonicalFieldOrder: Array.isArray(safeRead(record, 'canonicalFieldOrder')) ? safeRead(record, 'canonicalFieldOrder') as unknown[] : [],
+    jsonlContract: isRecord(safeRead(record, 'jsonlContract')) ? safeRead(record, 'jsonlContract') as NormalizedD8APBuild['jsonlContract'] : {},
+    boundarySummary: isRecord(safeRead(record, 'boundarySummary')) ? safeRead(record, 'boundarySummary') as NormalizedD8APBuild['boundarySummary'] : {},
+    blockerCount: typeof safeRead(record, 'blockerCount') === 'number' ? safeRead(record, 'blockerCount') as number : NaN,
+    blockers: Array.isArray(safeRead(record, 'blockers')) ? safeRead(record, 'blockers') as unknown[] : [],
+    needsReviewReasonCount: typeof safeRead(record, 'needsReviewReasonCount') === 'number' ? safeRead(record, 'needsReviewReasonCount') as number : NaN,
+    needsReviewReasons: Array.isArray(safeRead(record, 'needsReviewReasons')) ? safeRead(record, 'needsReviewReasons') as unknown[] : [],
+    nextSafeAction: typeof safeRead(record, 'nextSafeAction') === 'string' || safeRead(record, 'nextSafeAction') === null
+      ? safeRead(record, 'nextSafeAction') as string | null
+      : ''
+  };
+  let ok = true;
+  if (blockers.includes('d8ap_build_accessor_property') || blockers.includes('d8ap_forbidden_input_surface_present')) ok = false;
+  if (normalized.status !== D8AP_READY_STATUS) {
+    addUnique(blockers, 'd8ap_build_not_ready');
+    ok = false;
+  }
+  if (normalized.kind !== TIER_UPDATE_ACTUAL_SAFE_ROW_EXPORT_SAFE_SUMMARY_JSONL_FIXTURE_IN_MEMORY_BUILDER_KIND) {
+    addUnique(blockers, 'd8ap_kind_mismatch');
+    ok = false;
+  }
+  if (normalized.traceLabel !== TIER_UPDATE_ACTUAL_SAFE_ROW_EXPORT_SAFE_SUMMARY_JSONL_FIXTURE_IN_MEMORY_BUILDER_TRACE_LABEL) {
+    addUnique(blockers, 'd8ap_trace_label_mismatch');
+    ok = false;
+  }
+  if (normalized.schemaVersion !== '1' || normalized.skillProfileId !== 'FUNKY_NO_TX_NO_RUNTIME_PROFILE' || normalized.safeSummaryOnly !== true) {
+    addUnique(blockers, 'd8ap_metadata_mismatch');
+    ok = false;
+  }
+  if (!safeToken(normalized.fixtureBuildId, 96)) {
+    addUnique(blockers, 'fixture_build_id_missing');
+    ok = false;
+  }
+  if (!safeToken(normalized.fixtureSchemaId, 96)) {
+    addUnique(blockers, 'fixture_schema_id_missing');
+    ok = false;
+  }
+  if (!safeSourceHead(normalized.sourceHeadSha)) {
+    addUnique(blockers, 'source_head_sha_missing');
+    ok = false;
+  }
+  if (normalized.fixtureOnly !== true || normalized.inMemoryOnly !== true || normalized.zeroRealRows !== true) {
+    addUnique(blockers, 'd8ap_fixture_boundary_mismatch');
+    ok = false;
+  }
+  if (!Number.isFinite(normalized.rowCount) || !Number.isInteger(normalized.rowCount) || normalized.rowCount < 1 || normalized.rowCount > MAX_ROW_COUNT) {
+    addUnique(blockers, 'row_count_invalid');
+    ok = false;
+  }
+  if (!Array.isArray(safeRead(record, 'rows')) || !Array.isArray(safeRead(record, 'rowIds')) || !Array.isArray(safeRead(record, 'entityTypes'))) {
+    addUnique(blockers, 'd8ap_row_collections_malformed');
+    ok = false;
+  }
+  if (Array.isArray(safeRead(record, 'rows')) && normalized.rows.length !== normalized.rowCount) {
+    addUnique(blockers, 'row_count_mismatch');
+    ok = false;
+  }
+  if (Array.isArray(safeRead(record, 'rowIds')) && normalized.rowIds.length !== normalized.rowCount) {
+    addUnique(blockers, 'row_ids_length_mismatch');
+    ok = false;
+  }
+  if (!Array.isArray(safeRead(record, 'canonicalFieldOrder')) || normalized.canonicalFieldOrder.join('|') !== D8AO_CANONICAL_FIELD_ORDER.join('|')) {
+    addUnique(blockers, 'canonical_field_order_mismatch');
+    ok = false;
+  }
+  if (!isRecord(safeRead(record, 'jsonlContract'))
+    || normalized.jsonlContract.jsonlLinesReturned !== false
+    || normalized.jsonlContract.fileWriteEnabled !== false
+    || normalized.jsonlContract.inMemoryRowsOnly !== true) {
+    addUnique(blockers, 'jsonl_contract_mismatch');
+    ok = false;
+  }
+  if (!Array.isArray(safeRead(record, 'blockers')) || !normalized.blockers.every((item) => typeof item === 'string')) {
+    addUnique(blockers, 'd8ap_blocker_collection_malformed');
+    ok = false;
+  }
+  if (!Number.isFinite(normalized.blockerCount) || !Number.isInteger(normalized.blockerCount) || normalized.blockerCount < 0) {
+    addUnique(blockers, 'd8ap_blocker_count_mismatch');
+    ok = false;
+  }
+  if (normalized.blockerCount !== normalized.blockers.length) {
+    addUnique(blockers, 'd8ap_blocker_count_mismatch');
+    ok = false;
+  }
+  if (normalized.blockerCount !== 0 || normalized.blockers.length > 0) {
+    addUnique(blockers, 'd8ap_blockers_present');
+    ok = false;
+  }
+  if (!Array.isArray(safeRead(record, 'needsReviewReasons')) || !normalized.needsReviewReasons.every((item) => typeof item === 'string')) {
+    addUnique(blockers, 'd8ap_review_collection_malformed');
+    ok = false;
+  }
+  if (!Number.isFinite(normalized.needsReviewReasonCount) || !Number.isInteger(normalized.needsReviewReasonCount) || normalized.needsReviewReasonCount < 0) {
+    addUnique(blockers, 'd8ap_review_count_mismatch');
+    ok = false;
+  }
+  if (normalized.needsReviewReasonCount !== normalized.needsReviewReasons.length) {
+    addUnique(blockers, 'd8ap_review_count_mismatch');
+    ok = false;
+  }
+  if (normalized.status === D8AP_READY_STATUS && (normalized.needsReviewReasonCount !== 0 || normalized.needsReviewReasons.length > 0)) {
+    addUnique(blockers, 'd8ap_ready_review_state_inconsistent');
+    ok = false;
+  }
+  if (normalized.nextSafeAction !== D8AP_EXPECTED_NEXT_ACTION) {
+    addUnique(blockers, 'd8ap_next_safe_action_mismatch');
+    ok = false;
+  }
+  if (!validateBuildBoundarySummary(normalized, blockers)) ok = false;
+  return normalized;
 }
 
 function nextSafeAction(blockers: string[], needsReviewReasons: string[]) {
@@ -709,37 +1065,54 @@ export function buildTierUpdateActualSafeRowExportSafeSummaryJsonlFixtureVerifie
   collectForbiddenBoundaryReasons(input, blockers);
   normalizeInputCollections(input, blockers, needsReviewReasons);
 
-  const build = input.d8apBuild;
-  const buildMetadataVerified = validateBuildMetadata(build, blockers);
-  const rows = Array.isArray(build?.rows) ? build.rows : [];
-  const rowIds = Array.isArray(build?.rowIds) ? build.rowIds : [];
+  const beforeBuildBlockerCount = blockers.length;
+  const build = normalizeBuildMetadata(input.d8apBuild, blockers);
+  const buildMetadataVerified = !!build && blockers.length === beforeBuildBlockerCount;
+  const rows = build ? build.rows : [];
   const seen = new Set<string>();
-  let canonicalKeysVerified = true;
-  let rowTypesVerified = true;
-  let sourceHashesVerified = true;
-  let timestampsVerified = true;
-  let publicFieldsVerified = true;
-  let internalLabelsVerified = true;
-  let chainNetworkVerified = true;
-  let requiredSafetyFlagsVerified = true;
+  let canonicalKeysVerified = false;
+  let rowTypesVerified = false;
+  let rowIdsUniqueVerified = false;
+  let schemaBindingVerified = false;
+  let sourceHeadConsistencyVerified = false;
+  let sourceHashesVerified = false;
+  let timestampsVerified = false;
+  let safeStringsVerified = false;
+  let publicFieldsVerified = false;
+  let internalLabelsVerified = false;
+  let walletSummaryVerified = false;
+  let chainNetworkVerified = false;
+  let requiredSafetyFlagsVerified = false;
 
+  if (build) {
+    rowIdsUniqueVerified = validateRowIds(build, rows, blockers);
+    validateEntityTypes(build, rows, blockers);
+  }
+
+  let rowValidationExecuted = false;
+  let rowValidationOk = !!build && blockers.length === 0;
   for (const [index, row] of rows.entries()) {
+    rowValidationExecuted = true;
     const beforeBlockerCount = blockers.length;
     const beforeReviewCount = needsReviewReasons.length;
-    const rowOk = validateRow(row, index, build || {}, blockers, needsReviewReasons, seen);
-    if (!rowOk) rowTypesVerified = false;
+    const rowOk = build ? validateRow(row, index, build, blockers, needsReviewReasons, seen) : false;
+    if (!rowOk) rowValidationOk = false;
     const newBlockers = blockers.slice(beforeBlockerCount);
-    if (newBlockers.some((code) => code.includes('canonical'))) canonicalKeysVerified = false;
-    if (newBlockers.some((code) => code.includes('hash'))) sourceHashesVerified = false;
-    if (newBlockers.some((code) => code.includes('exported_at'))) timestampsVerified = false;
-    if (newBlockers.some((code) => code.includes('public_visible'))) publicFieldsVerified = false;
-    if (newBlockers.some((code) => code.includes('internal'))) internalLabelsVerified = false;
-    if (newBlockers.some((code) => code.includes('chain') || code.includes('network'))) chainNetworkVerified = false;
-    if (newBlockers.some((code) => code.includes('safety_flag'))) requiredSafetyFlagsVerified = false;
-    if (needsReviewReasons.length > beforeReviewCount) rowTypesVerified = false;
+    if (newBlockers.length > 0 || needsReviewReasons.length > beforeReviewCount) rowValidationOk = false;
   }
-  if (rowIds.join('|') !== rows.map((row) => isRecord(row) ? String(safeRead(row, 'row_id') || '') : '').join('|')) {
-    addUnique(blockers, 'row_ids_order_mismatch');
+  if (rowValidationExecuted && rowValidationOk) {
+    canonicalKeysVerified = true;
+    rowTypesVerified = true;
+    schemaBindingVerified = true;
+    sourceHeadConsistencyVerified = true;
+    sourceHashesVerified = true;
+    timestampsVerified = true;
+    safeStringsVerified = true;
+    publicFieldsVerified = true;
+    internalLabelsVerified = true;
+    walletSummaryVerified = true;
+    chainNetworkVerified = true;
+    requiredSafetyFlagsVerified = true;
   }
 
   const status: Status = blockers.length > 0
@@ -750,7 +1123,7 @@ export function buildTierUpdateActualSafeRowExportSafeSummaryJsonlFixtureVerifie
   const verifiedRows = status === 'BLOCKED' ? [] : rows;
   const verifiedEntityTypes = status === 'BLOCKED'
     ? []
-    : [...new Set(verifiedRows.map((row) => isRecord(row) ? String(safeRead(row, 'entity_type') || '') : '').filter(Boolean))];
+    : build?.entityTypes.filter((entityType): entityType is string => typeof entityType === 'string') || [];
 
   return {
     status,
@@ -760,32 +1133,32 @@ export function buildTierUpdateActualSafeRowExportSafeSummaryJsonlFixtureVerifie
     skillProfileId: 'FUNKY_NO_TX_NO_RUNTIME_PROFILE',
     safeSummaryOnly: true,
     fixtureVerifierId: safeToken(input.fixtureVerifierId, 96) ? input.fixtureVerifierId : '',
-    fixtureBuildId: buildMetadataVerified && safeToken(build?.fixtureBuildId, 96) ? String(build?.fixtureBuildId) : '',
-    fixtureSchemaId: buildMetadataVerified && safeToken(build?.fixtureSchemaId, 96) ? String(build?.fixtureSchemaId) : '',
-    sourceHeadSha: buildMetadataVerified && safeSourceHead(build?.sourceHeadSha) ? String(build?.sourceHeadSha) : '',
+    fixtureBuildId: buildMetadataVerified && safeToken(build?.fixtureBuildId, 96) ? build.fixtureBuildId : '',
+    fixtureSchemaId: buildMetadataVerified && safeToken(build?.fixtureSchemaId, 96) ? build.fixtureSchemaId : '',
+    sourceHeadSha: buildMetadataVerified && safeSourceHead(build?.sourceHeadSha) ? build.sourceHeadSha : '',
     verifiedRowCount: verifiedRows.length,
     verifiedEntityTypes,
-    schemaContractVerified: blockers.length === 0 || !blockers.some((code) => code.includes('schema') || code.includes('contract')),
+    schemaContractVerified: status !== 'BLOCKED' && !blockers.some((code) => code.includes('schema') || code.includes('contract')),
     buildMetadataVerified,
     canonicalKeysVerified,
     rowTypesVerified,
-    rowIdsUniqueVerified: seen.size === rows.length && !blockers.includes('duplicate_row_id'),
-    schemaBindingVerified: buildMetadataVerified,
-    sourceHeadConsistencyVerified: !blockers.includes('source_head_sha_mismatch'),
+    rowIdsUniqueVerified: status !== 'BLOCKED' && rowIdsUniqueVerified && seen.size === rows.length,
+    schemaBindingVerified: status !== 'BLOCKED' && schemaBindingVerified,
+    sourceHeadConsistencyVerified: status !== 'BLOCKED' && sourceHeadConsistencyVerified,
     sourceHashesVerified,
     timestampsVerified,
-    safeStringsVerified: !blockers.some((code) => code.includes('unsafe')),
+    safeStringsVerified: status !== 'BLOCKED' && safeStringsVerified,
     publicFieldsVerified,
     internalLabelsVerified,
-    walletSummaryVerified: !blockers.includes('wallet_address_summary_unsafe'),
+    walletSummaryVerified: status !== 'BLOCKED' && walletSummaryVerified,
     chainNetworkVerified,
     requiredSafetyFlagsVerified,
-    fixtureOnlyVerified: build?.fixtureOnly === true && input.fixtureOnlyRequired === true,
-    inMemoryOnlyVerified: build?.inMemoryOnly === true && input.inMemoryOnlyRequired === true,
-    zeroRealRowsVerified: build?.zeroRealRows === true && input.zeroRealRowsRequired === true,
-    noFileOutputVerified: build?.jsonlContract?.fileWriteEnabled === false && input.noFileOutputRequired === true,
-    noJsonlFileOutputVerified: build?.jsonlContract?.jsonlLinesReturned === false && input.noJsonlFileOutputRequired === true,
-    noArtifactUploadVerified: input.noArtifactUploadRequired === true,
+    fixtureOnlyVerified: status !== 'BLOCKED' && build?.fixtureOnly === true && input.fixtureOnlyRequired === true,
+    inMemoryOnlyVerified: status !== 'BLOCKED' && build?.inMemoryOnly === true && input.inMemoryOnlyRequired === true,
+    zeroRealRowsVerified: status !== 'BLOCKED' && build?.zeroRealRows === true && input.zeroRealRowsRequired === true,
+    noFileOutputVerified: status !== 'BLOCKED' && build?.jsonlContract?.fileWriteEnabled === false && input.noFileOutputRequired === true,
+    noJsonlFileOutputVerified: status !== 'BLOCKED' && build?.jsonlContract?.jsonlLinesReturned === false && input.noJsonlFileOutputRequired === true,
+    noArtifactUploadVerified: status !== 'BLOCKED' && input.noArtifactUploadRequired === true,
     boundarySummary: boundarySummaryFor(input),
     blockerCount: blockers.length,
     blockers,

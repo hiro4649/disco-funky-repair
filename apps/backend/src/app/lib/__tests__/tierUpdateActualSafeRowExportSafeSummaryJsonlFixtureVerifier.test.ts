@@ -408,6 +408,181 @@ describe('tierUpdateActualSafeRowExportSafeSummaryJsonlFixtureVerifier', () => {
     }).status).toBe('BLOCKED');
   });
 
+  it.each([
+    ['blockers non-array', { blockers: 'raw_secret=value' }, 'd8ap_blocker_collection_malformed'],
+    ['blockerCount NaN', { blockerCount: NaN }, 'd8ap_blocker_count_mismatch'],
+    ['blockerCount negative', { blockerCount: -1 }, 'd8ap_blocker_count_mismatch'],
+    ['blockerCount mismatch', { blockerCount: 2, blockers: ['safe_blocker'] }, 'd8ap_blocker_count_mismatch'],
+    ['blockerCount zero with blocker', { blockerCount: 0, blockers: ['secret=example'] }, 'd8ap_blocker_count_mismatch'],
+    ['needsReviewReasons non-array', { needsReviewReasons: 'raw_secret=value' }, 'd8ap_review_collection_malformed'],
+    ['needsReviewReasonCount NaN', { needsReviewReasonCount: NaN }, 'd8ap_review_count_mismatch'],
+    ['needsReviewReasonCount negative', { needsReviewReasonCount: -1 }, 'd8ap_review_count_mismatch'],
+    ['needsReviewReasonCount mismatch', { needsReviewReasonCount: 2, needsReviewReasons: ['optional_fixture_metadata_incomplete'] }, 'd8ap_review_count_mismatch'],
+    ['ready build with review reason', { needsReviewReasonCount: 1, needsReviewReasons: ['optional_fixture_metadata_incomplete'] }, 'd8ap_ready_review_state_inconsistent']
+  ])('blocks inconsistent D8AP metadata: %s', (_name, buildOverrides, expectedCode) => {
+    const result = verify(withBuild(buildOverrides));
+    const serialized = JSON.stringify(result);
+
+    expect(result.status).toBe('BLOCKED');
+    expect(result.blockers).toEqual(expect.arrayContaining([expectedCode]));
+    expect(serialized).not.toContain('secret=example');
+    expect(serialized).not.toContain('raw_secret=value');
+    expect(result.nextSafeAction).toBe('provide_d8ap_in_memory_fixture_build');
+  });
+
+  it.each([
+    ['entityTypes missing row entity', ['fixture', 'scheduled_tier_update']],
+    ['entityTypes extra entity', ['fixture', 'scheduled_tier_update', 'job_run', 'staging_evidence']],
+    ['entityTypes wrong order', ['job_run', 'scheduled_tier_update', 'fixture']],
+    ['entityTypes duplicate', ['fixture', 'scheduled_tier_update', 'job_run', 'job_run']],
+    ['entityTypes unsafe string', ['fixture', 'scheduled_tier_update', 'Prize']],
+    ['entityTypes object item', ['fixture', { entity: 'job_run' }, 'scheduled_tier_update']]
+  ])('blocks strict entityTypes mismatch: %s', (_name, entityTypes) => {
+    const result = verify(withBuild({ entityTypes }));
+
+    expect(result.status).toBe('BLOCKED');
+    expect(result.blockers.some((code) => code.startsWith('entity_types_'))).toBe(true);
+    expect(result.verifiedEntityTypes).toEqual([]);
+  });
+
+  it.each([
+    ['rowIds object with throwing toString', [{ toString: () => { throw new Error('raw row id'); } }, ...d8apBuild().rowIds.slice(1)]],
+    ['rowIds Symbol', [Symbol('row'), ...d8apBuild().rowIds.slice(1)]],
+    ['rowIds BigInt', [1n, ...d8apBuild().rowIds.slice(1)]],
+    ['rowIds duplicate', [d8apBuild().rowIds[0], d8apBuild().rowIds[0], d8apBuild().rowIds[2]]],
+    ['rowIds wrong order', [d8apBuild().rowIds[1], d8apBuild().rowIds[0], d8apBuild().rowIds[2]]],
+    ['rowIds missing item', d8apBuild().rowIds.slice(1)]
+  ])('blocks strict rowIds without coercion: %s', (_name, rowIds) => {
+    expect(() => verify(withBuild({ rowIds }))).not.toThrow();
+    const result = verify(withBuild({ rowIds }));
+
+    expect(result.status).toBe('BLOCKED');
+    expect(result.blockers.some((code) => code.includes('row_id')) || result.blockers.includes('duplicate_row_id')).toBe(true);
+    expect(result.verifiedRowCount).toBe(0);
+  });
+
+  it.each([
+    ['fixtureBuildId object', withBuild({ fixtureBuildId: { toString: () => { throw new Error('raw fixture id'); } } })],
+    ['fixtureSchemaId symbol', withBuild({ fixtureSchemaId: Symbol('schema') })],
+    ['sourceHeadSha bigint', withBuild({ sourceHeadSha: 1n })],
+    ['entity_type object', withFirstRow({ entity_type: { toString: () => { throw new Error('raw entity'); } } })],
+    ['evidence_origin symbol', withFirstRow({ evidence_origin: Symbol('origin') })],
+    ['readiness_claim bigint', withFirstRow({ readiness_claim: 1n })],
+    ['wallet summary object', withFirstRow({ wallet_address_summary: { value: 'none' } })],
+    ['network label symbol', withFirstRow({ network_label: Symbol('network') })],
+    ['safety flag bigint', withFirstRow({ safety_flags: [...d8apBuild().rows[0].safety_flags, 1n] })]
+  ])('blocks untrusted scalar values without String coercion: %s', (_name, overrides) => {
+    expect(() => verify(overrides as Partial<BuildTierUpdateActualSafeRowExportSafeSummaryJsonlFixtureVerifierInput>)).not.toThrow();
+    expect(verify(overrides as Partial<BuildTierUpdateActualSafeRowExportSafeSummaryJsonlFixtureVerifierInput>).status).toBe('BLOCKED');
+  });
+
+  it.each([
+    ['public bigint', withFirstRow({ public_visible_fields: { count: 1n } })],
+    ['public symbol', withFirstRow({ public_visible_fields: { label: Symbol('x') } })],
+    ['public function', withFirstRow({ public_visible_fields: { run: () => 'x' } })],
+    ['scalar bigint', withFirstRow({ record_summary: 1n })],
+    ['safety flags bigint', withFirstRow({ safety_flags: [1n] })],
+    ['internal labels bigint', withFirstRow({ internal_only_field_labels: [1n] })]
+  ])('encoded size verifier blocks unsafe values without throwing: %s', (_name, overrides) => {
+    expect(() => verify(overrides as Partial<BuildTierUpdateActualSafeRowExportSafeSummaryJsonlFixtureVerifierInput>)).not.toThrow();
+    const result = verify(overrides as Partial<BuildTierUpdateActualSafeRowExportSafeSummaryJsonlFixtureVerifierInput>);
+
+    expect(result.status).toBe('BLOCKED');
+    expect(JSON.stringify(result)).not.toContain('Symbol');
+  });
+
+  it.each([
+    'status',
+    'fixtureBuildId',
+    'rows',
+    'boundarySummary'
+  ])('blocks D8AP accessor property without executing it: %s', (key) => {
+    const build = { ...d8apBuild() } as Record<string, unknown>;
+    Object.defineProperty(build, key, {
+      enumerable: true,
+      get() {
+        throw new Error('d8ap getter executed');
+      }
+    });
+
+    expect(() => verify({ d8apBuild: build as never })).not.toThrow();
+    const result = verify({ d8apBuild: build as never });
+    expect(result.status).toBe('BLOCKED');
+    expect(result.blockers).toEqual(expect.arrayContaining(['d8ap_build_accessor_property']));
+  });
+
+  it('blocks D8AP proxy traps without exposing raw trap errors', () => {
+    const proxy = new Proxy(d8apBuild() as Record<string, unknown>, {
+      ownKeys() {
+        throw new Error('raw proxy trap');
+      }
+    });
+
+    expect(() => verify({ d8apBuild: proxy as never })).not.toThrow();
+    const result = verify({ d8apBuild: proxy as never });
+    expect(result.status).toBe('BLOCKED');
+    expect(JSON.stringify(result)).not.toContain('raw proxy trap');
+  });
+
+  it.each([
+    'actualRows',
+    'rawRows',
+    'dbRows',
+    'sourceRows',
+    'records',
+    'jsonlLines',
+    'filePath',
+    'outputPath',
+    'artifactName',
+    'sql',
+    'query',
+    'rawPayload',
+    'endpoint'
+  ])('blocks forbidden D8AP input surface even when empty: %s', (key) => {
+    const result = verify(withBuild({ [key]: undefined }));
+
+    expect(result.status).toBe('BLOCKED');
+    expect(result.blockers).toEqual(expect.arrayContaining(['d8ap_forbidden_input_surface_present']));
+  });
+
+  it.each([
+    ['missing boundary flag', (() => { const boundary = { ...d8apBuild().boundarySummary } as Record<string, unknown>; delete boundary.actualDbQueryEnabled; return boundary; })()],
+    ['non-boolean boundary flag', { ...d8apBuild().boundarySummary, actualDbQueryEnabled: 'false' }],
+    ['accessor boundary flag', (() => {
+      const boundary = { ...d8apBuild().boundarySummary } as Record<string, unknown>;
+      Object.defineProperty(boundary, 'actualDbQueryEnabled', { enumerable: true, get: () => false });
+      return boundary;
+    })()],
+    ['extra unsafe boundary key', { ...d8apBuild().boundarySummary, sourceQueryEnabled: false }],
+    ['top-level disagreement', { ...d8apBuild().boundarySummary, fixtureOnly: false }]
+  ])('blocks malformed D8AP boundary summary: %s', (_name, boundarySummary) => {
+    const result = verify(withBuild({ boundarySummary }));
+
+    expect(result.status).toBe('BLOCKED');
+    expect(result.blockers.some((code) => code.startsWith('d8ap_boundary_'))).toBe(true);
+  });
+
+  it('keeps verification booleans false on blocked malformed rows', () => {
+    const result = verify(withFirstRow({ source_hash: `sha256:${'a'.repeat(64)}` }));
+
+    expect(result.status).toBe('BLOCKED');
+    expect(result.verifiedRowCount).toBe(0);
+    expect(result.verifiedEntityTypes).toEqual([]);
+    expect(result.sourceHashesVerified).toBe(false);
+    expect(result.rowTypesVerified).toBe(false);
+    expect(result.schemaBindingVerified).toBe(false);
+  });
+
+  it('keeps row verifications truthful for review-only policy results', () => {
+    const result = verify(withFirstRow({ readiness_claim: 'needs_review' }));
+
+    expect(result.status).toBe('NEEDS_REVIEW');
+    expect(result.verifiedRowCount).toBe(3);
+    expect(result.rowTypesVerified).toBe(false);
+    expect(result.sourceHashesVerified).toBe(false);
+    expect(result.fixtureOnlyVerified).toBe(true);
+  });
+
   it('source file does not import Prisma, read env, touch filesystem, network, routes, or runtime wiring', () => {
     const sourcePath = path.join(__dirname, '..', 'tierUpdateActualSafeRowExportSafeSummaryJsonlFixtureVerifier.ts');
     const source = fs.readFileSync(sourcePath, 'utf8');
