@@ -13,6 +13,25 @@ import {
   TIER_UPDATE_ACTUAL_SAFE_ROW_EXPORT_SAFE_SUMMARY_JSONL_FIXTURE_IN_MEMORY_BUILDER_TRACE_LABEL
 } from './tierUpdateActualSafeRowExportSafeSummaryJsonlFixtureInMemoryBuilder';
 import type { SafeSummaryJsonlFixtureRow } from './tierUpdateActualSafeRowExportSafeSummaryJsonlFixtureInMemoryBuilder';
+import {
+  containsUnsafeSafeSummaryString as unsafeString,
+  hasOwnDataProperty as hasDataProperty,
+  hasOwnPropertySafely,
+  inspectOwnProperty,
+  isPlainDataRecord as isRecord,
+  isSafeLowerToken as safeToken,
+  isSafeSha256Label as safeSha256,
+  isSafeSourceHeadSha as safeSourceHead,
+  listOwnEnumerableDataKeys as ownKeys,
+  normalizeAllowlistedReviewReasons,
+  normalizeGenericBlockerPresence,
+  readDenseOwnDataArray,
+  readOwnDataProperty as safeRead,
+  reduceForbiddenBooleanFlags,
+  safeJsonByteLength,
+  safePrimitiveSnapshot,
+  strictOrderedStringArrayEqual
+} from './tierUpdateActualSafeRowExportSafeValidationKernel';
 
 export const TIER_UPDATE_ACTUAL_SAFE_ROW_EXPORT_SAFE_SUMMARY_JSONL_FIXTURE_VERIFIER_KIND =
   'tier_update_actual_safe_row_export_safe_summary_jsonl_fixture_verifier' as const;
@@ -295,88 +314,8 @@ const EXECUTABLE_SAFETY_FLAGS = new Set([
   'claims_staging_ready',
   'claims_production_ready'
 ]);
-const UNSAFE_PATTERNS = [
-  /raw[\s_-]*(secret|env|log|payload|endpoint)/i,
-  /private[\s_-]*(key|path|identifier)/i,
-  /local[\s_-]*(file[\s_-]*)?path/i,
-  /authorization\s*[:=]/i,
-  /bearer\s+[a-z0-9._-]+/i,
-  /jwt\s*[:=]/i,
-  /cookie\s*[:=]/i,
-  /database_url\s*[:=]/i,
-  /postgres(?:ql)?:\/\//i,
-  /rpc[\s_-]*secret/i,
-  /runtime[\s_-]*ready|production[\s_-]*ready|staging[\s_-]*ready|export[\s_-]*ready|actual[\s_-]*source[\s_-]*ready/i,
-  /https?:\/\//i,
-  /0x[a-f0-9]{40}/i,
-  /[a-z]:[\\/]/i,
-  /(^|[\s"'])(\/(?:users|home|var|etc|tmp)\/[^\s"']*)/i,
-  /\.\.[\\/]/
-];
-
 function addUnique(list: string[], value: string) {
   if (!list.includes(value)) list.push(value);
-}
-
-function hasOwn(input: object, key: string): boolean {
-  try {
-    return Object.prototype.hasOwnProperty.call(input, key);
-  } catch {
-    return false;
-  }
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  try {
-    if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
-    const proto = Object.getPrototypeOf(value);
-    return proto === Object.prototype || proto === null;
-  } catch {
-    return false;
-  }
-}
-
-function safeRead(record: Record<string, unknown>, key: string): unknown {
-  try {
-    const descriptor = Object.getOwnPropertyDescriptor(record, key);
-    if (!descriptor || !('value' in descriptor)) return undefined;
-    return descriptor.value;
-  } catch {
-    return undefined;
-  }
-}
-
-function hasDataProperty(record: Record<string, unknown>, key: string): boolean {
-  try {
-    const descriptor = Object.getOwnPropertyDescriptor(record, key);
-    return !!descriptor && 'value' in descriptor;
-  } catch {
-    return false;
-  }
-}
-
-function ownKeys(record: Record<string, unknown>): string[] | null {
-  try {
-    return Object.keys(record);
-  } catch {
-    return null;
-  }
-}
-
-function safeToken(value: unknown, max = 128): value is string {
-  return typeof value === 'string' && value.length <= max && /^[a-z0-9][a-z0-9_-]{2,127}$/.test(value);
-}
-
-function safeSourceHead(value: unknown): value is string {
-  return typeof value === 'string' && /^[a-f0-9]{40}$/.test(value);
-}
-
-function safeSha256(value: unknown): value is string {
-  return typeof value === 'string' && /^sha256:[a-f0-9]{64}$/.test(value);
-}
-
-function unsafeString(value: unknown): boolean {
-  return typeof value === 'string' && UNSAFE_PATTERNS.some((pattern) => pattern.test(value));
 }
 
 function sha256Hex(value: string): string {
@@ -412,66 +351,73 @@ function emptyBoundarySummary(): TierUpdateActualSafeRowExportSafeSummaryJsonlFi
 }
 
 function collectBoundarySources(input: BuildTierUpdateActualSafeRowExportSafeSummaryJsonlFixtureVerifierInput): BoundaryFlags[] {
-  const d8apBuild = isRecord(input.d8apBuild) ? input.d8apBuild : {};
-  const d8apBoundarySummary = isRecord(d8apBuild) && isRecord(safeRead(d8apBuild, 'boundarySummary'))
-    ? safeRead(d8apBuild, 'boundarySummary') as BoundaryFlags
+  const d8apBuildValue = safeRead(input, 'd8apBuild');
+  const d8apBuild = isRecord(d8apBuildValue) ? d8apBuildValue : {};
+  const d8apBoundarySummaryValue = isRecord(d8apBuild) ? safeRead(d8apBuild, 'boundarySummary') : undefined;
+  const d8apBoundarySummary = isRecord(d8apBoundarySummaryValue)
+    ? d8apBoundarySummaryValue as BoundaryFlags
     : {};
-  return [input, input.boundarySummary || {}, input.boundaryFlags || {}, d8apBuild as BoundaryFlags, d8apBoundarySummary];
+  return [
+    input,
+    safeRead(input, 'boundarySummary') as BoundaryFlags | undefined || {},
+    safeRead(input, 'boundaryFlags') as BoundaryFlags | undefined || {},
+    d8apBuild as BoundaryFlags,
+    d8apBoundarySummary
+  ];
 }
 
 function boundarySummaryFor(input: BuildTierUpdateActualSafeRowExportSafeSummaryJsonlFixtureVerifierInput) {
   const summary = emptyBoundarySummary();
-  for (const source of collectBoundarySources(input)) {
-    for (const flag of FORBIDDEN_BOUNDARY_FLAGS) {
-      if (source[flag] === true) summary[flag] = true;
-    }
-  }
+  Object.assign(summary, reduceForbiddenBooleanFlags(collectBoundarySources(input), FORBIDDEN_BOUNDARY_FLAGS));
   return summary;
 }
 
 function collectForbiddenBoundaryReasons(input: BuildTierUpdateActualSafeRowExportSafeSummaryJsonlFixtureVerifierInput, blockers: string[]) {
-  for (const source of collectBoundarySources(input)) {
-    for (const flag of FORBIDDEN_BOUNDARY_FLAGS) {
-      if (source[flag] === true) addUnique(blockers, `${flag}_forbidden`);
-    }
+  for (const key of ['boundarySummary', 'boundaryFlags', 'd8apBuild'] as const) {
+    const inspection = inspectOwnProperty(input, key);
+    if (inspection.kind === 'accessor' || inspection.kind === 'error') addUnique(blockers, 'boundary_source_malformed');
   }
+  const reduced = reduceForbiddenBooleanFlags(collectBoundarySources(input), FORBIDDEN_BOUNDARY_FLAGS, () => addUnique(blockers, 'boundary_source_malformed'));
+  for (const flag of FORBIDDEN_BOUNDARY_FLAGS) if (reduced[flag]) addUnique(blockers, `${flag}_forbidden`);
 }
 
 function normalizeInputCollections(input: BuildTierUpdateActualSafeRowExportSafeSummaryJsonlFixtureVerifierInput, blockers: string[], needsReviewReasons: string[]) {
-  if (hasOwn(input, 'blockers')) {
-    if (!Array.isArray(input.blockers)) addUnique(blockers, 'upstream_blockers_invalid');
-    else if (input.blockers.length > 0) addUnique(blockers, 'upstream_blocker_present');
+  if (hasOwnPropertySafely(input, 'blockers')) {
+    normalizeGenericBlockerPresence(safeRead(input, 'blockers'), (blocker) => addUnique(blockers, blocker));
   }
-  if (hasOwn(input, 'needsReviewReasons')) {
-    if (!Array.isArray(input.needsReviewReasons)) addUnique(blockers, 'needs_review_reasons_invalid');
-    else {
-      for (const reason of input.needsReviewReasons) {
-        if (SAFE_REVIEW_REASON_ALLOWLIST.has(String(reason))) addUnique(needsReviewReasons, String(reason));
-        else addUnique(needsReviewReasons, 'upstream_review_reason_redacted');
-      }
-    }
+  if (hasOwnPropertySafely(input, 'needsReviewReasons')) {
+    normalizeAllowlistedReviewReasons(
+      safeRead(input, 'needsReviewReasons'),
+      SAFE_REVIEW_REASON_ALLOWLIST,
+      (blocker) => addUnique(blockers, blocker),
+      (reason) => addUnique(needsReviewReasons, reason)
+    );
   }
 }
 
 function validatePolicy(input: BuildTierUpdateActualSafeRowExportSafeSummaryJsonlFixtureVerifierInput, blockers: string[]) {
-  if (!safeToken(input.fixtureVerifierId, 96)) addUnique(blockers, 'fixture_verifier_id_missing');
-  if (!input.verificationMode || FORBIDDEN_MODES.has(input.verificationMode) || !SAFE_MODES.has(input.verificationMode)) {
+  const fixtureVerifierId = safeRead(input, 'fixtureVerifierId');
+  const verificationMode = safeRead(input, 'verificationMode');
+  if (!safeToken(fixtureVerifierId, 96)) addUnique(blockers, 'fixture_verifier_id_missing');
+  if (!verificationMode || typeof verificationMode !== 'string' || FORBIDDEN_MODES.has(verificationMode) || !SAFE_MODES.has(verificationMode)) {
     addUnique(blockers, 'verification_mode_unsafe');
   }
-  if (input.fixtureOnlyRequired !== true) addUnique(blockers, 'fixture_only_required');
-  if (input.inMemoryOnlyRequired !== true) addUnique(blockers, 'in_memory_only_required');
-  if (input.zeroRealRowsRequired !== true) addUnique(blockers, 'zero_real_rows_required');
-  if (input.noFileOutputRequired !== true) addUnique(blockers, 'no_file_output_required');
-  if (input.noJsonlFileOutputRequired !== true) addUnique(blockers, 'no_jsonl_file_output_required');
-  if (input.noArtifactUploadRequired !== true) addUnique(blockers, 'no_artifact_upload_required');
-  if (input.nextSafeAction !== undefined && input.nextSafeAction !== READY_NEXT_ACTION) addUnique(blockers, 'next_safe_action_unsafe');
-  for (const key of FORBIDDEN_INPUT_KEYS) if (hasOwn(input, key)) addUnique(blockers, 'actual_row_input_forbidden');
+  if (safeRead(input, 'fixtureOnlyRequired') !== true) addUnique(blockers, 'fixture_only_required');
+  if (safeRead(input, 'inMemoryOnlyRequired') !== true) addUnique(blockers, 'in_memory_only_required');
+  if (safeRead(input, 'zeroRealRowsRequired') !== true) addUnique(blockers, 'zero_real_rows_required');
+  if (safeRead(input, 'noFileOutputRequired') !== true) addUnique(blockers, 'no_file_output_required');
+  if (safeRead(input, 'noJsonlFileOutputRequired') !== true) addUnique(blockers, 'no_jsonl_file_output_required');
+  if (safeRead(input, 'noArtifactUploadRequired') !== true) addUnique(blockers, 'no_artifact_upload_required');
+  const nextAction = inspectOwnProperty(input, 'nextSafeAction');
+  if (nextAction.kind === 'data' && nextAction.value !== READY_NEXT_ACTION) addUnique(blockers, 'next_safe_action_unsafe');
+  if (nextAction.kind === 'accessor' || nextAction.kind === 'error') addUnique(blockers, 'next_safe_action_unsafe');
+  for (const key of FORBIDDEN_INPUT_KEYS) if (hasOwnPropertySafely(input, key)) addUnique(blockers, 'actual_row_input_forbidden');
 }
 
 function isCanonicalRowObject(value: unknown): value is Record<keyof SafeSummaryJsonlFixtureRow, unknown> {
   if (!isRecord(value)) return false;
   const keys = ownKeys(value);
-  return !!keys && keys.join('|') === D8AO_CANONICAL_FIELD_ORDER.join('|');
+  return !!keys && strictOrderedStringArrayEqual(keys, D8AO_CANONICAL_FIELD_ORDER);
 }
 
 function validateFlatPublicFields(value: unknown, blockers: string[]): boolean {
@@ -509,13 +455,17 @@ function validateFlatPublicFields(value: unknown, blockers: string[]): boolean {
 }
 
 function validateInternalLabels(value: unknown, blockers: string[]): boolean {
-  if (!Array.isArray(value) || value.length > 32) {
+  const labels = readDenseOwnDataArray(value, {
+    maxLength: 32,
+    validateItem: (item): item is string => typeof item === 'string'
+  });
+  if (!labels.ok) {
     addUnique(blockers, 'internal_labels_malformed');
     return false;
   }
   let ok = true;
-  for (const label of value) {
-    if (typeof label !== 'string' || label.length > 64 || !/^[a-z0-9][a-z0-9_]{2,63}$/.test(label) || /[:=\s\\/]|https?:/.test(label)) {
+  for (const label of labels.values) {
+    if (label.length > 64 || !/^[a-z0-9][a-z0-9_]{2,63}$/.test(label) || /[:=\s\\/]|https?:/.test(label)) {
       addUnique(blockers, 'internal_label_unsafe');
       ok = false;
     }
@@ -536,12 +486,6 @@ function validateTimestamp(value: unknown, blockers: string[]): boolean {
   return true;
 }
 
-function snapshotPrimitive(value: unknown): string | number | boolean | null | undefined {
-  if (value === null || typeof value === 'string' || typeof value === 'boolean') return value;
-  if (typeof value === 'number' && Number.isFinite(value)) return value;
-  return undefined;
-}
-
 function encodedSizeOk(row: Record<string, unknown>, blockers: string[]): boolean {
   const safeSnapshot: Record<string, unknown> = {};
   for (const key of D8AO_CANONICAL_FIELD_ORDER) {
@@ -559,12 +503,15 @@ function encodedSizeOk(row: Record<string, unknown>, blockers: string[]): boolea
     const value = descriptor.value;
     if (value && typeof value === 'object') {
       if (Array.isArray(value)) {
-        const items = value.map(snapshotPrimitive);
-        if (items.some((item) => item === undefined)) {
+        const items = readDenseOwnDataArray(value, {
+          maxLength: 64,
+          validateItem: (item): item is string | number | boolean | null => safePrimitiveSnapshot(item) !== undefined
+        });
+        if (!items.ok) {
           addUnique(blockers, 'row_encoded_size_unavailable');
           return false;
         }
-        safeSnapshot[key] = items;
+        safeSnapshot[key] = items.values;
       }
       else if (isRecord(value)) {
         const flat: Record<string, unknown> = {};
@@ -585,7 +532,7 @@ function encodedSizeOk(row: Record<string, unknown>, blockers: string[]): boolea
             addUnique(blockers, 'row_encoded_size_unavailable');
             return false;
           }
-          const primitive = snapshotPrimitive(nestedDescriptor.value);
+          const primitive = safePrimitiveSnapshot(nestedDescriptor.value);
           if (primitive === undefined) {
             addUnique(blockers, 'row_encoded_size_unavailable');
             return false;
@@ -598,7 +545,7 @@ function encodedSizeOk(row: Record<string, unknown>, blockers: string[]): boolea
         return false;
       }
     } else {
-      const primitive = snapshotPrimitive(value);
+      const primitive = safePrimitiveSnapshot(value);
       if (primitive === undefined) {
         addUnique(blockers, 'row_encoded_size_unavailable');
         return false;
@@ -606,14 +553,12 @@ function encodedSizeOk(row: Record<string, unknown>, blockers: string[]): boolea
       safeSnapshot[key] = primitive;
     }
   }
-  let size = 0;
-  try {
-    size = Buffer.byteLength(JSON.stringify(safeSnapshot), 'utf8');
-  } catch {
+  const size = safeJsonByteLength(safeSnapshot);
+  if (!size.ok) {
     addUnique(blockers, 'row_encoded_size_unavailable');
     return false;
   }
-  if (size > MAX_ROW_BYTES) {
+  if (size.byteLength > MAX_ROW_BYTES) {
     addUnique(blockers, 'row_encoded_size_too_large');
     return false;
   }
@@ -681,7 +626,7 @@ function validateRow(
     ok = false;
   }
   const sourceTable = read('source_table');
-  if (!(sourceTable === null || (safeToken(sourceTable, 96) && !String(sourceTable).includes('.') && !unsafeString(sourceTable)))) {
+  if (!(sourceTable === null || (typeof sourceTable === 'string' && safeToken(sourceTable, 96) && !sourceTable.includes('.') && !unsafeString(sourceTable)))) {
     addUnique(blockers, 'source_table_unsafe');
     ok = false;
   }
@@ -730,13 +675,17 @@ function validateRow(
   }
   if (networkLabel === 'unknown') addUnique(needsReviewReasons, 'unknown_network_label_isolated_review');
   const safetyFlags = read('safety_flags');
-  if (!Array.isArray(safetyFlags) || new Set(safetyFlags).size !== safetyFlags.length) {
+  const safetyFlagArray = readDenseOwnDataArray(safetyFlags, {
+    maxLength: D8AO_SAFETY_FLAG_ALLOWLIST.length,
+    validateItem: (item): item is string => typeof item === 'string'
+  });
+  if (!safetyFlagArray.ok || new Set(safetyFlagArray.values).size !== safetyFlagArray.values.length) {
     addUnique(blockers, 'safety_flags_malformed');
     ok = false;
   } else {
-    for (const flag of REQUIRED_SAFETY_FLAGS) if (!safetyFlags.includes(flag)) addUnique(blockers, 'required_safety_flag_missing');
-    for (const flag of safetyFlags) {
-      if (typeof flag !== 'string' || !D8AO_SAFETY_FLAG_ALLOWLIST.includes(flag as typeof D8AO_SAFETY_FLAG_ALLOWLIST[number]) || EXECUTABLE_SAFETY_FLAGS.has(flag)) {
+    for (const flag of REQUIRED_SAFETY_FLAGS) if (!safetyFlagArray.values.includes(flag)) addUnique(blockers, 'required_safety_flag_missing');
+    for (const flag of safetyFlagArray.values) {
+      if (!D8AO_SAFETY_FLAG_ALLOWLIST.includes(flag as typeof D8AO_SAFETY_FLAG_ALLOWLIST[number]) || EXECUTABLE_SAFETY_FLAGS.has(flag)) {
         addUnique(blockers, 'safety_flag_unsafe');
         ok = false;
       }
@@ -815,7 +764,8 @@ function validateRowIds(build: NormalizedD8APBuild, rows: unknown[], blockers: s
       ok = false;
     }
   }
-  for (const [index, rowId] of build.rowIds.entries()) {
+  for (let index = 0; index < build.rowIds.length; index += 1) {
+    const rowId = build.rowIds[index];
     if (!safeToken(rowId, 128)) {
       addUnique(blockers, 'row_ids_collection_malformed');
       ok = false;
@@ -868,11 +818,39 @@ function validateEntityTypes(build: NormalizedD8APBuild, rows: unknown[], blocke
     addUnique(blockers, 'entity_types_collection_malformed');
     ok = false;
   }
-  if (actual.join('|') !== expected.join('|')) {
+  if (!strictOrderedStringArrayEqual(actual, expected)) {
     addUnique(blockers, 'entity_types_row_mismatch');
     ok = false;
   }
   return ok;
+}
+
+function snapshotPlainRecordArray(value: unknown, maxLength: number): unknown[] {
+  const rows = readDenseOwnDataArray(value, {
+    maxLength,
+    validateItem: (item): item is Record<string, unknown> => isRecord(item)
+  });
+  return rows.ok ? rows.values : [];
+}
+
+function snapshotStringArray(value: unknown, maxLength: number): string[] {
+  const items = readDenseOwnDataArray(value, {
+    maxLength,
+    validateItem: (item): item is string => typeof item === 'string'
+  });
+  return items.ok ? items.values : [];
+}
+
+function jsonlContractSnapshot(value: unknown): NormalizedD8APBuild['jsonlContract'] {
+  if (!isRecord(value)) return {};
+  const jsonlLinesReturned = safeRead(value, 'jsonlLinesReturned');
+  const fileWriteEnabled = safeRead(value, 'fileWriteEnabled');
+  const inMemoryRowsOnly = safeRead(value, 'inMemoryRowsOnly');
+  return {
+    jsonlLinesReturned: typeof jsonlLinesReturned === 'boolean' ? jsonlLinesReturned : undefined,
+    fileWriteEnabled: typeof fileWriteEnabled === 'boolean' ? fileWriteEnabled : undefined,
+    inMemoryRowsOnly: typeof inMemoryRowsOnly === 'boolean' ? inMemoryRowsOnly : undefined
+  };
 }
 
 function normalizeBuildMetadata(build: D8APBuild | null | undefined, blockers: string[]): NormalizedD8APBuild | null {
@@ -881,8 +859,11 @@ function normalizeBuildMetadata(build: D8APBuild | null | undefined, blockers: s
     return null;
   }
   const record = build as Record<string, unknown>;
+  for (const key of FORBIDDEN_INPUT_KEYS) {
+    if (hasOwnPropertySafely(record, key)) addUnique(blockers, 'd8ap_forbidden_input_surface_present');
+  }
   if (!ownKeys(record)) {
-    addUnique(blockers, 'd8ap_build_missing');
+    addUnique(blockers, 'd8ap_build_accessor_property');
     return null;
   }
   const requiredDataProperties = [
@@ -914,9 +895,6 @@ function normalizeBuildMetadata(build: D8APBuild | null | undefined, blockers: s
   for (const key of requiredDataProperties) {
     if (!hasDataProperty(record, key)) addUnique(blockers, 'd8ap_build_accessor_property');
   }
-  for (const key of FORBIDDEN_INPUT_KEYS) {
-    if (hasOwn(record, key)) addUnique(blockers, 'd8ap_forbidden_input_surface_present');
-  }
   const normalized: NormalizedD8APBuild = {
     status: typeof safeRead(record, 'status') === 'string' ? safeRead(record, 'status') as string : '',
     kind: typeof safeRead(record, 'kind') === 'string' ? safeRead(record, 'kind') as string : '',
@@ -931,16 +909,16 @@ function normalizeBuildMetadata(build: D8APBuild | null | undefined, blockers: s
     inMemoryOnly: safeRead(record, 'inMemoryOnly') === true,
     zeroRealRows: safeRead(record, 'zeroRealRows') === true,
     rowCount: typeof safeRead(record, 'rowCount') === 'number' ? safeRead(record, 'rowCount') as number : NaN,
-    rows: Array.isArray(safeRead(record, 'rows')) ? safeRead(record, 'rows') as unknown[] : [],
-    rowIds: Array.isArray(safeRead(record, 'rowIds')) ? safeRead(record, 'rowIds') as unknown[] : [],
-    entityTypes: Array.isArray(safeRead(record, 'entityTypes')) ? safeRead(record, 'entityTypes') as unknown[] : [],
-    canonicalFieldOrder: Array.isArray(safeRead(record, 'canonicalFieldOrder')) ? safeRead(record, 'canonicalFieldOrder') as unknown[] : [],
-    jsonlContract: isRecord(safeRead(record, 'jsonlContract')) ? safeRead(record, 'jsonlContract') as NormalizedD8APBuild['jsonlContract'] : {},
+    rows: snapshotPlainRecordArray(safeRead(record, 'rows'), MAX_ROW_COUNT),
+    rowIds: snapshotStringArray(safeRead(record, 'rowIds'), MAX_ROW_COUNT),
+    entityTypes: snapshotStringArray(safeRead(record, 'entityTypes'), D8AO_ENTITY_TYPE_ALLOWLIST.length),
+    canonicalFieldOrder: snapshotStringArray(safeRead(record, 'canonicalFieldOrder'), D8AO_CANONICAL_FIELD_ORDER.length),
+    jsonlContract: jsonlContractSnapshot(safeRead(record, 'jsonlContract')),
     boundarySummary: isRecord(safeRead(record, 'boundarySummary')) ? safeRead(record, 'boundarySummary') as NormalizedD8APBuild['boundarySummary'] : {},
     blockerCount: typeof safeRead(record, 'blockerCount') === 'number' ? safeRead(record, 'blockerCount') as number : NaN,
-    blockers: Array.isArray(safeRead(record, 'blockers')) ? safeRead(record, 'blockers') as unknown[] : [],
+    blockers: snapshotStringArray(safeRead(record, 'blockers'), 128),
     needsReviewReasonCount: typeof safeRead(record, 'needsReviewReasonCount') === 'number' ? safeRead(record, 'needsReviewReasonCount') as number : NaN,
-    needsReviewReasons: Array.isArray(safeRead(record, 'needsReviewReasons')) ? safeRead(record, 'needsReviewReasons') as unknown[] : [],
+    needsReviewReasons: snapshotStringArray(safeRead(record, 'needsReviewReasons'), 128),
     nextSafeAction: typeof safeRead(record, 'nextSafeAction') === 'string' || safeRead(record, 'nextSafeAction') === null
       ? safeRead(record, 'nextSafeAction') as string | null
       : ''
@@ -995,7 +973,7 @@ function normalizeBuildMetadata(build: D8APBuild | null | undefined, blockers: s
     addUnique(blockers, 'row_ids_length_mismatch');
     ok = false;
   }
-  if (!Array.isArray(safeRead(record, 'canonicalFieldOrder')) || normalized.canonicalFieldOrder.join('|') !== D8AO_CANONICAL_FIELD_ORDER.join('|')) {
+  if (!strictOrderedStringArrayEqual(normalized.canonicalFieldOrder, D8AO_CANONICAL_FIELD_ORDER)) {
     addUnique(blockers, 'canonical_field_order_mismatch');
     ok = false;
   }
@@ -1006,7 +984,7 @@ function normalizeBuildMetadata(build: D8APBuild | null | undefined, blockers: s
     addUnique(blockers, 'jsonl_contract_mismatch');
     ok = false;
   }
-  if (!Array.isArray(safeRead(record, 'blockers')) || !normalized.blockers.every((item) => typeof item === 'string')) {
+  if (!readDenseOwnDataArray(safeRead(record, 'blockers'), { maxLength: 128, validateItem: (item): item is string => typeof item === 'string' }).ok) {
     addUnique(blockers, 'd8ap_blocker_collection_malformed');
     ok = false;
   }
@@ -1022,7 +1000,7 @@ function normalizeBuildMetadata(build: D8APBuild | null | undefined, blockers: s
     addUnique(blockers, 'd8ap_blockers_present');
     ok = false;
   }
-  if (!Array.isArray(safeRead(record, 'needsReviewReasons')) || !normalized.needsReviewReasons.every((item) => typeof item === 'string')) {
+  if (!readDenseOwnDataArray(safeRead(record, 'needsReviewReasons'), { maxLength: 128, validateItem: (item): item is string => typeof item === 'string' }).ok) {
     addUnique(blockers, 'd8ap_review_collection_malformed');
     ok = false;
   }
@@ -1066,7 +1044,7 @@ export function buildTierUpdateActualSafeRowExportSafeSummaryJsonlFixtureVerifie
   normalizeInputCollections(input, blockers, needsReviewReasons);
 
   const beforeBuildBlockerCount = blockers.length;
-  const build = normalizeBuildMetadata(input.d8apBuild, blockers);
+  const build = normalizeBuildMetadata(safeRead(input, 'd8apBuild') as D8APBuild | null | undefined, blockers);
   const buildMetadataVerified = !!build && blockers.length === beforeBuildBlockerCount;
   const rows = build ? build.rows : [];
   const seen = new Set<string>();
@@ -1124,6 +1102,13 @@ export function buildTierUpdateActualSafeRowExportSafeSummaryJsonlFixtureVerifie
   const verifiedEntityTypes = status === 'BLOCKED'
     ? []
     : build?.entityTypes.filter((entityType): entityType is string => typeof entityType === 'string') || [];
+  const fixtureVerifierId = safeRead(input, 'fixtureVerifierId');
+  const fixtureOnlyRequired = safeRead(input, 'fixtureOnlyRequired');
+  const inMemoryOnlyRequired = safeRead(input, 'inMemoryOnlyRequired');
+  const zeroRealRowsRequired = safeRead(input, 'zeroRealRowsRequired');
+  const noFileOutputRequired = safeRead(input, 'noFileOutputRequired');
+  const noJsonlFileOutputRequired = safeRead(input, 'noJsonlFileOutputRequired');
+  const noArtifactUploadRequired = safeRead(input, 'noArtifactUploadRequired');
 
   return {
     status,
@@ -1132,7 +1117,7 @@ export function buildTierUpdateActualSafeRowExportSafeSummaryJsonlFixtureVerifie
     schemaVersion: 1,
     skillProfileId: 'FUNKY_NO_TX_NO_RUNTIME_PROFILE',
     safeSummaryOnly: true,
-    fixtureVerifierId: safeToken(input.fixtureVerifierId, 96) ? input.fixtureVerifierId : '',
+    fixtureVerifierId: safeToken(fixtureVerifierId, 96) ? fixtureVerifierId as string : '',
     fixtureBuildId: buildMetadataVerified && safeToken(build?.fixtureBuildId, 96) ? build.fixtureBuildId : '',
     fixtureSchemaId: buildMetadataVerified && safeToken(build?.fixtureSchemaId, 96) ? build.fixtureSchemaId : '',
     sourceHeadSha: buildMetadataVerified && safeSourceHead(build?.sourceHeadSha) ? build.sourceHeadSha : '',
@@ -1153,12 +1138,12 @@ export function buildTierUpdateActualSafeRowExportSafeSummaryJsonlFixtureVerifie
     walletSummaryVerified: status !== 'BLOCKED' && walletSummaryVerified,
     chainNetworkVerified,
     requiredSafetyFlagsVerified,
-    fixtureOnlyVerified: status !== 'BLOCKED' && build?.fixtureOnly === true && input.fixtureOnlyRequired === true,
-    inMemoryOnlyVerified: status !== 'BLOCKED' && build?.inMemoryOnly === true && input.inMemoryOnlyRequired === true,
-    zeroRealRowsVerified: status !== 'BLOCKED' && build?.zeroRealRows === true && input.zeroRealRowsRequired === true,
-    noFileOutputVerified: status !== 'BLOCKED' && build?.jsonlContract?.fileWriteEnabled === false && input.noFileOutputRequired === true,
-    noJsonlFileOutputVerified: status !== 'BLOCKED' && build?.jsonlContract?.jsonlLinesReturned === false && input.noJsonlFileOutputRequired === true,
-    noArtifactUploadVerified: status !== 'BLOCKED' && input.noArtifactUploadRequired === true,
+    fixtureOnlyVerified: status !== 'BLOCKED' && build?.fixtureOnly === true && fixtureOnlyRequired === true,
+    inMemoryOnlyVerified: status !== 'BLOCKED' && build?.inMemoryOnly === true && inMemoryOnlyRequired === true,
+    zeroRealRowsVerified: status !== 'BLOCKED' && build?.zeroRealRows === true && zeroRealRowsRequired === true,
+    noFileOutputVerified: status !== 'BLOCKED' && build?.jsonlContract?.fileWriteEnabled === false && noFileOutputRequired === true,
+    noJsonlFileOutputVerified: status !== 'BLOCKED' && build?.jsonlContract?.jsonlLinesReturned === false && noJsonlFileOutputRequired === true,
+    noArtifactUploadVerified: status !== 'BLOCKED' && noArtifactUploadRequired === true,
     boundarySummary: boundarySummaryFor(input),
     blockerCount: blockers.length,
     blockers,

@@ -75,6 +75,34 @@ const verify = (overrides: Partial<BuildTierUpdateActualSafeRowExportSafeSummary
   })
 );
 
+const verifyWithDescriptor = (
+  key: keyof BuildTierUpdateActualSafeRowExportSafeSummaryJsonlFixtureVerifierInput,
+  descriptor: PropertyDescriptor
+) => {
+  const input = baseInput();
+  Object.defineProperty(input, key, {
+    enumerable: true,
+    configurable: true,
+    ...descriptor
+  });
+  return buildTierUpdateActualSafeRowExportSafeSummaryJsonlFixtureVerifier(input);
+};
+
+const verifyWithD8apDescriptor = (
+  key: string,
+  descriptor: PropertyDescriptor
+) => {
+  const input = baseInput();
+  const build = { ...d8apBuild() } as Record<string, unknown>;
+  Object.defineProperty(build, key, {
+    enumerable: true,
+    configurable: true,
+    ...descriptor
+  });
+  input.d8apBuild = build as never;
+  return buildTierUpdateActualSafeRowExportSafeSummaryJsonlFixtureVerifier(input);
+};
+
 const withBuild = (overrides: Record<string, unknown>) => ({
   d8apBuild: {
     ...d8apBuild(),
@@ -151,6 +179,112 @@ describe('tierUpdateActualSafeRowExportSafeSummaryJsonlFixtureVerifier', () => {
 
     expect(sha256Hex('abc')).toBe('ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad');
     expect(result.sourceHashesVerified).toBe(true);
+  });
+
+  it('blocks top-level boundary getters without executing them', () => {
+    let getterExecuted = false;
+    const result = verifyWithDescriptor('boundarySummary', {
+      get: () => {
+        getterExecuted = true;
+        return { actualDbQueryEnabled: true };
+      }
+    });
+
+    expect(getterExecuted).toBe(false);
+    expect(result.status).toBe('BLOCKED');
+    expect(result.blockers).toContain('boundary_source_malformed');
+    expect(result.boundarySummary.actualDbQueryEnabled).toBe(false);
+  });
+
+  it('blocks forbidden D8AP build getter surfaces without executing them', () => {
+    let getterExecuted = false;
+    const result = verifyWithD8apDescriptor('actualRows', {
+      get: () => {
+        getterExecuted = true;
+        return [{ rawPayload: 'raw_secret_payload' }];
+      }
+    });
+
+    expect(getterExecuted).toBe(false);
+    expect(result.status).toBe('BLOCKED');
+    expect(result.blockers).toContain('d8ap_forbidden_input_surface_present');
+    expect(JSON.stringify(result)).not.toContain('raw_secret_payload');
+  });
+
+  it('blocks D8AP boundary summary accessors without executing them', () => {
+    let getterExecuted = false;
+    const result = verifyWithD8apDescriptor('boundarySummary', {
+      get: () => {
+        getterExecuted = true;
+        return { actualDbQueryEnabled: true };
+      }
+    });
+
+    expect(getterExecuted).toBe(false);
+    expect(result.status).toBe('BLOCKED');
+    expect(result.blockers).toContain('d8ap_build_accessor_property');
+  });
+
+  it('blocks D8AP canonicalFieldOrder unsafe values without coercion', () => {
+    const unsafeValue = {
+      toString() {
+        throw new Error('raw coercion error');
+      }
+    };
+    const proxyArray = new Proxy(['schema_version'], {
+      getOwnPropertyDescriptor() {
+        throw new Error('raw descriptor trap');
+      }
+    });
+
+    expect(() => verify(withBuild({ canonicalFieldOrder: [unsafeValue] }))).not.toThrow();
+    expect(verify(withBuild({ canonicalFieldOrder: [unsafeValue] })).status).toBe('BLOCKED');
+    expect(() => verify(withBuild({ canonicalFieldOrder: proxyArray }))).not.toThrow();
+    expect(verify(withBuild({ canonicalFieldOrder: proxyArray })).status).toBe('BLOCKED');
+    expect(verify(withBuild({ canonicalFieldOrder: [...d8apBuild().canonicalFieldOrder.slice(0, -1), Symbol('field')] })).status).toBe('BLOCKED');
+  });
+
+  it('blocks D8AP jsonlContract accessors without executing nested getters', () => {
+    let touched = false;
+    const jsonlContract = { ...d8apBuild().jsonlContract };
+    Object.defineProperty(jsonlContract, 'jsonlLinesReturned', {
+      enumerable: true,
+      get() {
+        touched = true;
+        return false;
+      }
+    });
+    const result = verify(withBuild({ jsonlContract }));
+
+    expect(touched).toBe(false);
+    expect(result.status).toBe('BLOCKED');
+    expect(result.blockers).toContain('jsonl_contract_mismatch');
+  });
+
+  it('blocks D8AP raw proxy arrays before retaining them', () => {
+    const proxyArray = new Proxy([], {
+      getOwnPropertyDescriptor() {
+        throw new Error('raw descriptor trap');
+      }
+    });
+
+    for (const key of ['rows', 'rowIds', 'entityTypes', 'blockers', 'needsReviewReasons'] as const) {
+      expect(() => verify(withBuild({ [key]: proxyArray }))).not.toThrow();
+      expect(verify(withBuild({ [key]: proxyArray })).status).toBe('BLOCKED');
+    }
+  });
+
+  it('blocks row array fields backed by proxies without throwing', () => {
+    const proxyArray = new Proxy(['fixture_only'], {
+      getOwnPropertyDescriptor() {
+        throw new Error('raw descriptor trap');
+      }
+    });
+
+    expect(() => verify(withFirstRow({ safety_flags: proxyArray }))).not.toThrow();
+    expect(verify(withFirstRow({ safety_flags: proxyArray })).status).toBe('BLOCKED');
+    expect(() => verify(withFirstRow({ internal_only_field_labels: proxyArray }))).not.toThrow();
+    expect(verify(withFirstRow({ internal_only_field_labels: proxyArray })).status).toBe('BLOCKED');
   });
 
   it.each([

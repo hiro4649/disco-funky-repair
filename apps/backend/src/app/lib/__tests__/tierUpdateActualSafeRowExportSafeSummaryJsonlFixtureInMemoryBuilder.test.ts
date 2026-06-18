@@ -59,6 +59,19 @@ const build = (overrides: Partial<BuildTierUpdateActualSafeRowExportSafeSummaryJ
   })
 );
 
+const buildWithDescriptor = (
+  key: keyof BuildTierUpdateActualSafeRowExportSafeSummaryJsonlFixtureInMemoryBuilderInput,
+  descriptor: PropertyDescriptor
+) => {
+  const input = baseInput();
+  Object.defineProperty(input, key, {
+    enumerable: true,
+    configurable: true,
+    ...descriptor
+  });
+  return buildTierUpdateActualSafeRowExportSafeSummaryJsonlFixtureInMemoryBuilder(input);
+};
+
 const sha256Hex = (value: string) => createHash('sha256').update(value, 'utf8').digest('hex');
 
 const withSchema = (overrides: Record<string, unknown>) => ({
@@ -577,6 +590,135 @@ describe('tierUpdateActualSafeRowExportSafeSummaryJsonlFixtureInMemoryBuilder', 
     expect(result.fixtureBuildId).toBe('');
     expect(result.fixtureSchemaId).toBe('');
     expect(result.sourceHeadSha).toBe('');
+  });
+
+  it('blocks malformed descriptor inputs without executing getters', () => {
+    let getterExecuted = false;
+    const result = buildWithDescriptor('fixtureBuildId', {
+      get: () => {
+        getterExecuted = true;
+        throw new Error('raw getter error');
+      }
+    });
+
+    expect(getterExecuted).toBe(false);
+    expect(result.status).toBe('BLOCKED');
+    expect(result.blockers).toContain('fixture_build_id_missing');
+    expect(JSON.stringify(result)).not.toContain('raw getter error');
+  });
+
+  it('blocks unsafe boundary getter inputs without executing them', () => {
+    let getterExecuted = false;
+    const result = buildWithDescriptor('boundarySummary', {
+      get: () => {
+        getterExecuted = true;
+        return { actualDbQueryEnabled: true };
+      }
+    });
+
+    expect(getterExecuted).toBe(false);
+    expect(result.status).toBe('BLOCKED');
+    expect(result.blockers).toContain('boundary_source_malformed');
+    expect(result.boundarySummary.actualDbQueryEnabled).toBe(false);
+  });
+
+  it('blocks cyclic raw payload input without throwing or echoing raw values', () => {
+    const rawPayload: Record<string, unknown> = { label: 'raw_secret_payload' };
+    rawPayload.self = rawPayload;
+    const result = build({ rawPayload });
+
+    expect(result.status).toBe('BLOCKED');
+    expect(result.blockers).toEqual(expect.arrayContaining(['actual_row_input_forbidden', 'raw_payload_forbidden', 'unsafe_fixture_builder_value']));
+    expect(JSON.stringify(result)).not.toContain('raw_secret_payload');
+  });
+
+  it('blocks malformed canonical array entries without coercion', () => {
+    const result = build(withSchema({
+      canonicalFieldOrder: [...D8AO_CANONICAL_FIELD_ORDER.slice(0, -1), Symbol('safe_summary_symbol')]
+    }));
+
+    expect(result.status).toBe('BLOCKED');
+    expect(result.blockers).toContain('d8ao_schema_contract_not_canonical');
+  });
+
+  it('blocks schema fixtureSchemaId objects with throwing coercion without throwing', () => {
+    const unsafeId = {
+      toString() {
+        throw new Error('raw coercion error');
+      }
+    };
+    const result = build(withSchema({ fixtureSchemaId: unsafeId }));
+
+    expect(result.status).toBe('BLOCKED');
+    expect(result.blockers).toContain('d8ao_schema_contract_not_canonical');
+    expect(JSON.stringify(result)).not.toContain('raw coercion error');
+  });
+
+  it('blocks fixtureRowsRequested accessors without executing getters', () => {
+    let touched = false;
+    const result = buildWithDescriptor('fixtureRowsRequested', {
+      get() {
+        touched = true;
+        return 1;
+      }
+    });
+
+    expect(touched).toBe(false);
+    expect(result.status).toBe('BLOCKED');
+    expect(result.blockers).toContain('fixture_rows_requested_not_finite_integer');
+  });
+
+  it('blocks fixtureEntityTypes accessor items and proxy arrays without executing getters', () => {
+    let touched = false;
+    const accessorArray = ['fixture'];
+    Object.defineProperty(accessorArray, '0', {
+      enumerable: true,
+      get() {
+        touched = true;
+        return 'fixture';
+      }
+    });
+    const proxyArray = new Proxy(['fixture'], {
+      getOwnPropertyDescriptor() {
+        throw new Error('raw descriptor trap');
+      }
+    });
+
+    expect(build({ fixtureEntityTypes: accessorArray }).status).toBe('BLOCKED');
+    expect(build({ fixtureEntityTypes: proxyArray }).status).toBe('BLOCKED');
+    expect(touched).toBe(false);
+  });
+
+  it('blocks overrideRowIds proxy arrays and D8AO array proxies without throwing', () => {
+    const proxyArray = new Proxy(['row-one', 'row-two', 'row-three'], {
+      getOwnPropertyDescriptor() {
+        throw new Error('raw descriptor trap');
+      }
+    });
+
+    expect(() => build({ overrideRowIds: proxyArray })).not.toThrow();
+    expect(build({ overrideRowIds: proxyArray }).status).toBe('BLOCKED');
+    expect(() => build(withSchema({ canonicalFieldOrder: proxyArray }))).not.toThrow();
+    expect(build(withSchema({ canonicalFieldOrder: proxyArray })).status).toBe('BLOCKED');
+  });
+
+  it('blocks D8AO field definition accessors without executing getters', () => {
+    let touched = false;
+    const field = { ...d8aoSchema.fieldDefinitions[0] };
+    Object.defineProperty(field, 'key', {
+      enumerable: true,
+      get() {
+        touched = true;
+        return 'schema_version';
+      }
+    });
+    const result = build(withSchema({
+      fieldDefinitions: [field, ...d8aoSchema.fieldDefinitions.slice(1)]
+    }));
+
+    expect(touched).toBe(false);
+    expect(result.status).toBe('BLOCKED');
+    expect(result.blockers).toContain('d8ao_schema_contract_not_canonical');
   });
 
   it('returns NEEDS_REVIEW for isolated unknown network label', () => {
