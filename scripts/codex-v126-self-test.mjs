@@ -41,6 +41,11 @@ const compatibilityCases = [
   ['v126_preserves_v119_orchestration_artifacts', () => V126_P0_ARTIFACTS.includes('codex-orchestration-capsule.safe.json')],
   ['v126_no_bridge_or_tunnel_default_on', () => !fs.existsSync('scripts/codex-mcp-bridge-daemon.mjs') && !fs.existsSync('scripts/codex-tunnel-daemon.mjs')],
   ['v126_active_authority_tuple_is_current', () => buildOrchestrationCapsule().skillContextRouting.activeAuthorityTuple.activeSelfTestSuite === 'v126'],
+  ['v126_target_quality_uses_legacy_classifier_without_old_version_guard', () => {
+    const localGate = fs.readFileSync('scripts/codex-local-quality-gate.mjs', 'utf8');
+    return localGate.includes('compatibility = classifyTargetModeCompatibilityStatus(key, report[key], report);')
+      && !localGate.includes("HARNESS_VERSION === '1.1.1' || HARNESS_VERSION === '1.1.2' || HARNESS_VERSION === '1.1.3'");
+  }],
 ];
 
 const observedStateCases = [
