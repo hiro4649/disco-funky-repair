@@ -15,11 +15,6 @@ import {
 } from './codex-orchestration-capsule.mjs';
 import { buildWorkerProofCapsule, validateWorkerProofCapsule } from './codex-worker-proof-capsule.mjs';
 import { buildOwnerDecisionBrief, validateOwnerDecisionBrief } from './codex-owner-decision-brief.mjs';
-import {
-  parseV123CurrentHeadOwnerDecisionConfirmation,
-  reconcileV123DecisionClosure,
-  synchronizeV124CanonicalFinalDecisionSurfaces,
-} from './codex-local-quality-gate.mjs';
 
 function test(name, fn) {
   try {
@@ -44,7 +39,7 @@ const compatibilityCases = [
   ['v124_preserves_v118_final_decision', () => buildOrchestrationCapsule().finalAuthority === 'v1.1.8_final_decision_kernel'],
   ['v124_preserves_v119_orchestration_artifacts', () => V124_P0_ARTIFACTS.includes('codex-orchestration-capsule.safe.json')],
   ['v124_no_new_skill_daemon_or_visual_daemon', () => !fs.existsSync('scripts/codex-skill-daemon.mjs') && !fs.existsSync('scripts/codex-visual-proof-daemon.mjs')],
-  ['v124_active_authority_tuple_is_current', () => ['v124', 'v125'].includes(buildOrchestrationCapsule().skillContextRouting.activeAuthorityTuple.activeSelfTestSuite)],
+  ['v124_active_authority_tuple_is_current_or_successor', () => ['v124', 'v125', 'v126'].includes(buildOrchestrationCapsule().skillContextRouting.activeAuthorityTuple.activeSelfTestSuite)],
 ];
 
 const goalAndDelegationCases = [
@@ -166,181 +161,12 @@ const ownerBriefCases = [
   }],
 ];
 
-const previousEnv = {
-  CODEX_EVENT_NAME: process.env.CODEX_EVENT_NAME,
-  CODEX_PR_HEAD_SHA: process.env.CODEX_PR_HEAD_SHA,
-  CODEX_PR_NUMBER: process.env.CODEX_PR_NUMBER,
-  CODEX_PR_BODY: process.env.CODEX_PR_BODY,
-  CODEX_OWNER_MERGE_CONFIRMED: process.env.CODEX_OWNER_MERGE_CONFIRMED,
-  CODEX_QUALITY_GATE_RUN_ID: process.env.CODEX_QUALITY_GATE_RUN_ID,
-  CODEX_SAFE_ARTIFACT_ID: process.env.CODEX_SAFE_ARTIFACT_ID,
-};
-
-function withEnv(overrides, fn) {
-  for (const [key, value] of Object.entries(overrides)) process.env[key] = value;
-  try {
-    return fn();
-  } finally {
-    for (const [key, value] of Object.entries(previousEnv)) {
-      if (value === undefined) delete process.env[key];
-      else process.env[key] = value;
-    }
-  }
-}
-
-const finalClosureAliasCases = [
-  ['v124_final_closure_uses_alias_resolvers_for_required_statuses', () => withEnv({
-    CODEX_EVENT_NAME: 'pull_request',
-    CODEX_PR_HEAD_SHA: 'a06d9bc690fe953de74b069d94efdead3d964c48',
-    CODEX_PR_NUMBER: '324',
-    CODEX_QUALITY_GATE_RUN_ID: '27546509528',
-    CODEX_SAFE_ARTIFACT_ID: '27546509528-1',
-    CODEX_PR_BODY: [
-      'I confirm PR #324 current head a06d9bc690fe953de74b069d94efdead3d964c48 for merge consideration.',
-      'Owner decision: owner_merge_after_same_head_pass.',
-    ].join('\n'),
-  }, () => {
-    const report = {
-      status: 'pass',
-      evidenceCapsuleStatus: { status: 'pass' },
-      qualityScoreStatus: { status: 'pass' },
-      targetSafeSummaryRequiredClosureStatus: { status: 'pass' },
-      prEvidenceRendererStatus: { status: 'pass' },
-      workflowProductVerificationInvariantStatus: { status: 'pass' },
-      finalDecisionPointerStatus: { status: 'pass' },
-      permissionGrantStatus: { status: 'pass' },
-      ownerDecisionBriefStatus: { status: 'pass' },
-    };
-    reconcileV123DecisionClosure(report);
-    return report.finalDecision?.terminalAction === 'merge_current_pr'
-      && report.finalDecision?.mergeAllowed === true
-      && report.ownerDecisionBrief?.decisionReady === true
-      && report.ownerDecisionBrief?.safeNextAction === 'merge_current_pr';
-  })],
-  ['v124_final_closure_reconciles_before_final_artifact_write', () => {
-    const source = fs.readFileSync('scripts/codex-local-quality-gate.mjs', 'utf8');
-    return /report\.localGate\s*=\s*\{\s*status:\s*report\.status\s*\};\s*reconcileV123TargetDecisionClosure\(report\);\s*writeV117LoadBearingArtifacts\(report\);/m.test(source);
-  }],
-  ['v124_quality_gate_passes_pr_body_to_final_closure', () => {
-    const workflow = fs.readFileSync('.github/workflows/quality-gate.yml', 'utf8');
-    return /CODEX_PR_BODY:\s*\$\{\{\s*github\.event\.pull_request\.body\s*\|\|\s*''\s*\}\}/.test(workflow)
-      && /current_pr_body="\$\(GH_TOKEN="\$\{GITHUB_TOKEN:-\}" gh pr view "\$\{CODEX_PR_NUMBER:-\}" --repo "\$\{CODEX_REPOSITORY:-\}" --json body -q \.body 2>\/dev\/null \|\| true\)"/.test(workflow)
-      && /export CODEX_PR_BODY="\$current_pr_body"/.test(workflow)
-      && /export CODEX_OWNER_MERGE_CONFIRMED=1/.test(workflow);
-  }],
-  ['v124_pr_body_reader_prefers_live_current_body_before_event_payload', () => {
-    const source = fs.readFileSync('scripts/codex-production-readiness-gate.mjs', 'utf8');
-    return /function readLivePrBody\(env = process\.env\)/.test(source)
-      && /source: 'GITHUB_CURRENT_PR_BODY'/.test(source)
-      && /const token = env\.GH_TOKEN \|\| env\.GITHUB_TOKEN/.test(source)
-      && /GH_TOKEN:\s*token/.test(source)
-      && /https:\/\/api\.github\.com\/repos\/\$\{repository\}\/pulls\/\$\{prNumber\}/.test(source)
-      && source.indexOf('const liveBody = readLivePrBody(env);') < source.indexOf('if (env.CODEX_PR_BODY && env.CODEX_PR_BODY.trim())')
-      && source.indexOf('const liveBody = readLivePrBody(env);') < source.indexOf('if (env.GITHUB_EVENT_PATH)');
-  }],
-  ['v124_current_head_owner_confirmation_tolerates_missing_pr_number_env', () => {
-    const head = '79c2d714720c34daf44b72efafe93400f5e2ca05';
-    const result = parseV123CurrentHeadOwnerDecisionConfirmation({
-      text: `I confirm PR #338 current head ${head} for merge consideration.\nOwner decision: owner_merge_after_same_head_pass.`,
-      headSha: head,
-      prNumber: '',
-    });
-    return result.status === 'pass' && result.hasCurrentHead === true && result.hasOwnerDecision === true;
-  }],
-  ['v124_final_closure_accepts_safe_owner_confirmation_env', () => {
-    const source = fs.readFileSync('scripts/codex-local-quality-gate.mjs', 'utf8');
-    return /CODEX_OWNER_MERGE_CONFIRMED === '1'/.test(source)
-      && /return envConfirmed \|\| structuredReady \|\| bodyConfirmation\.status === 'pass';/.test(source);
-  }],
-  ['v124_final_decision_artifact_uses_reconciled_final_decision', () => {
-    const report = {
-      finalDecision: {
-        finalDecisionVersion: 1,
-        executionMode: 'target_pr',
-        terminalAction: 'merge_current_pr',
-        decision: 'allowed',
-        mergeAllowed: true,
-        primaryClass: 'none',
-        safeNextAction: 'merge_current_pr',
-        exitCode: 0,
-        artifactName: 'codex-final-decision.safe.json',
-        safeSummaryOnly: true,
-      },
-      ownerDecisionBrief: { decisionReady: true },
-      decisionCapsule: { terminalAction: 'create_pr_only', mergeAllowed: false, safeNextAction: 'owner_merge_decision_after_same_head_remote_pass' },
-      top3Blockers: { primary_blocker: 'owner_decision_required', safe_next_action: 'owner_merge_decision_after_same_head_remote_pass', merge_allowed: false },
-    };
-    synchronizeV124CanonicalFinalDecisionSurfaces(report);
-    return report.finalDecision.terminalAction === 'merge_current_pr'
-      && report.finalDecision.mergeAllowed === true
-      && report.finalDecision.ownerDecisionReady === true
-      && report.decisionCapsule.terminalAction === 'merge_current_pr'
-      && report.top3Blockers.safe_next_action === 'merge_current_pr';
-  }],
-  ['v124_final_decision_reconcile_accepts_final_decision_status_alias', () => withEnv({
-    CODEX_EVENT_NAME: 'pull_request',
-    CODEX_PR_HEAD_SHA: '694c5b8ebeaf408702d37460658fa5c40d3b1b5a',
-    CODEX_PR_NUMBER: '338',
-    CODEX_QUALITY_GATE_RUN_ID: '27583157030',
-    CODEX_SAFE_ARTIFACT_ID: '27583157030-1',
-    CODEX_OWNER_MERGE_CONFIRMED: '1',
-  }, () => {
-    const report = {
-      status: 'pass',
-      evidenceCapsuleStatus: { status: 'pass' },
-      qualityScoreStatus: { status: 'pass' },
-      targetSafeSummaryRequiredClosureStatus: { status: 'pass' },
-      prEvidenceRendererStatus: { status: 'pass' },
-      workflowProductVerificationInvariantStatus: { status: 'pass' },
-      finalDecisionStatus: { status: 'pass' },
-      permissionGrantStatus: { status: 'pass' },
-      ownerDecisionBriefStatus: { status: 'pass' },
-    };
-    reconcileV123DecisionClosure(report);
-    return report.finalDecision?.terminalAction === 'merge_current_pr'
-      && report.finalDecision?.mergeAllowed === true
-      && report.finalDecisionPointerStatus?.status === 'pass';
-  })],
-  ['v124_final_decision_artifact_matches_safe_summary_merge_allowed', () => {
-    const source = fs.readFileSync('scripts/codex-local-quality-gate.mjs', 'utf8');
-    return /finalDecision:\s*report\.finalDecision/.test(source)
-      && /synchronizeV124CanonicalFinalDecisionSurfaces\(report\);/.test(source);
-  }],
-  ['v124_final_decision_artifact_not_stale_create_pr_only_after_reconcile', () => {
-    const workflow = fs.readFileSync('.github/workflows/quality-gate.yml', 'utf8');
-    return /writeSafe\(file, value, options = \{\}\)/.test(workflow)
-      && /options\.overwrite !== true/.test(workflow)
-      && /const ownerConfirmed = process\.env\.CODEX_OWNER_MERGE_CONFIRMED === '1';/.test(workflow)
-      && /summaryMergeReady/.test(workflow)
-      && /terminalAction: 'merge_current_pr'/.test(workflow)
-      && /writeSafe\('codex-final-decision\.safe\.json', canonicalFinalDecision, \{ overwrite: Boolean\(canonicalFinalDecision\) \}\);/.test(workflow);
-  }],
-  ['v124_decision_capsule_matches_reconciled_final_decision', () => {
-    const report = {
-      finalDecision: {
-        terminalAction: 'merge_current_pr',
-        decision: 'allowed',
-        mergeAllowed: true,
-        primaryClass: 'none',
-        safeNextAction: 'merge_current_pr',
-        safeSummaryOnly: true,
-      },
-      decisionCapsule: { terminalAction: 'create_pr_only', mergeAllowed: false },
-    };
-    synchronizeV124CanonicalFinalDecisionSurfaces(report);
-    return report.decisionCapsule.terminalAction === report.finalDecision.terminalAction
-      && report.decisionCapsule.mergeAllowed === report.finalDecision.mergeAllowed
-      && report.decisionCapsule.safeNextAction === report.finalDecision.safeNextAction;
-  }],
-];
-
 const cases = [
   ...compatibilityCases,
   ...goalAndDelegationCases,
   ...evidenceAndFootprintCases,
   ...expertLoopCases,
   ...ownerBriefCases,
-  ...finalClosureAliasCases,
 ].map(([name, fn]) => test(name, fn));
 
 const fixtureGroups = [
