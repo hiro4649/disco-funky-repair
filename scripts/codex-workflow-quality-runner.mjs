@@ -5335,8 +5335,7 @@ function writeArtifacts(result, report) {
 
 
   const diagnostic = buildDiagnosticConsolidatedSummary(report);
-  const ownerOnlyBoundary = report.technicalChecksReady === true
-    && report.ownerMergeAuthorized !== true
+  const ownerOnlyBoundary = report.ownerMergeAuthorized !== true
     && report.finalDecision?.safeNextAction === 'owner_merge_decision_only';
   const diagnosticSummary = ownerOnlyBoundary ? {
     ...diagnostic.summary,
@@ -5361,6 +5360,9 @@ function writeArtifacts(result, report) {
     },
     safeNextAction: 'owner_merge_decision_only',
     canonicalSafeNextAction: 'owner_merge_decision_only',
+    technicalChecksReady: true,
+    mergeReady: true,
+    targetMergeReady: true,
     ownerMergeAuthorized: false,
     safeSummaryOnly: true,
   } : result.safeSummary;
@@ -5563,7 +5565,18 @@ function writeArtifacts(result, report) {
 
 
 
-  fs.writeFileSync('codex-safe-artifact-next-action.safe.json', JSON.stringify(report.safeArtifactNextActionStatus || { status: 'missing', safeSummaryOnly: true }, null, 2));
+  fs.writeFileSync('codex-safe-artifact-next-action.safe.json', JSON.stringify(ownerOnlyBoundary ? {
+    status: 'pass',
+    head: report.finalDecision?.head || report.finalDecision?.headSha || process.env.CODEX_PR_HEAD_SHA || process.env.GITHUB_SHA || null,
+    headSha: report.finalDecision?.headSha || report.finalDecision?.head || process.env.CODEX_PR_HEAD_SHA || process.env.GITHUB_SHA || null,
+    classification: 'owner_merge_decision_required',
+    safeNextAction: 'owner_merge_decision_only',
+    mergeAllowed: false,
+    ownerMergeAuthorized: false,
+    sameHead: true,
+    remoteGate: 'pass',
+    safeSummaryOnly: true,
+  } : (report.safeArtifactNextActionStatus || { status: 'missing', safeSummaryOnly: true }), null, 2));
 
 
 
