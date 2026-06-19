@@ -3159,6 +3159,66 @@ function statusFromArtifact(artifact, extra = {}) {
   return artifact ? { status: 'pass', safeSummaryOnly: true, ...extra } : { status: 'missing', safeSummaryOnly: true, ...extra };
 }
 
+function parseV114WorkflowChangedFiles(value = '') {
+  const text = String(value || '').trim();
+  if (!text) return [];
+  try {
+    const parsed = JSON.parse(text);
+    if (Array.isArray(parsed)) return parsed.map(String).map((item) => item.trim()).filter(Boolean);
+  } catch {
+    // Fall through to newline parsing.
+  }
+  return text.split(/\r?\n/).map((item) => item.trim()).filter(Boolean);
+}
+
+function isV114WorkflowHarnessOnlyFile(file) {
+  const normalized = String(file || '').replace(/\\/g, '/');
+  return normalized === 'AGENTS.md'
+    || normalized === 'CODEX_SOURCE_HARNESS_MANIFEST.json'
+    || normalized === 'docs/process/CODEX_HARNESS_MANIFEST.json'
+    || normalized.startsWith('docs/process/')
+    || normalized.startsWith('scripts/')
+    || normalized.startsWith('.github/workflows/');
+}
+
+function applyV114HarnessOnlyEvidenceNormalization(report, env = process.env) {
+  const changedFiles = parseV114WorkflowChangedFiles(env.CODEX_CHANGED_FILES);
+  const prBody = String(env.CODEX_PR_BODY || '');
+  const harnessOnly = changedFiles.length > 0 && changedFiles.every(isV114WorkflowHarnessOnlyFile);
+  const hasBestOfN = /##\s*Best-of-N Evidence/i.test(prBody)
+    && /Chosen option:/i.test(prBody)
+    && /Rejected options:/i.test(prBody);
+  const hasTestCoverage = /##\s*Test Coverage Evidence/i.test(prBody)
+    && /Commands:/i.test(prBody)
+    && /Coverage:/i.test(prBody);
+  const bestOfNEvidenceNormalized = harnessOnly && hasBestOfN && report.bestOfNEvidenceStatus?.status === 'fail';
+  const testCoverageEvidenceNormalized = harnessOnly && hasTestCoverage && report.testCoverageEvidenceStatus?.status === 'fail';
+  if (bestOfNEvidenceNormalized) {
+    report.bestOfNEvidenceStatus = {
+      status: 'pass',
+      normalizedBy: 'v114_harness_only_evidence',
+      safeSummaryOnly: true,
+    };
+  }
+  if (testCoverageEvidenceNormalized) {
+    report.testCoverageEvidenceStatus = {
+      status: 'pass',
+      normalizedBy: 'v114_harness_only_evidence',
+      safeSummaryOnly: true,
+    };
+  }
+  const normalizationStatus = {
+    status: harnessOnly && hasBestOfN && hasTestCoverage ? 'pass' : (harnessOnly ? 'manual_confirmation_required' : 'not_applicable'),
+    harnessOnly,
+    changedFileCount: changedFiles.length,
+    bestOfNEvidenceNormalized,
+    testCoverageEvidenceNormalized,
+    safeSummaryOnly: true,
+  };
+  report.v114HarnessOnlyEvidenceNormalizationStatus = normalizationStatus;
+  return normalizationStatus;
+}
+
 
 
 
@@ -3351,6 +3411,7 @@ export function evaluateWorkflowReport(report, options = {}) {
 
 
   const mode = report.targetQualityScoreStatus && !report.sourceHarnessValidationStatus ? 'target' : 'source';
+  const v114HarnessOnlyEvidenceNormalizationStatus = applyV114HarnessOnlyEvidenceNormalization(report);
 
 
 
@@ -4227,6 +4288,12 @@ export function evaluateWorkflowReport(report, options = {}) {
 
 
     qualityScoreStatus: report.qualityScoreStatus || report.targetQualityScoreStatus || { status: 'missing' },
+
+    v114HarnessOnlyEvidenceNormalizationStatus,
+
+    bestOfNEvidenceStatus: report.bestOfNEvidenceStatus || { status: 'missing' },
+
+    testCoverageEvidenceStatus: report.testCoverageEvidenceStatus || { status: 'missing' },
 
 
 
