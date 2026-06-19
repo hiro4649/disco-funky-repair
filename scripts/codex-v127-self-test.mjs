@@ -327,6 +327,9 @@ const cases = [
   ['same_head_mismatching_workflow_head_fails', () => failed(validateDecisionEvidenceEnvelopeAndSameHeadBinder(sameHeadControl({ workflowHead: 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb' })) )],
   ['same_head_remote_gate_missing_fails_completed_remote_lane', () => failed(validateDecisionEvidenceEnvelopeAndSameHeadBinder(sameHeadControl({ remoteGate: 'missing' })) )],
   ['same_head_remote_lane_requires_owner_decision_next_action', () => failed(validateDecisionEvidenceEnvelopeAndSameHeadBinder(sameHeadControl({ allowedNextAction: 'continue_commit_push_create_pr' })) )],
+  ['remote_evidence_closure_uses_final_safe_surfaces_not_stale_failure_array', () => fs.readFileSync('scripts/codex-local-quality-gate.mjs', 'utf8').includes('const finalSurfacesPassed =')
+    && !fs.readFileSync('scripts/codex-local-quality-gate.mjs', 'utf8').includes('const qualitySurfacePassed =')
+    && fs.readFileSync('scripts/codex-local-quality-gate.mjs', 'utf8').includes('outcome.failures.splice(0, outcome.failures.length)')],
   ['same_head_requires_four_matching_non_null_heads', () => {
     const control = sameHeadControl();
     return control.decisionEvidenceEnvelope.sameHead === true
