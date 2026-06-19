@@ -2490,6 +2490,8 @@ function approvedHarnessWorkflowRepairFiles(files = []) {
       || normalized === 'scripts/codex-final-decision-kernel.mjs'
       || normalized === 'scripts/codex-local-quality-gate.mjs'
       || normalized === 'scripts/codex-orchestration-capsule.mjs'
+      || normalized === 'scripts/codex-pr-evidence-block-renderer.mjs'
+      || normalized === 'scripts/codex-safe-artifact-index.mjs'
       || normalized === 'scripts/codex-v113-self-test.mjs'
       || normalized === 'scripts/codex-v114-self-test.mjs'
       || normalized === 'scripts/codex-v127-self-test.mjs'
@@ -4202,6 +4204,22 @@ function applyV127RemoteEvidenceClosure(report = {}, outcome = {}, env = process
     report.reasonSummaryStatus.summary.blockingReasons = [];
     report.reasonSummaryStatus.status = 'pass';
     report.reasonSummaryStatus.reasonCodes = [];
+  }
+  if (shouldCloseRemote && report.finalDecision) {
+    report.finalDecision.mergeAllowed = false;
+    report.finalDecision.safeNextAction = 'owner_merge_decision_only';
+    report.finalDecision.head = context.head;
+    report.finalDecision.headSha = context.head;
+    report.finalDecisionStatus = validateFinalDecisionKernel(report.finalDecision);
+  }
+  if (shouldCloseRemote && report.decisionCore) {
+    report.decisionCore.decision = 'blocked';
+    report.decisionCore.mergeAllowed = false;
+    report.decisionCore.safeNextAction = 'owner_merge_decision_only';
+  }
+  if (shouldCloseRemote && report.top3Blockers) {
+    report.top3Blockers.safe_next_action = 'owner_merge_decision_only';
+    report.top3Blockers.merge_allowed = false;
   }
 }
 
