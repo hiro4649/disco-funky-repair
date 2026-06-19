@@ -39,6 +39,189 @@ const REQUIRED_ARTIFACTS = [
 
 const DEFAULT_ARTIFACT_BUDGET = 16;
 
+export const V127_REQUIRED_SAFE_ARTIFACTS = [
+  'codex-quality-gate-safe-summary.json',
+  'codex-final-decision.safe.json',
+  'codex-orchestration-capsule.safe.json',
+  'codex-worker-proof.safe.json',
+  'codex-owner-decision-brief.safe.json',
+  'codex-evidence-capsule.safe.json',
+  'codex-decision-capsule.safe.json',
+  'codex-artifact-consistency.safe.json',
+  'codex-minimal-blockers.safe.json',
+  'codex-safe-artifact-index.json',
+  'codex-diagnostic-consolidated-summary.json',
+];
+
+export const V127_CANONICAL_OPTIONAL_SAFE_ARTIFACTS = [
+  'codex-evidence-pack.normalized.json',
+  'codex-self-test-cases.safe.json',
+  'codex-failure-reasons.json',
+  'codex-invalid-report-recovery-summary.json',
+  'codex-target-quality-summary.json',
+  'codex-source-final-summary.json',
+  'codex-target-final-summary.json',
+  'codex-safe-artifact-classification.safe.json',
+  'codex-pr-evidence-rendered.safe.json',
+  'codex-evidence-auto-repair-hint.safe.json',
+  'codex-same-head-artifact-evidence.safe.json',
+  'codex-docker-smoke-artifact.safe.json',
+  'codex-pr-evidence-compact.safe.json',
+  'codex-product-context-safe-artifact.safe.json',
+  'codex-product-baseline-continuity.safe.json',
+  'codex-false-positive-budget.safe.json',
+  'codex-agent-session-governance.safe.json',
+  'codex-evidence-minimality.safe.json',
+  'codex-safe-artifact-next-action.safe.json',
+  'codex-skill-evidence-link.safe.json',
+  'codex-workflow-preflight.safe.json',
+  'codex-test-metrics.safe.json',
+  'codex-dataset-audit-v2.safe.json',
+  'codex-browser-smoke-json-artifact.safe.json',
+  'codex-runtime-latency-measurement.safe.json',
+  'codex-owner-decision-digest.safe.json',
+];
+
+function isValidHeadSha(value) {
+  return /^[A-Fa-f0-9]{40}$/.test(String(value || '').trim());
+}
+
+function safeReadJson(file) {
+  try {
+    const text = fs.readFileSync(file, 'utf8');
+    return { status: 'pass', value: JSON.parse(text), byteLength: Buffer.byteLength(text) };
+  } catch {
+    return { status: 'fail', value: null, byteLength: 0 };
+  }
+}
+
+function extractArtifactHead(value = {}) {
+  return String(value.head || value.headSha || value.decisionCapsule?.head || value.decisionCapsule?.headSha || value.finalDecision?.headSha || '').trim();
+}
+
+function physicalCodexArtifacts(directory) {
+  try {
+    return fs.readdirSync(directory)
+      .filter((name) => /^codex-/.test(name) && /\.(json|safe\.json)$/.test(name))
+      .filter((name) => fs.statSync(`${directory}/${name}`).isFile())
+      .sort();
+  } catch {
+    return [];
+  }
+}
+
+export function buildPhysicalSafeArtifactIndex(directory = process.cwd(), options = {}) {
+  const mode = options.mode || process.env.CODEX_HARNESS_MODE || 'target';
+  const expectedHeadSha = String(options.head || options.headSha || process.env.CODEX_PR_HEAD_SHA || process.env.GITHUB_SHA || '').trim();
+  const requiredArtifacts = options.requiredArtifacts || V127_REQUIRED_SAFE_ARTIFACTS;
+  const canonicalOptionalArtifacts = options.canonicalOptionalArtifacts || V127_CANONICAL_OPTIONAL_SAFE_ARTIFACTS;
+  const physical = physicalCodexArtifacts(directory);
+  const physicalSet = new Set(physical);
+  const allCanonical = [...new Set([...requiredArtifacts, ...canonicalOptionalArtifacts, ...physical])].sort();
+  const duplicateArtifacts = allCanonical.filter((name, index) => allCanonical.indexOf(name) !== index);
+  const physicalButUnindexed = physical.filter((name) => !allCanonical.includes(name));
+  const artifacts = allCanonical.map((artifactName) => {
+    const file = `${directory}/${artifactName}`;
+    const physicalFilePresent = physicalSet.has(artifactName);
+    const parsed = physicalFilePresent ? safeReadJson(file) : { status: 'not_applicable', value: null, byteLength: 0 };
+    const loadBearing = requiredArtifacts.includes(artifactName);
+    const canonicalOptional = canonicalOptionalArtifacts.includes(artifactName);
+    const observedHeadSha = parsed.value ? extractArtifactHead(parsed.value) : '';
+    const headRequired = loadBearing;
+    const headMatchStatus = headRequired
+      ? (isValidHeadSha(expectedHeadSha) && observedHeadSha === expectedHeadSha ? 'pass' : 'fail')
+      : 'not_required_with_reason';
+    const safeOutputScanStatus = physicalFilePresent && parsed.status === 'pass' && parsed.value?.safeSummaryOnly !== false && scanObjectForUnsafe(parsed.value).length === 0
+      ? 'pass'
+      : (physicalFilePresent ? 'fail' : 'not_applicable');
+    const reasonCodes = [
+      ...(!physicalFilePresent && loadBearing ? ['artifact_required_missing'] : []),
+      ...(physicalFilePresent && parsed.byteLength <= 0 ? ['artifact_empty'] : []),
+      ...(physicalFilePresent && parsed.status !== 'pass' ? ['artifact_json_parse_failed'] : []),
+      ...(physicalFilePresent && safeOutputScanStatus !== 'pass' ? ['safe_output_scan_failed'] : []),
+      ...(headRequired && headMatchStatus !== 'pass' ? ['artifact_head_mismatch'] : []),
+    ];
+    const present = physicalFilePresent
+      && parsed.byteLength > 0
+      && parsed.status === 'pass'
+      && safeOutputScanStatus === 'pass'
+      && (!headRequired || headMatchStatus === 'pass');
+    return {
+      artifactName,
+      path: artifactName,
+      artifactClass: loadBearing ? 'load_bearing' : (canonicalOptional ? 'canonical_optional' : 'auxiliary'),
+      producer: artifactName === 'codex-quality-gate-safe-summary.json' ? 'codex-local-quality-gate' : 'codex-safe-artifact-writer',
+      status: present ? 'present' : (physicalFilePresent ? 'missing' : (loadBearing ? 'missing' : 'not_applicable')),
+      physicalFilePresent,
+      jsonParseStatus: physicalFilePresent ? parsed.status : 'not_applicable',
+      safeOutputScanStatus,
+      loadBearing,
+      expectedHeadSha: expectedHeadSha || null,
+      observedHeadSha: observedHeadSha || null,
+      headMatchStatus,
+      mode,
+      safeSummaryOnly: true,
+      reasonCodes,
+    };
+  });
+  const presentPaths = new Set(artifacts.filter((item) => item.status === 'present').map((item) => item.path || item.artifactName));
+  const indexedPresentButAbsent = [...presentPaths].filter((name) => !physicalSet.has(name));
+  const missingArtifacts = artifacts.filter((item) => item.loadBearing && item.status !== 'present').map((item) => item.artifactName);
+  const invalidJsonArtifacts = artifacts.filter((item) => item.physicalFilePresent && item.jsonParseStatus !== 'pass').map((item) => item.artifactName);
+  const safeOutputFailures = artifacts.filter((item) => item.physicalFilePresent && item.safeOutputScanStatus !== 'pass').map((item) => item.artifactName);
+  const headMismatches = artifacts.filter((item) => item.loadBearing && item.headMatchStatus !== 'pass').map((item) => item.artifactName);
+  const status = physicalButUnindexed.length
+    || indexedPresentButAbsent.length
+    || missingArtifacts.length
+    || duplicateArtifacts.length
+    || invalidJsonArtifacts.length
+    || safeOutputFailures.length
+    || headMismatches.length
+    ? 'fail'
+    : 'pass';
+  return {
+    schemaVersion: '1.2.7',
+    harnessVersion: HARNESS_VERSION,
+    mode,
+    head: expectedHeadSha || null,
+    headSha: expectedHeadSha || null,
+    artifactCountPopulation: 'canonical_root_safe_artifacts',
+    artifactCount: artifacts.length,
+    physicalCanonicalFileCount: physical.length,
+    indexedPresentFileCount: presentPaths.size,
+    physicalButUnindexedCount: physicalButUnindexed.length,
+    indexedPresentButAbsentCount: indexedPresentButAbsent.length,
+    duplicateBasenameCount: duplicateArtifacts.length,
+    missingRequiredArtifactCount: missingArtifacts.length,
+    invalidJsonArtifactCount: invalidJsonArtifacts.length,
+    safeOutputFailureCount: safeOutputFailures.length,
+    headMismatchCount: headMismatches.length,
+    loadBearingArtifacts: requiredArtifacts,
+    canonicalOptionalArtifacts,
+    auxiliaryArtifacts: artifacts.filter((item) => item.artifactClass === 'auxiliary').map((item) => item.artifactName),
+    notApplicableArtifacts: artifacts.filter((item) => item.status === 'not_applicable').map((item) => item.artifactName),
+    physicalButUnindexed,
+    indexedPresentButAbsent,
+    missingArtifacts,
+    duplicateArtifacts,
+    invalidJsonArtifacts,
+    safeOutputFailures,
+    headMismatches,
+    artifacts,
+    status,
+    reasonCodes: [
+      ...(physicalButUnindexed.length ? ['physical_canonical_file_unindexed'] : []),
+      ...(indexedPresentButAbsent.length ? ['indexed_present_artifact_absent'] : []),
+      ...(missingArtifacts.length ? ['artifact_required_missing'] : []),
+      ...(duplicateArtifacts.length ? ['artifact_duplicate_basename'] : []),
+      ...(invalidJsonArtifacts.length ? ['artifact_json_parse_failed'] : []),
+      ...(safeOutputFailures.length ? ['safe_output_scan_failed'] : []),
+      ...(headMismatches.length ? ['artifact_head_mismatch'] : []),
+    ],
+    safeSummaryOnly: true,
+  };
+}
+
 
 
 export function buildSafeArtifactIndex(artifacts = [], mode = process.env.CODEX_HARNESS_MODE || 'source', options = {}) {
@@ -272,6 +455,31 @@ export function buildSafeArtifactIndexReport(env = process.env) {
 if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
 
   try {
+    if (process.argv.includes('--validate-physical-bundle')) {
+      const directoryFlagIndex = process.argv.indexOf('--dir');
+      const headFlagIndex = process.argv.indexOf('--head');
+      const directory = directoryFlagIndex >= 0 ? process.argv[directoryFlagIndex + 1] : process.cwd();
+      const head = headFlagIndex >= 0 ? process.argv[headFlagIndex + 1] : undefined;
+      const index = buildPhysicalSafeArtifactIndex(directory, { head });
+      if (process.argv.includes('--write-artifact')) {
+        fs.writeFileSync(`${directory}/codex-safe-artifact-index.json`, JSON.stringify(index, null, 2));
+      }
+      const report = simpleStatus('safeArtifactIndexStatus', index.status, {
+        reasonCodes: index.reasonCodes,
+        physicalCanonicalFileCount: index.physicalCanonicalFileCount,
+        indexedPresentFileCount: index.indexedPresentFileCount,
+        physicalButUnindexedCount: index.physicalButUnindexedCount,
+        indexedPresentButAbsentCount: index.indexedPresentButAbsentCount,
+        missingRequiredArtifactCount: index.missingRequiredArtifactCount,
+        duplicateBasenameCount: index.duplicateBasenameCount,
+        invalidJsonArtifactCount: index.invalidJsonArtifactCount,
+        safeOutputFailureCount: index.safeOutputFailureCount,
+        headMismatchCount: index.headMismatchCount,
+        index,
+      });
+      writeJsonReport(report, 'CODEX_SAFE_ARTIFACT_INDEX_REPORT');
+      process.exit(index.status === 'pass' ? 0 : 1);
+    }
 
     const report = buildSafeArtifactIndexReport();
 

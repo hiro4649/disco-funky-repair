@@ -2,6 +2,7 @@
 // CODEX_QUALITY_HARNESS_FILE v1.2.7
 
 import fs from 'node:fs';
+import os from 'node:os';
 import { writeJsonReport, exitFor } from './codex-v080-lib.mjs';
 import {
   V127_OPERATOR_STATUS_KEYS,
@@ -21,6 +22,8 @@ import { evaluateWorkflowReport } from './codex-workflow-quality-runner.mjs';
 import { buildEvidenceCapsule, validateEvidenceCapsule } from './codex-evidence-capsule.mjs';
 import { validateArtifactConsistency } from './codex-artifact-consistency-contract.mjs';
 import { applyTargetModeLegacyCompatibilityShadow } from './codex-local-quality-gate.mjs';
+import { buildPhysicalSafeArtifactIndex, V127_REQUIRED_SAFE_ARTIFACTS } from './codex-safe-artifact-index.mjs';
+import { renderPrEvidenceBlocks } from './codex-pr-evidence-block-renderer.mjs';
 
 function test(name, fn) {
   try {
@@ -213,6 +216,26 @@ const targetLegacyCompatibilityShadowFixture = (() => {
   return { report, failures };
 })();
 
+function writeSafeArtifactFixture(dir, name, head = SAME_HEAD_ENVELOPE.localHead) {
+  fs.writeFileSync(`${dir}/${name}`, JSON.stringify({
+    artifactName: name,
+    head,
+    headSha: head,
+    safeSummaryOnly: true,
+  }, null, 2));
+}
+
+function physicalIndexFixture(options = {}) {
+  const dir = fs.mkdtempSync(`${os.tmpdir()}/codex-v127-index-`);
+  for (const name of V127_REQUIRED_SAFE_ARTIFACTS) writeSafeArtifactFixture(dir, name);
+  if (options.omitPhysical) fs.unlinkSync(`${dir}/${options.omitPhysical}`);
+  if (options.invalidJson) fs.writeFileSync(`${dir}/${options.invalidJson}`, '{ invalid');
+  if (options.safeOutputFailure) fs.writeFileSync(`${dir}/${options.safeOutputFailure}`, JSON.stringify({ head: SAME_HEAD_ENVELOPE.localHead, headSha: SAME_HEAD_ENVELOPE.localHead, safeSummaryOnly: false }, null, 2));
+  if (options.headMismatch) writeSafeArtifactFixture(dir, options.headMismatch, 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb');
+  if (options.extraPhysical) writeSafeArtifactFixture(dir, options.extraPhysical);
+  return buildPhysicalSafeArtifactIndex(dir, { head: SAME_HEAD_ENVELOPE.localHead });
+}
+
 function resolveHarnessMode(env = process.env) {
   if (env.CODEX_HARNESS_MODE === 'target') return 'target';
   if (env.CODEX_HARNESS_SOURCE_REPO === '1' || env.CODEX_HARNESS_MODE === 'core' || env.CODEX_HARNESS_MODE === 'source') return 'source';
@@ -340,6 +363,42 @@ const cases = [
   ['artifact_consistency_unknown_head_fails', () => failed(validateArtifactConsistency({ remote: true, head: 'unknown', physicalFilePresent: true, jsonParseStatus: 'pass', safeOutputScanStatus: 'pass', artifactDownloadObservedStatus: 'pass', artifactGeneratedStatus: 'pass', artifactIndexedStatus: 'pass', artifactUploadedStatus: 'pass' }))],
   ['artifact_consistency_null_head_fails', () => failed(validateArtifactConsistency({ remote: true, head: null, physicalFilePresent: true, jsonParseStatus: 'pass', safeOutputScanStatus: 'pass', artifactDownloadObservedStatus: 'pass', artifactGeneratedStatus: 'pass', artifactIndexedStatus: 'pass', artifactUploadedStatus: 'pass' }))],
   ['artifact_consistency_mismatching_head_fails', () => failed(validateArtifactConsistency({ remote: true, head: SAME_HEAD_ENVELOPE.localHead, artifactHeadMatchStatus: 'fail', physicalFilePresent: true, jsonParseStatus: 'pass', safeOutputScanStatus: 'pass', artifactDownloadObservedStatus: 'pass', artifactGeneratedStatus: 'pass', artifactIndexedStatus: 'pass', artifactUploadedStatus: 'pass' }))],
+  ['physical_artifact_index_complete_fixture_passes', () => {
+    const index = physicalIndexFixture();
+    return index.status === 'pass'
+      && index.physicalButUnindexedCount === 0
+      && index.indexedPresentButAbsentCount === 0
+      && index.missingRequiredArtifactCount === 0
+      && index.duplicateBasenameCount === 0
+      && index.artifactCount >= V127_REQUIRED_SAFE_ARTIFACTS.length;
+  }],
+  ['physical_artifact_index_required_absent_fails', () => physicalIndexFixture({ omitPhysical: 'codex-final-decision.safe.json' }).missingRequiredArtifactCount === 1],
+  ['physical_artifact_index_invalid_json_fails', () => physicalIndexFixture({ invalidJson: 'codex-final-decision.safe.json' }).invalidJsonArtifactCount === 1],
+  ['physical_artifact_index_safe_output_failure_fails', () => physicalIndexFixture({ safeOutputFailure: 'codex-final-decision.safe.json' }).safeOutputFailureCount === 1],
+  ['physical_artifact_index_head_mismatch_fails', () => physicalIndexFixture({ headMismatch: 'codex-final-decision.safe.json' }).headMismatchCount === 1],
+  ['physical_artifact_index_optional_absent_not_present', () => {
+    const index = physicalIndexFixture();
+    const optional = index.artifacts.find((item) => item.artifactName === 'codex-owner-decision-digest.safe.json');
+    return optional && optional.status === 'not_applicable' && optional.physicalFilePresent === false;
+  }],
+  ['pr_body_declarations_do_not_create_human_confirmation', () => {
+    const rendered = renderPrEvidenceBlocks({
+      repository: 'hiro4649/disco-funky-repair',
+      prNumber: '364',
+      headSha: SAME_HEAD_ENVELOPE.localHead,
+      baseSha: SAME_HEAD_ENVELOPE.localHead,
+      changedFiles: ['scripts/codex-v127-self-test.mjs'],
+      productCodeChanged: false,
+      runtimeReadinessClaimed: false,
+      prBody: 'Product code changed: no\nRuntime readiness claimed: no\nProduction readiness claimed: no',
+    }, { CODEX_EVENT_NAME: 'pull_request', CODEX_PR_NUMBER: '364', CODEX_PR_HEAD_SHA: SAME_HEAD_ENVELOPE.localHead, CODEX_PR_BASE_SHA: SAME_HEAD_ENVELOPE.localHead });
+    const blocks = rendered.prEvidenceRendererStatus.blocks;
+    return rendered.prEvidenceRendererStatus.status === 'pass'
+      && blocks.evidencePack.humanConfirmation.present === false
+      && blocks.manualConfirmation.present === false
+      && blocks.evidencePack.prBodyMachineEvidence === false
+      && blocks.evidencePack.ownerAuthorityCreatedByAI === false;
+  }],
   ['artifact_pointer_uses_run_id_and_artifact_name', () => passed(validateEvidenceCapsule(evidencePointerFixture)) && evidencePointerFixture.currentHeadEvidence.artifactPointer === '27822120722:codex-quality-gate-safe-artifacts' && evidencePointerFixture.currentHeadEvidence.artifactId === null],
   ['pseudo_artifact_id_is_rejected', () => failed(validateEvidenceCapsule(pseudoArtifactIdFixture))],
   ['target_legacy_shadow_normalizes_missing_blocking_classification', () => targetLegacyCompatibilityShadowFixture.report.targetModeLegacyCompatibilityStatus.status === 'pass'

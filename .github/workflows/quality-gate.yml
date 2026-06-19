@@ -465,6 +465,35 @@ jobs:
             test -s "$file"
             node -e 'JSON.parse(require("fs").readFileSync(process.argv[1], "utf8"))' "$file"
           done
+          node scripts/codex-safe-artifact-index.mjs \
+            --validate-physical-bundle \
+            --write-artifact \
+            --dir "$GITHUB_WORKSPACE" \
+            --head "${{ github.event.pull_request.head.sha || github.sha }}"
+          node - <<'NODE'
+          const fs = require('fs');
+          function read(file) {
+            return JSON.parse(fs.readFileSync(file, 'utf8'));
+          }
+          const index = read('codex-safe-artifact-index.json');
+          const consistency = read('codex-artifact-consistency.safe.json');
+          const finalDecision = read('codex-final-decision.safe.json');
+          const orchestration = read('codex-orchestration-capsule.safe.json');
+          const rendered = fs.existsSync('codex-pr-evidence-rendered.safe.json') ? read('codex-pr-evidence-rendered.safe.json') : {};
+          const evidencePack = fs.existsSync('codex-evidence-pack.normalized.json') ? read('codex-evidence-pack.normalized.json') : {};
+          const fail = (code) => { throw new Error(code); };
+          if (index.status !== 'pass') fail('safe_artifact_index_parity_failed');
+          for (const key of ['physicalButUnindexedCount','indexedPresentButAbsentCount','missingRequiredArtifactCount','duplicateBasenameCount','invalidJsonArtifactCount','safeOutputFailureCount','headMismatchCount']) {
+            if (Number(index[key] || 0) !== 0) fail(`safe_artifact_index_${key}_nonzero`);
+          }
+          if (consistency.status !== 'pass' || consistency.artifactConsistencyStatus?.status !== 'pass') fail('artifact_consistency_failed');
+          if (finalDecision.safeNextAction !== 'owner_merge_decision_only' || finalDecision.mergeAllowed !== false) fail('final_decision_surface_mismatch');
+          const envelope = orchestration.decisionEvidenceEnvelopeAndSameHeadBinder?.decisionEvidenceEnvelope || {};
+          if (envelope.allowedNextAction !== 'owner_merge_decision_only' || envelope.remoteGate !== 'pass') fail('orchestration_surface_mismatch');
+          const renderedConfirmation = rendered.evidencePack?.humanConfirmation;
+          if (renderedConfirmation?.present === true || renderedConfirmation?.confirmedByRole === 'project-owner') fail('unauthenticated_human_confirmation_claimed');
+          if (evidencePack.evidencePackStatus?.status === 'missing') fail('normalized_evidence_pack_missing');
+          NODE
       - name: Upload safe quality artifacts
         if: always()
         uses: actions/upload-artifact@v4
