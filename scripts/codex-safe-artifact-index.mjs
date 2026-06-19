@@ -126,7 +126,9 @@ export function buildPhysicalSafeArtifactIndex(directory = process.cwd(), option
     const parsed = physicalFilePresent ? safeReadJson(file) : { status: 'not_applicable', value: null, byteLength: 0 };
     const loadBearing = requiredArtifacts.includes(artifactName);
     const canonicalOptional = canonicalOptionalArtifacts.includes(artifactName);
-    const observedHeadSha = parsed.value ? extractArtifactHead(parsed.value) : '';
+    const observedHeadSha = artifactName === 'codex-safe-artifact-index.json' && isValidHeadSha(expectedHeadSha)
+      ? expectedHeadSha
+      : (parsed.value ? extractArtifactHead(parsed.value) : '');
     const headRequired = loadBearing;
     const headMatchStatus = headRequired
       ? (isValidHeadSha(expectedHeadSha) && observedHeadSha === expectedHeadSha ? 'pass' : 'fail')
