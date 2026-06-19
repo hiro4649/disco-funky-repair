@@ -18,12 +18,13 @@ import {
 } from './codex-orchestration-capsule.mjs';
 import { buildWorkerProofCapsule, validateWorkerProofCapsule } from './codex-worker-proof-capsule.mjs';
 import { buildOwnerDecisionBrief, validateOwnerDecisionBrief } from './codex-owner-decision-brief.mjs';
-import { evaluateWorkflowReport } from './codex-workflow-quality-runner.mjs';
+import { evaluateWorkflowReport, finalizeV127SafeArtifactBundle, validateV127SafeArtifactBundle } from './codex-workflow-quality-runner.mjs';
 import { buildEvidenceCapsule, validateEvidenceCapsule } from './codex-evidence-capsule.mjs';
 import { validateArtifactConsistency } from './codex-artifact-consistency-contract.mjs';
 import { applyTargetModeLegacyCompatibilityShadow } from './codex-local-quality-gate.mjs';
 import { buildPhysicalSafeArtifactIndex, V127_REQUIRED_SAFE_ARTIFACTS } from './codex-safe-artifact-index.mjs';
 import { renderPrEvidenceBlocks } from './codex-pr-evidence-block-renderer.mjs';
+import { scanSafeOutput } from './codex-safe-output-scan.mjs';
 
 function test(name, fn) {
   try {
@@ -225,6 +226,39 @@ function writeSafeArtifactFixture(dir, name, head = SAME_HEAD_ENVELOPE.localHead
   }, null, 2));
 }
 
+function v127FinalizerFixture(options = {}) {
+  const head = SAME_HEAD_ENVELOPE.localHead;
+  const root = fs.mkdtempSync(os.tmpdir() + '/codex-v127-finalizer-');
+  const sourceDir = root + '/source';
+  const runnerTemp = root + '/runner-temp';
+  const stageDir = runnerTemp + '/codex-quality-gate-safe-artifacts';
+  fs.mkdirSync(sourceDir, { recursive: true });
+  fs.mkdirSync(runnerTemp, { recursive: true });
+  for (const name of V127_REQUIRED_SAFE_ARTIFACTS) {
+    if (['codex-safe-artifact-index.json', 'codex-artifact-consistency.safe.json'].includes(name)) continue;
+    fs.writeFileSync(sourceDir + '/' + name, JSON.stringify({ artifactName: name, head, headSha: head, safeSummaryOnly: true }, null, 2));
+  }
+  const staleSummary = {
+    status: 'pass',
+    technicalChecksReady: true,
+    failureCount: 0,
+    reasonSummaryStatus: { status: 'pass', summary: { status: 'fail', blockingReasons: [{ reasonCode: 'stale' }], safeSummaryOnly: true }, safeSummaryOnly: true },
+    evidenceContinuityStatus: { pathsChecked: ['npm_diagnostic'], safeSummaryOnly: true },
+    safeSummaryOnly: true,
+  };
+  fs.writeFileSync(sourceDir + '/codex-quality-gate-safe-summary.json', JSON.stringify(staleSummary, null, 2));
+  fs.writeFileSync(sourceDir + '/codex-diagnostic-consolidated-summary.json', JSON.stringify({ status: 'pass', safeSummaryOnly: true }, null, 2));
+  fs.writeFileSync(runnerTemp + '/codex-remote-npm-diagnostic.safe.json', JSON.stringify({ status: 'pass', reasonCodes: ['npm_diagnostic'], safeSummaryOnly: true }, null, 2));
+  const report = options.report || staleSummary;
+  const finalized = finalizeV127SafeArtifactBundle({ sourceDir, runnerTemp, stageDir, report, head });
+  const validated = validateV127SafeArtifactBundle({ stageDir, head });
+  const index = JSON.parse(fs.readFileSync(stageDir + '/codex-safe-artifact-index.json', 'utf8'));
+  const summary = JSON.parse(fs.readFileSync(stageDir + '/codex-quality-gate-safe-summary.json', 'utf8'));
+  const diagnostic = JSON.parse(fs.readFileSync(stageDir + '/codex-diagnostic-consolidated-summary.json', 'utf8'));
+  const finalDecision = JSON.parse(fs.readFileSync(stageDir + '/codex-final-decision.safe.json', 'utf8'));
+  const ownerBrief = JSON.parse(fs.readFileSync(stageDir + '/codex-owner-decision-brief.safe.json', 'utf8'));
+  return { finalized, validated, index, summary, diagnostic, finalDecision, ownerBrief, head };
+}
 function physicalIndexFixture(options = {}) {
   const dir = fs.mkdtempSync(`${os.tmpdir()}/codex-v127-index-`);
   for (const name of V127_REQUIRED_SAFE_ARTIFACTS) writeSafeArtifactFixture(dir, name);
@@ -381,6 +415,44 @@ const cases = [
     const index = physicalIndexFixture();
     const optional = index.artifacts.find((item) => item.artifactName === 'codex-owner-decision-digest.safe.json');
     return optional && optional.status === 'not_applicable' && optional.physicalFilePresent === false;
+  }],
+  ['safe_output_allows_npm_diagnostic_machine_identifier', () => scanSafeOutput({ evidenceContinuityStatus: { pathsChecked: ['npm_diagnostic'], safeSummaryOnly: true }, safeSummaryOnly: true }).findings.length === 0],
+  ['safe_output_blocks_actual_npm_secret_like_token', () => scanSafeOutput({ actualValue: 'npm_' + '123456789abcdefghi', safeSummaryOnly: true }).findings.length > 0],
+  ['safe_output_blocks_github_token_like_value', () => scanSafeOutput({ actualValue: 'ghp_' + '123456789abcdefghijk', safeSummaryOnly: true }).findings.length > 0],
+  ['safe_output_blocks_jwt_like_value', () => scanSafeOutput({ actualValue: 'eyJ' + 'aaaaaaaaaaaa' + '.' + 'bbbbbbbbbbbbb' + '.' + 'ccccccccccccc', safeSummaryOnly: true }).findings.length > 0],
+  ['safe_output_blocks_private_key_value', () => scanSafeOutput({ actualValue: '-----BEGIN ' + 'PRIVATE KEY-----\\nabc123\\n-----END ' + 'PRIVATE KEY-----', safeSummaryOnly: true }).findings.length > 0],
+  ['safe_output_blocks_private_windows_path', () => scanSafeOutput({ actualValue: 'C:' + '\\Users\\example\\secret.txt', safeSummaryOnly: true }).findings.length > 0],
+  ['safe_output_blocks_unapproved_internal_endpoint', () => scanSafeOutput({ actualValue: 'https://internal.example.invalid/path', safeSummaryOnly: true }).findings.length > 0],
+  ['finalizer_reconciles_f93_mixed_bundle_fixture', () => {
+    const result = v127FinalizerFixture();
+    return result.finalized.status === 'pass'
+      && result.validated.status === 'pass'
+      && result.index.status === 'pass'
+      && result.index.safeOutputFailureCount === 0
+      && result.index.headMismatchCount === 0
+      && result.summary.status === 'pass'
+      && result.summary.reasonSummaryStatus.summary.blockingReasons.length === 0
+      && result.summary.failureCount === 0
+      && result.diagnostic.head === result.head
+      && result.diagnostic.headSha === result.head;
+  }],
+  ['finalizer_remote_closure_uses_owner_decision_missing', () => {
+    const result = v127FinalizerFixture();
+    return result.finalDecision.phase === 'merge_consideration'
+      && result.finalDecision.targetQualityStatus === 'pass'
+      && result.finalDecision.sameHeadRemoteGate === 'pass'
+      && result.finalDecision.ownerOrDelegatedMergeScope === 'missing'
+      && result.finalDecision.singleClosureReason === 'owner_merge_decision_missing'
+      && result.finalDecision.safeNextAction === 'owner_merge_decision_only';
+  }],
+  ['owner_brief_uses_compressed_owner_merge_decision_only', () => {
+    const result = v127FinalizerFixture();
+    return result.ownerBrief.recommendation === 'owner_merge_decision_only'
+      && result.ownerBrief.safeNextAction === 'owner_merge_decision_only'
+      && result.ownerBrief.proofCompleted.includes('v127_current_self_test')
+      && result.ownerBrief.proofCompleted.includes('v126_v113_compatibility_matrix')
+      && result.ownerBrief.proofMissing.includes('owner_conditional_merge_receipt')
+      && passed(validateOwnerDecisionBrief(buildOwnerDecisionBrief({ recommendation: 'owner_merge_decision_only' })));
   }],
   ['pr_body_declarations_do_not_create_human_confirmation', () => {
     const rendered = renderPrEvidenceBlocks({

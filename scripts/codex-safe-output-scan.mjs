@@ -33,6 +33,7 @@ const safePolicyVocabulary = [
 const safeLabelAllowlist = new Set([
   'unsafe_value_detected',
   'npm_skip_not_allowed_for_product_change',
+  'npm_diagnostic',
   'safe_policy_vocabulary',
   'forbidden_field_name_detected',
   'manual_confirmation_required',
@@ -76,6 +77,18 @@ function valueFindings(value, pathLabel) {
   if (safeLabelAllowlist.has(text.trim())) return [];
   if (String(pathLabel || '').includes('safePolicyVocabulary')) return [];
   if (isLikelySafePolicyText(text)) return [];
+  const findings = [];
+  const rules = [
+    ['unsafe_url_or_endpoint_value', /\b(?:https?|postgres(?:ql)?|mysql|mongodb):\/\/[^\s<>"'`]+/i],
+    ['unsafe_token_like_value', /\b(?:gh[pousr]_|sk-|AKIA|glpat-|npm_|xox[baprs]-)[A-Za-z0-9_-]{8,}\b/],
+    ['unsafe_private_key_value', /-----BEGIN (?:[A-Z0-9]+ )?PRIVATE KEY-----/i],
+    ['unsafe_jwt_like_value', /\beyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\b/],
+    ['unsafe_private_path_value', /\b[A-Za-z]:\\Users\\[^"'`\s]+|\/home\/[^"'`\s]+/i],
+  ];
+  for (const [reasonCode, pattern] of rules) {
+    if (pattern.test(text)) findings.push({ reasonCode, path: pathLabel });
+  }
+  if (findings.length > 0) return findings;
   const classified = classifyUnsafeValue(text, pathLabel);
   if (classified.reasonCode && classified.action === 'fail_required') {
     return [{
@@ -86,17 +99,6 @@ function valueFindings(value, pathLabel) {
     }];
   }
   if (classified.action === 'allow_if_safe_context' || classified.action === 'ignore_false_positive') return [];
-  const findings = [];
-  const rules = [
-    ['unsafe_url_or_endpoint_value', /\b(?:https?|postgres(?:ql)?|mysql|mongodb):\/\/[^\s<>"'`]+/i],
-    ['unsafe_token_like_value', /\b(?:gh[pousr]_|sk-|AKIA|glpat-|npm_|xox[baprs]-)[A-Za-z0-9_-]{8,}\b/],
-    ['unsafe_private_key_value', /-----BEGIN [^-]+PRIVATE KEY-----/i],
-    ['unsafe_jwt_like_value', /\beyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\b/],
-    ['unsafe_private_path_value', /\b[A-Za-z]:\\Users\\[^"'`\s]+|\/home\/[^"'`\s]+/i],
-  ];
-  for (const [reasonCode, pattern] of rules) {
-    if (pattern.test(text)) findings.push({ reasonCode, path: pathLabel });
-  }
   return findings;
 }
 

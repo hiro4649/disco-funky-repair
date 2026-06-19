@@ -16,7 +16,7 @@ function boundedLatest(values = [], limit = 8) {
 
 const DELEGATED_CONTINUATION_ACTIONS = new Set(['commit', 'push', 'createPr', 'rerunCi', 'fixCi', 'merge']);
 const NON_DELEGABLE_ACTIONS = new Set(['release', 'publish', 'secretAccess', 'walletRpcDeployAccess', 'deploy', 'fundedTransaction', 'governanceTransaction', 'bscScanVerification']);
-const RECOMMENDATIONS = new Set(['merge', 'repair', 'preserve', 'stop', 'owner_merge_decision_only_after_same_head_remote_pass']);
+const RECOMMENDATIONS = new Set(['merge', 'repair', 'preserve', 'stop', 'owner_merge_decision_only', 'owner_merge_decision_only_after_same_head_remote_pass']);
 const CLOSURE_REASONS = new Set(['phase_create_pr_only', 'remote_gate_missing', 'owner_merge_decision_missing', 'delegated_scope_missing', 'decision_closure_inconsistent', 'merge_allowed', 'preserve_only', 'none']);
 const OWNER_AUTHORITY_STATES = new Set(['not_required_for_current_scope', 'required', 'already_delegated_current_only']);
 const SAFE_LEARNING_SOURCES = new Set(['safe_artifacts_only', 'owner_approved_summary']);
@@ -324,7 +324,7 @@ export function buildOwnerDecisionBrief(input = {}) {
     proofCompleted: boundedLatest(input.proofCompleted || defaultProofCompleted, 8),
     proofMissing: bounded(input.proofMissing || ['same_head_remote_quality_gate'], 8),
     residualRisks: bounded(input.residualRisks || ['owner_merge_instruction_required'], 3),
-    recommendation: input.recommendation || 'owner_merge_decision_only_after_same_head_remote_pass',
+    recommendation: input.recommendation || 'owner_merge_decision_only',
     exactChoices: bounded(input.exactChoices || ['approve_merge_after_same_head_pass', 'request_narrow_repair', 'leave_pr_open'], 3),
     escalationSummary: escalationSummary(input.escalationSummary || input),
     remainingOwnerOnlyChoices: bounded(input.remainingOwnerOnlyChoices || ['merge_after_same_head_pass'], 3),

@@ -451,6 +451,7 @@ jobs:
             --finalize-v127-bundle \
             --source-dir "$GITHUB_WORKSPACE" \
             --runner-temp "$RUNNER_TEMP" \
+            --report "$RUNNER_TEMP/codex-quality-gate.json" \
             --stage-dir "$RUNNER_TEMP/codex-quality-gate-safe-artifacts" \
             --head "${{ github.event.pull_request.head.sha || github.sha }}"
           node scripts/codex-workflow-quality-runner.mjs \

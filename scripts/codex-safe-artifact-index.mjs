@@ -6,7 +6,8 @@ import fs from 'node:fs';
 
 import { fileURLToPath } from 'node:url';
 
-import { scanObjectForUnsafe, simpleStatus, writeJsonReport, exitFor } from './codex-v080-lib.mjs';
+import { simpleStatus, writeJsonReport, exitFor } from './codex-v080-lib.mjs';
+import { scanSafeOutput } from './codex-safe-output-scan.mjs';
 import { currentVersion } from './codex-harness-version.mjs';
 
 const HARNESS_VERSION = currentVersion;
@@ -149,7 +150,7 @@ export function buildPhysicalSafeArtifactIndex(directory = process.cwd(), option
     const safeOutputScanStatus = physicalFilePresent
       && parsed.status === 'pass'
       && parsed.value?.safeSummaryOnly !== false
-      && scanObjectForUnsafe(parsed.value).length === 0
+      && scanSafeOutput(parsed.value, { rootLabel: `artifact.${artifactName}` }).findings.length === 0
       ? 'pass'
       : (physicalFilePresent ? 'fail' : 'not_applicable');
     const reasonCodes = [
@@ -175,6 +176,9 @@ export function buildPhysicalSafeArtifactIndex(directory = process.cwd(), option
       byteLength: parsed.byteLength,
       jsonParseStatus: physicalFilePresent ? parsed.status : 'not_applicable',
       safeOutputScanStatus,
+      safeOutputFindingCount: physicalFilePresent && parsed.status === 'pass' ? scanSafeOutput(parsed.value, { rootLabel: `artifact.${artifactName}` }).findings.length : 0,
+      safeOutputReasonCodes: physicalFilePresent && parsed.status === 'pass' ? [...new Set(scanSafeOutput(parsed.value, { rootLabel: `artifact.${artifactName}` }).findings.map((item) => item.reasonCode).filter(Boolean))] : [],
+      safeOutputUnsafeClasses: physicalFilePresent && parsed.status === 'pass' ? scanSafeOutput(parsed.value, { rootLabel: `artifact.${artifactName}` }).unsafeClasses : [],
       loadBearing,
       headRequired,
       expectedHeadSha: expectedHeadSha || null,
@@ -315,7 +319,7 @@ export function buildSafeArtifactIndex(artifacts = [], mode = process.env.CODEX_
 
   const unsafePath = entries.some((item) => RAW_LOOKING.test(item.path) && !/safe-summary|failure-reasons|normalized|safe\.json|final-summary|artifact-index|preflight|target-quality|target-quality-blocker-digest|diagnostic-consolidated-summary|reason-summary|test-metrics|quality-gate|self-test-cases|same-head-artifact-evidence|same-head-evidence-refresh|docker-smoke-artifact|pr-evidence-compact|pr-evidence-auto-repair-hint|product-context-safe-artifact|product-baseline-continuity|false-positive-budget|agent-session-governance|evidence-minimality|safe-artifact-next-action|safe-artifact-bundle-completeness|skill-evidence-link|owner-summary-compact|browser-smoke-artifact|failure-to-repair-plan|human-review-digest|remote-product-evidence|remote-npm-diagnostic-normalization|five-line-owner-digest|browser-smoke-visual|runtime-latency-safe-metric|live2d-dataset-row-audit-runner|trusted-loader-evidence-enforcer|avatar-ux-safety-runner|formal-evidence-precedence|lifeboat-semantics|placeholder-only-evidence|actions-blocker-recovery|pr-context-rerun-assistant|dataset-audit-v2-p0|game-tool-adapter-fixture-readiness|beloved-avatar-safety-readiness/i.test(item.path));
 
-  const unsafe = unsafePath || entries.some((item) => scanObjectForUnsafe(item).length || !item.safeSummaryOnly || item.rawLogIncluded || item.containsSecrets || item.containsEndpointValues);
+  const unsafe = unsafePath || entries.some((item) => Number(item.safeOutputFindingCount || 0) > 0 || !item.safeSummaryOnly || item.rawLogIncluded || item.containsSecrets || item.containsEndpointValues);
 
   const requiredMissing = missingArtifacts.length > 0;
 
