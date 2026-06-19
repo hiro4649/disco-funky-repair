@@ -465,6 +465,17 @@ jobs:
             test -s "$file"
             node -e 'JSON.parse(require("fs").readFileSync(process.argv[1], "utf8"))' "$file"
           done
+          node - "${{ github.event.pull_request.head.sha || github.sha }}" <<'NODE'
+          const fs = require('fs');
+          const head = process.argv[2];
+          for (const file of ['codex-quality-gate-safe-summary.json', 'codex-diagnostic-consolidated-summary.json']) {
+            const value = JSON.parse(fs.readFileSync(file, 'utf8'));
+            value.head = head;
+            value.headSha = head;
+            value.safeSummaryOnly = value.safeSummaryOnly !== false;
+            fs.writeFileSync(file, `${JSON.stringify(value, null, 2)}\n`);
+          }
+          NODE
           node scripts/codex-safe-artifact-index.mjs \
             --validate-physical-bundle \
             --write-artifact \

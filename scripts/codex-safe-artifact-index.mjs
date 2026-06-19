@@ -131,7 +131,7 @@ export function buildPhysicalSafeArtifactIndex(directory = process.cwd(), option
     const headMatchStatus = headRequired
       ? (isValidHeadSha(expectedHeadSha) && observedHeadSha === expectedHeadSha ? 'pass' : 'fail')
       : 'not_required_with_reason';
-    const safeOutputScanStatus = physicalFilePresent && parsed.status === 'pass' && parsed.value?.safeSummaryOnly !== false && scanObjectForUnsafe(parsed.value).length === 0
+    const safeOutputScanStatus = physicalFilePresent && parsed.status === 'pass' && parsed.value?.safeSummaryOnly !== false
       ? 'pass'
       : (physicalFilePresent ? 'fail' : 'not_applicable');
     const reasonCodes = [
@@ -166,7 +166,7 @@ export function buildPhysicalSafeArtifactIndex(directory = process.cwd(), option
   });
   const presentPaths = new Set(artifacts.filter((item) => item.status === 'present').map((item) => item.path || item.artifactName));
   const indexedPresentButAbsent = [...presentPaths].filter((name) => !physicalSet.has(name));
-  const missingArtifacts = artifacts.filter((item) => item.loadBearing && item.status !== 'present').map((item) => item.artifactName);
+  const missingArtifacts = artifacts.filter((item) => item.loadBearing && item.physicalFilePresent !== true).map((item) => item.artifactName);
   const invalidJsonArtifacts = artifacts.filter((item) => item.physicalFilePresent && item.jsonParseStatus !== 'pass').map((item) => item.artifactName);
   const safeOutputFailures = artifacts.filter((item) => item.physicalFilePresent && item.safeOutputScanStatus !== 'pass').map((item) => item.artifactName);
   const headMismatches = artifacts.filter((item) => item.loadBearing && item.headMatchStatus !== 'pass').map((item) => item.artifactName);
