@@ -442,6 +442,29 @@ jobs:
             console.log(`- ${reasonCode}: ${safeMessage}`);
           }
           NODE
+      - name: Validate required safe artifacts before upload
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          required_artifacts=(
+            codex-quality-gate-safe-summary.json
+            codex-final-decision.safe.json
+            codex-orchestration-capsule.safe.json
+            codex-worker-proof.safe.json
+            codex-owner-decision-brief.safe.json
+            codex-evidence-capsule.safe.json
+            codex-decision-capsule.safe.json
+            codex-artifact-consistency.safe.json
+            codex-minimal-blockers.safe.json
+            codex-safe-artifact-index.json
+            codex-diagnostic-consolidated-summary.json
+          )
+          for file in "${required_artifacts[@]}"; do
+            test -f "$file"
+            test -s "$file"
+            node -e 'JSON.parse(require("fs").readFileSync(process.argv[1], "utf8"))' "$file"
+          done
       - name: Upload safe quality artifacts
         if: always()
         uses: actions/upload-artifact@v4

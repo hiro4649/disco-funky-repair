@@ -92,31 +92,60 @@ export function validateArtifactConsistency(input = {}) {
   const loadBearingArtifacts = input.loadBearingArtifacts || (v118ModeExplicit
     ? resolveLoadBearingArtifacts(executionMode, terminalAction, input.blockerClass || 'none')
     : V117_LOAD_BEARING_ARTIFACTS);
-  const generated = normalizeArtifactStatus(input.artifactGeneratedStatus ?? input.generated, 'pass');
-  const indexed = normalizeArtifactStatus(input.artifactIndexedStatus ?? input.indexed, 'pass');
-  const localMode = input.remote === false || terminalAction === 'create_pr_only' || executionMode.endsWith('_main');
+  const remoteMode = input.remote === true;
+  const explicitArtifactStatus = 'artifactGeneratedStatus' in input
+    || 'artifactIndexedStatus' in input
+    || 'artifactUploadedStatus' in input
+    || 'artifactDownloadObservedStatus' in input
+    || 'generated' in input
+    || 'indexed' in input
+    || 'uploaded' in input
+    || 'downloadObserved' in input;
+  const strictPhysical = input.legacyInMemoryCompatibility === true && !explicitArtifactStatus
+    ? false
+    : (remoteMode || explicitArtifactStatus || input.physicalValidationRequired === true || 'physicalFilePresent' in input || 'canonicalPath' in input);
+  const physicalFilePresent = strictPhysical ? input.physicalFilePresent === true : true;
+  const jsonParseStatus = normalizeArtifactStatus(input.jsonParseStatus, physicalFilePresent ? 'pass' : 'fail');
+  const safeOutputScanStatus = normalizeArtifactStatus(input.safeOutputScanStatus, physicalFilePresent ? 'pass' : 'fail');
+  const generated = normalizeArtifactStatus(input.artifactGeneratedStatus ?? input.generated, physicalFilePresent ? 'pass' : 'fail');
+  const indexed = normalizeArtifactStatus(input.artifactIndexedStatus ?? input.indexed, strictPhysical ? 'missing' : 'pass');
+  const localMode = input.remote === false || (!remoteMode && executionMode.endsWith('_main'));
   const uploaded = normalizeArtifactStatus(input.artifactUploadedStatus ?? input.uploaded, localMode ? 'not_required_with_reason' : 'pass');
   const downloadObserved = normalizeArtifactStatus(input.artifactDownloadObservedStatus ?? input.downloadObserved, localMode ? 'not_required_with_reason' : 'pass');
   const headMatch = normalizeArtifactStatus(input.artifactHeadMatchStatus ?? input.headMatch, 'pass');
-  const headValue = String(input.head || input.headSha || '').trim();
+  const expectedHeadSha = String(input.expectedHeadSha || input.expectedHead || '').trim();
+  const observedHeadSha = String(input.observedHeadSha || input.observedHead || input.head || input.headSha || '').trim();
+  const headValue = String(input.head || input.headSha || observedHeadSha || '').trim();
   const validHead = /^[A-Fa-f0-9]{40}$/.test(headValue);
+  const headRequired = strictPhysical || input.loadBearing === true;
   const reasonCodes = [];
   if (input.safeSummaryPresent === false) reasonCodes.push('safe_summary_missing');
   if (!loadBearingArtifacts.includes(artifactName)) reasonCodes.push('artifact_not_load_bearing');
+  if (!physicalFilePresent) reasonCodes.push('artifact_missing');
+  if (jsonParseStatus !== 'pass') reasonCodes.push('artifact_json_parse_failed');
+  if (safeOutputScanStatus !== 'pass') reasonCodes.push('safe_output_scan_failed');
   if (indexed === 'pass' && generated !== 'pass') reasonCodes.push('artifact_index_consistency_failure');
   if (generated === 'pass' && indexed !== 'pass') reasonCodes.push('artifact_generated_not_indexed');
   if (indexed === 'pass' && isRequiredFailure(uploaded)) reasonCodes.push('artifact_index_consistency_failure');
   if (uploaded === 'pass' && generated !== 'pass') reasonCodes.push('artifact_uploaded_without_generated_source');
   if (uploaded === 'pass' && isRequiredFailure(downloadObserved)) reasonCodes.push('artifact_download_not_observed');
-  if (headMatch === 'fail' || (downloadObserved === 'pass' && headMatch !== 'pass')) reasonCodes.push('artifact_head_mismatch');
-  if (!validHead && downloadObserved === 'pass') reasonCodes.push('artifact_head_mismatch');
+  if (headMatch === 'fail' || (headRequired && headMatch !== 'pass')) reasonCodes.push('artifact_head_mismatch');
+  if (headRequired && !validHead) reasonCodes.push('artifact_head_mismatch');
+  if (headRequired && expectedHeadSha && observedHeadSha && expectedHeadSha !== observedHeadSha) reasonCodes.push('artifact_head_mismatch');
   const base = {
     artifactName,
+    canonicalPath: input.canonicalPath || artifactName,
+    producer: input.producer || 'unknown',
+    expectedHeadSha: expectedHeadSha || null,
+    observedHeadSha: observedHeadSha || (validHead ? headValue : null),
+    physicalFilePresent,
+    jsonParseStatus,
     artifactGeneratedStatus: generated,
     artifactIndexedStatus: indexed,
     artifactUploadedStatus: uploaded,
     artifactDownloadObservedStatus: downloadObserved,
     artifactHeadMatchStatus: headMatch,
+    safeOutputScanStatus,
     head: headValue || 'unknown',
     rawLogsRequired: false,
     productRepairAllowed: false,
@@ -161,7 +190,7 @@ export function buildArtifactConsistencyReport(input = {}) {
     artifactHeadMatchStatus: input.remoteHeadMatches === false ? 'fail' : undefined,
     safeSummaryPresent: input.safeSummaryPresent,
   }));
-  const entries = artifacts.map((artifact) => validateArtifactConsistency({ head: input.head, executionMode, terminalAction, loadBearingArtifacts: effectiveLoadBearingArtifacts, remote: input.remote, ...artifact }));
+  const entries = artifacts.map((artifact) => validateArtifactConsistency({ head: input.head, executionMode, terminalAction, loadBearingArtifacts: effectiveLoadBearingArtifacts, remote: input.remote, legacyInMemoryCompatibility: !v118ModeExplicit, ...artifact }));
   const failures = entries.filter((entry) => entry.status === 'fail');
   return {
     status: failures.length ? 'fail' : 'pass',

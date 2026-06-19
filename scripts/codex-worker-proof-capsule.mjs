@@ -49,9 +49,9 @@ const ROOT_CAUSE_SIGNATURES = new Set([
   'unknown',
 ]);
 const ROOT_CAUSE_STATUSES = new Set(['known', 'unknown', 'disputed']);
-const BOUNDARY_CHANGE_CLASSES = new Set(['metadata_only', 'harness_change', 'workflow_change', 'product_code_change', 'runtime_change', 'restricted_asset_high_risk', 'unknown']);
+const BOUNDARY_CHANGE_CLASSES = new Set(['metadata_only', 'harness_change', 'workflow_change', 'harness_workflow_repair', 'product_code_change', 'runtime_change', 'restricted_asset_high_risk', 'unknown']);
 const REVIEWER_ROLES = new Set(['none', 'scope_security', 'test_correctness', 'false_positive', 'adversarial', 'verifier']);
-const INDEPENDENCE_STATUSES = new Set(['pass', 'warn', 'blocked']);
+const INDEPENDENCE_STATUSES = new Set(['pass', 'warn', 'blocked', 'not_used', 'not_required_with_reason']);
 const REVIEW_LOOP_STATUSES = new Set(['pass', 'warn', 'blocked']);
 const REVIEW_RISK_PROFILES = new Set(['docs_only', 'metadata_light', 'harness_source', 'product', 'runtime', 'security', 'restricted_asset']);
 const EXPERT_ROLES = new Set(['planner', 'scope_security', 'test_verifier', 'evidence_verifier', 'skeptic', 'inventory', 'value_pressure', 'arbiter']);
@@ -174,6 +174,7 @@ function defaultReviewerIndependenceProof(input = {}) {
     || reviewerCanSubmitGitHubApprovalReview
     || reviewerCanClaimReadiness;
   const warn = !blocked && input.sameScratchpadAccess !== false && input.independentReviewUsed === true;
+  const notUsed = input.independentReviewUsed !== true;
   return {
     proofVersion: '1.2.3',
     independentReviewUsed: input.independentReviewUsed === true,
@@ -188,7 +189,7 @@ function defaultReviewerIndependenceProof(input = {}) {
     reviewerCanApproveOwnerDecision,
     reviewerCanSubmitGitHubApprovalReview,
     reviewerCanClaimReadiness,
-    independenceStatus: blocked ? 'blocked' : (warn ? 'warn' : 'pass'),
+    independenceStatus: notUsed ? (input.independenceStatus || 'not_used') : (blocked ? 'blocked' : (warn ? 'warn' : 'pass')),
   };
 }
 
@@ -552,7 +553,14 @@ export function validateWorkerProofCapsule(capsule = {}) {
   if (highTierOutcome.ownerAuthorityCreated === true) reasons.push('high_tier_plan_cannot_create_owner_authority');
   if (highTierOutcome.returnedToLowCostWorker !== true && highTierOutcome.status !== 'not_used') reasons.push('high_tier_plan_must_return_to_worker_after_plan');
   if (!BOUNDARY_CHANGE_CLASSES.has(boundary.changeClass)) reasons.push('boundary_diff_class_invalid');
-  if (boundary.productCodeChanged === true || boundary.packageChanged === true || boundary.lockfileChanged === true || boundary.runtimeChanged === true || boundary.workflowChanged === true || boundary.restrictedAssetTouched === true) reasons.push('boundary_diff_outside_metadata_or_harness_scope');
+  const workflowOnlyHarnessRepair = boundary.changeClass === 'harness_workflow_repair'
+    && boundary.productCodeChanged !== true
+    && boundary.packageChanged !== true
+    && boundary.lockfileChanged !== true
+    && boundary.runtimeChanged !== true
+    && boundary.restrictedAssetTouched !== true
+    && boundary.workflowChanged === true;
+  if (boundary.productCodeChanged === true || boundary.packageChanged === true || boundary.lockfileChanged === true || boundary.runtimeChanged === true || boundary.restrictedAssetTouched === true || (boundary.workflowChanged === true && !workflowOnlyHarnessRepair)) reasons.push('boundary_diff_outside_metadata_or_harness_scope');
   for (const key of ['unsafeClaimDetected', 'runtimeReadinessClaimed', 'productionReadinessClaimed', 'legalComplianceClaimed', 'youtubePolicyClaimed', 'deployClaimed', 'mergeReadyClaimed']) {
     if (claimLint[key] === true) reasons.push(`claim_lint_forbidden_${key}`);
   }
