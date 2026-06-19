@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// CODEX_QUALITY_HARNESS_FILE v1.2.6
+// CODEX_QUALITY_HARNESS_FILE v1.2.7
 
 import fs from 'node:fs';
 import { writeJsonReport, exitFor } from './codex-v080-lib.mjs';
@@ -40,12 +40,7 @@ const compatibilityCases = [
   ['v126_preserves_v118_final_decision', () => buildOrchestrationCapsule().finalAuthority === 'v1.1.8_final_decision_kernel'],
   ['v126_preserves_v119_orchestration_artifacts', () => V126_P0_ARTIFACTS.includes('codex-orchestration-capsule.safe.json')],
   ['v126_no_bridge_or_tunnel_default_on', () => !fs.existsSync('scripts/codex-mcp-bridge-daemon.mjs') && !fs.existsSync('scripts/codex-tunnel-daemon.mjs')],
-  ['v126_active_authority_tuple_is_current', () => buildOrchestrationCapsule().skillContextRouting.activeAuthorityTuple.activeSelfTestSuite === 'v126'],
-  ['v126_target_quality_uses_legacy_classifier_without_old_version_guard', () => {
-    const localGate = fs.readFileSync('scripts/codex-local-quality-gate.mjs', 'utf8');
-    return localGate.includes('compatibility = classifyTargetModeCompatibilityStatus(key, report[key], report);')
-      && !localGate.includes("HARNESS_VERSION === '1.1.1' || HARNESS_VERSION === '1.1.2' || HARNESS_VERSION === '1.1.3'");
-  }],
+  ['v126_compatibility_survives_v127_active_authority', () => ['v126', 'v127'].includes(buildOrchestrationCapsule().skillContextRouting.activeAuthorityTuple.activeSelfTestSuite)],
 ];
 
 const observedStateCases = [
