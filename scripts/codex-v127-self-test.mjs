@@ -17,6 +17,7 @@ import {
 } from './codex-orchestration-capsule.mjs';
 import { buildWorkerProofCapsule, validateWorkerProofCapsule } from './codex-worker-proof-capsule.mjs';
 import { buildOwnerDecisionBrief, validateOwnerDecisionBrief } from './codex-owner-decision-brief.mjs';
+import { evaluateWorkflowReport } from './codex-workflow-quality-runner.mjs';
 
 function test(name, fn) {
   try {
@@ -32,6 +33,29 @@ function passed(status) {
 
 function failed(status) {
   return status?.status === 'fail';
+}
+
+function withTemporaryEnv(values, fn) {
+  const previous = {};
+  for (const key of Object.keys(values)) {
+    previous[key] = process.env[key];
+    if (values[key] === undefined || values[key] === null) {
+      delete process.env[key];
+    } else {
+      process.env[key] = String(values[key]);
+    }
+  }
+  try {
+    return fn();
+  } finally {
+    for (const key of Object.keys(values)) {
+      if (previous[key] === undefined) {
+        delete process.env[key];
+      } else {
+        process.env[key] = previous[key];
+      }
+    }
+  }
 }
 
 const VALID_PROCESS_RECEIPT = {
@@ -51,6 +75,66 @@ const SAME_HEAD_ENVELOPE = {
   remoteGate: 'pass',
   allowedNextAction: 'owner_merge_decision_only',
 };
+
+const workflowText = fs.existsSync('.github/workflows/quality-gate.yml')
+  ? fs.readFileSync('.github/workflows/quality-gate.yml', 'utf8')
+  : '';
+
+const PR_BODY_RECEIPT_TEXT = `I confirm PR #364 current head abc123 for merge consideration.
+Owner decision: owner_merge_after_same_head_pass.
+`;
+
+const PR_BODY_DISPLAY_EVIDENCE_TEXT = `## Test Coverage Evidence
+v127 self-test: pass
+backend focused test: pass
+
+## Best-of-N
+run 1: pass
+run 2: pass
+`;
+
+const workflowPrBodyDisplayOnlyFixture = withTemporaryEnv({
+  CODEX_CHANGED_FILES: 'scripts/codex-v127-self-test.mjs',
+  CODEX_PR_BODY: PR_BODY_DISPLAY_EVIDENCE_TEXT,
+}, () => evaluateWorkflowReport({
+  status: 'fail',
+  targetQualityScoreStatus: {
+    status: 'fail',
+    score: 70,
+    blockingStatuses: [
+      { key: 'bestOfNEvidenceStatus', status: 'fail', effectiveStatus: 'fail' },
+      { key: 'testCoverageEvidenceStatus', status: 'fail', effectiveStatus: 'fail' },
+    ],
+    safeSummaryOnly: true,
+  },
+  bestOfNEvidenceStatus: { status: 'fail', reasonCodes: ['best_of_n_required'] },
+  testCoverageEvidenceStatus: { status: 'fail', reasonCodes: ['test_coverage_evidence_missing'] },
+}, { gateExit: 1, eventName: 'pull_request' }));
+
+const workflowPrBodyReceiptFixture = withTemporaryEnv({
+  CODEX_CHANGED_FILES: 'scripts/codex-v127-self-test.mjs',
+  CODEX_PR_BODY: PR_BODY_RECEIPT_TEXT,
+}, () => evaluateWorkflowReport({
+  status: 'pass',
+  technicalChecksReady: true,
+  mergeReady: false,
+  targetQualityScoreStatus: { status: 'pass', safeSummaryOnly: true },
+  finalDecision: {
+    status: 'pass',
+    terminalAction: 'create_pr_only',
+    mergeAllowed: false,
+    safeNextAction: 'owner_merge_decision_only',
+    safeSummaryOnly: true,
+  },
+}, { gateExit: 0, eventName: 'pull_request' }));
+
+function sameHeadControl(envelopeOverrides = {}) {
+  return buildOrchestrationCapsule({
+    decisionEvidenceEnvelopeAndSameHeadBinder: {
+      decisionEvidenceEnvelope: { ...SAME_HEAD_ENVELOPE, ...envelopeOverrides },
+    },
+  }).decisionEvidenceEnvelopeAndSameHeadBinder;
+}
 
 function resolveHarnessMode(env = process.env) {
   if (env.CODEX_HARNESS_MODE === 'target') return 'target';
@@ -149,6 +233,31 @@ const cases = [
   ['decision_evidence_envelope_rejects_head_mismatch', () => failed(validateDecisionEvidenceEnvelopeAndSameHeadBinder(buildOrchestrationCapsule({
     decisionEvidenceEnvelopeAndSameHeadBinder: { decisionEvidenceEnvelope: { lane: 'same_head_remote_qg', localHead: 'abc123', prHead: 'def456', workflowHead: 'abc123', artifactHead: 'abc123', oneBlockingReason: null } },
   }).decisionEvidenceEnvelopeAndSameHeadBinder))],
+  ['workflow_checkout_uses_pull_request_head_sha', () => workflowText.includes('ref: ${{ github.event.pull_request.head.sha || github.sha }}')],
+  ['workflow_contains_no_pr_body_merge_confirmation_bridge', () => !workflowText.includes('CODEX_OWNER_MERGE_CONFIRMED') && !workflowText.includes('owner_merge_after_same_head_pass')],
+  ['workflow_contains_no_post_gate_merge_authority_rewrite', () => !workflowText.includes('ownerDecisionReady') && !workflowText.includes("terminalAction: 'merge_current_pr'") && !workflowText.includes('mergeAllowed: true')],
+  ['workflow_active_remote_product_metadata_is_v127', () => workflowText.includes('"schemaVersion":"1.2.7"') && workflowText.includes('"activeSelfTestSuite":"v127"') && workflowText.includes('"activeSelfTestStatusKey":"v127SelfTestStatus"') && !workflowText.includes('"schemaVersion":"1.1.5"')],
+  ['pr_body_display_evidence_does_not_override_best_of_n_status', () => workflowPrBodyDisplayOnlyFixture.safeSummary.bestOfNEvidenceStatus.status === 'fail' && workflowPrBodyDisplayOnlyFixture.safeSummary.bestOfNEvidenceStatus.reasonCodes.includes('best_of_n_required')],
+  ['pr_body_display_evidence_does_not_override_test_coverage_status', () => workflowPrBodyDisplayOnlyFixture.safeSummary.testCoverageEvidenceStatus.status === 'fail' && workflowPrBodyDisplayOnlyFixture.safeSummary.testCoverageEvidenceStatus.reasonCodes.includes('test_coverage_evidence_missing')],
+  ['pr_body_receipt_text_does_not_authorize_merge', () => workflowPrBodyReceiptFixture.safeSummary.technicalChecksReady === true && workflowPrBodyReceiptFixture.safeSummary.ownerMergeAuthorized === false],
+  ['same_head_missing_local_head_fails', () => failed(validateDecisionEvidenceEnvelopeAndSameHeadBinder(sameHeadControl({ localHead: null })) )],
+  ['same_head_missing_pr_head_fails', () => failed(validateDecisionEvidenceEnvelopeAndSameHeadBinder(sameHeadControl({ prHead: null })) )],
+  ['same_head_missing_workflow_head_fails', () => failed(validateDecisionEvidenceEnvelopeAndSameHeadBinder(sameHeadControl({ workflowHead: null })) )],
+  ['same_head_missing_artifact_head_fails', () => failed(validateDecisionEvidenceEnvelopeAndSameHeadBinder(sameHeadControl({ artifactHead: null })) )],
+  ['same_head_requires_four_matching_non_null_heads', () => {
+    const control = sameHeadControl();
+    return control.decisionEvidenceEnvelope.sameHead === true
+      && control.sameHeadBinder.allRequiredHeadsPresent === true
+      && control.sameHeadBinder.allRequiredHeadsMatch === true
+      && passed(validateDecisionEvidenceEnvelopeAndSameHeadBinder(control));
+  }],
+  ['missing_owner_process_receipt_does_not_default_to_valid_binding', () => sameHeadControl().decisionEvidenceEnvelope.ownerReceiptBinding === 'not_required'],
+  ['same_head_remote_qg_without_merge_receipt_stops_at_owner_decision', () => {
+    const control = sameHeadControl();
+    return control.decisionEvidenceEnvelope.allowedNextAction === 'owner_merge_decision_only'
+      && control.decisionEvidenceEnvelope.ownerReceiptBinding === 'not_required'
+      && passed(validateDecisionEvidenceEnvelopeAndSameHeadBinder(control));
+  }],
   ['same_head_true_with_null_heads_fails', () => failed(validateDecisionEvidenceEnvelopeAndSameHeadBinder({
     runtimeVersion: '1.2.7',
     decisionEvidenceEnvelope: { lane: 'same_head_remote_qg', sameHead: true, remoteGate: 'pass', allowedNextAction: 'owner_merge_decision_only', prBodyMachineEvidence: false },

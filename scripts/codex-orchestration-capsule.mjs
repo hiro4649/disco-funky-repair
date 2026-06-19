@@ -1299,7 +1299,7 @@ function defaultDecisionEvidenceEnvelopeAndSameHeadBinder(input = {}) {
       prHead,
       workflowHead,
       artifactHead,
-      ownerReceiptBinding: envelope.ownerReceiptBinding || 'valid',
+      ownerReceiptBinding: envelope.ownerReceiptBinding || (envelope.lane === 'merge_boundary' ? 'missing' : 'not_required'),
       sameHead,
       localGate: envelope.localGate || 'pass',
       remoteGate: V127_REMOTE_STATUSES.has(envelope.remoteGate) ? envelope.remoteGate : 'missing',

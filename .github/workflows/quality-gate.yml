@@ -49,6 +49,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
@@ -88,16 +89,16 @@ jobs:
         run: |
           set -euo pipefail
           cat > "$RUNNER_TEMP/codex-remote-product-checks.safe.json" <<'JSON'
-          {"schemaVersion":"1.1.5","harnessVersion":"1.1.5","sourceHarnessVersion":"1.1.5","activeHarnessVersion":"1.1.5","targetHarnessVersion":"1.1.5","activeSelfTestSuite":"v115","activeSelfTestStatusKey":"v115SelfTestStatus","phase":"remote product checks","status":"pending","productVerificationStatus":{"status":"pending","safeSummaryOnly":true},"productVerificationEvidenceStatus":{"status":"pending","safeSummaryOnly":true},"remoteProductBaselineStatus":{"status":"pending","safeSummaryOnly":true},"safeSummaryOnly":true}
+          {"schemaVersion":"1.2.7","harnessVersion":"1.2.7","sourceHarnessVersion":"1.2.7","activeHarnessVersion":"1.2.7","targetHarnessVersion":"1.2.7","activeSelfTestSuite":"v127","activeSelfTestStatusKey":"v127SelfTestStatus","phase":"remote product checks","status":"pending","productVerificationStatus":{"status":"pending","safeSummaryOnly":true},"productVerificationEvidenceStatus":{"status":"pending","safeSummaryOnly":true},"remoteProductBaselineStatus":{"status":"pending","safeSummaryOnly":true},"safeSummaryOnly":true}
           JSON
           cat > "$RUNNER_TEMP/codex-remote-product-baseline.json" <<'JSON'
-          {"schemaVersion":"1.1.5","harnessVersion":"1.1.5","sourceHarnessVersion":"1.1.5","activeHarnessVersion":"1.1.5","targetHarnessVersion":"1.1.5","activeSelfTestSuite":"v115","activeSelfTestStatusKey":"v115SelfTestStatus","phase":"remote product baseline","status":"pending","safeSummaryOnly":true}
+          {"schemaVersion":"1.2.7","harnessVersion":"1.2.7","sourceHarnessVersion":"1.2.7","activeHarnessVersion":"1.2.7","targetHarnessVersion":"1.2.7","activeSelfTestSuite":"v127","activeSelfTestStatusKey":"v127SelfTestStatus","phase":"remote product baseline","status":"pending","safeSummaryOnly":true}
           JSON
           cat > "$RUNNER_TEMP/codex-product-verification-evidence.remote.json" <<'JSON'
-          {"schemaVersion":"1.1.5","harnessVersion":"1.1.5","sourceHarnessVersion":"1.1.5","activeHarnessVersion":"1.1.5","targetHarnessVersion":"1.1.5","activeSelfTestSuite":"v115","activeSelfTestStatusKey":"v115SelfTestStatus","phase":"product verification evidence remote generation","status":"pending","safeSummaryOnly":true}
+          {"schemaVersion":"1.2.7","harnessVersion":"1.2.7","sourceHarnessVersion":"1.2.7","activeHarnessVersion":"1.2.7","targetHarnessVersion":"1.2.7","activeSelfTestSuite":"v127","activeSelfTestStatusKey":"v127SelfTestStatus","phase":"product verification evidence remote generation","status":"pending","safeSummaryOnly":true}
           JSON
           cat > "$RUNNER_TEMP/codex-remote-npm-diagnostic.safe.json" <<'JSON'
-          {"schemaVersion":"1.1.5","harnessVersion":"1.1.5","sourceHarnessVersion":"1.1.5","activeHarnessVersion":"1.1.5","targetHarnessVersion":"1.1.5","activeSelfTestSuite":"v115","activeSelfTestStatusKey":"v115SelfTestStatus","phase":"remote npm diagnostic","status":"pending","safeSummaryOnly":true}
+          {"schemaVersion":"1.2.7","harnessVersion":"1.2.7","sourceHarnessVersion":"1.2.7","activeHarnessVersion":"1.2.7","targetHarnessVersion":"1.2.7","activeSelfTestSuite":"v127","activeSelfTestStatusKey":"v127SelfTestStatus","phase":"remote npm diagnostic","status":"pending","safeSummaryOnly":true}
           JSON
           # safe artifact upload is locked by the upload-artifact path list.
       - name: Generate remote product evidence
@@ -171,7 +172,7 @@ jobs:
           echo "CODEX_NPM_PACKAGE_SCOPE=$package_scope" >> "$GITHUB_ENV"
           runner_json="$(PRODUCT_RELEVANT="$product_relevant" NPM_EXECUTED="$npm_executed" NPM_EXIT_CODE="$npm_exit" COMMAND_CWD="$command_cwd" PACKAGE_SCOPE="$package_scope" COMMAND_CLASS="$command_class" node -e "const cwd=process.env.COMMAND_CWD||''; const input={productRelevant:process.env.PRODUCT_RELEVANT==='1',isPullRequest:process.env.CODEX_EVENT_NAME==='pull_request',eventName:process.env.CODEX_EVENT_NAME||'',headSha:process.env.CODEX_PR_HEAD_SHA||'',baseSha:process.env.CODEX_PR_BASE_SHA||'',repository:process.env.CODEX_REPOSITORY||'',npmExecuted:process.env.NPM_EXECUTED==='1',npmExitCode:Number(process.env.NPM_EXIT_CODE||0),cwd,packageScope:process.env.PACKAGE_SCOPE||'',commandClass:process.env.COMMAND_CLASS||'',command:cwd ? 'cd '+cwd+' && npm test' : 'npm test'}; process.stdout.write(JSON.stringify(input));")"
           CODEX_REMOTE_PRODUCT_EVIDENCE_OUT_DIR="$RUNNER_TEMP" CODEX_REMOTE_PRODUCT_EVIDENCE_RUNNER_JSON="$runner_json" node scripts/codex-remote-product-evidence-runner.mjs --write-artifacts
-          PRODUCT_RELEVANT="$product_relevant" NPM_EXECUTED="$npm_executed" NPM_EXIT_CODE="$npm_exit" COMMAND_CWD="$command_cwd" PACKAGE_SCOPE="$package_scope" COMMAND_CLASS="$command_class" node -e "const fs=require('fs'); const productRelevant=process.env.PRODUCT_RELEVANT==='1'; const npmExecuted=process.env.NPM_EXECUTED==='1'; const npmExitCode=Number(process.env.NPM_EXIT_CODE||0); const status=!productRelevant?'not_applicable':npmExecuted&&npmExitCode===0?'pass':'fail'; const cwd=process.env.COMMAND_CWD||'.'; const packageScope=process.env.PACKAGE_SCOPE||cwd; const commandClass=process.env.COMMAND_CLASS||'root_npm_test'; const version='1.1.5'; const artifact={schemaVersion:version,harnessVersion:version,sourceHarnessVersion:version,activeHarnessVersion:version,targetHarnessVersion:version,activeSelfTestSuite:'v115',activeSelfTestStatusKey:'v115SelfTestStatus',phase:'remote product checks',status,productRelevant,cwd,packageScope,commandClass,npmExecuted,npmExitCode,productVerificationStatus:{status,safeSummaryOnly:true},productVerificationEvidenceStatus:{status,safeSummaryOnly:true},remoteProductBaselineStatus:{status,safeSummaryOnly:true},safeSummaryOnly:true}; fs.writeFileSync(process.env.RUNNER_TEMP + '/codex-remote-product-checks.safe.json', JSON.stringify(artifact,null,2));"
+          PRODUCT_RELEVANT="$product_relevant" NPM_EXECUTED="$npm_executed" NPM_EXIT_CODE="$npm_exit" COMMAND_CWD="$command_cwd" PACKAGE_SCOPE="$package_scope" COMMAND_CLASS="$command_class" node -e "const fs=require('fs'); const productRelevant=process.env.PRODUCT_RELEVANT==='1'; const npmExecuted=process.env.NPM_EXECUTED==='1'; const npmExitCode=Number(process.env.NPM_EXIT_CODE||0); const status=!productRelevant?'not_applicable':npmExecuted&&npmExitCode===0?'pass':'fail'; const cwd=process.env.COMMAND_CWD||'.'; const packageScope=process.env.PACKAGE_SCOPE||cwd; const commandClass=process.env.COMMAND_CLASS||'root_npm_test'; const version='1.2.7'; const artifact={schemaVersion:version,harnessVersion:version,sourceHarnessVersion:version,activeHarnessVersion:version,targetHarnessVersion:version,activeSelfTestSuite:'v127',activeSelfTestStatusKey:'v127SelfTestStatus',phase:'remote product checks',status,productRelevant,cwd,packageScope,commandClass,npmExecuted,npmExitCode,productVerificationStatus:{status,safeSummaryOnly:true},productVerificationEvidenceStatus:{status,safeSummaryOnly:true},remoteProductBaselineStatus:{status,safeSummaryOnly:true},safeSummaryOnly:true}; fs.writeFileSync(process.env.RUNNER_TEMP + '/codex-remote-product-checks.safe.json', JSON.stringify(artifact,null,2));"
       - name: Generate backend Docker smoke evidence
         if: always()
         shell: bash
@@ -206,10 +207,6 @@ jobs:
             current_pr_body="$(GH_TOKEN="${GITHUB_TOKEN:-}" gh pr view "${CODEX_PR_NUMBER:-}" --repo "${CODEX_REPOSITORY:-}" --json body -q .body 2>/dev/null || true)"
             if [ -n "$current_pr_body" ]; then
               export CODEX_PR_BODY="$current_pr_body"
-              if printf '%s' "$current_pr_body" | grep -F "I confirm PR #${CODEX_PR_NUMBER:-} current head ${CODEX_PR_HEAD_SHA:-} for merge consideration." >/dev/null \
-                && printf '%s' "$current_pr_body" | grep -F "Owner decision: owner_merge_after_same_head_pass." >/dev/null; then
-                export CODEX_OWNER_MERGE_CONFIRMED=1
-              fi
             fi
             export CODEX_EVIDENCE_PACK_STRICT=1
             export CODEX_HUMAN_CONFIRMATION_STRICT=1
@@ -252,49 +249,14 @@ jobs:
           }
           const report = readJson(reportPath) || {};
           const summary = readJson('codex-quality-gate-safe-summary.json') || {};
-          const ownerConfirmed = process.env.CODEX_OWNER_MERGE_CONFIRMED === '1';
-          const summaryMergeReady = summary.status === 'pass' && summary.mergeReady === true && summary.targetMergeReady === true;
-          const finalStatusPass = (report.finalDecisionStatus?.status || summary.finalDecisionStatus?.status) === 'pass';
           let canonicalFinalDecision = report.finalDecision || summary.finalDecision;
-          if (ownerConfirmed && summaryMergeReady && finalStatusPass) {
-            canonicalFinalDecision = {
-              ...(canonicalFinalDecision || {}),
-              finalDecisionVersion: canonicalFinalDecision?.finalDecisionVersion || 1,
-              executionMode: canonicalFinalDecision?.executionMode || 'target_pr',
-              terminalAction: 'merge_current_pr',
-              decision: 'allowed',
-              mergeAllowed: true,
-              primaryClass: 'none',
-              safeNextAction: 'merge_current_pr',
-              exitCode: 0,
-              ownerDecisionReady: true,
-              artifactName: 'codex-final-decision.safe.json',
-              safeSummaryOnly: true,
-            };
-            summary.finalDecision = canonicalFinalDecision;
-            summary.ownerDecisionBrief = {
-              ...(summary.ownerDecisionBrief || {}),
-              decisionReady: true,
-              safeNextAction: 'merge_current_pr',
-              safeSummaryOnly: true,
-            };
-            summary.decisionCapsule = {
-              ...(summary.decisionCapsule || {}),
-              terminalAction: 'merge_current_pr',
-              mergeAllowed: true,
-              safeNextAction: 'merge_current_pr',
-              primaryClass: 'none',
-              safeSummaryOnly: true,
-            };
-            fs.writeFileSync('codex-quality-gate-safe-summary.json', `${JSON.stringify(summary, null, 2)}\n`);
-          }
           writeSafe('codex-final-decision.safe.json', canonicalFinalDecision, { overwrite: Boolean(canonicalFinalDecision) });
           writeSafe('codex-evidence-capsule.safe.json', report.evidenceCapsule || summary.evidenceCapsule);
           writeSafe('codex-orchestration-capsule.safe.json', report.orchestrationCapsule || summary.orchestrationCapsule);
           writeSafe('codex-worker-proof.safe.json', report.workerProofCapsule || summary.workerProofCapsule);
-          writeSafe('codex-owner-decision-brief.safe.json', summary.ownerDecisionBrief?.decisionReady ? summary.ownerDecisionBrief : (report.ownerDecisionBrief || summary.ownerDecisionBrief), { overwrite: Boolean(summary.ownerDecisionBrief?.decisionReady) });
+          writeSafe('codex-owner-decision-brief.safe.json', report.ownerDecisionBrief || summary.ownerDecisionBrief);
           writeSafe('codex-artifact-consistency.safe.json', report.artifactConsistency || report.artifactConsistencyStatus || summary.artifactConsistencyStatus);
-          writeSafe('codex-decision-capsule.safe.json', summary.decisionCapsule?.mergeAllowed ? summary.decisionCapsule : (report.decisionCapsule || summary.decisionCapsule), { overwrite: Boolean(summary.decisionCapsule?.mergeAllowed) });
+          writeSafe('codex-decision-capsule.safe.json', report.decisionCapsule || summary.decisionCapsule);
           NODE
           node - "$runner_exit" <<'NODE'
           const runnerExit = Number(process.argv[2] || 0);

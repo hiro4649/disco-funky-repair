@@ -227,41 +227,19 @@ export function buildV114HarnessOnlyEvidenceNormalization(report = {}, env = pro
   const changedFiles = parseV114ChangedFiles(env.CODEX_CHANGED_FILES);
   const prBody = readV114PrBody(env);
   const harnessOnly = changedFiles.length > 0 && changedFiles.every(isV114HarnessOnlyFile);
-  const hasBestOfN = /##\s*Best-of-N Evidence/i.test(prBody)
+  const bestOfNDisplaySectionsPresent = /##\s*Best-of-N Evidence/i.test(prBody)
     && /Chosen option:/i.test(prBody)
     && /Rejected options:/i.test(prBody);
-  const hasTestCoverage = /##\s*Test Coverage Evidence/i.test(prBody)
+  const testCoverageDisplaySectionsPresent = /##\s*Test Coverage Evidence/i.test(prBody)
     && /Commands:/i.test(prBody)
     && /Coverage:/i.test(prBody);
-  const bestOfNEvidenceNormalized = harnessOnly
-    && hasBestOfN
-    && report.bestOfNEvidenceStatus?.status === 'fail';
-  const testCoverageEvidenceNormalized = harnessOnly
-    && hasTestCoverage
-    && report.testCoverageEvidenceStatus?.status === 'fail';
-  if (bestOfNEvidenceNormalized) {
-    report.bestOfNEvidenceStatus = {
-      status: 'pass',
-      normalizedBy: 'v114_harness_only_evidence',
-      safeSummaryOnly: true,
-    };
-  }
-  if (testCoverageEvidenceNormalized) {
-    report.testCoverageEvidenceStatus = {
-      status: 'pass',
-      normalizedBy: 'v114_harness_only_evidence',
-      safeSummaryOnly: true,
-    };
-  }
-  const status = harnessOnly && hasBestOfN && hasTestCoverage
-    ? 'pass'
-    : (harnessOnly ? 'manual_confirmation_required' : 'not_applicable');
   return {
-    status,
+    status: harnessOnly ? 'observed_display_only' : 'not_applicable',
     harnessOnly,
     changedFileCount: changedFiles.length,
-    bestOfNEvidenceNormalized,
-    testCoverageEvidenceNormalized,
+    bestOfNDisplaySectionsPresent,
+    testCoverageDisplaySectionsPresent,
+    prBodyMachineEvidence: false,
     safeSummaryOnly: true,
   };
 }
