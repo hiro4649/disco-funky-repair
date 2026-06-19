@@ -6025,8 +6025,155 @@ function buildV127ArtifactConsistency(index, head) {
   };
 }
 
-function buildV127FinalCanonicalArtifacts(report = {}, head = '') {
-  const canonicalQualityScore = Number(report.targetQualityScoreStatus?.score ?? report.qualityScoreStatus?.canonicalQualityScore ?? report.qualityScoreStatus?.score ?? 100);
+const V127_REQUIRED_FINAL_SELF_TEST_STATUS_KEYS = [
+  'v127SelfTestStatus',
+  'v126SelfTestStatus',
+  'v125SelfTestStatus',
+  'v124SelfTestStatus',
+  'v123SelfTestStatus',
+  'v122SelfTestStatus',
+  'v121SelfTestStatus',
+  'v120SelfTestStatus',
+  'v119SelfTestStatus',
+  'v118SelfTestStatus',
+  'v117SelfTestStatus',
+  'v116SelfTestStatus',
+  'v115SelfTestStatus',
+  'v114SelfTestStatus',
+  'v113SelfTestStatus',
+];
+
+const V127_APPROVED_HARNESS_WORKFLOW_REPAIR_FILES = new Set([
+  '.github/workflows/quality-gate.yml',
+  'scripts/codex-artifact-consistency-contract.mjs',
+  'scripts/codex-evidence-capsule.mjs',
+  'scripts/codex-final-decision-kernel.mjs',
+  'scripts/codex-local-quality-gate.mjs',
+  'scripts/codex-orchestration-capsule.mjs',
+  'scripts/codex-owner-decision-brief.mjs',
+  'scripts/codex-pr-evidence-block-renderer.mjs',
+  'scripts/codex-safe-artifact-index.mjs',
+  'scripts/codex-safe-output-scan.mjs',
+  'scripts/codex-v113-self-test.mjs',
+  'scripts/codex-v114-self-test.mjs',
+  'scripts/codex-v127-self-test.mjs',
+  'scripts/codex-worker-proof-capsule.mjs',
+  'scripts/codex-workflow-quality-runner.mjs',
+]);
+
+function v127StatusOf(value) {
+  if (typeof value === 'string') return value;
+  return value?.status || null;
+}
+
+function v127Pass(value) {
+  return v127StatusOf(value) === 'pass';
+}
+
+function v127ChangedFiles(report = {}, context = {}) {
+  return [
+    ...(Array.isArray(context.changedFiles) ? context.changedFiles : []),
+    ...(Array.isArray(report.workerProofCapsule?.changedFiles) ? report.workerProofCapsule.changedFiles : []),
+    ...(Array.isArray(report.workerProof?.changedFiles) ? report.workerProof.changedFiles : []),
+    ...(Array.isArray(report.workerProofCapsule?.observedGitWorktreePrState?.changedFiles) ? report.workerProofCapsule.observedGitWorktreePrState.changedFiles : []),
+  ].map((file) => String(file || '').replace(/\\/g, '/')).filter(Boolean);
+}
+
+function uniqueV127List(items = []) {
+  return [...new Set(items.filter(Boolean))];
+}
+
+export function deriveV127FinalState(report, context = {}) {
+  const reasonCodes = [];
+  const execution = context.executionResult || {};
+  const changedFiles = uniqueV127List(v127ChangedFiles(report, context));
+  const requiredSelfTestStatuses = Object.fromEntries(V127_REQUIRED_FINAL_SELF_TEST_STATUS_KEYS.map((key) => [key, v127StatusOf(report?.[key]) || 'missing']));
+  const allRequiredSelfTestsPass = V127_REQUIRED_FINAL_SELF_TEST_STATUS_KEYS.every((key) => requiredSelfTestStatuses[key] === 'pass');
+  const approvedScope = changedFiles.length > 0 && changedFiles.every((file) => V127_APPROVED_HARNESS_WORKFLOW_REPAIR_FILES.has(file));
+  const boundary = report?.workerProofCapsule?.boundaryDiffClassification || report?.workerProof?.boundaryDiffClassification || {};
+  const workflowChanged = boundary.workflowChanged === true || changedFiles.includes('.github/workflows/quality-gate.yml');
+  const productClean = boundary.productCodeChanged !== true
+    && boundary.packageChanged !== true
+    && boundary.lockfileChanged !== true
+    && boundary.runtimeChanged !== true
+    && report?.productCodeChanged !== true
+    && report?.packageChanged !== true
+    && report?.lockfileChanged !== true
+    && report?.runtimeReadinessClaimed !== true
+    && report?.productionReadinessClaimed !== true;
+  const heads = [
+    context.head,
+    report?.head,
+    report?.headSha,
+    report?.sameHeadEvidence?.localHead,
+    report?.sameHeadEvidence?.prHead,
+    report?.sameHeadEvidence?.workflowHead,
+    report?.sameHeadEvidence?.artifactHead,
+  ].map((item) => String(item || '').trim()).filter(Boolean);
+  const sameHeadStatus = heads.length >= 1 && heads.every((item) => item === String(context.head || heads[0]));
+  const safeOutputStatus = v127Pass(report?.safeOutputScanStatus);
+  const secretStatus = v127Pass(report?.secretScan) || v127Pass(report?.secretScanStatus) || v127Pass(report?.runtimeLogSecretScanStatus);
+  const targetQualityStatus = v127Pass(report?.targetQualityScoreStatus) || v127Pass(report?.qualityScoreStatus);
+  const finalDecisionStatus = v127Pass(report?.finalDecisionStatus);
+  const artifactInputStatus = report && typeof report === 'object' && Object.keys(report).length > 0 ? 'pass' : 'fail';
+  const reportStatusPass = report?.status === 'pass';
+  const gateExitPass = Number(execution.gateExit) === 0;
+  const workflowRunnerExitPass = Number(execution.workflowRunnerExit) === 0;
+  const remoteGatePass = context.remoteGate === 'pass' || report?.sameHeadRemoteGate === 'pass' || report?.finalDecision?.sameHeadRemoteGate === 'pass' || context.eventName === 'pull_request';
+  const noNonOverridableFailure = !Array.isArray(report?.failures) || report.failures.length === 0;
+
+  if (!gateExitPass) reasonCodes.push('gate_exit_nonzero');
+  if (!workflowRunnerExitPass) reasonCodes.push('workflow_runner_exit_nonzero');
+  if (artifactInputStatus !== 'pass') reasonCodes.push('raw_report_missing_or_invalid');
+  if (!reportStatusPass) reasonCodes.push('raw_report_status_not_pass');
+  if (!allRequiredSelfTestsPass) reasonCodes.push('required_self_test_not_pass');
+  if (!secretStatus) reasonCodes.push('secret_scan_not_pass');
+  if (!safeOutputStatus) reasonCodes.push('safe_output_scan_not_pass');
+  if (!approvedScope) reasonCodes.push('scope_boundary_not_pass');
+  if (!productClean) reasonCodes.push('product_or_runtime_contamination');
+  if (!workflowChanged) reasonCodes.push('workflow_change_not_observed');
+  if (!sameHeadStatus) reasonCodes.push('same_head_mismatch');
+  if (!remoteGatePass) reasonCodes.push('remote_gate_not_pass');
+  if (!targetQualityStatus) reasonCodes.push('target_quality_not_pass');
+  if (!finalDecisionStatus) reasonCodes.push('final_decision_status_not_pass');
+  if (!noNonOverridableFailure) reasonCodes.push('non_overridable_failures_present');
+
+  const status = reasonCodes.length === 0 ? 'pass' : 'fail';
+  const canonicalQualityScore = Number(report?.targetQualityScoreStatus?.score ?? report?.qualityScoreStatus?.canonicalQualityScore ?? report?.qualityScoreStatus?.score ?? (status === 'pass' ? 95 : 0));
+  const primaryFailure = reasonCodes[0] || null;
+  return {
+    classification: status === 'pass' ? 'technical_pass_owner_boundary' : 'technical_fail',
+    status,
+    technicalChecksReady: status === 'pass',
+    mergeReady: status === 'pass',
+    targetMergeReady: status === 'pass',
+    ownerMergeAuthorized: false,
+    mergeAllowed: false,
+    failureCount: reasonCodes.length,
+    blockingReasons: reasonCodes.map((reasonCode) => ({ reasonCode, safeSummaryOnly: true })),
+    manualReasons: [],
+    canonicalQualityScore,
+    canonicalSafeNextAction: status === 'pass' ? 'owner_merge_decision_only' : 'repair_v127_final_bundle',
+    primaryFailure,
+    reasonCodes,
+    requiredSelfTestStatuses,
+    sameHeadStatus: sameHeadStatus ? 'pass' : 'fail',
+    scopeStatus: approvedScope ? 'pass' : 'fail',
+    productStatus: productClean ? 'pass' : 'fail',
+    secretStatus: secretStatus ? 'pass' : 'fail',
+    safeOutputStatus: safeOutputStatus ? 'pass' : 'fail',
+    artifactInputStatus,
+    changedFiles,
+    workflowChanged,
+    remoteGate: remoteGatePass ? 'pass' : 'fail',
+    safeSummaryOnly: true,
+  };
+}
+
+function buildV127FinalCanonicalArtifacts(report = {}, context = {}) {
+  const head = String(context.head || '').trim();
+  const finalState = context.finalState || deriveV127FinalState(report, context);
+  const canonicalQualityScore = finalState.canonicalQualityScore;
   const base = {
     schemaVersion: '1.2.7',
     harnessVersion: HARNESS_VERSION,
@@ -6036,36 +6183,37 @@ function buildV127FinalCanonicalArtifacts(report = {}, head = '') {
     safeSummaryOnly: true,
   };
   const reasonSummary = {
-    status: 'pass',
+    status: finalState.status,
     mode: 'target',
     score: canonicalQualityScore,
-    blockingReasons: [],
+    blockingReasons: finalState.blockingReasons,
     manualReasons: [],
-    topNextActions: ['owner_merge_decision_only'],
+    topNextActions: [finalState.canonicalSafeNextAction],
     safeSummaryOnly: true,
   };
   const finalDecision = {
-    ...(report.finalDecision || {}),
     ...base,
-    decision: 'allowed',
+    decision: finalState.status === 'pass' ? 'allowed' : 'blocked',
     phase: 'merge_consideration',
     terminalAction: 'create_pr_only',
     mergeAllowed: false,
     ownerMergeAuthorized: false,
-    targetQualityStatus: 'pass',
-    blockingReasonsCount: 0,
-    sameHeadRemoteGate: 'pass',
+    targetQualityStatus: finalState.status === 'pass' ? 'pass' : 'fail',
+    blockingReasonsCount: finalState.blockingReasons.length,
+    sameHeadRemoteGate: finalState.remoteGate,
     ownerOrDelegatedMergeScope: 'missing',
-    closureStatus: 'pass',
-    singleClosureReason: 'owner_merge_decision_missing',
-    safeNextAction: 'owner_merge_decision_only',
+    closureStatus: finalState.status,
+    singleClosureReason: finalState.status === 'pass' ? 'owner_merge_decision_missing' : finalState.primaryFailure,
+    safeNextAction: finalState.canonicalSafeNextAction,
+    exitCode: finalState.status === 'pass' ? 0 : 1,
   };
   const ownerDecisionBrief = {
-    ...(report.ownerDecisionBrief || {}),
     ...base,
     decisionReady: false,
+    whatChanges: 'target_harness_v127_evidence_coherence_repair',
+    whyOwnerDecisionNeededNow: 'owner_conditional_merge_receipt_absent',
     recommendation: 'owner_merge_decision_only',
-    safeNextAction: 'owner_merge_decision_only',
+    safeNextAction: finalState.status === 'pass' ? 'owner_merge_decision_only' : 'repair_v127_final_bundle',
     proofCompleted: [
       'v127_current_self_test',
       'v126_v113_compatibility_matrix',
@@ -6076,55 +6224,173 @@ function buildV127FinalCanonicalArtifacts(report = {}, head = '') {
     ],
     proofMissing: ['owner_conditional_merge_receipt'],
     canonicalQualityScore,
+    finalDecisionClosureSummary: {
+      phase: 'merge_consideration',
+      terminalAction: 'create_pr_only',
+      mergeAllowed: false,
+      closureStatus: finalState.status,
+      singleClosureReason: finalDecision.singleClosureReason,
+      safeNextAction: finalDecision.safeNextAction,
+      safeSummaryOnly: true,
+    },
+    continuationDecision: {
+      state: finalState.status === 'pass' ? 'justified_owner_boundary' : 'technical_repair_required',
+      receiptValid: false,
+      scopeDeltaDetected: false,
+      oneSafeNextAction: finalDecision.safeNextAction,
+      safeSummaryOnly: true,
+    },
+    typedOwnerProcessReceipt: {
+      present: false,
+      receiptProvenancePresent: false,
+      ownerAuthorityCreatedByAI: false,
+      source: 'external_owner_process_scope_not_machine_bound',
+      safeNextAction: finalDecision.safeNextAction,
+      safeSummaryOnly: true,
+    },
+    ownerConditionalMergeReceipt: {
+      present: false,
+      ownerAuthorityCreatedByAI: false,
+      safeSummaryOnly: true,
+    },
   };
   const diagnostic = {
     ...base,
-    status: 'pass',
+    status: finalState.status,
     canonicalQualityScore,
-    technicalChecksReady: true,
-    mergeReady: true,
-    targetMergeReady: true,
+    qualityScore: canonicalQualityScore,
+    technicalChecksReady: finalState.technicalChecksReady,
+    mergeReady: finalState.mergeReady,
+    targetMergeReady: finalState.targetMergeReady,
     ownerMergeAuthorized: false,
-    blockingReasons: [],
+    blockingReasons: finalState.blockingReasons,
     manualReasons: [],
-    nextActions: ['owner_merge_decision_only'],
+    nextActions: [finalState.canonicalSafeNextAction],
     oneScreenDashboard: {
-      status: 'pass',
-      mergeReady: true,
-      targetMergeReady: true,
+      status: finalState.status,
+      mergeReady: finalState.mergeReady,
+      targetMergeReady: finalState.targetMergeReady,
       ownerMergeAuthorized: false,
-      topNextAction: 'owner_merge_decision_only',
+      topNextAction: finalState.canonicalSafeNextAction,
       safeSummaryOnly: true,
     },
   };
   const summary = {
-    ...(report || {}),
     ...base,
-    status: 'pass',
-    mergeReady: true,
-    targetMergeReady: true,
-    technicalChecksReady: true,
+    status: finalState.status,
+    mergeReady: finalState.mergeReady,
+    targetMergeReady: finalState.targetMergeReady,
+    technicalChecksReady: finalState.technicalChecksReady,
     ownerMergeAuthorized: false,
-    failureCount: 0,
-    failures: [],
+    mergeAllowed: false,
+    failureCount: finalState.failureCount,
+    failures: finalState.blockingReasons,
     canonicalQualityScore,
     qualityScore: canonicalQualityScore,
-    targetQualityScoreStatus: { status: 'pass', score: canonicalQualityScore, canonicalQualityScore, safeSummaryOnly: true },
-    qualityScoreStatus: { status: 'pass', score: canonicalQualityScore, canonicalQualityScore, ownerMergeAuthorized: false, safeSummaryOnly: true },
-    reasonSummaryStatus: { status: 'pass', reasonCodes: [], summary: reasonSummary, safeSummaryOnly: true },
+    ...Object.fromEntries(V127_REQUIRED_FINAL_SELF_TEST_STATUS_KEYS.map((key) => [key, { status: finalState.requiredSelfTestStatuses[key], safeSummaryOnly: true }])),
+    targetQualityScoreStatus: { status: finalState.status, score: canonicalQualityScore, canonicalQualityScore, safeSummaryOnly: true },
+    qualityScoreStatus: { status: finalState.status, score: canonicalQualityScore, canonicalQualityScore, ownerMergeAuthorized: false, safeSummaryOnly: true },
+    reasonSummary,
+    reasonSummaryStatus: { status: finalState.status, reasonCodes: finalState.reasonCodes, summary: reasonSummary, safeSummaryOnly: true },
     finalDecision,
-    finalDecisionStatus: { status: 'pass', safeSummaryOnly: true },
-    artifactConsistencyStatus: { status: 'pass', safeSummaryOnly: true },
-    safeOutputScanStatus: { status: 'pass', safeSummaryOnly: true },
-    secretScan: report.secretScan || { status: 'pass' },
-    safeNextAction: 'owner_merge_decision_only',
-    canonicalSafeNextAction: 'owner_merge_decision_only',
+    finalDecisionStatus: { status: finalState.status, safeSummaryOnly: true },
+    artifactConsistencyStatus: { status: finalState.status, safeSummaryOnly: true },
+    safeOutputScanStatus: { status: finalState.safeOutputStatus, safeSummaryOnly: true },
+    secretScan: { status: finalState.secretStatus, safeSummaryOnly: true },
+    scopeBoundaryStatus: { status: finalState.scopeStatus, changedFilesListedCount: finalState.changedFiles.length, safeSummaryOnly: true },
+    productStatus: { status: finalState.productStatus, safeSummaryOnly: true },
+    safeNextAction: finalState.canonicalSafeNextAction,
+    canonicalSafeNextAction: finalState.canonicalSafeNextAction,
   };
-  const minimalBlockers = { ...base, status: 'pass', blockerCount: 0, blockers: [], safe_next_action: 'owner_merge_decision_only' };
-  const decisionCapsule = { ...(report.decisionCapsule || {}), ...base, mergeAllowed: false, safeNextAction: 'owner_merge_decision_only' };
-  const evidenceCapsule = { ...(report.evidenceCapsule || {}), ...base, currentHeadEvidence: { ...(report.evidenceCapsule?.currentHeadEvidence || {}), headSha: head, sameHead: true, safeSummaryOnly: true } };
-  const orchestrationCapsule = { ...(report.orchestrationCapsule || {}), ...base };
-  const workerProof = { ...(report.workerProofCapsule || report.workerProof || {}), ...base };
+  const minimalBlockers = { ...base, status: finalState.status, blockerCount: finalState.blockingReasons.length, blockers: finalState.blockingReasons, safe_next_action: finalState.canonicalSafeNextAction };
+  const decisionCapsule = { ...base, mergeAllowed: false, safeNextAction: finalState.canonicalSafeNextAction };
+  const evidenceCapsule = { ...base, currentHeadEvidence: { headSha: head, sameHead: true, remoteGate: finalState.remoteGate, safeSummaryOnly: true } };
+  const orchestrationCapsule = {
+    ...base,
+    safeNextAction: finalState.canonicalSafeNextAction,
+    lane: 'same_head_remote_qg',
+    localHead: head,
+    prHead: head,
+    workflowHead: head,
+    artifactHead: head,
+    sameHead: true,
+    localGate: finalState.status,
+    remoteGate: finalState.remoteGate,
+    allowedNextAction: finalState.canonicalSafeNextAction,
+    oneBlockingReason: finalState.primaryFailure,
+    prBodyMachineEvidence: false,
+    finalDecisionClosure: {
+      phase: 'merge_consideration',
+      terminalAction: 'create_pr_only',
+      mergeAllowed: false,
+      targetQualityStatus: finalDecision.targetQualityStatus,
+      sameHeadRemoteGate: finalState.remoteGate,
+      ownerOrDelegatedMergeScope: 'missing',
+      closureStatus: finalState.status,
+      singleClosureReason: finalDecision.singleClosureReason,
+      safeNextAction: finalState.canonicalSafeNextAction,
+      safeSummaryOnly: true,
+    },
+    continuationDecision: { oneSafeNextAction: finalState.canonicalSafeNextAction, safeSummaryOnly: true },
+  };
+  const workerProof = {
+    ...(report.workerProofCapsule || report.workerProof || {}),
+    ...base,
+    changedFiles: finalState.changedFiles,
+    changedFilesListedCount: finalState.changedFiles.length,
+    safeNextAction: finalState.canonicalSafeNextAction,
+    boundaryDiffClassification: {
+      ...(report.workerProofCapsule?.boundaryDiffClassification || report.workerProof?.boundaryDiffClassification || {}),
+      changeClass: 'harness_workflow_repair',
+      productCodeChanged: false,
+      packageChanged: false,
+      lockfileChanged: false,
+      runtimeChanged: false,
+      workflowChanged: finalState.workflowChanged,
+      safeNextAction: finalState.canonicalSafeNextAction,
+      safeSummaryOnly: true,
+    },
+    observedGitWorktreePrState: {
+      ...(report.workerProofCapsule?.observedGitWorktreePrState || {}),
+      changedFiles: finalState.changedFiles,
+      changedFilesWithinAllowed: finalState.scopeStatus === 'pass',
+      forbiddenFilesTouched: finalState.scopeStatus !== 'pass',
+      safeNextAction: finalState.canonicalSafeNextAction,
+      safeSummaryOnly: true,
+    },
+    reviewerIndependenceProof: { independentReviewUsed: false, independenceStatus: 'not_used', safeSummaryOnly: true },
+  };
+  const prEvidence = {
+    ...base,
+    headSha: head,
+    runId: context.runId || '',
+    artifactName: context.artifactName || 'codex-quality-gate-safe-artifacts',
+    artifactPointer: `${context.runId || 'local'}:${context.artifactName || 'codex-quality-gate-safe-artifacts'}`,
+    sameHead: true,
+    remoteGate: finalState.remoteGate,
+    remoteEvidenceStatus: finalState.remoteGate,
+    prBodyMachineEvidence: false,
+    ownerMergeReceiptPresent: false,
+    ownerAuthorityCreatedByAI: false,
+    safeNextAction: finalState.canonicalSafeNextAction,
+  };
+  const normalizedEvidencePack = {
+    ...base,
+    evidencePackStatus: { status: finalState.status, safeSummaryOnly: true },
+    normalizedEvidencePackPresent: true,
+    headSha: head,
+    runId: context.runId || '',
+    artifactName: context.artifactName || 'codex-quality-gate-safe-artifacts',
+    artifactPointer: `${context.runId || 'local'}:${context.artifactName || 'codex-quality-gate-safe-artifacts'}`,
+    sameHead: true,
+    remoteGate: finalState.remoteGate,
+    prBodyMachineEvidence: false,
+    displayDeclarationsPresent: true,
+    ownerMergeReceiptPresent: false,
+    ownerAuthorityCreatedByAI: false,
+    safeNextAction: finalState.canonicalSafeNextAction,
+  };
+  const failureReasons = finalState.status === 'pass' ? [] : finalState.blockingReasons.map((item) => ({ ...item, severity: 'error' }));
   return {
     'codex-quality-gate-safe-summary.json': summary,
     'codex-diagnostic-consolidated-summary.json': diagnostic,
@@ -6135,9 +6401,12 @@ function buildV127FinalCanonicalArtifacts(report = {}, head = '') {
     'codex-evidence-capsule.safe.json': evidenceCapsule,
     'codex-orchestration-capsule.safe.json': orchestrationCapsule,
     'codex-worker-proof.safe.json': workerProof,
-    'codex-target-final-summary.json': { ...base, status: 'pass', canonicalQualityScore, score: canonicalQualityScore, safeNextAction: 'owner_merge_decision_only' },
-    'codex-target-quality-summary.json': { ...base, targetQualityScoreStatus: { status: 'pass', score: canonicalQualityScore, canonicalQualityScore, safeSummaryOnly: true }, canonicalQualityScore },
-    'codex-failure-reasons.json': [],
+    'codex-pr-evidence-rendered.safe.json': prEvidence,
+    'codex-evidence-pack.normalized.json': normalizedEvidencePack,
+    'codex-safe-artifact-classification.safe.json': { ...base, status: finalState.status, classification: finalState.status === 'pass' ? 'owner_merge_decision_required' : 'technical_repair_required', sameHead: true, remoteGate: finalState.remoteGate, mergeAllowed: false, ownerMergeAuthorized: false, safeNextAction: finalState.canonicalSafeNextAction },
+    'codex-target-final-summary.json': { ...base, status: finalState.status, canonicalQualityScore, score: canonicalQualityScore, safeNextAction: finalState.canonicalSafeNextAction },
+    'codex-target-quality-summary.json': { ...base, targetQualityScoreStatus: { status: finalState.status, score: canonicalQualityScore, canonicalQualityScore, safeSummaryOnly: true }, canonicalQualityScore },
+    'codex-failure-reasons.json': failureReasons,
   };
 }
 
@@ -6147,6 +6416,35 @@ export function finalizeV127SafeArtifactBundle(input = {}) {
   const stageDir = v127StageDir({ ...input, runnerTemp });
   const head = normalizeV127Head(input);
   const report = input.report || readOptionalJson(input.reportPath) || {};
+  const executionResult = input.executionResult || readOptionalJson(input.executionResultPath);
+  const executionResultValid = executionResult
+    && Number.isInteger(Number(executionResult.gateExit))
+    && Number.isInteger(Number(executionResult.workflowRunnerExit));
+  const context = {
+    gateExit: executionResultValid ? Number(executionResult.gateExit) : 1,
+    workflowRunnerExit: executionResultValid ? Number(executionResult.workflowRunnerExit) : 1,
+    executionResult: executionResultValid ? executionResult : { gateExit: 1, workflowRunnerExit: 1 },
+    head,
+    baseSha: input.baseSha || input.base || '',
+    runId: input.runId || '',
+    runAttempt: input.runAttempt || '',
+    eventName: input.eventName || process.env.CODEX_EVENT_NAME || '',
+    artifactName: input.artifactName || 'codex-quality-gate-safe-artifacts',
+    changedFiles: input.changedFiles || [],
+    remoteGate: executionResultValid ? 'pass' : 'fail',
+  };
+  const finalState = deriveV127FinalState(report, context);
+  if (!executionResultValid && !finalState.reasonCodes.includes('execution_result_invalid')) {
+    finalState.reasonCodes.unshift('execution_result_invalid');
+    finalState.blockingReasons.unshift({ reasonCode: 'execution_result_invalid', safeSummaryOnly: true });
+    finalState.primaryFailure = 'execution_result_invalid';
+    finalState.failureCount = finalState.reasonCodes.length;
+    finalState.status = 'fail';
+    finalState.technicalChecksReady = false;
+    finalState.mergeReady = false;
+    finalState.targetMergeReady = false;
+    finalState.canonicalSafeNextAction = 'repair_v127_final_bundle';
+  }
   fs.rmSync(stageDir, { recursive: true, force: true });
   fs.mkdirSync(stageDir, { recursive: true });
   const primaryNames = [...new Set([...V127_REQUIRED_SAFE_ARTIFACTS, ...V127_CANONICAL_OPTIONAL_SAFE_ARTIFACTS])]
@@ -6155,7 +6453,7 @@ export function finalizeV127SafeArtifactBundle(input = {}) {
   for (const name of V127_AUXILIARY_SAFE_ARTIFACTS) {
     copyIfPresent(runnerTemp, stageDir, name) || copyIfPresent(sourceDir, stageDir, name);
   }
-  const finalArtifacts = buildV127FinalCanonicalArtifacts(report, head);
+  const finalArtifacts = buildV127FinalCanonicalArtifacts(report, { ...context, finalState });
   for (const [name, value] of Object.entries(finalArtifacts)) writeStageJson(stageDir, name, value);
   const provisionalIndex = buildPhysicalSafeArtifactIndex(stageDir, { head });
   fs.writeFileSync(path.join(stageDir, 'codex-safe-artifact-index.json'), JSON.stringify(provisionalIndex, null, 2));
@@ -6166,16 +6464,57 @@ export function finalizeV127SafeArtifactBundle(input = {}) {
   fs.writeFileSync(path.join(stageDir, 'codex-artifact-consistency.safe.json'), JSON.stringify(finalConsistency, null, 2));
   const completeIndex = buildPhysicalSafeArtifactIndex(stageDir, { head });
   fs.writeFileSync(path.join(stageDir, 'codex-safe-artifact-index.json'), JSON.stringify(completeIndex, null, 2));
-  const validation = validateV127SafeArtifactBundle({ stageDir, head });
-  return { status: validation.status, stageDir, head, index: validation.index, consistency: finalConsistency, safeSummaryOnly: true };
+  const validation = validateV127SafeArtifactBundle({ stageDir, head, executionResult: context.executionResult });
+  const status = finalState.status === 'pass' && validation.status === 'pass' ? 'pass' : 'fail';
+  return { status, stageDir, head, index: validation.index, consistency: finalConsistency, semanticValidationStatus: validation.semanticValidationStatus, safeSummaryOnly: true };
 }
 
 export function validateV127SafeArtifactBundle(input = {}) {
   const stageDir = v127StageDir(input);
   const head = normalizeV127Head(input);
   const index = buildPhysicalSafeArtifactIndex(stageDir, { head });
-  const status = index.status === 'pass' ? 'pass' : 'fail';
-  return { status, stageDir, head, index, reasonCodes: index.reasonCodes, safeSummaryOnly: true };
+  const summary = readOptionalJson(path.join(stageDir, 'codex-quality-gate-safe-summary.json')) || {};
+  const finalDecision = readOptionalJson(path.join(stageDir, 'codex-final-decision.safe.json')) || {};
+  const orchestration = readOptionalJson(path.join(stageDir, 'codex-orchestration-capsule.safe.json')) || {};
+  const ownerBrief = readOptionalJson(path.join(stageDir, 'codex-owner-decision-brief.safe.json')) || {};
+  const prEvidence = readOptionalJson(path.join(stageDir, 'codex-pr-evidence-rendered.safe.json')) || {};
+  const normalizedEvidencePack = readOptionalJson(path.join(stageDir, 'codex-evidence-pack.normalized.json')) || {};
+  const workerProof = readOptionalJson(path.join(stageDir, 'codex-worker-proof.safe.json')) || {};
+  const failureReasons = readOptionalJson(path.join(stageDir, 'codex-failure-reasons.json')) || [];
+  const reasons = [];
+  if (index.status !== 'pass') reasons.push('physical_artifact_index_failed');
+  const summaryStatus = summary.status;
+  if (!['pass', 'fail'].includes(summaryStatus)) reasons.push('summary_status_invalid');
+  if (summaryStatus === 'pass') {
+    if (summary.failureCount !== 0) reasons.push('success_summary_failure_count_nonzero');
+    if (summary.technicalChecksReady !== true) reasons.push('success_summary_technical_checks_not_ready');
+    if (summary.mergeReady !== true) reasons.push('success_summary_merge_ready_false');
+    if (summary.ownerMergeAuthorized !== false) reasons.push('success_summary_owner_authorized');
+    if (summary.reasonSummary?.status !== 'pass') reasons.push('success_reason_summary_not_pass');
+    if (Array.isArray(summary.reasonSummary?.blockingReasons) && summary.reasonSummary.blockingReasons.length > 0) reasons.push('success_blocking_reasons_present');
+    if (Array.isArray(summary.reasonSummary?.manualReasons) && summary.reasonSummary.manualReasons.length > 0) reasons.push('success_manual_reasons_present');
+    if (summary.safeOutputScanStatus?.status !== 'pass') reasons.push('success_safe_output_not_pass');
+    if (summary.secretScan?.status !== 'pass') reasons.push('success_secret_scan_not_pass');
+    if (finalDecision.decision !== 'allowed') reasons.push('success_final_decision_not_allowed');
+    if (finalDecision.safeNextAction !== 'owner_merge_decision_only') reasons.push('success_final_decision_action_invalid');
+    if (orchestration.finalDecisionClosure?.phase !== 'merge_consideration') reasons.push('success_orchestration_closure_phase_stale');
+    if (orchestration.finalDecisionClosure?.singleClosureReason !== 'owner_merge_decision_missing') reasons.push('success_orchestration_closure_reason_stale');
+    if (ownerBrief.recommendation !== 'owner_merge_decision_only') reasons.push('success_owner_recommendation_invalid');
+    if (ownerBrief.continuationDecision?.oneSafeNextAction !== 'owner_merge_decision_only') reasons.push('success_owner_continuation_invalid');
+    if (prEvidence.remoteEvidenceStatus !== 'pass') reasons.push('success_pr_evidence_not_current');
+    if (normalizedEvidencePack.headSha !== head || normalizedEvidencePack.sameHead !== true || normalizedEvidencePack.remoteGate !== 'pass') reasons.push('success_normalized_evidence_binding_invalid');
+    if (workerProof.observedGitWorktreePrState?.changedFilesWithinAllowed !== true) reasons.push('success_worker_scope_invalid');
+    if (Array.isArray(failureReasons) && failureReasons.some((item) => item?.severity === 'error')) reasons.push('success_failure_error_rows_present');
+  } else {
+    if (summary.technicalChecksReady !== false) reasons.push('failure_summary_technical_checks_ready');
+    if (summary.mergeReady !== false) reasons.push('failure_summary_merge_ready_true');
+    if (summary.ownerMergeAuthorized !== false) reasons.push('failure_summary_owner_authorized');
+    if (!(Number(summary.failureCount || 0) > 0)) reasons.push('failure_summary_missing_failure_count');
+    if (finalDecision.mergeAllowed !== false) reasons.push('failure_final_decision_merge_allowed');
+    if (finalDecision.safeNextAction !== 'repair_v127_final_bundle') reasons.push('failure_next_action_not_repair');
+  }
+  const status = reasons.length === 0 ? 'pass' : 'fail';
+  return { status, stageDir, head, index, reasonCodes: [...(index.reasonCodes || []), ...reasons], semanticValidationStatus: { status, reasonCodes: reasons, safeSummaryOnly: true }, safeSummaryOnly: true };
 }
 
 function writeInvalidReportArtifacts(loaded) {
@@ -6530,12 +6869,23 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
 
   const args = parseArgs();
   if (args['finalize-v127-bundle']) {
-    const result = finalizeV127SafeArtifactBundle({ sourceDir: args['source-dir'] || process.cwd(), stageDir: args['stage-dir'], runnerTemp: args['runner-temp'], reportPath: args.report, head: args.head || args['head-sha'] });
+    const result = finalizeV127SafeArtifactBundle({
+      sourceDir: args['source-dir'] || process.cwd(),
+      stageDir: args['stage-dir'],
+      runnerTemp: args['runner-temp'],
+      reportPath: args.report,
+      executionResultPath: args['execution-result'],
+      head: args.head || args['head-sha'],
+      baseSha: args.base,
+      runId: args['run-id'],
+      runAttempt: args['run-attempt'],
+      artifactName: args['artifact-name'],
+    });
     writeJsonReport({ v127FinalBundleStatus: result }, 'CODEX_V127_FINAL_BUNDLE_REPORT');
     process.exit(result.status === 'pass' ? 0 : 1);
   }
   if (args['validate-v127-bundle']) {
-    const result = validateV127SafeArtifactBundle({ stageDir: args['stage-dir'], runnerTemp: args['runner-temp'], head: args.head || args['head-sha'] });
+    const result = validateV127SafeArtifactBundle({ stageDir: args['stage-dir'], runnerTemp: args['runner-temp'], executionResultPath: args['execution-result'], head: args.head || args['head-sha'] });
     writeJsonReport({ v127FinalBundleValidationStatus: result }, 'CODEX_V127_FINAL_BUNDLE_VALIDATION_REPORT');
     process.exit(result.status === 'pass' ? 0 : 1);
   }

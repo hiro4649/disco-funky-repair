@@ -18,7 +18,7 @@ import {
 } from './codex-orchestration-capsule.mjs';
 import { buildWorkerProofCapsule, validateWorkerProofCapsule } from './codex-worker-proof-capsule.mjs';
 import { buildOwnerDecisionBrief, validateOwnerDecisionBrief } from './codex-owner-decision-brief.mjs';
-import { evaluateWorkflowReport, finalizeV127SafeArtifactBundle, validateV127SafeArtifactBundle } from './codex-workflow-quality-runner.mjs';
+import { deriveV127FinalState, evaluateWorkflowReport, finalizeV127SafeArtifactBundle, validateV127SafeArtifactBundle } from './codex-workflow-quality-runner.mjs';
 import { buildEvidenceCapsule, validateEvidenceCapsule } from './codex-evidence-capsule.mjs';
 import { validateArtifactConsistency } from './codex-artifact-consistency-contract.mjs';
 import { applyTargetModeLegacyCompatibilityShadow } from './codex-local-quality-gate.mjs';
@@ -249,15 +249,51 @@ function v127FinalizerFixture(options = {}) {
   fs.writeFileSync(sourceDir + '/codex-quality-gate-safe-summary.json', JSON.stringify(staleSummary, null, 2));
   fs.writeFileSync(sourceDir + '/codex-diagnostic-consolidated-summary.json', JSON.stringify({ status: 'pass', safeSummaryOnly: true }, null, 2));
   fs.writeFileSync(runnerTemp + '/codex-remote-npm-diagnostic.safe.json', JSON.stringify({ status: 'pass', reasonCodes: ['npm_diagnostic'], safeSummaryOnly: true }, null, 2));
-  const report = options.report || staleSummary;
-  const finalized = finalizeV127SafeArtifactBundle({ sourceDir, runnerTemp, stageDir, report, head });
+  const passStatuses = Object.fromEntries(REQUIRED_V127_REMOTE_SELF_TEST_KEYS.map((key) => [key, { status: 'pass', safeSummaryOnly: true }]));
+  const report = options.report || {
+    ...staleSummary,
+    status: 'pass',
+    ...passStatuses,
+    secretScan: { status: 'pass', safeSummaryOnly: true },
+    safeOutputScanStatus: { status: 'pass', safeSummaryOnly: true },
+    targetQualityScoreStatus: { status: 'pass', score: 95, safeSummaryOnly: true },
+    finalDecisionStatus: { status: 'pass', safeSummaryOnly: true },
+    workerProofCapsule: {
+      changedFiles: [
+        '.github/workflows/quality-gate.yml',
+        'scripts/codex-artifact-consistency-contract.mjs',
+        'scripts/codex-evidence-capsule.mjs',
+        'scripts/codex-final-decision-kernel.mjs',
+        'scripts/codex-local-quality-gate.mjs',
+        'scripts/codex-orchestration-capsule.mjs',
+        'scripts/codex-owner-decision-brief.mjs',
+        'scripts/codex-pr-evidence-block-renderer.mjs',
+        'scripts/codex-safe-artifact-index.mjs',
+        'scripts/codex-safe-output-scan.mjs',
+        'scripts/codex-v113-self-test.mjs',
+        'scripts/codex-v114-self-test.mjs',
+        'scripts/codex-v127-self-test.mjs',
+        'scripts/codex-worker-proof-capsule.mjs',
+        'scripts/codex-workflow-quality-runner.mjs',
+      ],
+      boundaryDiffClassification: { productCodeChanged: false, packageChanged: false, lockfileChanged: false, runtimeChanged: false, workflowChanged: true, safeSummaryOnly: true },
+      observedGitWorktreePrState: { changedFilesWithinAllowed: true, forbiddenFilesTouched: false, safeSummaryOnly: true },
+      safeSummaryOnly: true,
+    },
+    finalDecision: { sameHeadRemoteGate: 'pass', safeSummaryOnly: true },
+  };
+  const executionResult = options.executionResult || { schemaVersion: '1.2.7', gateExit: 0, workflowRunnerExit: 0, safeSummaryOnly: true };
+  const finalized = finalizeV127SafeArtifactBundle({ sourceDir, runnerTemp, stageDir, report, executionResult, head, runId: '27852006538', artifactName: 'codex-quality-gate-safe-artifacts' });
   const validated = validateV127SafeArtifactBundle({ stageDir, head });
   const index = JSON.parse(fs.readFileSync(stageDir + '/codex-safe-artifact-index.json', 'utf8'));
   const summary = JSON.parse(fs.readFileSync(stageDir + '/codex-quality-gate-safe-summary.json', 'utf8'));
   const diagnostic = JSON.parse(fs.readFileSync(stageDir + '/codex-diagnostic-consolidated-summary.json', 'utf8'));
   const finalDecision = JSON.parse(fs.readFileSync(stageDir + '/codex-final-decision.safe.json', 'utf8'));
   const ownerBrief = JSON.parse(fs.readFileSync(stageDir + '/codex-owner-decision-brief.safe.json', 'utf8'));
-  return { finalized, validated, index, summary, diagnostic, finalDecision, ownerBrief, head };
+  const orchestration = JSON.parse(fs.readFileSync(stageDir + '/codex-orchestration-capsule.safe.json', 'utf8'));
+  const prEvidence = JSON.parse(fs.readFileSync(stageDir + '/codex-pr-evidence-rendered.safe.json', 'utf8'));
+  const normalizedEvidencePack = JSON.parse(fs.readFileSync(stageDir + '/codex-evidence-pack.normalized.json', 'utf8'));
+  return { finalized, validated, index, summary, diagnostic, finalDecision, ownerBrief, orchestration, prEvidence, normalizedEvidencePack, head };
 }
 function physicalIndexFixture(options = {}) {
   const dir = fs.mkdtempSync(`${os.tmpdir()}/codex-v127-index-`);
@@ -453,6 +489,62 @@ const cases = [
       && result.ownerBrief.proofCompleted.includes('v126_v113_compatibility_matrix')
       && result.ownerBrief.proofMissing.includes('owner_conditional_merge_receipt')
       && passed(validateOwnerDecisionBrief(buildOwnerDecisionBrief({ recommendation: 'owner_merge_decision_only' })));
+  }],
+  ['v127_finalizer_gate_exit_nonzero_fails_closed', () => {
+    const result = v127FinalizerFixture({ executionResult: { schemaVersion: '1.2.7', gateExit: 1, workflowRunnerExit: 0, safeSummaryOnly: true } });
+    return result.finalized.status === 'fail'
+      && result.summary.status === 'fail'
+      && result.finalDecision.decision === 'blocked'
+      && result.finalDecision.safeNextAction === 'repair_v127_final_bundle';
+  }],
+  ['v127_finalizer_runner_exit_nonzero_fails_closed', () => {
+    const result = v127FinalizerFixture({ executionResult: { schemaVersion: '1.2.7', gateExit: 0, workflowRunnerExit: 1, safeSummaryOnly: true } });
+    return result.summary.status === 'fail'
+      && result.summary.reasonSummary.blockingReasons.some((item) => item.reasonCode === 'workflow_runner_exit_nonzero');
+  }],
+  ['v127_finalizer_raw_report_fail_fails_closed', () => {
+    const result = v127FinalizerFixture({ report: { status: 'fail' }, executionResult: { schemaVersion: '1.2.7', gateExit: 0, workflowRunnerExit: 0, safeSummaryOnly: true } });
+    return result.summary.status === 'fail'
+      && result.summary.safeNextAction === 'repair_v127_final_bundle';
+  }],
+  ['v127_finalizer_owner_boundary_pass_not_merge_allowed', () => {
+    const result = v127FinalizerFixture();
+    return result.summary.status === 'pass'
+      && result.summary.technicalChecksReady === true
+      && result.summary.mergeAllowed === false
+      && result.finalDecision.mergeAllowed === false
+      && result.summary.safeNextAction === 'owner_merge_decision_only';
+  }],
+  ['v127_semantic_validator_rejects_stale_success_closure', () => {
+    const result = v127FinalizerFixture();
+    fs.writeFileSync(`${result.finalized.stageDir}/codex-orchestration-capsule.safe.json`, JSON.stringify({
+      ...result.orchestration,
+      finalDecisionClosure: { phase: 'create_pr_only', singleClosureReason: 'owner_merge_decision_required', safeNextAction: 'owner_boundary_stop', safeSummaryOnly: true },
+      safeSummaryOnly: true,
+    }, null, 2));
+    const validated = validateV127SafeArtifactBundle({ stageDir: result.finalized.stageDir, head: result.head });
+    return validated.status === 'fail'
+      && validated.reasonCodes.includes('success_orchestration_closure_phase_stale');
+  }],
+  ['v127_semantic_validator_rejects_pending_remote_evidence', () => {
+    const result = v127FinalizerFixture();
+    fs.writeFileSync(`${result.finalized.stageDir}/codex-pr-evidence-rendered.safe.json`, JSON.stringify({
+      ...result.prEvidence,
+      remoteEvidenceStatus: 'pending_or_not_applicable',
+      safeSummaryOnly: true,
+    }, null, 2));
+    const validated = validateV127SafeArtifactBundle({ stageDir: result.finalized.stageDir, head: result.head });
+    return validated.status === 'fail'
+      && validated.reasonCodes.includes('success_pr_evidence_not_current');
+  }],
+  ['v127_final_state_classifier_scope_contamination_fails', () => {
+    const state = deriveV127FinalState({ status: 'pass' }, {
+      executionResult: { gateExit: 0, workflowRunnerExit: 0 },
+      head: SAME_HEAD_ENVELOPE.localHead,
+      changedFiles: ['apps/backend/src/app.ts'],
+    });
+    return state.status === 'fail'
+      && state.reasonCodes.includes('scope_boundary_not_pass');
   }],
   ['pr_body_declarations_do_not_create_human_confirmation', () => {
     const rendered = renderPrEvidenceBlocks({

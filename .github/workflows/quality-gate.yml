@@ -249,6 +249,17 @@ jobs:
           CODEX_LIFEBOAT_PHASE=quality_gate_failed CODEX_LAST_KNOWN_GATE=local_quality_gate node scripts/codex-artifact-lifeboat.mjs > "$RUNNER_TEMP/codex-artifact-lifeboat-after-gate.json" || true
           runner_exit=0
           node scripts/codex-workflow-quality-runner.mjs --report "$RUNNER_TEMP/codex-quality-gate.json" --gate-exit "$gate_exit" || runner_exit=$?
+          node - "$gate_exit" "$runner_exit" "$RUNNER_TEMP/codex-execution-result.safe.json" <<'NODE'
+          const fs = require('fs');
+          const gateExit = Number(process.argv[2] || 1);
+          const workflowRunnerExit = Number(process.argv[3] || 1);
+          fs.writeFileSync(process.argv[4], `${JSON.stringify({
+            schemaVersion: '1.2.7',
+            gateExit,
+            workflowRunnerExit,
+            safeSummaryOnly: true,
+          }, null, 2)}\n`);
+          NODE
           node - "$RUNNER_TEMP/codex-quality-gate.json" <<'NODE'
           const fs = require('fs');
           const reportPath = process.argv[2];
@@ -452,10 +463,16 @@ jobs:
             --source-dir "$GITHUB_WORKSPACE" \
             --runner-temp "$RUNNER_TEMP" \
             --report "$RUNNER_TEMP/codex-quality-gate.json" \
+            --execution-result "$RUNNER_TEMP/codex-execution-result.safe.json" \
             --stage-dir "$RUNNER_TEMP/codex-quality-gate-safe-artifacts" \
-            --head "${{ github.event.pull_request.head.sha || github.sha }}"
+            --head "${{ github.event.pull_request.head.sha || github.sha }}" \
+            --base "${{ github.event.pull_request.base.sha || '' }}" \
+            --run-id "${{ github.run_id }}" \
+            --run-attempt "${{ github.run_attempt }}" \
+            --artifact-name codex-quality-gate-safe-artifacts
           node scripts/codex-workflow-quality-runner.mjs \
             --validate-v127-bundle \
+            --execution-result "$RUNNER_TEMP/codex-execution-result.safe.json" \
             --stage-dir "$RUNNER_TEMP/codex-quality-gate-safe-artifacts" \
             --head "${{ github.event.pull_request.head.sha || github.sha }}"
       - name: Upload safe quality artifacts
