@@ -13,6 +13,7 @@
 
 
 import fs from 'node:fs';
+import path from 'node:path';
 
 
 
@@ -47,7 +48,7 @@ import { buildCompactReasonSummary } from './codex-reason-summary.mjs';
 
 
 
-import { buildSafeArtifactIndex } from './codex-safe-artifact-index.mjs';
+import { buildSafeArtifactIndex, buildPhysicalSafeArtifactIndex, V127_REQUIRED_SAFE_ARTIFACTS, V127_CANONICAL_OPTIONAL_SAFE_ARTIFACTS, V127_AUXILIARY_SAFE_ARTIFACTS } from './codex-safe-artifact-index.mjs';
 
 
 
@@ -5947,6 +5948,104 @@ function writeArtifacts(result, report) {
 
 
 
+
+function normalizeV127Head(input = {}) {
+  return String(input.head || input.headSha || process.env.CODEX_PR_HEAD_SHA || process.env.GITHUB_SHA || '').trim();
+}
+
+function v127StageDir(input = {}) {
+  return input.stageDir || path.join(input.runnerTemp || process.env.RUNNER_TEMP || process.cwd(), 'codex-quality-gate-safe-artifacts');
+}
+
+function copyIfPresent(sourceDir, stageDir, artifactName) {
+  const source = path.join(sourceDir, artifactName);
+  if (!fs.existsSync(source) || !fs.statSync(source).isFile()) return false;
+  fs.copyFileSync(source, path.join(stageDir, artifactName));
+  return true;
+}
+
+function buildV127ArtifactConsistency(index, head) {
+  const failureCount = Number(index.physicalButUndeclaredCount || 0)
+    + Number(index.indexedPresentButAbsentCount || 0)
+    + Number(index.missingRequiredArtifactCount || 0)
+    + Number(index.duplicateRelativePathCount || 0)
+    + Number(index.duplicateBasenameCount || 0)
+    + Number(index.invalidJsonArtifactCount || 0)
+    + Number(index.safeOutputFailureCount || 0)
+    + Number(index.headMismatchCount || 0);
+  const status = index.status === 'pass' && failureCount === 0 ? 'pass' : 'fail';
+  return {
+    schemaVersion: '1.2.7',
+    harnessVersion: HARNESS_VERSION,
+    head,
+    headSha: head,
+    status,
+    artifactConsistencyStatus: {
+      status,
+      checkedArtifacts: index.artifacts.length,
+      physicalFileCount: index.physicalFileCount,
+      indexedPresentFileCount: index.indexedPresentFileCount,
+      physicalButUndeclaredCount: index.physicalButUndeclaredCount,
+      indexedPresentButAbsentCount: index.indexedPresentButAbsentCount,
+      missingRequiredArtifactCount: index.missingRequiredArtifactCount,
+      duplicateRelativePathCount: index.duplicateRelativePathCount,
+      duplicateBasenameCount: index.duplicateBasenameCount,
+      invalidJsonArtifactCount: index.invalidJsonArtifactCount,
+      safeOutputFailureCount: index.safeOutputFailureCount,
+      headMismatchCount: index.headMismatchCount,
+      checkedLoadBearingArtifactCount: index.checkedLoadBearingArtifactCount,
+      safeSummaryOnly: true,
+    },
+    physicalFileCount: index.physicalFileCount,
+    indexedPresentFileCount: index.indexedPresentFileCount,
+    physicalButUndeclaredCount: index.physicalButUndeclaredCount,
+    indexedPresentButAbsentCount: index.indexedPresentButAbsentCount,
+    missingRequiredArtifactCount: index.missingRequiredArtifactCount,
+    duplicateRelativePathCount: index.duplicateRelativePathCount,
+    duplicateBasenameCount: index.duplicateBasenameCount,
+    invalidJsonArtifactCount: index.invalidJsonArtifactCount,
+    safeOutputFailureCount: index.safeOutputFailureCount,
+    headMismatchCount: index.headMismatchCount,
+    checkedLoadBearingArtifactCount: index.checkedLoadBearingArtifactCount,
+    reasonCodes: index.reasonCodes,
+    safeSummaryOnly: true,
+  };
+}
+
+export function finalizeV127SafeArtifactBundle(input = {}) {
+  const sourceDir = input.sourceDir || process.cwd();
+  const runnerTemp = input.runnerTemp || process.env.RUNNER_TEMP || sourceDir;
+  const stageDir = v127StageDir({ ...input, runnerTemp });
+  const head = normalizeV127Head(input);
+  fs.rmSync(stageDir, { recursive: true, force: true });
+  fs.mkdirSync(stageDir, { recursive: true });
+  const primaryNames = [...new Set([...V127_REQUIRED_SAFE_ARTIFACTS, ...V127_CANONICAL_OPTIONAL_SAFE_ARTIFACTS])]
+    .filter((name) => !['codex-safe-artifact-index.json', 'codex-artifact-consistency.safe.json'].includes(name));
+  for (const name of primaryNames) copyIfPresent(sourceDir, stageDir, name);
+  for (const name of V127_AUXILIARY_SAFE_ARTIFACTS) {
+    copyIfPresent(runnerTemp, stageDir, name) || copyIfPresent(sourceDir, stageDir, name);
+  }
+  const provisionalIndex = buildPhysicalSafeArtifactIndex(stageDir, { head });
+  fs.writeFileSync(path.join(stageDir, 'codex-safe-artifact-index.json'), JSON.stringify(provisionalIndex, null, 2));
+  const provisionalConsistency = buildV127ArtifactConsistency(provisionalIndex, head);
+  fs.writeFileSync(path.join(stageDir, 'codex-artifact-consistency.safe.json'), JSON.stringify(provisionalConsistency, null, 2));
+  const finalIndex = buildPhysicalSafeArtifactIndex(stageDir, { head });
+  const finalConsistency = buildV127ArtifactConsistency(finalIndex, head);
+  fs.writeFileSync(path.join(stageDir, 'codex-artifact-consistency.safe.json'), JSON.stringify(finalConsistency, null, 2));
+  const completeIndex = buildPhysicalSafeArtifactIndex(stageDir, { head });
+  fs.writeFileSync(path.join(stageDir, 'codex-safe-artifact-index.json'), JSON.stringify(completeIndex, null, 2));
+  const validation = validateV127SafeArtifactBundle({ stageDir, head });
+  return { status: validation.status, stageDir, head, index: validation.index, consistency: finalConsistency, safeSummaryOnly: true };
+}
+
+export function validateV127SafeArtifactBundle(input = {}) {
+  const stageDir = v127StageDir(input);
+  const head = normalizeV127Head(input);
+  const index = buildPhysicalSafeArtifactIndex(stageDir, { head });
+  const status = index.status === 'pass' ? 'pass' : 'fail';
+  return { status, stageDir, head, index, reasonCodes: index.reasonCodes, safeSummaryOnly: true };
+}
+
 function writeInvalidReportArtifacts(loaded) {
 
 
@@ -6298,6 +6397,16 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
 
 
   const args = parseArgs();
+  if (args['finalize-v127-bundle']) {
+    const result = finalizeV127SafeArtifactBundle({ sourceDir: args['source-dir'] || process.cwd(), stageDir: args['stage-dir'], runnerTemp: args['runner-temp'], head: args.head || args['head-sha'] });
+    writeJsonReport({ v127FinalBundleStatus: result }, 'CODEX_V127_FINAL_BUNDLE_REPORT');
+    process.exit(result.status === 'pass' ? 0 : 1);
+  }
+  if (args['validate-v127-bundle']) {
+    const result = validateV127SafeArtifactBundle({ stageDir: args['stage-dir'], runnerTemp: args['runner-temp'], head: args.head || args['head-sha'] });
+    writeJsonReport({ v127FinalBundleValidationStatus: result }, 'CODEX_V127_FINAL_BUNDLE_VALIDATION_REPORT');
+    process.exit(result.status === 'pass' ? 0 : 1);
+  }
 
 
 

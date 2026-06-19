@@ -3983,6 +3983,14 @@ function applyV127PostClosureConsistency(report = {}, outcome = {}) {
   };
 }
 
+function isV127ClosureClearableFailure(item = {}) {
+  const id = String(item.id || item.reasonCode || item.primaryClass || '').toLowerCase();
+  const message = String(item.message || item.safeMessage || '').toLowerCase();
+  const text = id + ' ' + message;
+  if (/secret|raw_log|safe_output|scope|token_budget|product|runtime|production|staging|permission|owner|same_head|artifact|required_check/.test(text)) return false;
+  return /stale|legacy|compatibility|display|advisory/.test(text);
+}
+
 function applyV127RemoteEvidenceClosure(report = {}, outcome = {}, env = process.env) {
   const context = buildV127RemoteEvidenceContext(env);
   const requiredSelfTestMissing = requiredSelfTestFailures(report);
@@ -4001,8 +4009,8 @@ function applyV127RemoteEvidenceClosure(report = {}, outcome = {}, env = process
   }
   const shouldCloseRemote = context.remotePr && gatePassed;
   if (shouldCloseRemote) {
-    outcome.failures.splice(0, outcome.failures.length);
-    outcome.warnings.splice(0, outcome.warnings.length);
+    outcome.failures = outcome.failures.filter((item) => !isV127ClosureClearableFailure(item));
+    outcome.warnings = outcome.warnings.filter((item) => !isV127ClosureClearableFailure(item));
   }
   let observedBudgetMetrics = buildV127ObservedTokenMetrics(report);
   applyV127ObservedTokenMetrics(report, observedBudgetMetrics);

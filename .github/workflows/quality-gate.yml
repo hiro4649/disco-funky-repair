@@ -442,119 +442,25 @@ jobs:
             console.log(`- ${reasonCode}: ${safeMessage}`);
           }
           NODE
-      - name: Validate required safe artifacts before upload
+      - name: Finalize v127 safe artifact bundle
         if: always()
         shell: bash
         run: |
           set -euo pipefail
-          required_artifacts=(
-            codex-quality-gate-safe-summary.json
-            codex-final-decision.safe.json
-            codex-orchestration-capsule.safe.json
-            codex-worker-proof.safe.json
-            codex-owner-decision-brief.safe.json
-            codex-evidence-capsule.safe.json
-            codex-decision-capsule.safe.json
-            codex-artifact-consistency.safe.json
-            codex-minimal-blockers.safe.json
-            codex-safe-artifact-index.json
-            codex-diagnostic-consolidated-summary.json
-          )
-          for file in "${required_artifacts[@]}"; do
-            test -f "$file"
-            test -s "$file"
-            node -e 'JSON.parse(require("fs").readFileSync(process.argv[1], "utf8"))' "$file"
-          done
-          node - "${{ github.event.pull_request.head.sha || github.sha }}" <<'NODE'
-          const fs = require('fs');
-          const head = process.argv[2];
-          for (const file of ['codex-quality-gate-safe-summary.json', 'codex-diagnostic-consolidated-summary.json']) {
-            const value = JSON.parse(fs.readFileSync(file, 'utf8'));
-            value.head = head;
-            value.headSha = head;
-            value.safeSummaryOnly = value.safeSummaryOnly !== false;
-            fs.writeFileSync(file, `${JSON.stringify(value, null, 2)}\n`);
-          }
-          NODE
-          node scripts/codex-safe-artifact-index.mjs \
-            --validate-physical-bundle \
-            --write-artifact \
-            --dir "$GITHUB_WORKSPACE" \
+          node scripts/codex-workflow-quality-runner.mjs \
+            --finalize-v127-bundle \
+            --source-dir "$GITHUB_WORKSPACE" \
+            --runner-temp "$RUNNER_TEMP" \
+            --stage-dir "$RUNNER_TEMP/codex-quality-gate-safe-artifacts" \
             --head "${{ github.event.pull_request.head.sha || github.sha }}"
-          node - <<'NODE'
-          const fs = require('fs');
-          function read(file) {
-            return JSON.parse(fs.readFileSync(file, 'utf8'));
-          }
-          const index = read('codex-safe-artifact-index.json');
-          const consistency = read('codex-artifact-consistency.safe.json');
-          const finalDecision = read('codex-final-decision.safe.json');
-          const orchestration = read('codex-orchestration-capsule.safe.json');
-          const rendered = fs.existsSync('codex-pr-evidence-rendered.safe.json') ? read('codex-pr-evidence-rendered.safe.json') : {};
-          const evidencePack = fs.existsSync('codex-evidence-pack.normalized.json') ? read('codex-evidence-pack.normalized.json') : {};
-          const fail = (code) => { throw new Error(code); };
-          if (index.status !== 'pass') fail('safe_artifact_index_parity_failed');
-          for (const key of ['physicalButUnindexedCount','indexedPresentButAbsentCount','missingRequiredArtifactCount','duplicateBasenameCount','invalidJsonArtifactCount','safeOutputFailureCount','headMismatchCount']) {
-            if (Number(index[key] || 0) !== 0) fail(`safe_artifact_index_${key}_nonzero`);
-          }
-          if (consistency.status !== 'pass' || consistency.artifactConsistencyStatus?.status !== 'pass') fail('artifact_consistency_failed');
-          if (finalDecision.safeNextAction !== 'owner_merge_decision_only' || finalDecision.mergeAllowed !== false) fail('final_decision_surface_mismatch');
-          const envelope = orchestration.decisionEvidenceEnvelopeAndSameHeadBinder?.decisionEvidenceEnvelope || {};
-          if (envelope.allowedNextAction !== 'owner_merge_decision_only' || envelope.remoteGate !== 'pass') fail('orchestration_surface_mismatch');
-          const renderedConfirmation = rendered.evidencePack?.humanConfirmation;
-          if (renderedConfirmation?.present === true || renderedConfirmation?.confirmedByRole === 'project-owner') fail('unauthenticated_human_confirmation_claimed');
-          if (evidencePack.evidencePackStatus?.status === 'missing') fail('normalized_evidence_pack_missing');
-          NODE
+          node scripts/codex-workflow-quality-runner.mjs \
+            --validate-v127-bundle \
+            --stage-dir "$RUNNER_TEMP/codex-quality-gate-safe-artifacts" \
+            --head "${{ github.event.pull_request.head.sha || github.sha }}"
       - name: Upload safe quality artifacts
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: codex-quality-gate-safe-artifacts
-          path: |
-            codex-quality-gate-safe-summary.json
-            codex-final-decision.safe.json
-            codex-orchestration-capsule.safe.json
-            codex-worker-proof.safe.json
-            codex-owner-decision-brief.safe.json
-            codex-evidence-capsule.safe.json
-            codex-owner-decision-receipt.safe.json
-            codex-decision-capsule.safe.json
-            codex-artifact-consistency.safe.json
-            codex-minimal-blockers.safe.json
-            codex-minimal-safe-failure.json
-            codex-decision-core.safe.json
-            codex-safe-artifact-index.safe.json
-            codex-diagnostic-consolidated-summary.json
-            codex-evidence-pack.normalized.json
-            codex-self-test-cases.safe.json
-            codex-failure-reasons.json
-            codex-invalid-report-recovery-summary.json
-            codex-target-quality-summary.json
-            codex-source-final-summary.json
-            codex-target-final-summary.json
-            codex-safe-artifact-index.json
-            codex-safe-artifact-classification.safe.json
-            codex-pr-evidence-rendered.safe.json
-            codex-evidence-auto-repair-hint.safe.json
-            codex-same-head-artifact-evidence.safe.json
-            codex-docker-smoke-artifact.safe.json
-            ${{ runner.temp }}/codex-backend-docker-smoke.safe.json
-            codex-pr-evidence-compact.safe.json
-            codex-product-context-safe-artifact.safe.json
-            codex-product-baseline-continuity.safe.json
-            codex-false-positive-budget.safe.json
-            codex-agent-session-governance.safe.json
-            codex-evidence-minimality.safe.json
-            codex-safe-artifact-next-action.safe.json
-            codex-skill-evidence-link.safe.json
-            codex-workflow-preflight.safe.json
-            codex-test-metrics.safe.json
-            ${{ runner.temp }}/codex-remote-npm-diagnostic.safe.json
-            ${{ runner.temp }}/codex-product-verification-evidence.remote.json
-            ${{ runner.temp }}/codex-remote-product-baseline.json
-            ${{ runner.temp }}/codex-remote-product-checks.safe.json
-            codex-dataset-audit-v2.safe.json
-            codex-browser-smoke-json-artifact.safe.json
-            codex-runtime-latency-measurement.safe.json
-            codex-owner-decision-digest.safe.json
-          if-no-files-found: ignore
+          path: ${{ runner.temp }}/codex-quality-gate-safe-artifacts/*
+          if-no-files-found: error
