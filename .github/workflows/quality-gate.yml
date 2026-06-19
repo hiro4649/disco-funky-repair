@@ -109,6 +109,11 @@ jobs:
           CODEX_PR_NUMBER: ${{ github.event.pull_request.number || '' }}
           CODEX_PR_HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
           CODEX_PR_BASE_SHA: ${{ github.event.pull_request.base.sha || '' }}
+          CODEX_WORKFLOW_HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+          CODEX_ARTIFACT_HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+          CODEX_BRANCH: ${{ github.head_ref || github.ref_name }}
+          CODEX_QUALITY_GATE_RUN_ID: ${{ github.run_id }}
+          CODEX_QUALITY_GATE_RUN_ATTEMPT: ${{ github.run_attempt }}
           CODEX_REPOSITORY: ${{ github.repository }}
         run: |
           set -euo pipefail
@@ -127,7 +132,15 @@ jobs:
           fi
           export CODEX_HARNESS_MODE=target
           export CODEX_PROFILE_COMPAT_MODE=off
-          changed_files="$(git diff --name-only origin/main...HEAD || true)"
+          if [ "${CODEX_EVENT_NAME:-}" = "pull_request" ]; then
+            test -n "${CODEX_PR_BASE_SHA:-}"
+            test -n "${CODEX_PR_HEAD_SHA:-}"
+            git cat-file -e "${CODEX_PR_BASE_SHA}^{commit}"
+            test "$(git rev-parse HEAD)" = "${CODEX_PR_HEAD_SHA}"
+            changed_files="$(git diff --name-only "${CODEX_PR_BASE_SHA}"...HEAD)"
+          else
+            changed_files="$(git diff --name-only origin/main...HEAD)"
+          fi
           export CODEX_CHANGED_FILES="$changed_files"
           {
             echo "CODEX_CHANGED_FILES<<CODEX_CHANGED_FILES_EOF"
@@ -193,13 +206,17 @@ jobs:
           CODEX_PR_NUMBER: ${{ github.event.pull_request.number || '' }}
           CODEX_PR_HEAD_SHA: ${{ github.event.pull_request.head.sha || '' }}
           CODEX_PR_BASE_SHA: ${{ github.event.pull_request.base.sha || '' }}
+          CODEX_WORKFLOW_HEAD_SHA: ${{ github.event.pull_request.head.sha || '' }}
+          CODEX_ARTIFACT_HEAD_SHA: ${{ github.event.pull_request.head.sha || '' }}
+          CODEX_BRANCH: ${{ github.head_ref || github.ref_name }}
           CODEX_PR_BODY: ${{ github.event.pull_request.body || '' }}
           CODEX_REPOSITORY: ${{ github.repository }}
           CODEX_LIFEBOAT_PATH: ${{ runner.temp }}/codex-minimal-safe-failure.json
           CODEX_EXECUTION_MODE: target_pr
           CODEX_TERMINAL_ACTION: create_pr_only
           CODEX_QUALITY_GATE_RUN_ID: ${{ github.run_id }}
-          CODEX_SAFE_ARTIFACT_ID: ${{ github.run_id }}-${{ github.run_attempt }}
+          CODEX_QUALITY_GATE_RUN_ATTEMPT: ${{ github.run_attempt }}
+          CODEX_SAFE_ARTIFACT_NAME: codex-quality-gate-safe-artifacts
           GITHUB_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
@@ -440,18 +457,10 @@ jobs:
             codex-owner-decision-receipt.safe.json
             codex-decision-capsule.safe.json
             codex-artifact-consistency.safe.json
-            ${{ runner.temp }}/codex-decision-capsule.safe.json
-            ${{ runner.temp }}/codex-artifact-consistency.safe.json
-            ${{ runner.temp }}/codex-quality-gate-safe-summary.json
             codex-minimal-blockers.safe.json
             codex-minimal-safe-failure.json
-            ${{ runner.temp }}/codex-minimal-safe-failure.json
             codex-decision-core.safe.json
-            ${{ runner.temp }}/codex-decision-core.safe.json
-            codex-minimal-blockers.safe.json
-            ${{ runner.temp }}/codex-minimal-blockers.safe.json
             codex-safe-artifact-index.safe.json
-            ${{ runner.temp }}/codex-safe-artifact-index.safe.json
             codex-diagnostic-consolidated-summary.json
             codex-evidence-pack.normalized.json
             codex-self-test-cases.safe.json

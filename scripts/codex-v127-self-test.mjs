@@ -18,6 +18,9 @@ import {
 import { buildWorkerProofCapsule, validateWorkerProofCapsule } from './codex-worker-proof-capsule.mjs';
 import { buildOwnerDecisionBrief, validateOwnerDecisionBrief } from './codex-owner-decision-brief.mjs';
 import { evaluateWorkflowReport } from './codex-workflow-quality-runner.mjs';
+import { buildEvidenceCapsule, validateEvidenceCapsule } from './codex-evidence-capsule.mjs';
+import { validateArtifactConsistency } from './codex-artifact-consistency-contract.mjs';
+import { applyTargetModeLegacyCompatibilityShadow } from './codex-local-quality-gate.mjs';
 
 function test(name, fn) {
   try {
@@ -68,10 +71,10 @@ const VALID_PROCESS_RECEIPT = {
 
 const SAME_HEAD_ENVELOPE = {
   lane: 'same_head_remote_qg',
-  localHead: 'abc123',
-  prHead: 'abc123',
-  workflowHead: 'abc123',
-  artifactHead: 'abc123',
+  localHead: 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+  prHead: 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+  workflowHead: 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+  artifactHead: 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
   remoteGate: 'pass',
   allowedNextAction: 'owner_merge_decision_only',
 };
@@ -80,7 +83,7 @@ const workflowText = fs.existsSync('.github/workflows/quality-gate.yml')
   ? fs.readFileSync('.github/workflows/quality-gate.yml', 'utf8')
   : '';
 
-const PR_BODY_RECEIPT_TEXT = `I confirm PR #364 current head abc123 for merge consideration.
+const PR_BODY_RECEIPT_TEXT = `I confirm PR #364 current head aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa for merge consideration.
 Owner decision: owner_merge_after_same_head_pass.
 `;
 
@@ -135,6 +138,80 @@ function sameHeadControl(envelopeOverrides = {}) {
     },
   }).decisionEvidenceEnvelopeAndSameHeadBinder;
 }
+
+const REQUIRED_V127_REMOTE_SELF_TEST_KEYS = [
+  'v127SelfTestStatus',
+  'v126SelfTestStatus',
+  'v125SelfTestStatus',
+  'v124SelfTestStatus',
+  'v123SelfTestStatus',
+  'v122SelfTestStatus',
+  'v121SelfTestStatus',
+  'v120SelfTestStatus',
+  'v119SelfTestStatus',
+  'v118SelfTestStatus',
+  'v117SelfTestStatus',
+  'v116SelfTestStatus',
+  'v115SelfTestStatus',
+  'v114SelfTestStatus',
+  'v113SelfTestStatus',
+];
+
+const allVersionedPassReport = Object.fromEntries(REQUIRED_V127_REMOTE_SELF_TEST_KEYS.map((key) => [key, { status: 'pass', safeSummaryOnly: true }]));
+const workflowAllVersionedFixture = evaluateWorkflowReport({
+  status: 'pass',
+  technicalChecksReady: true,
+  mergeReady: true,
+  targetQualityScoreStatus: { status: 'pass', safeSummaryOnly: true },
+  ...allVersionedPassReport,
+}, { gateExit: 0, eventName: 'pull_request' });
+const workflowMissingV126Fixture = evaluateWorkflowReport({
+  status: 'pass',
+  technicalChecksReady: true,
+  mergeReady: true,
+  targetQualityScoreStatus: { status: 'pass', safeSummaryOnly: true },
+  ...Object.fromEntries(REQUIRED_V127_REMOTE_SELF_TEST_KEYS.filter((key) => key !== 'v126SelfTestStatus').map((key) => [key, { status: 'pass', safeSummaryOnly: true }])),
+}, { gateExit: 0, eventName: 'pull_request' });
+
+const evidencePointerFixture = buildEvidenceCapsule({
+  terminalAction: 'create_pr_only',
+  headSha: SAME_HEAD_ENVELOPE.localHead,
+  qualityGateRunId: '27822120722',
+  runAttempt: '1',
+  artifactName: 'codex-quality-gate-safe-artifacts',
+  artifactPointer: '27822120722:codex-quality-gate-safe-artifacts',
+  artifactNumericId: null,
+  artifactDigest: null,
+  prHeadSha: SAME_HEAD_ENVELOPE.localHead,
+  workflowHeadSha: SAME_HEAD_ENVELOPE.localHead,
+  artifactHeadSha: SAME_HEAD_ENVELOPE.localHead,
+});
+
+const pseudoArtifactIdFixture = buildEvidenceCapsule({
+  terminalAction: 'create_pr_only',
+  headSha: SAME_HEAD_ENVELOPE.localHead,
+  qualityGateRunId: '27822120722',
+  artifactName: 'codex-quality-gate-safe-artifacts',
+  artifactPointer: '27822120722-codex-quality-gate-safe-artifacts',
+  artifactNumericId: '27822120722-1',
+});
+
+const targetLegacyCompatibilityShadowFixture = (() => {
+  const report = {
+    targetModeLegacyCompatibilityStatus: {
+      status: 'fail',
+      classifications: [
+        { key: 'v111SelfTestStatus', classification: 'missing_blocking' },
+        { key: 'v085SelfTestStatus', classification: 'advisory_legacy' },
+      ],
+      reasonCodes: ['target_mode_compatibility_blocking_status'],
+      safeSummaryOnly: true,
+    },
+  };
+  const failures = [{ id: 'targetModeLegacyCompatibilityStatus.failed' }];
+  applyTargetModeLegacyCompatibilityShadow(report, failures);
+  return { report, failures };
+})();
 
 function resolveHarnessMode(env = process.env) {
   if (env.CODEX_HARNESS_MODE === 'target') return 'target';
@@ -237,13 +314,19 @@ const cases = [
   ['workflow_contains_no_pr_body_merge_confirmation_bridge', () => !workflowText.includes('CODEX_OWNER_MERGE_CONFIRMED') && !workflowText.includes('owner_merge_after_same_head_pass')],
   ['workflow_contains_no_post_gate_merge_authority_rewrite', () => !workflowText.includes('ownerDecisionReady') && !workflowText.includes("terminalAction: 'merge_current_pr'") && !workflowText.includes('mergeAllowed: true')],
   ['workflow_active_remote_product_metadata_is_v127', () => workflowText.includes('"schemaVersion":"1.2.7"') && workflowText.includes('"activeSelfTestSuite":"v127"') && workflowText.includes('"activeSelfTestStatusKey":"v127SelfTestStatus"') && !workflowText.includes('"schemaVersion":"1.1.5"')],
+  ['workflow_changed_file_diff_fails_closed', () => !workflowText.includes('git diff --name-only origin/main...HEAD || true') && workflowText.includes('git diff --name-only "${CODEX_PR_BASE_SHA}"...HEAD')],
   ['pr_body_display_evidence_does_not_override_best_of_n_status', () => workflowPrBodyDisplayOnlyFixture.safeSummary.bestOfNEvidenceStatus.status === 'fail' && workflowPrBodyDisplayOnlyFixture.safeSummary.bestOfNEvidenceStatus.reasonCodes.includes('best_of_n_required')],
   ['pr_body_display_evidence_does_not_override_test_coverage_status', () => workflowPrBodyDisplayOnlyFixture.safeSummary.testCoverageEvidenceStatus.status === 'fail' && workflowPrBodyDisplayOnlyFixture.safeSummary.testCoverageEvidenceStatus.reasonCodes.includes('test_coverage_evidence_missing')],
   ['pr_body_receipt_text_does_not_authorize_merge', () => workflowPrBodyReceiptFixture.safeSummary.technicalChecksReady === true && workflowPrBodyReceiptFixture.safeSummary.ownerMergeAuthorized === false],
+  ['safe_summary_carries_all_v127_required_self_tests', () => REQUIRED_V127_REMOTE_SELF_TEST_KEYS.every((key) => workflowAllVersionedFixture.safeSummary[key]?.status === 'pass')],
+  ['safe_summary_exposes_missing_required_self_test', () => workflowMissingV126Fixture.safeSummary.v126SelfTestStatus.status === 'missing'],
   ['same_head_missing_local_head_fails', () => failed(validateDecisionEvidenceEnvelopeAndSameHeadBinder(sameHeadControl({ localHead: null })) )],
   ['same_head_missing_pr_head_fails', () => failed(validateDecisionEvidenceEnvelopeAndSameHeadBinder(sameHeadControl({ prHead: null })) )],
   ['same_head_missing_workflow_head_fails', () => failed(validateDecisionEvidenceEnvelopeAndSameHeadBinder(sameHeadControl({ workflowHead: null })) )],
   ['same_head_missing_artifact_head_fails', () => failed(validateDecisionEvidenceEnvelopeAndSameHeadBinder(sameHeadControl({ artifactHead: null })) )],
+  ['same_head_mismatching_workflow_head_fails', () => failed(validateDecisionEvidenceEnvelopeAndSameHeadBinder(sameHeadControl({ workflowHead: 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb' })) )],
+  ['same_head_remote_gate_missing_fails_completed_remote_lane', () => failed(validateDecisionEvidenceEnvelopeAndSameHeadBinder(sameHeadControl({ remoteGate: 'missing' })) )],
+  ['same_head_remote_lane_requires_owner_decision_next_action', () => failed(validateDecisionEvidenceEnvelopeAndSameHeadBinder(sameHeadControl({ allowedNextAction: 'continue_commit_push_create_pr' })) )],
   ['same_head_requires_four_matching_non_null_heads', () => {
     const control = sameHeadControl();
     return control.decisionEvidenceEnvelope.sameHead === true
@@ -251,6 +334,18 @@ const cases = [
       && control.sameHeadBinder.allRequiredHeadsMatch === true
       && passed(validateDecisionEvidenceEnvelopeAndSameHeadBinder(control));
   }],
+  ['artifact_consistency_unknown_head_fails', () => failed(validateArtifactConsistency({ head: 'unknown', artifactDownloadObservedStatus: 'pass', artifactGeneratedStatus: 'pass', artifactIndexedStatus: 'pass', artifactUploadedStatus: 'pass' }))],
+  ['artifact_consistency_null_head_fails', () => failed(validateArtifactConsistency({ head: null, artifactDownloadObservedStatus: 'pass', artifactGeneratedStatus: 'pass', artifactIndexedStatus: 'pass', artifactUploadedStatus: 'pass' }))],
+  ['artifact_consistency_mismatching_head_fails', () => failed(validateArtifactConsistency({ head: SAME_HEAD_ENVELOPE.localHead, artifactHeadMatchStatus: 'fail', artifactDownloadObservedStatus: 'pass', artifactGeneratedStatus: 'pass', artifactIndexedStatus: 'pass', artifactUploadedStatus: 'pass' }))],
+  ['artifact_pointer_uses_run_id_and_artifact_name', () => passed(validateEvidenceCapsule(evidencePointerFixture)) && evidencePointerFixture.currentHeadEvidence.artifactPointer === '27822120722:codex-quality-gate-safe-artifacts' && evidencePointerFixture.currentHeadEvidence.artifactId === null],
+  ['pseudo_artifact_id_is_rejected', () => failed(validateEvidenceCapsule(pseudoArtifactIdFixture))],
+  ['target_legacy_shadow_normalizes_missing_blocking_classification', () => targetLegacyCompatibilityShadowFixture.report.targetModeLegacyCompatibilityStatus.status === 'pass'
+    && targetLegacyCompatibilityShadowFixture.failures.length === 0
+    && targetLegacyCompatibilityShadowFixture.report.targetModeLegacyCompatibilityStatus.blockingCount === 0
+    && targetLegacyCompatibilityShadowFixture.report.targetModeLegacyCompatibilityStatus.classifications.every((item) => item.classification === 'advisory_legacy' && item.effectiveStatus === 'pass_advisory')],
+  ['unobserved_remote_token_metrics_fail_when_required', () => failed(validateContextOutputOwnerInterruptTokenBudget(buildOrchestrationCapsule({
+    contextOutputOwnerInterruptTokenBudget: { observed: false, requireObservedMetrics: true },
+  }).contextOutputOwnerInterruptTokenBudget))],
   ['missing_owner_process_receipt_does_not_default_to_valid_binding', () => sameHeadControl().decisionEvidenceEnvelope.ownerReceiptBinding === 'not_required'],
   ['same_head_remote_qg_without_merge_receipt_stops_at_owner_decision', () => {
     const control = sameHeadControl();

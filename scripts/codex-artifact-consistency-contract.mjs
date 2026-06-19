@@ -98,6 +98,8 @@ export function validateArtifactConsistency(input = {}) {
   const uploaded = normalizeArtifactStatus(input.artifactUploadedStatus ?? input.uploaded, localMode ? 'not_required_with_reason' : 'pass');
   const downloadObserved = normalizeArtifactStatus(input.artifactDownloadObservedStatus ?? input.downloadObserved, localMode ? 'not_required_with_reason' : 'pass');
   const headMatch = normalizeArtifactStatus(input.artifactHeadMatchStatus ?? input.headMatch, 'pass');
+  const headValue = String(input.head || input.headSha || '').trim();
+  const validHead = /^[A-Fa-f0-9]{40}$/.test(headValue);
   const reasonCodes = [];
   if (input.safeSummaryPresent === false) reasonCodes.push('safe_summary_missing');
   if (!loadBearingArtifacts.includes(artifactName)) reasonCodes.push('artifact_not_load_bearing');
@@ -107,7 +109,7 @@ export function validateArtifactConsistency(input = {}) {
   if (uploaded === 'pass' && generated !== 'pass') reasonCodes.push('artifact_uploaded_without_generated_source');
   if (uploaded === 'pass' && isRequiredFailure(downloadObserved)) reasonCodes.push('artifact_download_not_observed');
   if (headMatch === 'fail' || (downloadObserved === 'pass' && headMatch !== 'pass')) reasonCodes.push('artifact_head_mismatch');
-  if ((input.head || input.headSha || 'unknown') === 'unknown' && downloadObserved === 'pass') reasonCodes.push('artifact_head_mismatch');
+  if (!validHead && downloadObserved === 'pass') reasonCodes.push('artifact_head_mismatch');
   const base = {
     artifactName,
     artifactGeneratedStatus: generated,
@@ -115,7 +117,7 @@ export function validateArtifactConsistency(input = {}) {
     artifactUploadedStatus: uploaded,
     artifactDownloadObservedStatus: downloadObserved,
     artifactHeadMatchStatus: headMatch,
-    head: input.head || input.headSha || 'unknown',
+    head: headValue || 'unknown',
     rawLogsRequired: false,
     productRepairAllowed: false,
     safeSummaryOnly: true,

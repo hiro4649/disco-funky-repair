@@ -347,6 +347,7 @@ function loadBearingArtifactNames() {
     'codex-artifact-consistency.safe.json',
     'codex-minimal-blockers.safe.json',
     'codex-quality-gate-safe-summary.json',
+    'codex-safe-artifact-index.json',
   ];
   if (!['1.1.9', '1.2.0', '1.2.1', '1.2.2', '1.2.3', '1.2.4', '1.2.5', '1.2.6', '1.2.7'].includes(HARNESS_VERSION)) return HARNESS_VERSION === '1.1.8' ? v118Artifacts : LOAD_BEARING_ARTIFACTS;
   return [
@@ -366,6 +367,32 @@ function readJsonArtifactIfPresent(file) {
   }
 }
 
+const V127_REQUIRED_SELF_TEST_KEYS = [
+  'v127SelfTestStatus',
+  'v126SelfTestStatus',
+  'v125SelfTestStatus',
+  'v124SelfTestStatus',
+  'v123SelfTestStatus',
+  'v122SelfTestStatus',
+  'v121SelfTestStatus',
+  'v120SelfTestStatus',
+  'v119SelfTestStatus',
+  'v118SelfTestStatus',
+  'v117SelfTestStatus',
+  'v116SelfTestStatus',
+  'v115SelfTestStatus',
+  'v114SelfTestStatus',
+  'v113SelfTestStatus',
+];
+
+function isValidSha(value) {
+  return /^[A-Fa-f0-9]{40}$/.test(String(value || '').trim());
+}
+
+function requiredSelfTestFailures(report = {}) {
+  return V127_REQUIRED_SELF_TEST_KEYS.filter((key) => report[key]?.status !== 'pass');
+}
+
 function buildV117ArtifactEntries(head) {
   const artifacts = loadBearingArtifactNames();
   return artifacts.map((artifactName) => {
@@ -373,7 +400,7 @@ function buildV117ArtifactEntries(head) {
     const artifact = readJsonArtifactIfPresent(file);
     const present = Boolean(artifact);
     const artifactHead = artifact?.head || artifact?.headSha || artifact?.decisionCapsule?.head || artifact?.decisionCapsule?.headSha || '';
-    const headMatch = present && artifactHead && head !== 'unknown' ? artifactHead === head : present;
+    const headMatch = present && isValidSha(head) && isValidSha(artifactHead) && artifactHead === head;
     return {
       artifactName,
       loadBearing: true,
@@ -383,12 +410,15 @@ function buildV117ArtifactEntries(head) {
       artifactDownloadObservedStatus: present ? 'pass' : 'fail',
       artifactHeadMatchStatus: headMatch ? 'pass' : 'fail',
       head,
+      canonicalPath: file,
     };
   });
 }
 
 function writeV117LoadBearingArtifacts(report = {}) {
-  const head = report.decisionCapsule?.head || report.decisionCapsule?.headSha || process.env.CODEX_PR_HEAD_SHA || process.env.GITHUB_SHA || 'unknown';
+  const capsuleHead = report.decisionCapsule?.head || report.decisionCapsule?.headSha || '';
+  const envHead = process.env.CODEX_PR_HEAD_SHA || process.env.GITHUB_SHA || '';
+  const head = isValidSha(capsuleHead) ? capsuleHead : (isValidSha(envHead) ? envHead : 'unknown');
   const decisionCapsule = {
     ...(report.decisionCapsule || {}),
     harnessVersion: HARNESS_VERSION,
@@ -473,12 +503,21 @@ function writeV117LoadBearingArtifacts(report = {}) {
   };
   const index = {
     status: 'pass',
+    harnessVersion: HARNESS_VERSION,
+    mode: 'target',
     head,
     artifactIndexed: true,
     artifactName: 'codex-safe-artifact-index.json',
+    duplicateArtifacts: [],
+    missingArtifacts: [],
     loadBearingArtifacts: loadBearingArtifactNames(),
     artifacts: loadBearingArtifactNames().map((artifactName) => ({
       artifactName,
+      canonicalPath: artifactName,
+      producer: artifactName === 'codex-quality-gate-safe-summary.json' ? 'codex-local-quality-gate' : 'codex-safe-artifact-writer',
+      headSha: head,
+      runId: process.env.CODEX_QUALITY_GATE_RUN_ID || process.env.GITHUB_RUN_ID || null,
+      artifactUploadName: process.env.CODEX_SAFE_ARTIFACT_NAME || 'codex-quality-gate-safe-artifacts',
       status: 'present',
       loadBearing: true,
       head,
@@ -1865,6 +1904,15 @@ export function applyTargetModeLegacyCompatibilityShadow(report = {}, failures =
     status: 'pass',
     originalStatus: 'fail',
     compatibilityShadow: true,
+    blockingCount: 0,
+    classifications: classifications.map((item) => ({
+      ...item,
+      originalClassification: item.classification,
+      classification: 'advisory_legacy',
+      effectiveStatus: 'pass_advisory',
+      reasonCodes: ['legacy_target_mode_advisory', ...(Array.isArray(item.reasonCodes) ? item.reasonCodes : [])],
+      safeSummaryOnly: true,
+    })),
     reasonCodes: ['target_compatibility_shadow_count_only', ...(Array.isArray(value.reasonCodes) ? value.reasonCodes : [])],
     safeSummaryOnly: true,
   };
@@ -3519,12 +3567,17 @@ function estimateJsonBytes(value) {
 function buildV127RemoteEvidenceContext(env = process.env) {
   const repo = env.CODEX_REPOSITORY || env.GITHUB_REPOSITORY || 'hiro4649/codex-development-harness';
   const prHead = String(env.CODEX_PR_HEAD_SHA || '').trim();
+  const workflowHead = String(env.CODEX_WORKFLOW_HEAD_SHA || env.CODEX_PR_HEAD_SHA || '').trim();
+  const artifactHead = String(env.CODEX_ARTIFACT_HEAD_SHA || env.CODEX_PR_HEAD_SHA || '').trim();
   const fallbackHead = String(env.GITHUB_SHA || '').trim();
   const head = prHead || fallbackHead || 'unknown';
   const runId = String(env.CODEX_QUALITY_GATE_RUN_ID || env.GITHUB_RUN_ID || '').trim();
+  const runAttempt = String(env.CODEX_QUALITY_GATE_RUN_ATTEMPT || env.GITHUB_RUN_ATTEMPT || '').trim();
   const artifactName = env.CODEX_SAFE_ARTIFACT_NAME || 'codex-quality-gate-safe-artifacts';
-  const artifactPointer = runId ? `github-actions://${repo}/runs/${runId}/artifacts/${artifactName}` : '';
-  const remotePr = env.GITHUB_ACTIONS === 'true' && isPullRequestContext(env) && head !== 'unknown' && Boolean(runId);
+  const artifactPointer = runId ? `${runId}:${artifactName}` : '';
+  const headsValid = [head, prHead, workflowHead, artifactHead].every(isValidSha);
+  const allHeadsMatch = headsValid && [prHead, workflowHead, artifactHead].every((item) => item === head);
+  const remotePr = env.GITHUB_ACTIONS === 'true' && isPullRequestContext(env) && headsValid && allHeadsMatch && Boolean(runId);
   return {
     remotePr,
     repo,
@@ -3532,7 +3585,13 @@ function buildV127RemoteEvidenceContext(env = process.env) {
     branch: env.CODEX_BRANCH || env.GITHUB_HEAD_REF || env.GITHUB_REF_NAME || '',
     baseSha: env.CODEX_PR_BASE_SHA || '',
     head,
+    prHead,
+    workflowHead,
+    artifactHead,
+    headsValid,
+    allHeadsMatch,
     runId,
+    runAttempt,
     artifactName,
     artifactPointer,
   };
@@ -3682,44 +3741,54 @@ function applyV127PostClosureConsistency(report = {}, outcome = {}) {
 
 function applyV127RemoteEvidenceClosure(report = {}, outcome = {}, env = process.env) {
   const context = buildV127RemoteEvidenceContext(env);
+  const requiredSelfTestMissing = requiredSelfTestFailures(report);
+  const completedPullRequestRemote = env.GITHUB_ACTIONS === 'true' && isPullRequestContext(env);
   const gatePassed = outcome.failures?.length === 0 &&
     outcome.warnings?.length === 0 &&
     report.qualityScoreStatus?.status === 'pass' &&
-    report.status === 'pass';
+    report.status === 'pass' &&
+    requiredSelfTestMissing.length === 0;
+  if (completedPullRequestRemote && !context.remotePr) {
+    pushUniqueFailure(outcome.failures, 'v127RemoteEvidence.sameHeadMismatch', 'completed pull_request run missing matching observed heads');
+  }
+  for (const key of requiredSelfTestMissing) {
+    pushUniqueFailure(outcome.failures, `v127RequiredSelfTest.${key}.missingOrFailed`, `${key} missing or not pass`);
+  }
   const shouldCloseRemote = context.remotePr && gatePassed;
   let observedBudgetMetrics = buildV127ObservedTokenMetrics(report);
   applyV127ObservedTokenMetrics(report, observedBudgetMetrics);
 
-  if (shouldCloseRemote && report.orchestrationCapsule?.decisionEvidenceEnvelopeAndSameHeadBinder) {
+  if (completedPullRequestRemote && report.orchestrationCapsule?.decisionEvidenceEnvelopeAndSameHeadBinder) {
+    const remoteClosed = shouldCloseRemote;
     report.orchestrationCapsule.decisionEvidenceEnvelopeAndSameHeadBinder = {
       runtimeVersion: '1.2.7',
       decisionEvidenceEnvelope: {
-        lane: 'same_head_remote_qg',
+        lane: remoteClosed ? 'same_head_remote_qg' : 'blocked_recovery',
         repo: context.repo,
         branch: context.branch || 'pull_request',
         baseSha: context.baseSha || null,
         localHead: context.head,
-        prHead: context.head,
-        workflowHead: context.head,
-        artifactHead: context.head,
+        prHead: context.prHead,
+        workflowHead: context.workflowHead,
+        artifactHead: context.artifactHead,
         ownerReceiptBinding: 'not_required',
-        sameHead: true,
-        localGate: 'pass',
-        remoteGate: 'pass',
-        allowedNextAction: 'owner_merge_decision_only',
-        oneBlockingReason: null,
+        sameHead: remoteClosed,
+        localGate: gatePassed ? 'pass' : 'fail',
+        remoteGate: remoteClosed ? 'pass' : 'fail',
+        allowedNextAction: remoteClosed ? 'owner_merge_decision_only' : 'refresh_evidence_only',
+        oneBlockingReason: remoteClosed ? null : 'same_head_mismatch',
         prBodyMachineEvidence: false,
       },
       sameHeadBinder: {
         rejectsHeadMismatch: true,
         requiredForMerge: true,
-        allRequiredHeadsPresent: true,
-        allRequiredHeadsMatch: true,
+        allRequiredHeadsPresent: context.headsValid,
+        allRequiredHeadsMatch: context.allHeadsMatch,
         sameHeadDerivedFromHashes: true,
         artifactHeadMustMatchWorkflowHead: true,
         prBodyIsDisplayOnly: true,
       },
-      safeNextAction: 'owner_merge_decision_only',
+      safeNextAction: remoteClosed ? 'owner_merge_decision_only' : 'refresh_evidence_only',
     };
   }
 
@@ -3733,12 +3802,15 @@ function applyV127RemoteEvidenceClosure(report = {}, outcome = {}, env = process
       terminalAction: 'create_pr_only',
       headSha: context.head,
       qualityGateRunId: context.runId,
-      artifactId: context.artifactPointer,
+      runAttempt: context.runAttempt,
+      artifactId: null,
+      artifactNumericId: null,
+      artifactDigest: null,
       artifactPointer: context.artifactPointer,
       artifactName: context.artifactName,
-      prHeadSha: context.head,
-      workflowHeadSha: context.head,
-      artifactHeadSha: context.head,
+      prHeadSha: context.prHead,
+      workflowHeadSha: context.workflowHead,
+      artifactHeadSha: context.artifactHead,
       separateRequiredCiCheckExists: false,
     });
     report.evidenceCapsuleStatus = validateEvidenceCapsule(report.evidenceCapsule);
@@ -3762,7 +3834,21 @@ function applyV127RemoteEvidenceClosure(report = {}, outcome = {}, env = process
     report.finalDecision.safeNextAction = 'owner_merge_decision_only';
     report.finalDecisionStatus = validateFinalDecisionKernel(report.finalDecision);
     if (report.decisionCapsule) report.decisionCapsule.safeNextAction = 'owner_merge_decision_only';
+    if (report.decisionCapsule) {
+      report.decisionCapsule.head = context.head;
+      report.decisionCapsule.headSha = context.head;
+      report.decisionCapsule.mergeAllowed = false;
+      report.decisionCapsule.sameHeadRequiredChecks = {
+        sameHead: true,
+        allPass: true,
+        headSha: context.head,
+        safeSummaryOnly: true,
+      };
+    }
     if (report.top3Blockers) report.top3Blockers.safe_next_action = 'owner_merge_decision_only';
+    report.technicalChecksReady = true;
+    report.mergeReady = true;
+    report.ownerMergeAuthorized = false;
   }
 
   observedBudgetMetrics = buildV127ObservedTokenMetrics(report);
@@ -3773,10 +3859,24 @@ function applyV127RemoteEvidenceClosure(report = {}, outcome = {}, env = process
     Object.assign(report, validation);
   }
 
+  const completedSelfTests = V127_REQUIRED_SELF_TEST_KEYS
+    .filter((key) => report[key]?.status === 'pass')
+    .map((key) => key.replace(/SelfTestStatus$/, '_self_test'));
+  const missingSelfTests = V127_REQUIRED_SELF_TEST_KEYS
+    .filter((key) => report[key]?.status !== 'pass')
+    .map((key) => key.replace(/SelfTestStatus$/, '_self_test'));
   const ownerBrief = buildOwnerDecisionBriefReport({
     decisionReady: false,
-    proofCompleted: ['local_quality_gate_safe_summary', 'same_head_remote_quality_gate', 'v120_self_test', 'v121_self_test', 'v122_self_test', 'v123_self_test', 'v124_self_test', 'v125_self_test', 'v126_self_test', 'v127_self_test'],
-    proofMissing: shouldCloseRemote ? ['owner_merge_instruction'] : ['same_head_remote_quality_gate', 'owner_merge_instruction'],
+    proofCompleted: [
+      'local_quality_gate_safe_summary',
+      ...(shouldCloseRemote ? ['same_head_remote_quality_gate'] : []),
+      ...completedSelfTests,
+    ],
+    proofMissing: [
+      ...(shouldCloseRemote ? [] : ['same_head_remote_quality_gate']),
+      ...missingSelfTests,
+      'owner_merge_instruction',
+    ],
     residualRisks: ['owner_merge_instruction_not_provided'],
     exactChoices: ['owner_merge_after_same_head_pass', 'request_narrow_repair', 'leave_pr_open'],
     safeNextAction: 'owner_merge_decision_only',
@@ -3794,6 +3894,12 @@ function applyV127RemoteEvidenceClosure(report = {}, outcome = {}, env = process
   report.ownerDecisionBrief = ownerBrief.ownerDecisionBrief;
   report.ownerDecisionBriefStatus = ownerBrief.ownerDecisionBriefStatus;
   applyV127PostClosureConsistency(report, outcome);
+  if (shouldCloseRemote && report.reasonSummaryStatus?.summary) {
+    report.reasonSummaryStatus.summary.topNextActions = ['owner_merge_decision_only'];
+    report.reasonSummaryStatus.summary.blockingReasons = [];
+    report.reasonSummaryStatus.status = 'pass';
+    report.reasonSummaryStatus.reasonCodes = [];
+  }
 }
 
 function runV118Gates(report, gateEnv) {

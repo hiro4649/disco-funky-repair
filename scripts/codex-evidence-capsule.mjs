@@ -27,9 +27,11 @@ export function buildEvidenceCapsule(input = {}) {
   const separateCiRequired = input.separateRequiredCiCheckExists === true;
   const headSha = input.headSha || input.head || process.env.CODEX_PR_HEAD_SHA || process.env.GITHUB_SHA || 'unknown';
   const qualityGateRunId = requiredValue(input.qualityGateRunId);
-  const artifactPointer = input.artifactPointer || input.artifactName || input.artifactId || '';
-  const artifactId = requiredValue(input.artifactId || artifactPointer);
-  const artifactName = input.artifactName || null;
+  const runAttempt = input.runAttempt || process.env.CODEX_QUALITY_GATE_RUN_ATTEMPT || process.env.GITHUB_RUN_ATTEMPT || null;
+  const artifactName = input.artifactName || process.env.CODEX_SAFE_ARTIFACT_NAME || 'codex-quality-gate-safe-artifacts';
+  const artifactPointer = input.artifactPointer || (qualityGateRunId !== 'needs_run' ? `${qualityGateRunId}:${artifactName}` : '');
+  const artifactNumericId = input.artifactNumericId ?? null;
+  const artifactDigest = input.artifactDigest ?? null;
   const prHeadSha = input.prHeadSha || input.prHead || headSha;
   const workflowHeadSha = input.workflowHeadSha || input.workflowHead || headSha;
   const artifactHeadSha = input.artifactHeadSha || input.artifactHead || headSha;
@@ -37,7 +39,7 @@ export function buildEvidenceCapsule(input = {}) {
   const remoteRequired = terminalAction === 'merge_current_pr';
   const fresh = headSha !== 'unknown' &&
     qualityGateRunId !== 'needs_run' &&
-    artifactId !== 'needs_run' &&
+    artifactPointer &&
     prHeadSha === headSha &&
     workflowHeadSha === headSha &&
     artifactHeadSha === headSha &&
@@ -58,12 +60,16 @@ export function buildEvidenceCapsule(input = {}) {
       role: 'merge_evidence',
       source: 'github_run_safe_artifact',
       mustBindHeadSha: true,
-      machineMergeAuthority: true,
+      machineDecisionEvidence: true,
+      ownerMergeAuthority: false,
       headSha,
       qualityGateRunId,
-      artifactId,
+      runAttempt,
+      artifactId: artifactNumericId,
+      artifactNumericId,
+      artifactDigest,
       artifactName,
-      artifactPointer: artifactPointer || artifactId,
+      artifactPointer,
       prHeadSha,
       workflowHeadSha,
       artifactHeadSha,
@@ -81,8 +87,9 @@ export function buildEvidenceCapsule(input = {}) {
     freshnessTuple: {
       headSha,
       qualityGateRunId,
-      artifactId,
-      artifactPointer: artifactPointer || artifactId,
+      artifactId: artifactNumericId,
+      artifactPointer,
+      artifactName,
       ciRunId,
       safeSummaryOnly: true,
     },
@@ -98,7 +105,15 @@ export function validateEvidenceCapsule(input = {}) {
   if (capsule.evidenceCapsuleVersion !== EVIDENCE_CAPSULE_VERSION) reasonCodes.push('evidence_capsule_version_mismatch');
   if (capsule.committedEvidence?.machineMergeAuthority !== false) reasonCodes.push('committed_evidence_cannot_merge');
   if (capsule.committedEvidence?.mustNotPretendFutureCommitSha !== true) reasonCodes.push('committed_evidence_future_sha_forbidden');
-  if (capsule.currentHeadEvidence?.machineMergeAuthority !== true) reasonCodes.push('current_head_artifact_required_for_merge');
+  if (capsule.currentHeadEvidence?.machineMergeAuthority === true) reasonCodes.push('machine_evidence_cannot_own_merge_authority');
+  if (capsule.currentHeadEvidence?.machineDecisionEvidence !== true) reasonCodes.push('current_head_artifact_required_for_merge');
+  if (capsule.currentHeadEvidence?.ownerMergeAuthority !== false) reasonCodes.push('owner_merge_authority_must_remain_false');
+  const artifactPointerRequired = capsule.currentHeadEvidence?.remoteRequired === true ||
+    (capsule.currentHeadEvidence?.qualityGateRunId && capsule.currentHeadEvidence.qualityGateRunId !== 'needs_run');
+  if (artifactPointerRequired && !capsule.currentHeadEvidence?.artifactName) reasonCodes.push('artifact_name_required');
+  if (artifactPointerRequired && (!capsule.currentHeadEvidence?.artifactPointer || String(capsule.currentHeadEvidence.artifactPointer).includes('-undefined'))) reasonCodes.push('artifact_pointer_invalid');
+  if (capsule.currentHeadEvidence?.artifactPointer && !String(capsule.currentHeadEvidence.artifactPointer).includes(':')) reasonCodes.push('artifact_pointer_requires_run_and_name');
+  if (capsule.currentHeadEvidence?.artifactNumericId !== null && capsule.currentHeadEvidence?.artifactNumericId !== undefined && !/^[0-9]+$/.test(String(capsule.currentHeadEvidence.artifactNumericId))) reasonCodes.push('artifact_numeric_id_must_be_numeric');
   if (capsule.prBody?.machineEvidence !== false) reasonCodes.push('pr_body_not_machine_evidence');
   if (capsule.prBody?.runIdExactMatchRequired !== false) reasonCodes.push('pr_body_run_id_exact_match_advisory_only');
   if (capsule.currentHeadEvidence?.remoteRequired === true && capsule.fresh !== true) reasonCodes.push('current_head_artifact_required_for_merge_current_pr');
