@@ -3991,6 +3991,8 @@ function applyV127RemoteEvidenceClosure(report = {}, outcome = {}, env = process
         productionReadinessClaimed: false,
       },
     });
+    report.finalDecision.head = context.head;
+    report.finalDecision.headSha = context.head;
     report.finalDecision.safeNextAction = 'owner_merge_decision_only';
     report.finalDecisionStatus = validateFinalDecisionKernel(report.finalDecision);
     if (report.decisionCapsule) report.decisionCapsule.safeNextAction = 'owner_merge_decision_only';
