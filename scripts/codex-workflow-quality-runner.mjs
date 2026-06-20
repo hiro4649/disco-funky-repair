@@ -5954,7 +5954,7 @@ function writeArtifacts(result, report) {
 function readOptionalJson(file) {
   try {
     if (!file || !fs.existsSync(file)) return null;
-    return JSON.parse(fs.readFileSync(file, 'utf8'));
+    return JSON.parse(fs.readFileSync(file, 'utf8').replace(/^\uFEFF/, ''));
   } catch {
     return null;
   }
@@ -7258,6 +7258,10 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
   if (args['validate-v127-bundle']) {
     const result = validateV127SafeArtifactBundle({ stageDir: args['stage-dir'], runnerTemp: args['runner-temp'], executionResultPath: args['execution-result'], remoteRunContextPath: args['remote-run-context'], head: args.head || args['head-sha'] });
     writeJsonReport({ v127FinalBundleValidationStatus: result }, 'CODEX_V127_FINAL_BUNDLE_VALIDATION_REPORT');
+    if (result.status !== 'pass') {
+      console.log(`v127FinalBundleValidationReasons: ${(result.reasonCodes || []).slice(0, 12).join(',') || 'unknown'}`);
+    }
+    console.log(`v127FinalBundleValidationStatus: ${result.status}`);
     process.exit(result.status === 'pass' ? 0 : 1);
   }
 
