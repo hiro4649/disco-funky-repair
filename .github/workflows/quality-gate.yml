@@ -147,6 +147,49 @@ jobs:
             printf '%s\n' "$changed_files"
             echo "CODEX_CHANGED_FILES_EOF"
           } >> "$GITHUB_ENV"
+          LOCAL_HEAD="$(git rev-parse HEAD)"
+          export LOCAL_HEAD
+          node - "$RUNNER_TEMP/codex-v127-remote-run-context.safe.json" <<'NODE'
+          const fs = require('fs');
+          const crypto = require('crypto');
+          const shaPattern = /^[a-f0-9]{40}$/i;
+          const changedFiles = String(process.env.CODEX_CHANGED_FILES || '')
+            .split(/\r?\n/)
+            .map((value) => value.trim())
+            .filter(Boolean)
+            .sort();
+          const context = {
+            schemaVersion: '1.2.7',
+            eventName: process.env.CODEX_EVENT_NAME || '',
+            repository: process.env.CODEX_REPOSITORY || '',
+            branch: process.env.CODEX_BRANCH || '',
+            baseSha: process.env.CODEX_PR_BASE_SHA || '',
+            localHead: process.env.LOCAL_HEAD || '',
+            prHead: process.env.CODEX_PR_HEAD_SHA || '',
+            workflowHead: process.env.CODEX_WORKFLOW_HEAD_SHA || '',
+            runId: process.env.CODEX_QUALITY_GATE_RUN_ID || '',
+            runAttempt: process.env.CODEX_QUALITY_GATE_RUN_ATTEMPT || '',
+            changedFiles,
+            changedFilesDigest: crypto.createHash('sha256').update(changedFiles.join('\n')).digest('hex'),
+            localHeadSource: 'git_checkout_observation',
+            prHeadSource: 'pull_request_event',
+            workflowHeadSource: 'workflow_run_context',
+            safeSummaryOnly: true,
+          };
+          const reasons = [];
+          if (context.eventName !== 'pull_request') reasons.push('not_pull_request');
+          for (const key of ['baseSha', 'localHead', 'prHead', 'workflowHead']) {
+            if (!shaPattern.test(context[key])) reasons.push(`${key}_malformed`);
+          }
+          if (shaPattern.test(context.localHead) && shaPattern.test(context.prHead) && context.localHead !== context.prHead) reasons.push('local_pr_head_mismatch');
+          if (shaPattern.test(context.prHead) && shaPattern.test(context.workflowHead) && context.prHead !== context.workflowHead) reasons.push('pr_workflow_head_mismatch');
+          if (!context.runId) reasons.push('run_id_missing');
+          if (!context.runAttempt) reasons.push('run_attempt_missing');
+          context.status = reasons.length === 0 ? 'pass' : 'fail';
+          context.reasonCodes = reasons;
+          fs.writeFileSync(process.argv[2], `${JSON.stringify(context, null, 2)}\n`);
+          if (reasons.length) process.exit(1);
+          NODE
           classification_json="$(CODEX_QUALITY_REPORT=json node scripts/codex-change-classification-gate.mjs || true)"
           product_relevant="$(CLASSIFICATION_JSON="$classification_json" node -e "const r=JSON.parse(process.env.CLASSIFICATION_JSON||'{}'); const s=r.changeClassificationStatus||{}; process.stdout.write(s.productRelevantChanged||s.runtimeReadinessClaimed||s.packageOrLockfileChanged?'1':'0')")"
           npm_exit=0
@@ -467,6 +510,7 @@ jobs:
             --runner-temp "$RUNNER_TEMP" \
             --report "$RUNNER_TEMP/codex-quality-gate.json" \
             --execution-result "$RUNNER_TEMP/codex-execution-result.safe.json" \
+            --remote-run-context "$RUNNER_TEMP/codex-v127-remote-run-context.safe.json" \
             --stage-dir "$RUNNER_TEMP/codex-quality-gate-safe-artifacts" \
             --head "${{ github.event.pull_request.head.sha || github.sha }}" \
             --base "${{ github.event.pull_request.base.sha || '' }}" \
@@ -476,6 +520,7 @@ jobs:
           node scripts/codex-workflow-quality-runner.mjs \
             --validate-v127-bundle \
             --execution-result "$RUNNER_TEMP/codex-execution-result.safe.json" \
+            --remote-run-context "$RUNNER_TEMP/codex-v127-remote-run-context.safe.json" \
             --stage-dir "$RUNNER_TEMP/codex-quality-gate-safe-artifacts" \
             --head "${{ github.event.pull_request.head.sha || github.sha }}"
       - name: Upload safe quality artifacts

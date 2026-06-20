@@ -2185,6 +2185,14 @@ function isOnlyV127PrBodyDisplayOnlyReason(status = {}) {
   return codes.length > 0 && codes.every((code) => V127_PR_BODY_DISPLAY_ONLY_REASON_CODES.has(code));
 }
 
+function hasV127PrBodyDisplayOnlyProvenance(status = {}) {
+  if (status.evidenceSource === 'pr_body_display') return true;
+  if (status.decisionInfluence === 'display_only') return true;
+  if (status.machineDecisionInfluence === false && status.prBodyMachineEvidence === false && isOnlyV127PrBodyDisplayOnlyReason(status)) return true;
+  return Object.values(status).some((value) => value && typeof value === 'object'
+    && (value.evidenceSource === 'pr_body_display' || value.decisionInfluence === 'display_only'));
+}
+
 export function applyV127PrBodyDisplayOnlyBoundary(report = {}, state = {}, env = process.env) {
   if (!isV127TargetPrBodyDisplayOnly(env)) {
     report.v127PrBodyDisplayOnlyBoundaryStatus = {
@@ -2200,7 +2208,7 @@ export function applyV127PrBodyDisplayOnlyBoundary(report = {}, state = {}, env 
     const value = report[key];
     if (!value || !['fail', 'warning', 'manual_confirmation_required'].includes(value.status)) continue;
     displayStatusesObserved.push(key);
-    if (key === 'requiredHeadingHintStatus' || value.prBodyMachineEvidence === false || isOnlyV127PrBodyDisplayOnlyReason(value)) {
+    if (hasV127PrBodyDisplayOnlyProvenance(value)) {
       report[key] = {
         ...value,
         originalStatus: value.status,
@@ -2584,28 +2592,59 @@ function gitValue(args = []) {
   return result.status === 0 ? String(result.stdout || '').trim() : null;
 }
 
-function approvedHarnessWorkflowRepairFiles(files = []) {
-  return files.every((file) => {
-    const normalized = String(file || '').replace(/\\/g, '/');
-    return normalized === '.github/workflows/quality-gate.yml'
-      || normalized === 'scripts/codex-artifact-consistency-contract.mjs'
-      || normalized === 'scripts/codex-evidence-capsule.mjs'
-      || normalized === 'scripts/codex-final-decision-kernel.mjs'
-      || normalized === 'scripts/codex-complexity-governance-gate.mjs'
-      || normalized === 'scripts/codex-local-quality-gate.mjs'
-      || normalized === 'scripts/codex-orchestration-capsule.mjs'
-      || normalized === 'scripts/codex-owner-decision-brief.mjs'
-      || normalized === 'scripts/codex-pr-body-surface-normalizer.mjs'
-      || normalized === 'scripts/codex-pr-evidence-block-renderer.mjs'
-      || normalized === 'scripts/codex-pr-profile-gate.mjs'
-      || normalized === 'scripts/codex-safe-artifact-index.mjs'
-      || normalized === 'scripts/codex-safe-output-scan.mjs'
-      || normalized === 'scripts/codex-v113-self-test.mjs'
-      || normalized === 'scripts/codex-v114-self-test.mjs'
-      || normalized === 'scripts/codex-v127-self-test.mjs'
-      || normalized === 'scripts/codex-worker-proof-capsule.mjs'
-      || normalized === 'scripts/codex-workflow-quality-runner.mjs';
+function classifyV127HarnessWorkflowRepairScope(files = [], options = {}) {
+  const normalizedFiles = uniqueSorted(files.map((file) => String(file || '').replace(/\\/g, '/').trim()).filter(Boolean));
+  const explicitPolicyRepair = options.policyRepairAuthorized === true;
+  const reasonCodes = [];
+  if (normalizedFiles.length === 0) reasonCodes.push('changed_files_missing');
+  const classifications = normalizedFiles.map((file) => {
+    let machineClass = 'unknown';
+    let allowed = false;
+    if (file === '.github/workflows/quality-gate.yml') {
+      machineClass = 'quality_gate_workflow';
+      allowed = true;
+    } else if (/^scripts\/codex-[A-Za-z0-9_.-]+\.mjs$/.test(file)) {
+      machineClass = 'codex_harness_script';
+      allowed = true;
+    } else if (/^docs\/process\//.test(file)) {
+      machineClass = 'codex_policy_doc';
+      allowed = explicitPolicyRepair;
+    } else if (/^\.github\/workflows\//.test(file)) {
+      machineClass = 'unknown_workflow';
+    } else if (/^scripts\//.test(file)) {
+      machineClass = 'non_codex_script';
+    } else if (/^(apps|src|contracts|prisma|migrations|docker|runtime)\//.test(file) || /^Dockerfile$/.test(file) || /^(package\.json|package-lock\.json|npm-shrinkwrap\.json|yarn\.lock|pnpm-lock\.yaml)$/.test(file)) {
+      machineClass = 'forbidden_product_or_runtime';
+    }
+    return { file, machineClass, allowed, safeSummaryOnly: true };
   });
+  const forbiddenFiles = classifications.filter((item) => !item.allowed).map((item) => item.file);
+  if (forbiddenFiles.length) reasonCodes.push('changed_file_scope_not_allowed');
+  const productCodeChanged = normalizedFiles.some((file) => /^(apps|src|contracts)\//.test(file));
+  const packageChanged = normalizedFiles.includes('package.json');
+  const lockfileChanged = normalizedFiles.some((file) => /^(package-lock\.json|npm-shrinkwrap\.json|yarn\.lock|pnpm-lock\.yaml)$/.test(file));
+  const runtimeChanged = normalizedFiles.some((file) => /^(docker|runtime)\//.test(file) || file === 'Dockerfile');
+  if (productCodeChanged) reasonCodes.push('product_code_changed');
+  if (packageChanged) reasonCodes.push('package_changed');
+  if (lockfileChanged) reasonCodes.push('lockfile_changed');
+  if (runtimeChanged) reasonCodes.push('runtime_changed');
+  return {
+    status: reasonCodes.length === 0 ? 'pass' : 'fail',
+    changedFiles: normalizedFiles,
+    changedFilesListedCount: normalizedFiles.length,
+    classifications,
+    forbiddenFiles,
+    productCodeChanged,
+    packageChanged,
+    lockfileChanged,
+    runtimeChanged,
+    reasonCodes,
+    safeSummaryOnly: true,
+  };
+}
+
+function approvedHarnessWorkflowRepairFiles(files = []) {
+  return classifyV127HarnessWorkflowRepairScope(files).status === 'pass';
 }
 
 
@@ -4418,7 +4457,8 @@ function buildFinalDecisionPointerStatus(report = {}) {
 function runV119Gates(report, gateEnv) {
   const context = buildV127RemoteEvidenceContext(process.env);
   const observedChangedFiles = observedPullRequestChangedFiles(process.env);
-  const changedFilesAllowed = observedChangedFiles.length > 0 && approvedHarnessWorkflowRepairFiles(observedChangedFiles);
+  const v127ScopeClassification = classifyV127HarnessWorkflowRepairScope(observedChangedFiles);
+  const changedFilesAllowed = v127ScopeClassification.status === 'pass';
   const workflowChanged = observedChangedFiles.some((file) => String(file).replace(/\\/g, '/') === '.github/workflows/quality-gate.yml');
   const baseHeadSha = String(process.env.CODEX_PR_BASE_SHA || '').trim() || null;
   const originMainHeadSha = gitValue(['rev-parse', 'origin/main']) || baseHeadSha;
@@ -4489,6 +4529,7 @@ function runV119Gates(report, gateEnv) {
       originMainHeadSha,
       mergeBaseSha,
       changedFiles: observedChangedFiles,
+      scopeClassification: v127ScopeClassification,
       allowedFiles: observedChangedFiles,
       forbiddenFiles: ['apps/backend/', 'apps/frontend/', 'contracts/', 'package.json', 'package-lock.json', 'pnpm-lock.yaml', 'prisma/', 'migrations/'],
       changedFilesWithinAllowed: changedFilesAllowed,

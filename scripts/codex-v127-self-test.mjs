@@ -18,7 +18,7 @@ import {
 } from './codex-orchestration-capsule.mjs';
 import { buildWorkerProofCapsule, validateWorkerProofCapsule } from './codex-worker-proof-capsule.mjs';
 import { buildOwnerDecisionBrief, validateOwnerDecisionBrief } from './codex-owner-decision-brief.mjs';
-import { deriveV127FinalState, evaluateWorkflowReport, finalizeV127SafeArtifactBundle, validateV127SafeArtifactBundle } from './codex-workflow-quality-runner.mjs';
+import { buildV127ObservedHeadBinding, classifyV127HarnessWorkflowRepairScope, deriveV127FinalState, evaluateWorkflowReport, finalizeV127SafeArtifactBundle, validateV127SafeArtifactBundle } from './codex-workflow-quality-runner.mjs';
 import { buildEvidenceCapsule, validateEvidenceCapsule } from './codex-evidence-capsule.mjs';
 import { validateArtifactConsistency } from './codex-artifact-consistency-contract.mjs';
 import { applyTargetModeLegacyCompatibilityShadow, applyV127PrBodyDisplayOnlyBoundary } from './codex-local-quality-gate.mjs';
@@ -341,8 +341,23 @@ function v127FinalizerFixture(options = {}) {
     finalDecision: { sameHeadRemoteGate: 'pass', safeSummaryOnly: true },
   };
   const executionResult = options.executionResult || { schemaVersion: '1.2.7', gateExit: 0, workflowRunnerExit: 0, safeSummaryOnly: true };
-  const finalized = finalizeV127SafeArtifactBundle({ sourceDir, runnerTemp, stageDir, report, executionResult, head, runId: '27852006538', artifactName: 'codex-quality-gate-safe-artifacts' });
-  const validated = validateV127SafeArtifactBundle({ stageDir, head });
+  const remoteRunContext = options.remoteRunContext || {
+    schemaVersion: '1.2.7',
+    eventName: 'pull_request',
+    repository: 'hiro4649/disco-funky-repair',
+    branch: 'codex/funky-v127-legacy-compatibility-repair',
+    baseSha: 'cccccccccccccccccccccccccccccccccccccccc',
+    localHead: head,
+    prHead: head,
+    workflowHead: head,
+    runId: '27852006538',
+    runAttempt: '1',
+    changedFiles: report.workerProofCapsule?.changedFiles || ['.github/workflows/quality-gate.yml', 'scripts/codex-workflow-quality-runner.mjs'],
+    changedFilesDigest: 'fixture_digest',
+    safeSummaryOnly: true,
+  };
+  const finalized = finalizeV127SafeArtifactBundle({ sourceDir, runnerTemp, stageDir, report, executionResult, remoteRunContext, head, runId: '27852006538', artifactName: 'codex-quality-gate-safe-artifacts' });
+  const validated = validateV127SafeArtifactBundle({ stageDir, head, executionResult, remoteRunContext });
   const index = JSON.parse(fs.readFileSync(stageDir + '/codex-safe-artifact-index.json', 'utf8'));
   const summary = JSON.parse(fs.readFileSync(stageDir + '/codex-quality-gate-safe-summary.json', 'utf8'));
   const diagnostic = JSON.parse(fs.readFileSync(stageDir + '/codex-diagnostic-consolidated-summary.json', 'utf8'));
@@ -565,6 +580,116 @@ const cases = [
     return result.summary.status === 'fail'
       && result.summary.safeNextAction === 'repair_v127_final_bundle';
   }],
+  ['v127_four_head_binding_requires_exact_observed_heads', () => {
+    const good = buildV127ObservedHeadBinding({
+      localHead: SAME_HEAD_ENVELOPE.localHead,
+      prHead: SAME_HEAD_ENVELOPE.localHead,
+      workflowHead: SAME_HEAD_ENVELOPE.localHead,
+      artifactHead: SAME_HEAD_ENVELOPE.localHead,
+    });
+    const missingLocal = buildV127ObservedHeadBinding({
+      prHead: SAME_HEAD_ENVELOPE.localHead,
+      workflowHead: SAME_HEAD_ENVELOPE.localHead,
+      artifactHead: SAME_HEAD_ENVELOPE.localHead,
+    });
+    const oneMismatch = buildV127ObservedHeadBinding({
+      localHead: SAME_HEAD_ENVELOPE.localHead,
+      prHead: SAME_HEAD_ENVELOPE.localHead,
+      workflowHead: SAME_HEAD_ENVELOPE.localHead,
+      artifactHead: 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb',
+    });
+    const oneHeadOnly = buildV127ObservedHeadBinding({ localHead: SAME_HEAD_ENVELOPE.localHead });
+    return good.status === 'pass'
+      && good.allRequiredHeadsPresent === true
+      && good.allRequiredHeadsMatch === true
+      && missingLocal.status === 'fail'
+      && oneMismatch.status === 'fail'
+      && oneHeadOnly.status === 'fail';
+  }],
+  ['v127_pull_request_event_alone_does_not_pass_remote_gate', () => {
+    const state = deriveV127FinalState({
+      status: 'pass',
+      ...Object.fromEntries(REQUIRED_V127_REMOTE_SELF_TEST_KEYS.map((key) => [key, { status: 'pass', safeSummaryOnly: true }])),
+      secretScan: { status: 'pass', safeSummaryOnly: true },
+      safeOutputScanStatus: { status: 'pass', safeSummaryOnly: true },
+      targetQualityScoreStatus: { status: 'pass', score: 95, safeSummaryOnly: true },
+      finalDecisionStatus: { status: 'pass', safeSummaryOnly: true },
+    }, {
+      executionResult: { gateExit: 0, workflowRunnerExit: 0 },
+      eventName: 'pull_request',
+      changedFiles: ['.github/workflows/quality-gate.yml', 'scripts/codex-workflow-quality-runner.mjs'],
+    });
+    return state.status === 'fail'
+      && state.reasonCodes.includes('remote_run_context_not_pass')
+      && state.reasonCodes.includes('four_head_binding_not_pass');
+  }],
+  ['v127_validation_success_bundle_rejects_nonzero_execution_result', () => {
+    const result = v127FinalizerFixture();
+    const invalid = validateV127SafeArtifactBundle({
+      stageDir: result.finalized.stageDir,
+      head: result.head,
+      executionResult: { schemaVersion: '1.2.7', gateExit: 1, workflowRunnerExit: 0, safeSummaryOnly: true },
+      remoteRunContext: {
+        schemaVersion: '1.2.7',
+        eventName: 'pull_request',
+        repository: 'hiro4649/disco-funky-repair',
+        branch: 'codex/funky-v127-legacy-compatibility-repair',
+        baseSha: 'cccccccccccccccccccccccccccccccccccccccc',
+        localHead: result.head,
+        prHead: result.head,
+        workflowHead: result.head,
+        runId: '27852006538',
+        runAttempt: '1',
+        changedFiles: ['.github/workflows/quality-gate.yml', 'scripts/codex-workflow-quality-runner.mjs'],
+        safeSummaryOnly: true,
+      },
+    });
+    return invalid.status === 'fail'
+      && invalid.reasonCodes.includes('success_gate_exit_nonzero');
+  }],
+  ['v127_artifact_head_is_observed_from_staged_load_bearing_artifacts', () => {
+    const result = v127FinalizerFixture();
+    return result.orchestration.artifactHead === result.head
+      && result.orchestration.artifactHeadSource === 'staged_load_bearing_artifacts'
+      && result.summary.v127ObservedHeadBindingStatus.artifactHead === result.head;
+  }],
+  ['v127_scope_classifier_is_generic_not_pr_specific', () => {
+    const current = classifyV127HarnessWorkflowRepairScope([
+      '.github/workflows/quality-gate.yml',
+      'scripts/codex-artifact-consistency-contract.mjs',
+      'scripts/codex-complexity-governance-gate.mjs',
+      'scripts/codex-evidence-capsule.mjs',
+      'scripts/codex-final-decision-kernel.mjs',
+      'scripts/codex-local-quality-gate.mjs',
+      'scripts/codex-orchestration-capsule.mjs',
+      'scripts/codex-owner-decision-brief.mjs',
+      'scripts/codex-pr-body-surface-normalizer.mjs',
+      'scripts/codex-pr-evidence-block-renderer.mjs',
+      'scripts/codex-pr-profile-gate.mjs',
+      'scripts/codex-safe-artifact-index.mjs',
+      'scripts/codex-safe-output-scan.mjs',
+      'scripts/codex-v113-self-test.mjs',
+      'scripts/codex-v114-self-test.mjs',
+      'scripts/codex-v127-self-test.mjs',
+      'scripts/codex-worker-proof-capsule.mjs',
+      'scripts/codex-workflow-quality-runner.mjs',
+    ]);
+    const future = classifyV127HarnessWorkflowRepairScope(['scripts/codex-new-harness-gate.mjs']);
+    const nonCodex = classifyV127HarnessWorkflowRepairScope(['scripts/tool.mjs']);
+    const product = classifyV127HarnessWorkflowRepairScope(['apps/backend/src/app.ts']);
+    const lockfile = classifyV127HarnessWorkflowRepairScope(['pnpm-lock.yaml']);
+    return current.status === 'pass'
+      && future.status === 'pass'
+      && nonCodex.status === 'fail'
+      && product.status === 'fail'
+      && lockfile.status === 'fail';
+  }],
+  ['v127_owner_proof_is_conditional_on_technical_pass', () => {
+    const result = v127FinalizerFixture({ executionResult: { schemaVersion: '1.2.7', gateExit: 1, workflowRunnerExit: 0, safeSummaryOnly: true } });
+    return result.ownerBrief.recommendation === 'repair_v127_final_bundle'
+      && result.ownerBrief.proofCompleted.length === 0
+      && !result.ownerBrief.proofMissing.every((item) => item === 'owner_conditional_merge_receipt');
+  }],
   ['v127_finalizer_owner_boundary_pass_not_merge_allowed', () => {
     const result = v127FinalizerFixture();
     return result.summary.status === 'pass'
@@ -624,8 +749,8 @@ const cases = [
   }],
   ['v127_pr_body_display_only_boundary_removes_only_allowlisted_statuses', () => {
     const report = {
-      bestOfNEvidenceStatus: { status: 'fail', reasonCodes: ['best_of_n_required'], safeSummaryOnly: true },
-      testCoverageEvidenceStatus: { status: 'fail', reasonCodes: ['test_coverage_evidence_missing'], safeSummaryOnly: true },
+      bestOfNEvidenceStatus: { status: 'fail', reasonCodes: ['best_of_n_required'], evidenceSource: 'pr_body_display', decisionInfluence: 'display_only', safeSummaryOnly: true },
+      testCoverageEvidenceStatus: { status: 'fail', reasonCodes: ['test_coverage_evidence_missing'], evidenceSource: 'pr_body_display', decisionInfluence: 'display_only', safeSummaryOnly: true },
       secretScan: { status: 'fail', reasonCodes: ['secret_scan_failed'], safeSummaryOnly: true },
     };
     const state = {
@@ -645,6 +770,26 @@ const cases = [
       && boundary.nonOverridableFailuresPreserved === true
       && state.failures.length === 1
       && state.failures[0].id === 'secretScan.failed';
+  }],
+  ['v127_pr_body_boundary_does_not_hide_machine_evidence_failures', () => {
+    const report = {
+      bestOfNEvidenceStatus: { status: 'fail', reasonCodes: ['best_of_n_required'], evidenceSource: 'safe_artifact', decisionInfluence: 'blocking', safeSummaryOnly: true },
+      testCoverageEvidenceStatus: { status: 'fail', reasonCodes: ['test_coverage_evidence_missing'], evidenceSource: 'safe_artifact', decisionInfluence: 'blocking', safeSummaryOnly: true },
+    };
+    const state = {
+      failures: [
+        { id: 'bestOfNEvidenceStatus.failed' },
+        { id: 'testCoverageEvidenceStatus.failed' },
+      ],
+      warnings: [],
+    };
+    applyV127PrBodyDisplayOnlyBoundary(report, state, {
+      CODEX_HARNESS_MODE: 'target',
+      CODEX_PROFILE_COMPAT_MODE: 'off',
+    });
+    return report.bestOfNEvidenceStatus.status === 'fail'
+      && report.testCoverageEvidenceStatus.status === 'fail'
+      && state.failures.length === 2;
   }],
   ['pr_body_declarations_do_not_create_human_confirmation', () => {
     const rendered = renderPrEvidenceBlocks({
