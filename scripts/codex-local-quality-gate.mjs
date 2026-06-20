@@ -2193,7 +2193,33 @@ function hasV127PrBodyDisplayOnlyProvenance(status = {}) {
     && (value.evidenceSource === 'pr_body_display' || value.decisionInfluence === 'display_only'));
 }
 
+function markV127PrBodyDisplayOnlyEvidenceStatus(status = {}, reasonCode) {
+  if (!status || status.status !== 'fail') return status;
+  const codes = collectStatusReasonCodes(status);
+  if (!codes.includes(reasonCode)) return status;
+  return {
+    ...status,
+    evidenceSource: status.evidenceSource || 'pr_body_display',
+    decisionInfluence: status.decisionInfluence || 'display_only',
+    prBodyMachineEvidence: false,
+    machineDecisionInfluence: false,
+    safeSummaryOnly: true,
+  };
+}
+
+function applyV127PrBodyDisplayOnlyEvidenceProvenance(report = {}, env = process.env) {
+  if (!isV127TargetPrBodyDisplayOnly(env)) return;
+  if (!String(env.CODEX_PR_BODY || '').trim()) return;
+  if (!env.CODEX_BEST_OF_N_EVIDENCE_REPORT) {
+    report.bestOfNEvidenceStatus = markV127PrBodyDisplayOnlyEvidenceStatus(report.bestOfNEvidenceStatus, 'best_of_n_required');
+  }
+  if (!env.CODEX_TEST_COVERAGE_EVIDENCE_REPORT) {
+    report.testCoverageEvidenceStatus = markV127PrBodyDisplayOnlyEvidenceStatus(report.testCoverageEvidenceStatus, 'test_coverage_evidence_missing');
+  }
+}
+
 export function applyV127PrBodyDisplayOnlyBoundary(report = {}, state = {}, env = process.env) {
+  applyV127PrBodyDisplayOnlyEvidenceProvenance(report, env);
   if (!isV127TargetPrBodyDisplayOnly(env)) {
     report.v127PrBodyDisplayOnlyBoundaryStatus = {
       status: 'not_applicable',
