@@ -27,7 +27,7 @@ import { fileURLToPath } from 'node:url';
 
 
 
-import { HARNESS_VERSION, marker, parseArgs, simpleStatus, writeJsonReport } from './codex-v080-lib.mjs';
+import { HARNESS_VERSION, marker, simpleStatus, writeJsonReport } from './codex-v080-lib.mjs';
 
 
 
@@ -5968,6 +5968,22 @@ function normalizeV127Head(input = {}) {
   return String(input.head || input.headSha || process.env.CODEX_PR_HEAD_SHA || process.env.GITHUB_SHA || '').trim();
 }
 
+function parseWorkflowQualityRunnerArgs(argv = process.argv) {
+  const args = {};
+  const booleanFlags = new Set(['json', 'finalize-v127-bundle', 'validate-v127-bundle']);
+  for (let i = 2; i < argv.length; i += 1) {
+    const item = argv[i];
+    if (!item.startsWith('--')) continue;
+    const key = item.slice(2);
+    if (booleanFlags.has(key)) {
+      args[key] = true;
+    } else {
+      args[key] = argv[++i] || '';
+    }
+  }
+  return args;
+}
+
 function v127StageDir(input = {}) {
   return input.stageDir || path.join(input.runnerTemp || process.env.RUNNER_TEMP || process.cwd(), 'codex-quality-gate-safe-artifacts');
 }
@@ -7237,7 +7253,7 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
 
 
 
-  const args = parseArgs();
+  const args = parseWorkflowQualityRunnerArgs();
   if (args['finalize-v127-bundle']) {
     const result = finalizeV127SafeArtifactBundle({
       sourceDir: args['source-dir'] || process.cwd(),
