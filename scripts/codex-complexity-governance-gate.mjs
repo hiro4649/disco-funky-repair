@@ -25,6 +25,25 @@ function parseJson(value) {
   try { return JSON.parse(value); } catch { return null; }
 }
 
+const V127_DISPLAY_ONLY_COMPLEXITY_REASONS = new Set([
+  'pr_profile_missing',
+  'pr_profile_conflict',
+  'missing_required_method_sections',
+  'high_complexity_contract_missing',
+  'task_contract_done_criteria_missing',
+  'task_contract_verification_surface_missing',
+  'reasoning_evidence_effort_mismatch',
+  'high_complexity_oracle_missing',
+  'algorithmic_artifact_required',
+  'split_required_for_large_diff',
+  'split_required_for_multi_surface_change',
+  'solvability_constraints_missing',
+]);
+
+function isV127TargetDisplayOnly(env = process.env) {
+  return env.CODEX_HARNESS_MODE === 'target' && env.CODEX_PROFILE_COMPAT_MODE === 'off';
+}
+
 function nestedStatus(value, key) {
   const parsed = parseJson(value);
   return parsed?.[key] || parsed || {};
@@ -72,6 +91,7 @@ function productVerificationStatus(env = process.env) {
 }
 
 function contractProvided(body, env = process.env) {
+  if (isV127TargetDisplayOnly(env)) return Boolean(env.CODEX_TASK_CONTRACT_JSON);
   return Boolean(env.CODEX_TASK_CONTRACT_JSON || /##\s+Task Contract/i.test(body));
 }
 
@@ -120,7 +140,7 @@ function artifactType(body) {
 }
 
 function surfaceSummary(files, body) {
-  const normalized = effectiveSurfacesForComplexity(files, body);
+  const normalized = effectiveSurfacesForComplexity(files, body, process.env);
   return {
     auth: normalized.auth,
     storage: normalized.storage,
@@ -141,7 +161,7 @@ function largeDiff(files, env = process.env) {
     const d = Number(deleted);
     return sum + (Number.isFinite(a) ? a : 0) + (Number.isFinite(d) ? d : 0);
   }, 0);
-  return files.length >= 15 || lineCount >= 800 || /large diff|large product diff|large output|many-step/i.test(env.CODEX_PR_BODY || '');
+  return files.length >= 15 || lineCount >= 800 || (!isV127TargetDisplayOnly(env) && /large diff|large product diff|large output|many-step/i.test(env.CODEX_PR_BODY || ''));
 }
 
 function classifyRegime(files, body, env = process.env) {
@@ -321,6 +341,53 @@ function combineStatuses(items) {
   return 'pass';
 }
 
+function makeDisplayOnlyAdvisoryStatus(status = {}) {
+  const reasonCodes = Array.isArray(status.reasonCodes) ? status.reasonCodes : [];
+  const machineReasons = reasonCodes.filter((code) => !V127_DISPLAY_ONLY_COMPLEXITY_REASONS.has(code));
+  return {
+    ...status,
+    status: machineReasons.length ? status.status : 'advisory_display_only',
+    originalStatus: status.status,
+    reasonCodes: machineReasons.length ? machineReasons : reasonCodes,
+    displayOnlyReasonCodes: reasonCodes.filter((code) => V127_DISPLAY_ONLY_COMPLEXITY_REASONS.has(code)),
+    prBodyMachineEvidence: false,
+    machineDecisionInfluence: false,
+    safeSummaryOnly: true,
+  };
+}
+
+function applyV127DisplayOnlyComplexityBoundary(payload, env = process.env) {
+  if (!isV127TargetDisplayOnly(env)) return payload;
+  const nestedKeys = [
+    'solvabilityStatus',
+    'oracleRequirementStatus',
+    'reasoningEvidenceEffortStatus',
+    'algorithmicArtifactStatus',
+    'splitRequirementStatus',
+  ];
+  const displayStatusesObserved = [];
+  for (const key of nestedKeys) {
+    const value = payload[key];
+    const codes = Array.isArray(value?.reasonCodes) ? value.reasonCodes : [];
+    if (codes.some((code) => V127_DISPLAY_ONLY_COMPLEXITY_REASONS.has(code))) {
+      displayStatusesObserved.push(key);
+      payload[key] = makeDisplayOnlyAdvisoryStatus(value);
+    }
+  }
+  const reasonCodes = Array.isArray(payload.reasonCodes) ? payload.reasonCodes : [];
+  const machineReasonCodes = reasonCodes.filter((code) => !V127_DISPLAY_ONLY_COMPLEXITY_REASONS.has(code));
+  payload.displayOnlyReasonCodes = reasonCodes.filter((code) => V127_DISPLAY_ONLY_COMPLEXITY_REASONS.has(code));
+  payload.reasonCodes = machineReasonCodes;
+  payload.displayStatusesObserved = displayStatusesObserved;
+  payload.prBodyMachineEvidence = false;
+  payload.machineDecisionInfluence = false;
+  if (machineReasonCodes.length === 0) {
+    payload.status = 'pass';
+    payload.requiredNextAction = 'none';
+  }
+  return payload;
+}
+
 function requiredNextAction(status, reasonCodes) {
   if (status === 'pass') return 'none';
   if (reasonCodes.includes('high_complexity_oracle_missing')) return 'add surface-specific oracle evidence';
@@ -379,7 +446,7 @@ export function buildComplexityGovernanceReport(env = process.env) {
   ]);
   if (reasonCodes.includes('task_complexity_unknown')) status = status === 'fail' ? 'fail' : 'manual_confirmation_required';
   const uniqueReasons = [...new Set(reasonCodes)];
-  const payload = {
+  const payload = applyV127DisplayOnlyComplexityBoundary({
     status,
     mode,
     regime: allowedRegimes.has(regime) ? regime : 'unknown',
@@ -392,7 +459,7 @@ export function buildComplexityGovernanceReport(env = process.env) {
     reasonCodes: uniqueReasons,
     requiredNextAction: requiredNextAction(status, uniqueReasons),
     safeSummaryOnly: true,
-  };
+  }, env);
   if (!allowedStatuses.has(status) || scanObjectForUnsafe(payload).length || env.CODEX_COMPLEXITY_TEST_UNSAFE === '1') {
     return simpleStatus('complexityGovernanceStatus', 'fail', { ...payload, reasonCodes: ['complexity_governance_failed'], requiredNextAction: 'fix complexity governance output shape' });
   }

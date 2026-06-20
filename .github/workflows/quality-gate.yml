@@ -286,10 +286,13 @@ jobs:
           writeSafe('codex-artifact-consistency.safe.json', report.artifactConsistency || report.artifactConsistencyStatus || summary.artifactConsistencyStatus);
           writeSafe('codex-decision-capsule.safe.json', report.decisionCapsule || summary.decisionCapsule);
           NODE
-          node - "$runner_exit" <<'NODE'
-          const runnerExit = Number(process.argv[2] || 0);
-          process.exit(runnerExit);
-          NODE
+          combined_exit=0
+          if [ "$gate_exit" -ne 0 ]; then
+            combined_exit="$gate_exit"
+          elif [ "$runner_exit" -ne 0 ]; then
+            combined_exit="$runner_exit"
+          fi
+          exit "$combined_exit"
       - name: Write safe quality summary
         if: always()
         shell: bash

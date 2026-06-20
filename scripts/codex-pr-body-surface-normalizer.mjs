@@ -75,6 +75,10 @@ function detectBodySurfaces(body) {
   return { detected, negated, forbidden, residual };
 }
 
+function isV127TargetDisplayOnly(env = process.env) {
+  return env.CODEX_HARNESS_MODE === 'target' && env.CODEX_PROFILE_COMPAT_MODE === 'off';
+}
+
 function requiredHeadingHint(body, env = process.env) {
   if (!isPrContext(env) && !String(body || '').trim()) {
     return {
@@ -113,23 +117,39 @@ export function normalizePrBodySurfaces(files = [], body = '', env = process.env
   }
   const bodySurfaces = detectBodySurfaces(body);
   const effective = new Set(fileSurfaces);
-  for (const surface of bodySurfaces.detected) {
-    if (!bodySurfaces.negated.has(surface) && !bodySurfaces.forbidden.has(surface) && !bodySurfaces.residual.has(surface)) {
-      effective.add(surface);
+  const displayOnly = isV127TargetDisplayOnly(env);
+  if (!displayOnly) {
+    for (const surface of bodySurfaces.detected) {
+      if (!bodySurfaces.negated.has(surface) && !bodySurfaces.forbidden.has(surface) && !bodySurfaces.residual.has(surface)) {
+        effective.add(surface);
+      }
     }
   }
+  const fileDerivedMachineSurfaces = [...fileSurfaces].sort();
+  const bodyDetectedDisplaySurfaces = [...bodySurfaces.detected].sort();
+  const bodyNegatedDisplaySurfaces = [...bodySurfaces.negated].sort();
+  const bodyForbiddenDisplaySurfaces = [...bodySurfaces.forbidden].sort();
+  const bodyResidualDisplaySurfaces = [...bodySurfaces.residual].sort();
   return {
+    fileDerivedMachineSurfaces,
+    bodyDetectedDisplaySurfaces,
+    bodyNegatedDisplaySurfaces,
+    bodyForbiddenDisplaySurfaces,
+    bodyResidualDisplaySurfaces,
     detectedSurfaces: [...new Set([...bodySurfaces.detected, ...fileSurfaces])].sort(),
-    negatedSurfaces: [...bodySurfaces.negated].sort(),
-    forbiddenScopeSurfaces: [...bodySurfaces.forbidden].sort(),
-    residualRiskSurfaces: [...bodySurfaces.residual].sort(),
+    negatedSurfaces: bodyNegatedDisplaySurfaces,
+    forbiddenScopeSurfaces: bodyForbiddenDisplaySurfaces,
+    residualRiskSurfaces: bodyResidualDisplaySurfaces,
     effectiveChangedSurfaces: [...effective].sort(),
+    machineSurfaceSource: displayOnly ? 'changed_files_only' : 'changed_files_and_body',
+    bodySurfaceUse: displayOnly ? 'display_only' : 'legacy_machine_hint',
+    prBodyMachineEvidence: false,
     requiredHeadingHintStatus: requiredHeadingHint(body, env),
   };
 }
 
-export function effectiveSurfacesForComplexity(files = [], body = '') {
-  const normalized = normalizePrBodySurfaces(files, body);
+export function effectiveSurfacesForComplexity(files = [], body = '', env = process.env) {
+  const normalized = normalizePrBodySurfaces(files, body, env);
   return {
     auth: normalized.effectiveChangedSurfaces.includes('auth'),
     storage: normalized.effectiveChangedSurfaces.includes('storage'),

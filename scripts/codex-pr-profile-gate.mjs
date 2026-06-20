@@ -53,6 +53,10 @@ function inferProfile(env = process.env) {
   return 'harness_workflow_r3';
 }
 
+function isV127TargetDisplayOnly(env = process.env) {
+  return env.CODEX_HARNESS_MODE === 'target' && env.CODEX_PROFILE_COMPAT_MODE === 'off';
+}
+
 export function buildPrProfileReport(env = process.env) {
   const body = prBodyText(env);
   if (!body.trim() && !isPrContext(env)) {
@@ -68,7 +72,9 @@ export function buildPrProfileReport(env = process.env) {
   const required = profiles[profile] || profiles.harness_workflow_r3;
   const missingSections = required.filter((section) => !sectionPresent(body, section));
   if (missingSections.length) reasonCodes.push('missing_required_method_sections');
-  const status = reasonCodes.some((code) => ['pr_profile_invalid', 'missing_required_method_sections'].includes(code)) ? 'fail'
+  const displayOnly = isV127TargetDisplayOnly(env);
+  const status = displayOnly ? 'pass'
+    : reasonCodes.some((code) => ['pr_profile_invalid', 'missing_required_method_sections'].includes(code)) ? 'fail'
     : reasonCodes.length ? 'warning' : 'pass';
   return simpleStatus('prProfileStatus', status, {
     profile,
@@ -76,6 +82,9 @@ export function buildPrProfileReport(env = process.env) {
     inferredProfile,
     missingSections,
     reasonCodes,
+    displayOnlyStatus: displayOnly && reasonCodes.length ? 'advisory_display_only' : 'not_applicable',
+    prBodyMachineEvidence: false,
+    decisionInfluence: displayOnly ? 'display_only' : 'legacy_profile_gate',
   });
 }
 

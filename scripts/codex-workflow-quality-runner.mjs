@@ -4479,6 +4479,8 @@ export function evaluateWorkflowReport(report, options = {}) {
 
     prBodySurfaceNormalizerStatus: report.prBodySurfaceNormalizerStatus || { status: 'missing' },
 
+    v127PrBodyDisplayOnlyBoundaryStatus: report.v127PrBodyDisplayOnlyBoundaryStatus || { status: 'missing' },
+
 
 
 
@@ -6299,6 +6301,7 @@ function buildV127FinalCanonicalArtifacts(report = {}, context = {}) {
     secretScan: { status: finalState.secretStatus, safeSummaryOnly: true },
     scopeBoundaryStatus: { status: finalState.scopeStatus, changedFilesListedCount: finalState.changedFiles.length, safeSummaryOnly: true },
     productStatus: { status: finalState.productStatus, safeSummaryOnly: true },
+    v127PrBodyDisplayOnlyBoundaryStatus: report.v127PrBodyDisplayOnlyBoundaryStatus || { status: 'missing', safeSummaryOnly: true },
     safeNextAction: finalState.canonicalSafeNextAction,
     canonicalSafeNextAction: finalState.canonicalSafeNextAction,
   };

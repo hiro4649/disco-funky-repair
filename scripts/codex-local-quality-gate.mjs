@@ -1999,6 +1999,7 @@ const TARGET_COMPATIBILITY_SHADOW_STATUS_KEYS = new Set([
   'v082SelfTestStatus',
   'v083SelfTestStatus',
   'v087SelfTestStatus',
+  'v088SelfTestStatus',
   'v085SelfTestStatus',
   'v090SelfTestStatus',
   'v092SelfTestStatus',
@@ -2131,6 +2132,108 @@ export function applyTargetModeLegacyCompatibilityShadow(report = {}, failures =
     }
   }
   return report.targetModeLegacyCompatibilityStatus;
+}
+
+const V127_PR_BODY_DISPLAY_ONLY_REASON_CODES = new Set([
+  'pr_profile_missing',
+  'pr_profile_conflict',
+  'missing_required_method_sections',
+  'high_complexity_contract_missing',
+  'task_contract_done_criteria_missing',
+  'task_contract_verification_surface_missing',
+  'reasoning_evidence_effort_mismatch',
+  'high_complexity_oracle_missing',
+  'algorithmic_artifact_required',
+  'split_required_for_large_diff',
+  'split_required_for_multi_surface_change',
+  'solvability_constraints_missing',
+  'pr_body_surface_normalizer_failed',
+  'best_of_n_required',
+  'test_coverage_evidence_missing',
+  'requiredHeadingHintStatus',
+  'task_mode_missing',
+  'task_mode_not_bugfix',
+  'import_smoke_config_absent',
+  'runtime_risk_register_absent',
+]);
+
+const V127_PR_BODY_DISPLAY_ONLY_STATUS_KEYS = new Set([
+  'complexityGovernanceStatus',
+  'prProfileStatus',
+  'prBodySurfaceNormalizerStatus',
+  'requiredHeadingHintStatus',
+  'bestOfNEvidenceStatus',
+  'testCoverageEvidenceStatus',
+  'v085StabilityStatus',
+]);
+
+function isV127TargetPrBodyDisplayOnly(env = process.env) {
+  return env.CODEX_HARNESS_MODE === 'target' && env.CODEX_PROFILE_COMPAT_MODE === 'off';
+}
+
+function collectStatusReasonCodes(status = {}) {
+  const codes = [];
+  if (Array.isArray(status.reasonCodes)) codes.push(...status.reasonCodes);
+  for (const value of Object.values(status)) {
+    if (value && typeof value === 'object' && Array.isArray(value.reasonCodes)) codes.push(...value.reasonCodes);
+  }
+  return [...new Set(codes.map(String).filter(Boolean))];
+}
+
+function isOnlyV127PrBodyDisplayOnlyReason(status = {}) {
+  const codes = collectStatusReasonCodes(status);
+  return codes.length > 0 && codes.every((code) => V127_PR_BODY_DISPLAY_ONLY_REASON_CODES.has(code));
+}
+
+export function applyV127PrBodyDisplayOnlyBoundary(report = {}, state = {}, env = process.env) {
+  if (!isV127TargetPrBodyDisplayOnly(env)) {
+    report.v127PrBodyDisplayOnlyBoundaryStatus = {
+      status: 'not_applicable',
+      reasonCodes: ['not_v127_target_pr_body_boundary'],
+      safeSummaryOnly: true,
+    };
+    return report.v127PrBodyDisplayOnlyBoundaryStatus;
+  }
+  const displayStatusesObserved = [];
+  const machineFailuresRemoved = [];
+  for (const key of V127_PR_BODY_DISPLAY_ONLY_STATUS_KEYS) {
+    const value = report[key];
+    if (!value || !['fail', 'warning', 'manual_confirmation_required'].includes(value.status)) continue;
+    displayStatusesObserved.push(key);
+    if (key === 'requiredHeadingHintStatus' || value.prBodyMachineEvidence === false || isOnlyV127PrBodyDisplayOnlyReason(value)) {
+      report[key] = {
+        ...value,
+        originalStatus: value.status,
+        status: 'pass',
+        advisoryStatus: 'advisory_display_only',
+        prBodyMachineEvidence: false,
+        machineDecisionInfluence: false,
+        safeSummaryOnly: true,
+      };
+      machineFailuresRemoved.push(key);
+    }
+  }
+  if (Array.isArray(state.failures) && machineFailuresRemoved.length) {
+    for (let i = state.failures.length - 1; i >= 0; i--) {
+      const id = String(state.failures[i]?.id || '');
+      if (machineFailuresRemoved.some((key) => id === `${key}.failed`)) state.failures.splice(i, 1);
+    }
+  }
+  if (Array.isArray(state.warnings) && machineFailuresRemoved.length) {
+    for (let i = state.warnings.length - 1; i >= 0; i--) {
+      const id = String(state.warnings[i]?.id || '');
+      if (machineFailuresRemoved.some((key) => id === `${key}.warning` || id === `${key}.manual` || id === `${key}.manual_confirmation_required`)) state.warnings.splice(i, 1);
+    }
+  }
+  report.v127PrBodyDisplayOnlyBoundaryStatus = {
+    status: 'pass',
+    prBodyMachineEvidence: false,
+    displayStatusesObserved,
+    machineFailuresRemoved,
+    nonOverridableFailuresPreserved: true,
+    safeSummaryOnly: true,
+  };
+  return report.v127PrBodyDisplayOnlyBoundaryStatus;
 }
 
 
@@ -5879,8 +5982,6 @@ function computeOutputShapeStatus(report) {
 
 
   };
-
-
 
 }
 
@@ -10984,6 +11085,10 @@ async function runSourceHarnessGate() {
 
     prBodySurfaceNormalizerStatus: report.prBodySurfaceNormalizerStatus,
 
+    v127PrBodyDisplayOnlyBoundaryStatus: report.v127PrBodyDisplayOnlyBoundaryStatus,
+
+    v127PrBodyDisplayOnlyBoundaryStatus: report.v127PrBodyDisplayOnlyBoundaryStatus,
+
 
 
     prTemplateCompilerStatus: report.prTemplateCompilerStatus,
@@ -12944,6 +13049,15 @@ async function runTargetHarnessGate() {
 
 
 
+  applyV127PrBodyDisplayOnlyBoundary(report, { failures, warnings }, process.env);
+  const postPrBodyBoundaryReasonSummary = buildCompactReasonSummary(report);
+  report.reasonSummaryStatus = {
+    status: postPrBodyBoundaryReasonSummary.status,
+    reasonCodes: postPrBodyBoundaryReasonSummary.reasonCodes,
+    summary: postPrBodyBoundaryReasonSummary.summary,
+    safeSummaryOnly: true,
+  };
+
   applyTargetActiveSelfTestRegistryMapping(report, failures);
 
   for (const [key, value] of Object.entries({
@@ -13132,6 +13246,8 @@ async function runTargetHarnessGate() {
 
 
     prBodySurfaceNormalizerStatus: report.prBodySurfaceNormalizerStatus,
+
+    v127PrBodyDisplayOnlyBoundaryStatus: report.v127PrBodyDisplayOnlyBoundaryStatus,
 
 
 

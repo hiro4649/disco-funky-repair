@@ -21,10 +21,13 @@ import { buildOwnerDecisionBrief, validateOwnerDecisionBrief } from './codex-own
 import { deriveV127FinalState, evaluateWorkflowReport, finalizeV127SafeArtifactBundle, validateV127SafeArtifactBundle } from './codex-workflow-quality-runner.mjs';
 import { buildEvidenceCapsule, validateEvidenceCapsule } from './codex-evidence-capsule.mjs';
 import { validateArtifactConsistency } from './codex-artifact-consistency-contract.mjs';
-import { applyTargetModeLegacyCompatibilityShadow } from './codex-local-quality-gate.mjs';
+import { applyTargetModeLegacyCompatibilityShadow, applyV127PrBodyDisplayOnlyBoundary } from './codex-local-quality-gate.mjs';
 import { buildPhysicalSafeArtifactIndex, V127_REQUIRED_SAFE_ARTIFACTS } from './codex-safe-artifact-index.mjs';
 import { renderPrEvidenceBlocks } from './codex-pr-evidence-block-renderer.mjs';
 import { scanSafeOutput } from './codex-safe-output-scan.mjs';
+import { buildPrBodySurfaceNormalizerReport } from './codex-pr-body-surface-normalizer.mjs';
+import { buildComplexityGovernanceReport } from './codex-complexity-governance-gate.mjs';
+import { buildPrProfileReport } from './codex-pr-profile-gate.mjs';
 
 function test(name, fn) {
   try {
@@ -99,6 +102,61 @@ backend focused test: pass
 run 1: pass
 run 2: pass
 `;
+
+const V127_BODY_INVARIANCE_FILES = [
+  '.github/workflows/quality-gate.yml',
+  'scripts/codex-local-quality-gate.mjs',
+  'scripts/codex-workflow-quality-runner.mjs',
+  'scripts/codex-v127-self-test.mjs',
+];
+
+const V127_BODY_INVARIANCE_ENV = {
+  CODEX_HARNESS_MODE: 'target',
+  CODEX_PROFILE_COMPAT_MODE: 'off',
+  CODEX_EVENT_NAME: 'pull_request',
+  CODEX_PR_NUMBER: '364',
+  CODEX_PR_HEAD_SHA: SAME_HEAD_ENVELOPE.localHead,
+  CODEX_PR_BASE_SHA: SAME_HEAD_ENVELOPE.localHead,
+  CODEX_CHANGED_FILES: V127_BODY_INVARIANCE_FILES.join('\n'),
+};
+
+const V127_BODY_INVARIANCE_BODIES = [
+  `PR profile: harness_workflow_r3
+
+## Goal
+Validate the harness repair.
+
+## Evidence Integrity
+PR body is display-only.
+
+Rejected options: touch product/runtime files.
+Production readiness claimed: no.
+No runtime code changed.
+`,
+  `PR profile: conflicting_profile
+
+Body intentionally lacks required sections.
+Runtime readiness claimed: no.
+`,
+  `## Task Contract
+
+Done criteria: current v1.2.7 harness checks pass.
+Verification surface: v127-v113 self-tests.
+Risk surface: harness and workflow only.
+Split required: no
+`,
+];
+
+function v127BodyInvariantReports(body) {
+  return withTemporaryEnv({
+    ...V127_BODY_INVARIANCE_ENV,
+    CODEX_PR_BODY: body,
+  }, () => ({
+    surface: buildPrBodySurfaceNormalizerReport().prBodySurfaceNormalizerStatus,
+    complexity: buildComplexityGovernanceReport().complexityGovernanceStatus,
+    profile: buildPrProfileReport().prProfileStatus,
+  }));
+}
 
 const workflowPrBodyDisplayOnlyFixture = withTemporaryEnv({
   CODEX_CHANGED_FILES: 'scripts/codex-v127-self-test.mjs',
@@ -545,6 +603,48 @@ const cases = [
     });
     return state.status === 'fail'
       && state.reasonCodes.includes('scope_boundary_not_pass');
+  }],
+  ['v127_pr_body_surface_machine_invariance', () => {
+    const reports = V127_BODY_INVARIANCE_BODIES.map(v127BodyInvariantReports);
+    return reports.every((item) => item.surface.status === 'pass'
+      && item.surface.machineSurfaceSource === 'changed_files_only'
+      && item.surface.bodySurfaceUse === 'display_only'
+      && item.surface.prBodyMachineEvidence === false
+      && !item.surface.effectiveChangedSurfaces.includes('runtime')
+      && !item.surface.effectiveChangedSurfaces.includes('release'));
+  }],
+  ['v127_pr_body_profile_and_complexity_display_only', () => {
+    const reports = V127_BODY_INVARIANCE_BODIES.map(v127BodyInvariantReports);
+    return reports.every((item) => item.profile.status === 'pass'
+      && item.profile.prBodyMachineEvidence === false
+      && item.profile.decisionInfluence === 'display_only'
+      && item.complexity.status === 'pass'
+      && item.complexity.prBodyMachineEvidence === false
+      && item.complexity.machineDecisionInfluence === false);
+  }],
+  ['v127_pr_body_display_only_boundary_removes_only_allowlisted_statuses', () => {
+    const report = {
+      bestOfNEvidenceStatus: { status: 'fail', reasonCodes: ['best_of_n_required'], safeSummaryOnly: true },
+      testCoverageEvidenceStatus: { status: 'fail', reasonCodes: ['test_coverage_evidence_missing'], safeSummaryOnly: true },
+      secretScan: { status: 'fail', reasonCodes: ['secret_scan_failed'], safeSummaryOnly: true },
+    };
+    const state = {
+      failures: [
+        { id: 'bestOfNEvidenceStatus.failed' },
+        { id: 'testCoverageEvidenceStatus.failed' },
+        { id: 'secretScan.failed' },
+      ],
+      warnings: [],
+    };
+    const boundary = applyV127PrBodyDisplayOnlyBoundary(report, state, {
+      CODEX_HARNESS_MODE: 'target',
+      CODEX_PROFILE_COMPAT_MODE: 'off',
+    });
+    return boundary.status === 'pass'
+      && boundary.prBodyMachineEvidence === false
+      && boundary.nonOverridableFailuresPreserved === true
+      && state.failures.length === 1
+      && state.failures[0].id === 'secretScan.failed';
   }],
   ['pr_body_declarations_do_not_create_human_confirmation', () => {
     const rendered = renderPrEvidenceBlocks({
