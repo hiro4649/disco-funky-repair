@@ -1299,7 +1299,7 @@ function defaultDecisionEvidenceEnvelopeAndSameHeadBinder(input = {}) {
       prHead,
       workflowHead,
       artifactHead,
-      ownerReceiptBinding: envelope.ownerReceiptBinding || 'valid',
+      ownerReceiptBinding: envelope.ownerReceiptBinding || (envelope.lane === 'merge_boundary' ? 'missing' : 'not_required'),
       sameHead,
       localGate: envelope.localGate || 'pass',
       remoteGate: V127_REMOTE_STATUSES.has(envelope.remoteGate) ? envelope.remoteGate : 'missing',
@@ -2251,6 +2251,9 @@ export function validateDecisionEvidenceEnvelopeAndSameHeadBinder(control = {}) 
   const reasons = [];
   const envelope = control.decisionEvidenceEnvelope || {};
   const binder = control.sameHeadBinder || {};
+  const requiredHeads = [envelope.localHead, envelope.prHead, envelope.workflowHead, envelope.artifactHead];
+  const allRequiredHeadsValid = requiredHeads.every((head) => /^[A-Fa-f0-9]{40}$/.test(String(head || '').trim()));
+  const allRequiredHeadsMatch = allRequiredHeadsValid && requiredHeads.every((head) => String(head).trim() === String(envelope.localHead).trim());
   if (control.runtimeVersion !== '1.2.7') reasons.push('decision_evidence_envelope_version_invalid');
   if (!V127_LANES.has(envelope.lane)) reasons.push('decision_evidence_lane_invalid');
   if (!V127_ALLOWED_NEXT_ACTIONS.has(envelope.allowedNextAction)) reasons.push('decision_evidence_allowed_next_action_invalid');
@@ -2259,7 +2262,17 @@ export function validateDecisionEvidenceEnvelopeAndSameHeadBinder(control = {}) 
   if (binder.prBodyIsDisplayOnly !== true) reasons.push('same_head_binder_pr_body_display_only_required');
   if (binder.rejectsHeadMismatch !== true) reasons.push('same_head_binder_must_reject_head_mismatch');
   if (binder.sameHeadDerivedFromHashes !== true) reasons.push('same_head_must_be_derived_from_hashes');
-  if (envelope.sameHead === true && (binder.allRequiredHeadsPresent !== true || binder.allRequiredHeadsMatch !== true)) reasons.push('same_head_true_requires_non_null_matching_heads');
+  if (binder.allRequiredHeadsPresent === true && !allRequiredHeadsValid) reasons.push('same_head_present_requires_valid_heads');
+  if (binder.allRequiredHeadsMatch === true && !allRequiredHeadsMatch) reasons.push('same_head_match_requires_matching_heads');
+  if (envelope.sameHead === true && (binder.allRequiredHeadsPresent !== true || binder.allRequiredHeadsMatch !== true || !allRequiredHeadsMatch)) reasons.push('same_head_true_requires_non_null_matching_heads');
+  if (envelope.lane === 'same_head_remote_qg') {
+    if (envelope.sameHead !== true) reasons.push('same_head_remote_qg_requires_same_head');
+    if (binder.allRequiredHeadsPresent !== true || !allRequiredHeadsValid) reasons.push('same_head_remote_qg_requires_all_required_heads');
+    if (binder.allRequiredHeadsMatch !== true || !allRequiredHeadsMatch) reasons.push('same_head_remote_qg_requires_matching_required_heads');
+    if (envelope.remoteGate !== 'pass') reasons.push('same_head_remote_qg_requires_remote_pass');
+    if (envelope.allowedNextAction !== 'owner_merge_decision_only') reasons.push('same_head_remote_qg_next_action_must_be_owner_decision_only');
+    if (envelope.oneBlockingReason) reasons.push('same_head_remote_qg_must_not_have_blocking_reason');
+  }
   if (envelope.lane === 'merge_boundary') {
     if (envelope.sameHead !== true) reasons.push('merge_boundary_requires_same_head');
     if (binder.allRequiredHeadsPresent !== true) reasons.push('merge_boundary_requires_all_required_heads');

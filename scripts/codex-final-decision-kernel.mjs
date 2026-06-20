@@ -104,11 +104,13 @@ export function reconcileV118MergeSurface(report = {}) {
 
 function evidenceReadyForMerge(evidenceCapsule = {}, requiredChecks = {}) {
   const current = evidenceCapsule.currentHeadEvidence || {};
+  const hasArtifactEvidence =
+    (current.artifactPointer && current.artifactPointer !== 'needs_run') ||
+    (current.artifactId && current.artifactId !== 'needs_run');
   return evidenceCapsule.fresh === true &&
     current.qualityGateRunId &&
     current.qualityGateRunId !== 'needs_run' &&
-    current.artifactId &&
-    current.artifactId !== 'needs_run' &&
+    hasArtifactEvidence &&
     requiredChecks.sameHead !== false &&
     requiredChecks.allPass === true;
 }

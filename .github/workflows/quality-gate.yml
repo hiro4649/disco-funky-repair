@@ -49,6 +49,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
@@ -88,16 +89,16 @@ jobs:
         run: |
           set -euo pipefail
           cat > "$RUNNER_TEMP/codex-remote-product-checks.safe.json" <<'JSON'
-          {"schemaVersion":"1.1.5","harnessVersion":"1.1.5","sourceHarnessVersion":"1.1.5","activeHarnessVersion":"1.1.5","targetHarnessVersion":"1.1.5","activeSelfTestSuite":"v115","activeSelfTestStatusKey":"v115SelfTestStatus","phase":"remote product checks","status":"pending","productVerificationStatus":{"status":"pending","safeSummaryOnly":true},"productVerificationEvidenceStatus":{"status":"pending","safeSummaryOnly":true},"remoteProductBaselineStatus":{"status":"pending","safeSummaryOnly":true},"safeSummaryOnly":true}
+          {"schemaVersion":"1.2.7","harnessVersion":"1.2.7","sourceHarnessVersion":"1.2.7","activeHarnessVersion":"1.2.7","targetHarnessVersion":"1.2.7","activeSelfTestSuite":"v127","activeSelfTestStatusKey":"v127SelfTestStatus","phase":"remote product checks","status":"pending","productVerificationStatus":{"status":"pending","safeSummaryOnly":true},"productVerificationEvidenceStatus":{"status":"pending","safeSummaryOnly":true},"remoteProductBaselineStatus":{"status":"pending","safeSummaryOnly":true},"safeSummaryOnly":true}
           JSON
           cat > "$RUNNER_TEMP/codex-remote-product-baseline.json" <<'JSON'
-          {"schemaVersion":"1.1.5","harnessVersion":"1.1.5","sourceHarnessVersion":"1.1.5","activeHarnessVersion":"1.1.5","targetHarnessVersion":"1.1.5","activeSelfTestSuite":"v115","activeSelfTestStatusKey":"v115SelfTestStatus","phase":"remote product baseline","status":"pending","safeSummaryOnly":true}
+          {"schemaVersion":"1.2.7","harnessVersion":"1.2.7","sourceHarnessVersion":"1.2.7","activeHarnessVersion":"1.2.7","targetHarnessVersion":"1.2.7","activeSelfTestSuite":"v127","activeSelfTestStatusKey":"v127SelfTestStatus","phase":"remote product baseline","status":"pending","safeSummaryOnly":true}
           JSON
           cat > "$RUNNER_TEMP/codex-product-verification-evidence.remote.json" <<'JSON'
-          {"schemaVersion":"1.1.5","harnessVersion":"1.1.5","sourceHarnessVersion":"1.1.5","activeHarnessVersion":"1.1.5","targetHarnessVersion":"1.1.5","activeSelfTestSuite":"v115","activeSelfTestStatusKey":"v115SelfTestStatus","phase":"product verification evidence remote generation","status":"pending","safeSummaryOnly":true}
+          {"schemaVersion":"1.2.7","harnessVersion":"1.2.7","sourceHarnessVersion":"1.2.7","activeHarnessVersion":"1.2.7","targetHarnessVersion":"1.2.7","activeSelfTestSuite":"v127","activeSelfTestStatusKey":"v127SelfTestStatus","phase":"product verification evidence remote generation","status":"pending","safeSummaryOnly":true}
           JSON
           cat > "$RUNNER_TEMP/codex-remote-npm-diagnostic.safe.json" <<'JSON'
-          {"schemaVersion":"1.1.5","harnessVersion":"1.1.5","sourceHarnessVersion":"1.1.5","activeHarnessVersion":"1.1.5","targetHarnessVersion":"1.1.5","activeSelfTestSuite":"v115","activeSelfTestStatusKey":"v115SelfTestStatus","phase":"remote npm diagnostic","status":"pending","safeSummaryOnly":true}
+          {"schemaVersion":"1.2.7","harnessVersion":"1.2.7","sourceHarnessVersion":"1.2.7","activeHarnessVersion":"1.2.7","targetHarnessVersion":"1.2.7","activeSelfTestSuite":"v127","activeSelfTestStatusKey":"v127SelfTestStatus","phase":"remote npm diagnostic","status":"pending","safeSummaryOnly":true}
           JSON
           # safe artifact upload is locked by the upload-artifact path list.
       - name: Generate remote product evidence
@@ -108,6 +109,11 @@ jobs:
           CODEX_PR_NUMBER: ${{ github.event.pull_request.number || '' }}
           CODEX_PR_HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
           CODEX_PR_BASE_SHA: ${{ github.event.pull_request.base.sha || '' }}
+          CODEX_WORKFLOW_HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+          CODEX_ARTIFACT_HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+          CODEX_BRANCH: ${{ github.head_ref || github.ref_name }}
+          CODEX_QUALITY_GATE_RUN_ID: ${{ github.run_id }}
+          CODEX_QUALITY_GATE_RUN_ATTEMPT: ${{ github.run_attempt }}
           CODEX_REPOSITORY: ${{ github.repository }}
         run: |
           set -euo pipefail
@@ -126,13 +132,64 @@ jobs:
           fi
           export CODEX_HARNESS_MODE=target
           export CODEX_PROFILE_COMPAT_MODE=off
-          changed_files="$(git diff --name-only origin/main...HEAD || true)"
+          if [ "${CODEX_EVENT_NAME:-}" = "pull_request" ]; then
+            test -n "${CODEX_PR_BASE_SHA:-}"
+            test -n "${CODEX_PR_HEAD_SHA:-}"
+            git cat-file -e "${CODEX_PR_BASE_SHA}^{commit}"
+            test "$(git rev-parse HEAD)" = "${CODEX_PR_HEAD_SHA}"
+            changed_files="$(git diff --name-only "${CODEX_PR_BASE_SHA}"...HEAD)"
+          else
+            changed_files="$(git diff --name-only origin/main...HEAD)"
+          fi
           export CODEX_CHANGED_FILES="$changed_files"
           {
             echo "CODEX_CHANGED_FILES<<CODEX_CHANGED_FILES_EOF"
             printf '%s\n' "$changed_files"
             echo "CODEX_CHANGED_FILES_EOF"
           } >> "$GITHUB_ENV"
+          LOCAL_HEAD="$(git rev-parse HEAD)"
+          export LOCAL_HEAD
+          node - "$RUNNER_TEMP/codex-v127-remote-run-context.safe.json" <<'NODE'
+          const fs = require('fs');
+          const crypto = require('crypto');
+          const shaPattern = /^[a-f0-9]{40}$/i;
+          const changedFiles = String(process.env.CODEX_CHANGED_FILES || '')
+            .split(/\r?\n/)
+            .map((value) => value.trim())
+            .filter(Boolean)
+            .sort();
+          const context = {
+            schemaVersion: '1.2.7',
+            eventName: process.env.CODEX_EVENT_NAME || '',
+            repository: process.env.CODEX_REPOSITORY || '',
+            branch: process.env.CODEX_BRANCH || '',
+            baseSha: process.env.CODEX_PR_BASE_SHA || '',
+            localHead: process.env.LOCAL_HEAD || '',
+            prHead: process.env.CODEX_PR_HEAD_SHA || '',
+            workflowHead: process.env.CODEX_WORKFLOW_HEAD_SHA || '',
+            runId: process.env.CODEX_QUALITY_GATE_RUN_ID || '',
+            runAttempt: process.env.CODEX_QUALITY_GATE_RUN_ATTEMPT || '',
+            changedFiles,
+            changedFilesDigest: crypto.createHash('sha256').update(changedFiles.join('\n')).digest('hex'),
+            localHeadSource: 'git_checkout_observation',
+            prHeadSource: 'pull_request_event',
+            workflowHeadSource: 'workflow_run_context',
+            safeSummaryOnly: true,
+          };
+          const reasons = [];
+          if (context.eventName !== 'pull_request') reasons.push('not_pull_request');
+          for (const key of ['baseSha', 'localHead', 'prHead', 'workflowHead']) {
+            if (!shaPattern.test(context[key])) reasons.push(`${key}_malformed`);
+          }
+          if (shaPattern.test(context.localHead) && shaPattern.test(context.prHead) && context.localHead !== context.prHead) reasons.push('local_pr_head_mismatch');
+          if (shaPattern.test(context.prHead) && shaPattern.test(context.workflowHead) && context.prHead !== context.workflowHead) reasons.push('pr_workflow_head_mismatch');
+          if (!context.runId) reasons.push('run_id_missing');
+          if (!context.runAttempt) reasons.push('run_attempt_missing');
+          context.status = reasons.length === 0 ? 'pass' : 'fail';
+          context.reasonCodes = reasons;
+          fs.writeFileSync(process.argv[2], `${JSON.stringify(context, null, 2)}\n`);
+          if (reasons.length) process.exit(1);
+          NODE
           classification_json="$(CODEX_QUALITY_REPORT=json node scripts/codex-change-classification-gate.mjs || true)"
           product_relevant="$(CLASSIFICATION_JSON="$classification_json" node -e "const r=JSON.parse(process.env.CLASSIFICATION_JSON||'{}'); const s=r.changeClassificationStatus||{}; process.stdout.write(s.productRelevantChanged||s.runtimeReadinessClaimed||s.packageOrLockfileChanged?'1':'0')")"
           npm_exit=0
@@ -171,7 +228,7 @@ jobs:
           echo "CODEX_NPM_PACKAGE_SCOPE=$package_scope" >> "$GITHUB_ENV"
           runner_json="$(PRODUCT_RELEVANT="$product_relevant" NPM_EXECUTED="$npm_executed" NPM_EXIT_CODE="$npm_exit" COMMAND_CWD="$command_cwd" PACKAGE_SCOPE="$package_scope" COMMAND_CLASS="$command_class" node -e "const cwd=process.env.COMMAND_CWD||''; const input={productRelevant:process.env.PRODUCT_RELEVANT==='1',isPullRequest:process.env.CODEX_EVENT_NAME==='pull_request',eventName:process.env.CODEX_EVENT_NAME||'',headSha:process.env.CODEX_PR_HEAD_SHA||'',baseSha:process.env.CODEX_PR_BASE_SHA||'',repository:process.env.CODEX_REPOSITORY||'',npmExecuted:process.env.NPM_EXECUTED==='1',npmExitCode:Number(process.env.NPM_EXIT_CODE||0),cwd,packageScope:process.env.PACKAGE_SCOPE||'',commandClass:process.env.COMMAND_CLASS||'',command:cwd ? 'cd '+cwd+' && npm test' : 'npm test'}; process.stdout.write(JSON.stringify(input));")"
           CODEX_REMOTE_PRODUCT_EVIDENCE_OUT_DIR="$RUNNER_TEMP" CODEX_REMOTE_PRODUCT_EVIDENCE_RUNNER_JSON="$runner_json" node scripts/codex-remote-product-evidence-runner.mjs --write-artifacts
-          PRODUCT_RELEVANT="$product_relevant" NPM_EXECUTED="$npm_executed" NPM_EXIT_CODE="$npm_exit" COMMAND_CWD="$command_cwd" PACKAGE_SCOPE="$package_scope" COMMAND_CLASS="$command_class" node -e "const fs=require('fs'); const productRelevant=process.env.PRODUCT_RELEVANT==='1'; const npmExecuted=process.env.NPM_EXECUTED==='1'; const npmExitCode=Number(process.env.NPM_EXIT_CODE||0); const status=!productRelevant?'not_applicable':npmExecuted&&npmExitCode===0?'pass':'fail'; const cwd=process.env.COMMAND_CWD||'.'; const packageScope=process.env.PACKAGE_SCOPE||cwd; const commandClass=process.env.COMMAND_CLASS||'root_npm_test'; const version='1.1.5'; const artifact={schemaVersion:version,harnessVersion:version,sourceHarnessVersion:version,activeHarnessVersion:version,targetHarnessVersion:version,activeSelfTestSuite:'v115',activeSelfTestStatusKey:'v115SelfTestStatus',phase:'remote product checks',status,productRelevant,cwd,packageScope,commandClass,npmExecuted,npmExitCode,productVerificationStatus:{status,safeSummaryOnly:true},productVerificationEvidenceStatus:{status,safeSummaryOnly:true},remoteProductBaselineStatus:{status,safeSummaryOnly:true},safeSummaryOnly:true}; fs.writeFileSync(process.env.RUNNER_TEMP + '/codex-remote-product-checks.safe.json', JSON.stringify(artifact,null,2));"
+          PRODUCT_RELEVANT="$product_relevant" NPM_EXECUTED="$npm_executed" NPM_EXIT_CODE="$npm_exit" COMMAND_CWD="$command_cwd" PACKAGE_SCOPE="$package_scope" COMMAND_CLASS="$command_class" node -e "const fs=require('fs'); const productRelevant=process.env.PRODUCT_RELEVANT==='1'; const npmExecuted=process.env.NPM_EXECUTED==='1'; const npmExitCode=Number(process.env.NPM_EXIT_CODE||0); const status=!productRelevant?'not_applicable':npmExecuted&&npmExitCode===0?'pass':'fail'; const cwd=process.env.COMMAND_CWD||'.'; const packageScope=process.env.PACKAGE_SCOPE||cwd; const commandClass=process.env.COMMAND_CLASS||'root_npm_test'; const version='1.2.7'; const artifact={schemaVersion:version,harnessVersion:version,sourceHarnessVersion:version,activeHarnessVersion:version,targetHarnessVersion:version,activeSelfTestSuite:'v127',activeSelfTestStatusKey:'v127SelfTestStatus',phase:'remote product checks',status,productRelevant,cwd,packageScope,commandClass,npmExecuted,npmExitCode,productVerificationStatus:{status,safeSummaryOnly:true},productVerificationEvidenceStatus:{status,safeSummaryOnly:true},remoteProductBaselineStatus:{status,safeSummaryOnly:true},safeSummaryOnly:true}; fs.writeFileSync(process.env.RUNNER_TEMP + '/codex-remote-product-checks.safe.json', JSON.stringify(artifact,null,2));"
       - name: Generate backend Docker smoke evidence
         if: always()
         shell: bash
@@ -192,13 +249,17 @@ jobs:
           CODEX_PR_NUMBER: ${{ github.event.pull_request.number || '' }}
           CODEX_PR_HEAD_SHA: ${{ github.event.pull_request.head.sha || '' }}
           CODEX_PR_BASE_SHA: ${{ github.event.pull_request.base.sha || '' }}
+          CODEX_WORKFLOW_HEAD_SHA: ${{ github.event.pull_request.head.sha || '' }}
+          CODEX_ARTIFACT_HEAD_SHA: ${{ github.event.pull_request.head.sha || '' }}
+          CODEX_BRANCH: ${{ github.head_ref || github.ref_name }}
           CODEX_PR_BODY: ${{ github.event.pull_request.body || '' }}
           CODEX_REPOSITORY: ${{ github.repository }}
           CODEX_LIFEBOAT_PATH: ${{ runner.temp }}/codex-minimal-safe-failure.json
           CODEX_EXECUTION_MODE: target_pr
           CODEX_TERMINAL_ACTION: create_pr_only
           CODEX_QUALITY_GATE_RUN_ID: ${{ github.run_id }}
-          CODEX_SAFE_ARTIFACT_ID: ${{ github.run_id }}-${{ github.run_attempt }}
+          CODEX_QUALITY_GATE_RUN_ATTEMPT: ${{ github.run_attempt }}
+          CODEX_SAFE_ARTIFACT_NAME: codex-quality-gate-safe-artifacts
           GITHUB_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
@@ -206,10 +267,6 @@ jobs:
             current_pr_body="$(GH_TOKEN="${GITHUB_TOKEN:-}" gh pr view "${CODEX_PR_NUMBER:-}" --repo "${CODEX_REPOSITORY:-}" --json body -q .body 2>/dev/null || true)"
             if [ -n "$current_pr_body" ]; then
               export CODEX_PR_BODY="$current_pr_body"
-              if printf '%s' "$current_pr_body" | grep -F "I confirm PR #${CODEX_PR_NUMBER:-} current head ${CODEX_PR_HEAD_SHA:-} for merge consideration." >/dev/null \
-                && printf '%s' "$current_pr_body" | grep -F "Owner decision: owner_merge_after_same_head_pass." >/dev/null; then
-                export CODEX_OWNER_MERGE_CONFIRMED=1
-              fi
             fi
             export CODEX_EVIDENCE_PACK_STRICT=1
             export CODEX_HUMAN_CONFIRMATION_STRICT=1
@@ -235,6 +292,17 @@ jobs:
           CODEX_LIFEBOAT_PHASE=quality_gate_failed CODEX_LAST_KNOWN_GATE=local_quality_gate node scripts/codex-artifact-lifeboat.mjs > "$RUNNER_TEMP/codex-artifact-lifeboat-after-gate.json" || true
           runner_exit=0
           node scripts/codex-workflow-quality-runner.mjs --report "$RUNNER_TEMP/codex-quality-gate.json" --gate-exit "$gate_exit" || runner_exit=$?
+          node - "$gate_exit" "$runner_exit" "$RUNNER_TEMP/codex-execution-result.safe.json" <<'NODE'
+          const fs = require('fs');
+          const gateExit = Number(process.argv[2] || 1);
+          const workflowRunnerExit = Number(process.argv[3] || 1);
+          fs.writeFileSync(process.argv[4], `${JSON.stringify({
+            schemaVersion: '1.2.7',
+            gateExit,
+            workflowRunnerExit,
+            safeSummaryOnly: true,
+          }, null, 2)}\n`);
+          NODE
           node - "$RUNNER_TEMP/codex-quality-gate.json" <<'NODE'
           const fs = require('fs');
           const reportPath = process.argv[2];
@@ -252,54 +320,22 @@ jobs:
           }
           const report = readJson(reportPath) || {};
           const summary = readJson('codex-quality-gate-safe-summary.json') || {};
-          const ownerConfirmed = process.env.CODEX_OWNER_MERGE_CONFIRMED === '1';
-          const summaryMergeReady = summary.status === 'pass' && summary.mergeReady === true && summary.targetMergeReady === true;
-          const finalStatusPass = (report.finalDecisionStatus?.status || summary.finalDecisionStatus?.status) === 'pass';
           let canonicalFinalDecision = report.finalDecision || summary.finalDecision;
-          if (ownerConfirmed && summaryMergeReady && finalStatusPass) {
-            canonicalFinalDecision = {
-              ...(canonicalFinalDecision || {}),
-              finalDecisionVersion: canonicalFinalDecision?.finalDecisionVersion || 1,
-              executionMode: canonicalFinalDecision?.executionMode || 'target_pr',
-              terminalAction: 'merge_current_pr',
-              decision: 'allowed',
-              mergeAllowed: true,
-              primaryClass: 'none',
-              safeNextAction: 'merge_current_pr',
-              exitCode: 0,
-              ownerDecisionReady: true,
-              artifactName: 'codex-final-decision.safe.json',
-              safeSummaryOnly: true,
-            };
-            summary.finalDecision = canonicalFinalDecision;
-            summary.ownerDecisionBrief = {
-              ...(summary.ownerDecisionBrief || {}),
-              decisionReady: true,
-              safeNextAction: 'merge_current_pr',
-              safeSummaryOnly: true,
-            };
-            summary.decisionCapsule = {
-              ...(summary.decisionCapsule || {}),
-              terminalAction: 'merge_current_pr',
-              mergeAllowed: true,
-              safeNextAction: 'merge_current_pr',
-              primaryClass: 'none',
-              safeSummaryOnly: true,
-            };
-            fs.writeFileSync('codex-quality-gate-safe-summary.json', `${JSON.stringify(summary, null, 2)}\n`);
-          }
           writeSafe('codex-final-decision.safe.json', canonicalFinalDecision, { overwrite: Boolean(canonicalFinalDecision) });
           writeSafe('codex-evidence-capsule.safe.json', report.evidenceCapsule || summary.evidenceCapsule);
           writeSafe('codex-orchestration-capsule.safe.json', report.orchestrationCapsule || summary.orchestrationCapsule);
           writeSafe('codex-worker-proof.safe.json', report.workerProofCapsule || summary.workerProofCapsule);
-          writeSafe('codex-owner-decision-brief.safe.json', summary.ownerDecisionBrief?.decisionReady ? summary.ownerDecisionBrief : (report.ownerDecisionBrief || summary.ownerDecisionBrief), { overwrite: Boolean(summary.ownerDecisionBrief?.decisionReady) });
+          writeSafe('codex-owner-decision-brief.safe.json', report.ownerDecisionBrief || summary.ownerDecisionBrief);
           writeSafe('codex-artifact-consistency.safe.json', report.artifactConsistency || report.artifactConsistencyStatus || summary.artifactConsistencyStatus);
-          writeSafe('codex-decision-capsule.safe.json', summary.decisionCapsule?.mergeAllowed ? summary.decisionCapsule : (report.decisionCapsule || summary.decisionCapsule), { overwrite: Boolean(summary.decisionCapsule?.mergeAllowed) });
+          writeSafe('codex-decision-capsule.safe.json', report.decisionCapsule || summary.decisionCapsule);
           NODE
-          node - "$runner_exit" <<'NODE'
-          const runnerExit = Number(process.argv[2] || 0);
-          process.exit(runnerExit);
-          NODE
+          combined_exit=0
+          if [ "$gate_exit" -ne 0 ]; then
+            combined_exit="$gate_exit"
+          elif [ "$runner_exit" -ne 0 ]; then
+            combined_exit="$runner_exit"
+          fi
+          exit "$combined_exit"
       - name: Write safe quality summary
         if: always()
         shell: bash
@@ -463,64 +499,34 @@ jobs:
             console.log(`- ${reasonCode}: ${safeMessage}`);
           }
           NODE
+      - name: Finalize v127 safe artifact bundle
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          node scripts/codex-workflow-quality-runner.mjs \
+            --finalize-v127-bundle \
+            --source-dir "$GITHUB_WORKSPACE" \
+            --runner-temp "$RUNNER_TEMP" \
+            --report "$RUNNER_TEMP/codex-quality-gate.json" \
+            --execution-result "$RUNNER_TEMP/codex-execution-result.safe.json" \
+            --remote-run-context "$RUNNER_TEMP/codex-v127-remote-run-context.safe.json" \
+            --stage-dir "$RUNNER_TEMP/codex-quality-gate-safe-artifacts" \
+            --head "${{ github.event.pull_request.head.sha || github.sha }}" \
+            --base "${{ github.event.pull_request.base.sha || '' }}" \
+            --run-id "${{ github.run_id }}" \
+            --run-attempt "${{ github.run_attempt }}" \
+            --artifact-name codex-quality-gate-safe-artifacts
+          node scripts/codex-workflow-quality-runner.mjs \
+            --validate-v127-bundle \
+            --execution-result "$RUNNER_TEMP/codex-execution-result.safe.json" \
+            --remote-run-context "$RUNNER_TEMP/codex-v127-remote-run-context.safe.json" \
+            --stage-dir "$RUNNER_TEMP/codex-quality-gate-safe-artifacts" \
+            --head "${{ github.event.pull_request.head.sha || github.sha }}"
       - name: Upload safe quality artifacts
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: codex-quality-gate-safe-artifacts
-          path: |
-            codex-quality-gate-safe-summary.json
-            codex-final-decision.safe.json
-            codex-orchestration-capsule.safe.json
-            codex-worker-proof.safe.json
-            codex-owner-decision-brief.safe.json
-            codex-evidence-capsule.safe.json
-            codex-owner-decision-receipt.safe.json
-            codex-decision-capsule.safe.json
-            codex-artifact-consistency.safe.json
-            ${{ runner.temp }}/codex-decision-capsule.safe.json
-            ${{ runner.temp }}/codex-artifact-consistency.safe.json
-            ${{ runner.temp }}/codex-quality-gate-safe-summary.json
-            codex-minimal-blockers.safe.json
-            codex-minimal-safe-failure.json
-            ${{ runner.temp }}/codex-minimal-safe-failure.json
-            codex-decision-core.safe.json
-            ${{ runner.temp }}/codex-decision-core.safe.json
-            codex-minimal-blockers.safe.json
-            ${{ runner.temp }}/codex-minimal-blockers.safe.json
-            codex-safe-artifact-index.safe.json
-            ${{ runner.temp }}/codex-safe-artifact-index.safe.json
-            codex-diagnostic-consolidated-summary.json
-            codex-evidence-pack.normalized.json
-            codex-self-test-cases.safe.json
-            codex-failure-reasons.json
-            codex-invalid-report-recovery-summary.json
-            codex-target-quality-summary.json
-            codex-source-final-summary.json
-            codex-target-final-summary.json
-            codex-safe-artifact-index.json
-            codex-safe-artifact-classification.safe.json
-            codex-pr-evidence-rendered.safe.json
-            codex-evidence-auto-repair-hint.safe.json
-            codex-same-head-artifact-evidence.safe.json
-            codex-docker-smoke-artifact.safe.json
-            ${{ runner.temp }}/codex-backend-docker-smoke.safe.json
-            codex-pr-evidence-compact.safe.json
-            codex-product-context-safe-artifact.safe.json
-            codex-product-baseline-continuity.safe.json
-            codex-false-positive-budget.safe.json
-            codex-agent-session-governance.safe.json
-            codex-evidence-minimality.safe.json
-            codex-safe-artifact-next-action.safe.json
-            codex-skill-evidence-link.safe.json
-            codex-workflow-preflight.safe.json
-            codex-test-metrics.safe.json
-            ${{ runner.temp }}/codex-remote-npm-diagnostic.safe.json
-            ${{ runner.temp }}/codex-product-verification-evidence.remote.json
-            ${{ runner.temp }}/codex-remote-product-baseline.json
-            ${{ runner.temp }}/codex-remote-product-checks.safe.json
-            codex-dataset-audit-v2.safe.json
-            codex-browser-smoke-json-artifact.safe.json
-            codex-runtime-latency-measurement.safe.json
-            codex-owner-decision-digest.safe.json
-          if-no-files-found: ignore
+          path: ${{ runner.temp }}/codex-quality-gate-safe-artifacts/*
+          if-no-files-found: error

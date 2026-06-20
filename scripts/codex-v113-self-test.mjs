@@ -44,6 +44,7 @@ function test(name, fn) {
 
 const statuses = buildDefaultV113Statuses();
 const report = buildV113Report();
+const acceptedV113OrSuccessorHarnessVersions = ['1.1.3', '1.1.4', '1.2.7'];
 const blockers = buildMinimalBlockersArtifact({
   mergeBlocking: true,
   primaryBlockers: ['same_head_required_check_failed', 'safe_artifact_missing', 'owner_merge_instruction_absent', 'extra'],
@@ -163,8 +164,8 @@ const cases = [
   test('repair_loop_prevention_blocks_third_repair', () => buildRepairLoopReport({ repairPrCount: 3 }).status === 'fail'),
   test('remote_evidence_state_split_not_required', () => splitRemoteEvidenceState({ required: false }) === 'not_required'),
   test('remote_evidence_state_split_failed_execution', () => splitRemoteEvidenceState({ required: true, executed: true, artifactPresent: true, pass: false }) === 'executed_fail'),
-  test('formal_backend_evidence_v113_consumed_as_pass', () => ['1.1.3', '1.1.4'].includes(formalBackendEvidence.evidence.schemaVersion) && formalBackendBaseline.status === 'pass' && formalBackendPrecedence.status === 'pass' && formalBackendDiagnostic.status === 'pass' && formalBackendClassifiedDiagnostic.status === 'pass'),
-  test('target_final_summary_uses_active_v113_version', () => ['1.1.3', '1.1.4'].includes(targetFinalSummary.summary.harnessVersion) && targetFinalSummary.status === 'pass'),
+  test('formal_backend_evidence_v113_consumed_as_pass', () => acceptedV113OrSuccessorHarnessVersions.includes(formalBackendEvidence.evidence.schemaVersion) && formalBackendBaseline.status === 'pass' && formalBackendPrecedence.status === 'pass' && formalBackendDiagnostic.status === 'pass' && formalBackendClassifiedDiagnostic.status === 'pass'),
+  test('target_final_summary_uses_active_v113_version', () => acceptedV113OrSuccessorHarnessVersions.includes(targetFinalSummary.summary.harnessVersion) && targetFinalSummary.status === 'pass'),
   test('test_coverage_accepts_formal_product_evidence_pass', () => formalBackendCoverage.status === 'pass' && formalBackendCoverage.source === 'formal_product_evidence'),
   test('test_coverage_without_body_or_formal_evidence_still_fails', () => missingCoverage.status === 'fail'),
   test('non_runtime_shared_utility_profile_passes_safe_common_path', () => buildNonRuntimeSharedUtilityProfile({ files: ['src/common/safe-helper.ts'] }).status === 'pass'),

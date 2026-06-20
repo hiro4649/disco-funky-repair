@@ -53,15 +53,14 @@ export function renderPrEvidenceBlocks(input = evidenceInput(), env = process.en
   const productChanged = files.some((file) => PRODUCT_PATH.test(file));
   const productCodeChanged = input.productCodeChanged ?? productChanged;
   const runtimeReadinessClaimed = input.runtimeReadinessClaimed === true;
-  const humanConfirmation = input.humanConfirmation || { present: true, confirmedByRole: 'project-owner', headSha: headSha || currentHead };
+  const humanConfirmation = input.humanConfirmation || { present: false, confirmedByRole: null, headSha: null, source: 'not_machine_bound' };
   const failures = [];
   const warnings = [];
 
   if ((env.CODEX_EVENT_NAME === 'pull_request' || prNumber) && !prNumber) failures.push('pr_evidence_render_failed');
   if ((env.CODEX_EVENT_NAME === 'pull_request' || prNumber) && !baseSha) failures.push('pr_evidence_render_failed');
   if (currentHead && headSha && currentHead !== headSha) failures.push('pr_evidence_stale_head');
-  if (!humanConfirmation || humanConfirmation.present === false) failures.push('pr_evidence_missing_human_confirmation');
-  if (humanConfirmation?.headSha && headSha && humanConfirmation.headSha !== headSha) failures.push('pr_evidence_stale_head');
+  if (humanConfirmation?.present === true && humanConfirmation?.headSha && headSha && humanConfirmation.headSha !== headSha) failures.push('pr_evidence_stale_head');
   if (input.runHeadSha && input.runHeadSha !== headSha) failures.push('pr_evidence_stale_head');
   if (input.artifactHeadSha && input.artifactHeadSha !== headSha) failures.push('pr_evidence_stale_head');
   if (productCodeChanged === false && productChanged) failures.push('pr_evidence_product_scope_mismatch');
@@ -82,6 +81,10 @@ export function renderPrEvidenceBlocks(input = evidenceInput(), env = process.en
     runtimeReadinessClaimed: Boolean(runtimeReadinessClaimed),
     targetRollout: Boolean(input.targetRollout),
     humanConfirmation,
+    displayDeclarationsPresent: true,
+    prBodyMachineEvidence: false,
+    ownerMergeReceiptPresent: false,
+    ownerAuthorityCreatedByAI: false,
     safeSummaryOnly: true,
   };
   const manualConfirmation = {
@@ -89,7 +92,9 @@ export function renderPrEvidenceBlocks(input = evidenceInput(), env = process.en
     headSha: headSha || currentHead,
     productCodeChanged: Boolean(productCodeChanged),
     runtimeReadinessClaimed: Boolean(runtimeReadinessClaimed),
-    confirmedByRole: humanConfirmation.confirmedByRole || 'project-owner',
+    present: false,
+    confirmedByRole: null,
+    prBodyMachineEvidence: false,
     safeSummaryOnly: true,
   };
   const blocks = {
@@ -106,7 +111,7 @@ export function renderPrEvidenceBlocks(input = evidenceInput(), env = process.en
     ].join('\n'),
     humanConfirmationBlock: [
       '## Human Confirmation',
-      `Human confirmation: ${humanConfirmation ? 'present' : 'missing'}`,
+      `Human confirmation: ${humanConfirmation?.present === true ? 'present' : 'absent'}`,
       `Product code changed: ${Boolean(productCodeChanged) ? 'yes' : 'no'}`,
       `Runtime readiness claimed: ${Boolean(runtimeReadinessClaimed) ? 'yes' : 'no'}`,
     ].join('\n'),

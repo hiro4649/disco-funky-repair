@@ -180,6 +180,7 @@ const funkyMissingRegistry = applyTargetActiveSelfTestRegistryMapping(funkyMissi
   selfTestPresent: true,
 });
 const harnessVersionRegistry = buildHarnessVersionRegistry();
+const acceptedV114OrSuccessorHarnessVersions = ['1.1.4', '1.1.5', '1.2.7'];
 const remoteProductArtifacts = buildRemoteProductSafeArtifacts({
   productRelevant: true,
   isPullRequest: true,
@@ -319,7 +320,8 @@ const staleV105RendererFixture = renderPrEvidenceBlocks({
 });
 const currentHarnessMetadataIsV114OrV115 = (
   (currentVersion === '1.1.4' && activeSelfTestSuite === 'v114' && activeSelfTestStatusKey === 'v114SelfTestStatus') ||
-  (currentVersion === '1.1.5' && activeSelfTestSuite === 'v115' && activeSelfTestStatusKey === 'v115SelfTestStatus')
+  (currentVersion === '1.1.5' && activeSelfTestSuite === 'v115' && activeSelfTestStatusKey === 'v115SelfTestStatus') ||
+  (currentVersion === '1.2.7' && activeSelfTestSuite === 'v127' && activeSelfTestStatusKey === 'v127SelfTestStatus')
 );
 const realRuntimeClaimRendererFixture = renderPrEvidenceBlocks({
   repository: 'hiro4649/disco-funky-repair',
@@ -403,30 +405,35 @@ const cases = [
   test('remote_artifacts_emit_v114_harness_version', () => currentHarnessMetadataIsV114OrV115),
   test('harness_version_registry_uses_current_v114_metadata', () => (
     (harnessVersionRegistry.currentVersion === '1.1.4' && harnessVersionRegistry.previousVersion === '1.1.3' && harnessVersionRegistry.activeSelfTestSuite === 'v114' && harnessVersionRegistry.activeSelfTestStatusKey === 'v114SelfTestStatus') ||
-    (harnessVersionRegistry.currentVersion === '1.1.5' && harnessVersionRegistry.previousVersion === '1.1.4' && harnessVersionRegistry.activeSelfTestSuite === 'v115' && harnessVersionRegistry.activeSelfTestStatusKey === 'v115SelfTestStatus')
+    (harnessVersionRegistry.currentVersion === '1.1.5' && harnessVersionRegistry.previousVersion === '1.1.4' && harnessVersionRegistry.activeSelfTestSuite === 'v115' && harnessVersionRegistry.activeSelfTestStatusKey === 'v115SelfTestStatus') ||
+    (harnessVersionRegistry.currentVersion === '1.2.7' && harnessVersionRegistry.previousVersion === '1.2.6' && harnessVersionRegistry.activeSelfTestSuite === 'v127' && harnessVersionRegistry.activeSelfTestStatusKey === 'v127SelfTestStatus')
   )),
   test('remote_product_evidence_uses_current_v114_version', () => (
     (remoteProductArtifacts.evidence.harnessVersion === '1.1.4' && remoteProductArtifacts.evidence.activeSelfTestSuite === 'v114' && remoteProductArtifacts.evidence.activeSelfTestStatusKey === 'v114SelfTestStatus') ||
-    (remoteProductArtifacts.evidence.harnessVersion === '1.1.5' && remoteProductArtifacts.evidence.activeSelfTestSuite === 'v115' && remoteProductArtifacts.evidence.activeSelfTestStatusKey === 'v115SelfTestStatus')
+    (remoteProductArtifacts.evidence.harnessVersion === '1.1.5' && remoteProductArtifacts.evidence.activeSelfTestSuite === 'v115' && remoteProductArtifacts.evidence.activeSelfTestStatusKey === 'v115SelfTestStatus') ||
+    (remoteProductArtifacts.evidence.harnessVersion === '1.2.7' && remoteProductArtifacts.evidence.activeSelfTestSuite === 'v127' && remoteProductArtifacts.evidence.activeSelfTestStatusKey === 'v127SelfTestStatus')
   )),
-  test('safe_artifact_index_uses_current_v114_version', () => ['1.1.4', '1.1.5'].includes(safeArtifactIndex.harnessVersion)),
+  test('safe_artifact_index_uses_current_v114_version', () => acceptedV114OrSuccessorHarnessVersions.includes(safeArtifactIndex.harnessVersion)),
   test('workflow_remote_product_checks_uses_current_v114_version', () => (
     (workflowText.includes('"schemaVersion":"1.1.4"') && workflowText.includes('"harnessVersion":"1.1.4"') && workflowText.includes('"activeSelfTestSuite":"v114"') && workflowText.includes('"activeSelfTestStatusKey":"v114SelfTestStatus"')) ||
-    (workflowText.includes('"schemaVersion":"1.1.5"') && workflowText.includes('"harnessVersion":"1.1.5"') && workflowText.includes('"activeSelfTestSuite":"v115"') && workflowText.includes('"activeSelfTestStatusKey":"v115SelfTestStatus"'))
+    (workflowText.includes('"schemaVersion":"1.1.5"') && workflowText.includes('"harnessVersion":"1.1.5"') && workflowText.includes('"activeSelfTestSuite":"v115"') && workflowText.includes('"activeSelfTestStatusKey":"v115SelfTestStatus"')) ||
+    (workflowText.includes('"schemaVersion":"1.2.7"') && workflowText.includes('"harnessVersion":"1.2.7"') && workflowText.includes('"activeSelfTestSuite":"v127"') && workflowText.includes('"activeSelfTestStatusKey":"v127SelfTestStatus"'))
   )),
   test('workflow_quality_runner_receives_changed_files_for_v114_normalization', () => workflowText.includes('CODEX_CHANGED_FILES<<CODEX_CHANGED_FILES_EOF') && workflowText.includes('export CODEX_CHANGED_FILES="$changed_files"')),
-  test('workflow_quality_runner_emits_harness_only_evidence_normalization_v114', () => workflowRunnerNormalizationFixture.safeSummary.v114HarnessOnlyEvidenceNormalizationStatus.status === 'pass' && workflowRunnerNormalizationFixture.safeSummary.bestOfNEvidenceStatus.status === 'pass' && workflowRunnerNormalizationFixture.safeSummary.testCoverageEvidenceStatus.status === 'pass'),
+  test('workflow_quality_runner_emits_display_only_harness_evidence_v114', () => workflowRunnerNormalizationFixture.safeSummary.v114HarnessOnlyEvidenceNormalizationStatus.status === 'observed_display_only' && workflowRunnerNormalizationFixture.safeSummary.v114HarnessOnlyEvidenceNormalizationStatus.prBodyMachineEvidence === false),
+  test('workflow_quality_runner_pr_body_does_not_override_best_of_n_v114', () => workflowRunnerNormalizationFixture.safeSummary.bestOfNEvidenceStatus.status === 'fail' && workflowRunnerNormalizationFixture.safeSummary.bestOfNEvidenceStatus.reasonCodes.includes('best_of_n_required')),
+  test('workflow_quality_runner_pr_body_does_not_override_test_coverage_v114', () => workflowRunnerNormalizationFixture.safeSummary.testCoverageEvidenceStatus.status === 'fail' && workflowRunnerNormalizationFixture.safeSummary.testCoverageEvidenceStatus.reasonCodes.includes('test_coverage_evidence_missing')),
   test('legacy_v099_v085_not_current_blocker_when_v114_formal_product_evidence_passes', () => legacySelfTestV114DemotionFixture.v099.effectiveStatus === 'pass_advisory' && legacySelfTestV114DemotionFixture.v085.effectiveStatus === 'pass_advisory' && legacySelfTestV114DemotionFixture.scoringUsesV114Compatibility === true),
-  test('stale_v105_pr_evidence_renderer_not_current_blocker_v114', () => staleV105RendererFixture.prEvidenceRendererStatus.status === 'pass' && ['1.1.4', '1.1.5'].includes(staleV105RendererFixture.prEvidenceRendererStatus.blocks.evidencePack.harnessVersion)),
+  test('stale_v105_pr_evidence_renderer_not_current_blocker_v114', () => staleV105RendererFixture.prEvidenceRendererStatus.status === 'pass' && acceptedV114OrSuccessorHarnessVersions.includes(staleV105RendererFixture.prEvidenceRendererStatus.blocks.evidencePack.harnessVersion)),
   test('runtime_claim_mismatch_uses_current_pr_body_v114', () => !staleV105RendererFixture.prEvidenceRendererStatus.reasonCodes.includes('pr_evidence_runtime_claim_mismatch')),
   test('runtime_claim_false_positive_from_stale_artifact_demoted_v114', () => staleV105RendererFixture.prEvidenceRendererStatus.blocks.evidencePack.productCodeChanged === true && staleV105RendererFixture.prEvidenceRendererStatus.blocks.evidencePack.runtimeReadinessClaimed === false),
   test('real_runtime_readiness_claim_still_blocks_v114', () => realRuntimeClaimRendererFixture.prEvidenceRendererStatus.status === 'fail' && realRuntimeClaimRendererFixture.prEvidenceRendererStatus.reasonCodes.includes('pr_evidence_runtime_claim_mismatch')),
-  test('harness_only_deterministic_bugfix_can_satisfy_best_of_n_v114', () => harnessOnlyEvidenceReport.bestOfNEvidenceStatus.status === 'pass' && harnessOnlyEvidenceNormalization.bestOfNEvidenceNormalized === true),
-  test('harness_only_test_coverage_evidence_from_compact_safe_sections_v114', () => harnessOnlyEvidenceReport.testCoverageEvidenceStatus.status === 'pass' && harnessOnlyEvidenceNormalization.testCoverageEvidenceNormalized === true),
-  test('harness_only_evidence_accepts_json_changed_files_v114', () => jsonChangedFilesEvidenceReport.bestOfNEvidenceStatus.status === 'pass' && jsonChangedFilesEvidenceReport.testCoverageEvidenceStatus.status === 'pass' && jsonChangedFilesEvidenceNormalization.harnessOnly === true),
-  test('harness_only_evidence_reads_pull_request_body_from_event_payload_v114', () => eventBodyEvidenceReport.bestOfNEvidenceStatus.status === 'pass' && eventBodyEvidenceReport.testCoverageEvidenceStatus.status === 'pass' && eventBodyEvidenceNormalization.status === 'pass'),
+  test('harness_only_body_is_display_only_for_best_of_n_v114', () => harnessOnlyEvidenceReport.bestOfNEvidenceStatus.status === 'fail' && harnessOnlyEvidenceReport.bestOfNEvidenceStatus.reasonCodes.includes('best_of_n_required') && harnessOnlyEvidenceNormalization.bestOfNDisplaySectionsPresent === true && harnessOnlyEvidenceNormalization.prBodyMachineEvidence === false),
+  test('harness_only_body_is_display_only_for_test_coverage_v114', () => harnessOnlyEvidenceReport.testCoverageEvidenceStatus.status === 'fail' && harnessOnlyEvidenceReport.testCoverageEvidenceStatus.reasonCodes.includes('test_coverage_evidence_missing') && harnessOnlyEvidenceNormalization.testCoverageDisplaySectionsPresent === true && harnessOnlyEvidenceNormalization.prBodyMachineEvidence === false),
+  test('harness_only_evidence_accepts_json_changed_files_display_only_v114', () => jsonChangedFilesEvidenceReport.bestOfNEvidenceStatus.status === 'fail' && jsonChangedFilesEvidenceReport.testCoverageEvidenceStatus.status === 'fail' && jsonChangedFilesEvidenceNormalization.harnessOnly === true && jsonChangedFilesEvidenceNormalization.status === 'observed_display_only'),
+  test('harness_only_evidence_reads_event_body_display_only_v114', () => eventBodyEvidenceReport.bestOfNEvidenceStatus.status === 'fail' && eventBodyEvidenceReport.testCoverageEvidenceStatus.status === 'fail' && eventBodyEvidenceNormalization.status === 'observed_display_only' && eventBodyEvidenceNormalization.prBodyMachineEvidence === false),
   test('product_pr_still_requires_product_test_coverage_v114', () => productScopeEvidenceReport.testCoverageEvidenceStatus.status === 'fail' && productScopeEvidenceNormalization.harnessOnly === false),
-  test('manual_confirmation_does_not_override_missing_tests_v114', () => missingHarnessEvidenceReport.testCoverageEvidenceStatus.status === 'fail' && missingHarnessEvidenceNormalization.status === 'manual_confirmation_required'),
+  test('manual_confirmation_does_not_override_missing_tests_v114', () => missingHarnessEvidenceReport.testCoverageEvidenceStatus.status === 'fail' && missingHarnessEvidenceNormalization.status === 'observed_display_only' && missingHarnessEvidenceNormalization.testCoverageDisplaySectionsPresent === false),
 ];
 
 const failures = cases.filter((item) => item.status !== 'pass');
