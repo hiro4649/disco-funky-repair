@@ -34,6 +34,14 @@ function failed(status) {
   return status?.status === 'fail';
 }
 
+function readCurrentAgents() {
+  return fs.existsSync('AGENTS.md') ? fs.readFileSync('AGENTS.md', 'utf8') : '';
+}
+
+function normalizedIncludes(text, expected) {
+  const normalize = (value) => String(value).replace(/\s+/g, ' ').trim();
+  return normalize(text).includes(normalize(expected));
+}
 const VALID_PROCESS_RECEIPT = {
   present: true,
   receiptId: 'receipt-v127-source-body',
@@ -73,9 +81,18 @@ function activeManifestPathsForMode(env = process.env) {
 
 function manifestThemeMatchesActiveVersion() {
   const manifests = activeManifestPathsForMode().map((file) => JSON.parse(fs.readFileSync(file, 'utf8')));
-  return manifests.every((manifest) => manifest.activeHarnessVersion === '1.2.7'
-    && manifest.activeSelfTestSuite === 'v127'
-    && manifest.theme === 'Receipt-Carried Continuation and Evidence Compression');
+  return manifests.every((manifest) => {
+    const directV127 = manifest.activeHarnessVersion === '1.2.7'
+      && manifest.activeSelfTestSuite === 'v127'
+      && manifest.theme === 'Receipt-Carried Continuation and Evidence Compression';
+    const v128WithV127Rollback = manifest.activeHarnessVersion === '1.2.8'
+      && manifest.activeSelfTestSuite === 'v128'
+      && manifest.versioning?.activeHarnessVersion === '1.2.7'
+      && manifest.versioning?.activeSelfTestSuite === 'v127'
+      && manifest.versioning?.rollbackAvailable === true
+      && manifest.legacySelfTests?.v127 === 'blocking_compatibility_rollback';
+    return directV127 || v128WithV127Rollback;
+  });
 }
 
 const cases = [
