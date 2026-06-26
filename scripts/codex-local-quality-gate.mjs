@@ -70,7 +70,7 @@ import { buildOwnerDecisionBriefReport } from './codex-owner-decision-brief.mjs'
 
 
 
-const HARNESS_VERSION = '1.2.9';
+const HARNESS_VERSION = '1.3.0';
 
 
 
@@ -230,7 +230,7 @@ function loadBearingArtifactNames() {
     'codex-minimal-blockers.safe.json',
     'codex-quality-gate-safe-summary.json',
   ];
-  if (!['1.1.9', '1.2.0', '1.2.1', '1.2.2', '1.2.3', '1.2.4', '1.2.5', '1.2.6', '1.2.7', '1.2.8', '1.2.9'].includes(HARNESS_VERSION)) return HARNESS_VERSION === '1.1.8' ? v118Artifacts : LOAD_BEARING_ARTIFACTS;
+  if (!['1.1.9', '1.2.0', '1.2.1', '1.2.2', '1.2.3', '1.2.4', '1.2.5', '1.2.6', '1.2.7', '1.2.8', '1.2.9', '1.3.0'].includes(HARNESS_VERSION)) return HARNESS_VERSION === '1.1.8' ? v118Artifacts : LOAD_BEARING_ARTIFACTS;
   return [
     'codex-orchestration-capsule.safe.json',
     'codex-worker-proof.safe.json',
@@ -376,13 +376,13 @@ function writeV117LoadBearingArtifacts(report = {}) {
     if (usesV118FinalDecisionArtifacts() && report.evidenceCapsule) {
       fs.writeFileSync(loadBearingArtifactPath('codex-evidence-capsule.safe.json'), JSON.stringify(report.evidenceCapsule, null, 2));
     }
-    if (['1.1.9', '1.2.0', '1.2.1', '1.2.2', '1.2.3', '1.2.4', '1.2.5', '1.2.6', '1.2.7', '1.2.8', '1.2.9'].includes(HARNESS_VERSION) && report.orchestrationCapsule) {
+    if (['1.1.9', '1.2.0', '1.2.1', '1.2.2', '1.2.3', '1.2.4', '1.2.5', '1.2.6', '1.2.7', '1.2.8', '1.2.9', '1.3.0'].includes(HARNESS_VERSION) && report.orchestrationCapsule) {
       fs.writeFileSync(loadBearingArtifactPath('codex-orchestration-capsule.safe.json'), JSON.stringify(report.orchestrationCapsule, null, 2));
     }
-    if (['1.1.9', '1.2.0', '1.2.1', '1.2.2', '1.2.3', '1.2.4', '1.2.5', '1.2.6', '1.2.7', '1.2.8', '1.2.9'].includes(HARNESS_VERSION) && report.workerProofCapsule) {
+    if (['1.1.9', '1.2.0', '1.2.1', '1.2.2', '1.2.3', '1.2.4', '1.2.5', '1.2.6', '1.2.7', '1.2.8', '1.2.9', '1.3.0'].includes(HARNESS_VERSION) && report.workerProofCapsule) {
       fs.writeFileSync(loadBearingArtifactPath('codex-worker-proof.safe.json'), JSON.stringify(report.workerProofCapsule, null, 2));
     }
-    if (['1.1.9', '1.2.0', '1.2.1', '1.2.2', '1.2.3', '1.2.4', '1.2.5', '1.2.6', '1.2.7', '1.2.8', '1.2.9'].includes(HARNESS_VERSION) && report.ownerDecisionBrief) {
+    if (['1.1.9', '1.2.0', '1.2.1', '1.2.2', '1.2.3', '1.2.4', '1.2.5', '1.2.6', '1.2.7', '1.2.8', '1.2.9', '1.3.0'].includes(HARNESS_VERSION) && report.ownerDecisionBrief) {
       fs.writeFileSync(loadBearingArtifactPath('codex-owner-decision-brief.safe.json'), JSON.stringify(report.ownerDecisionBrief, null, 2));
     }
     fs.writeFileSync(loadBearingArtifactPath('codex-decision-capsule.safe.json'), JSON.stringify(decisionCapsule, null, 2));
@@ -2187,6 +2187,9 @@ function expectedMarkerVersionForPath(file, profileVersions) {
 
 
   if (normalized.startsWith('profiles/')) return profileVersions;
+  if (HARNESS_VERSION === '1.3.0') {
+    return [HARNESS_VERSION, '1.2.9', '1.2.8', '1.2.7', '1.2.6', '1.2.5', '1.2.4', '1.2.3', '1.2.2', '1.2.1', '1.2.0', '1.1.9', '1.1.8', '1.1.7', '1.1.6', '1.1.5', '1.1.4', '1.1.3', '1.1.2', '1.1.1', '1.1.0', '1.0.9', '1.0.8', '1.0.7'];
+  }
   if (HARNESS_VERSION === '1.2.9') {
     return [HARNESS_VERSION, '1.2.8', '1.2.7', '1.2.6', '1.2.5', '1.2.4', '1.2.3', '1.2.2', '1.2.1', '1.2.0', '1.1.9', '1.1.8', '1.1.7', '1.1.6', '1.1.5', '1.1.4', '1.1.3', '1.1.2', '1.1.1', '1.1.0', '1.0.9', '1.0.8', '1.0.7'];
   }
@@ -3957,6 +3960,14 @@ function initializeV128Statuses(report) {
     blockingStatuses.push({ key: 'v129SelfTestStatus', status: report.v129SelfTestStatus.status, reasonCodes: report.v129SelfTestStatus.reasonCodes || [] });
   }
   if (!report.v129SelfTestStatus) report.v129SelfTestStatus = { status: 'not_run' };
+}
+
+function runV130Gates(report, gateEnv) {
+  const selfTestStatus = process.env.CODEX_SKIP_V130_SELF_TEST === '1'
+    ? parseJsonEnv('CODEX_V130_SELF_TEST_REPORT')?.v130SelfTestStatus || parseJsonEnv('CODEX_V130_SELF_TEST_REPORT')
+    : runGateScript('scripts/codex-v130-self-test.mjs', 'v130SelfTestStatus', 'CODEX_V130_SELF_TEST_REPORT', gateEnv);
+  report.v130SelfTestStatus = selfTestStatus.status === 'fail' ? selfTestStatus : { ...selfTestStatus, status: selfTestStatus.status || 'pass' };
+  return report.v130SelfTestStatus;
 }
 
 function legacySelfTestPreservedStatus(legacyVersion) {
@@ -12363,6 +12374,8 @@ async function runTargetHarnessGate() {
 
 
 
+  runV130Gates(report, gateEnv);
+
   applyTargetActiveSelfTestRegistryMapping(report, failures);
 
   for (const [key, value] of Object.entries({
@@ -12706,6 +12719,12 @@ async function runTargetHarnessGate() {
   }
 
   applyTargetCompatibilityShadowStatuses(report, failures);
+
+
+
+  if (!report.v111SelfTestStatus || report.v111SelfTestStatus.status === 'not_run') {
+    runV111Gates(report, gateEnv);
+  }
 
 
 
