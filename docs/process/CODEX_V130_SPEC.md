@@ -2,13 +2,16 @@
 
 CODEX_QUALITY_HARNESS_FILE v1.3.0
 
-Source HARNESS v1.3.0 Core is a realistic Source authority release that keeps
-the v1.2.9 target harness in place while reducing avoidable Source-side stalls.
+Source HARNESS v1.3.0 Core is a realistic Source authority release that also
+projects an active metadata-gate target profile into FUNKY.
 
-v1.3.0 Core is the active Source HARNESS release. v1.2.9 remains the immediate
-rollback authority. v1.2.8 remains blocking compatibility. v1.2.7 remains
-readable compatibility. Target repositories remain on target harness v1.2.9,
-and v1.3.0 target rollout is not started.
+v1.3.0 Core is the active Source HARNESS release and the active FUNKY target
+metadata-gate profile. v1.2.9 remains the immediate rollback authority. v1.2.8
+remains blocking compatibility. v1.2.7 remains readable compatibility. The
+target projection is metadata-only and does not install Performance Track,
+Fable comparison, SDK benchmark runtime, Skill runtime, DAG agent-team runtime,
+learned policy activation, Cyber specialist runtime, product mutation, package
+mutation, wallet/RPC access, deploy behavior, or owner authority.
 
 ## Authority
 
@@ -87,11 +90,11 @@ runtime remains deferred and Skill performance remains not proven.
 
 ## Target Development Resume
 
-IRIS and FUNKY development may resume under the active v1.2.9 target harness.
-Allowed target work under v1.2.9 includes bug repair, test repair, CI repair,
-small product change, documentation correction, and target-local quality repair.
-Forbidden work remains v1.3.0 target rollout, v1.3.0 Skill install, v1.3.1,
-new benchmark blockers, Fable superiority claims, authority weakening,
+FUNKY development may resume under the active v1.3.0 target metadata-gate
+profile. Allowed target work includes bug repair, test repair, CI repair, small
+product change, documentation correction, and target-local quality repair when
+separately scoped. Forbidden work remains v1.3.0 Skill install, v1.3.1, new
+benchmark blockers, Fable superiority claims, authority weakening,
 required-check bypass, product deploy, and wallet, RPC, or secret mutation.
 
 Target profile strategy is guidance only. The available profiles are
@@ -125,7 +128,7 @@ explicit and non-silent.
 
 Core Activation requires the v1.3.0 active tuple, v1.2.9 immediate rollback,
 v1.2.8 compatibility, v1.2.7 readable compatibility, targetHarnessVersion
-v1.2.9, targetRollout not_started, token-budget compliance, artifact
+v1.3.0 for FUNKY metadata-gate targets, token-budget compliance, artifact
 consistency, `authorityCreated=false`, and `targetMutationCount=0`.
 
 The 60-task benchmark, Fable 5 comparison, SDK transport qualification, Skill
